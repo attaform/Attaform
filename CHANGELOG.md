@@ -48,6 +48,33 @@
 
 ### Fixed
 
+- **A rejected path now says why, instead of `never`.** Every
+  path-addressed API accepts a segment array, and each one branded its
+  parameter `S & (<path is valid> ? unknown : never)`. `S & never` is
+  `never`, so a wrong path reported `Argument of type 'string' is not
+  assignable to parameter of type 'never'`: the collapse, not the
+  cause. The brand is a string literal now, which intersects without
+  collapsing, so the compiler prints the reason and the argument keeps
+  its inferred tuple. `register` gets its own wording, since a
+  container path is in the schema and still not registrable. A wrong
+  path is the same hard error it always was; only the message changed.
+
+  The `never` brand was also leaking `any`:
+  `ReturnType<typeof form.register>` (and `setValue`, `toRef`,
+  `clear`, `fields`, `errors`) resolved to `any`, because a `never`
+  parameter defeats `ReturnType`. Those resolve to the real return
+  type now.
+
+  Reported as a `z.record` path typing as `never` in `register`. It
+  does not, and did not on the reported version: a record contributes
+  a `${string}` segment to the path union, so a dynamic key is
+  accepted everywhere a path is. What failed was an opaque `string`
+  PREFIX, which rejects a path with no record in it just as hard.
+  Both halves are pinned against `src` and against the published
+  `.d.ts`, and the docs now carry the row-component pattern that keeps
+  a child's bindings checked instead of dropping the component to an
+  untyped form. (#568)
+
 - **Consumer code can no longer throw out of Attaform into the host
   app.** A schema is not inert data: `z.lazy(() => ...)`,
   `.default(() => ...)` and `.catch(() => ...)` hold consumer functions
@@ -261,6 +288,20 @@
   defaults on every path that produces one, including the client half of
   an SSR render, where it stands in for the factory that never fires.
   (#600)
+
+### Internal
+
+- **The three gates that typecheck against `dist/` now notice when
+  `dist/` is behind `src/`.** Each rebuilt only when the bundle was
+  missing or was an `unbuild --stub` shim, and neither test says
+  anything about whether the build matches the source it came from. So
+  editing a public type and running `pnpm check:bundled-types`
+  typechecked the fixtures against the PREVIOUS build and reported ok.
+  `check:bundled-types` and `check:doc-snippets` live outside
+  `pnpm check`, which means they are usually run by hand right after
+  the edit, exactly when `dist/` is guaranteed to be stale. One shared
+  `ensureFreshDist` replaces the three copies and compares the newest
+  mtime under `src/` against the build. (#568)
 
 ## v0.28.0
 ### Breaking

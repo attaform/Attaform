@@ -11,12 +11,12 @@
  *   pnpm check:tarball
  *
  * Side effects:
- *   - Builds `dist/` if missing or stubbed (calls `pnpm prepack`), same
+ *   - Builds `dist/` when it is missing, stubbed, or behind `src/`, same
  *     sentinel logic as check-bundled-types.mjs.
  */
-import { execSync, execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { ensureFreshDist } from './dist-bundle.mjs'
 import { dirname, resolve } from 'node:path'
 
 // Budget history (packed bytes, `npm pack --dry-run` "size"):
@@ -45,23 +45,8 @@ const FORBIDDEN = [
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
-const sentinelDts = resolve(repoRoot, 'dist/zod-v4.d.mts')
 
-function distIsRealBundle() {
-  try {
-    const head = readFileSync(sentinelDts, 'utf8').slice(0, 256)
-    // `unbuild --stub` writes `export * from "/app/src/..."` (absolute
-    // source paths). A real bundle imports from `./shared/...` chunks.
-    return !head.includes('/src/')
-  } catch {
-    return false
-  }
-}
-
-if (!distIsRealBundle()) {
-  console.log('[check-tarball-size] dist/ missing or stubbed — building real bundle first')
-  execSync('pnpm prepack', { stdio: 'inherit', cwd: repoRoot })
-}
+ensureFreshDist('check-tarball-size')
 
 const raw = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
   cwd: repoRoot,

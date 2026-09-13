@@ -109,8 +109,48 @@ A library that narrowed `form.values.email` to a branded `Email` (or `form.value
 
 Wide in-flight types skip both failure modes. The schema still owns what counts as valid; the form just acknowledges that getting to valid is the user's job, not the type system's.
 
+## Paths are typed too
+
+The other half of the contract is the path you hand to `register`, `setValue`, `toRef` and the rest. Every one of them is checked against the schema, and the rule is the same everywhere: **a path is checkable when every segment carries a type.**
+
+A dynamic segment is fine as long as its type says where it sits. An array index is `number`, a `z.record` key is `string`, and both are real segments:
+
+```ts
+import { useForm } from 'attaform'
+import { z } from 'zod'
+
+const schema = z.object({
+  boxes: z.array(z.object({ note: z.string() })),
+  prefs: z.record(z.string(), z.boolean()),
+})
+const form = useForm({ schema, key: 'typed-paths' })
+
+declare const i: number
+declare const key: string
+
+form.register(`boxes.${i}.note`)
+form.register(`prefs.${key}`)
+form.register(['boxes', i, 'note'])
+```
+
+What breaks the chain is a segment typed as bare `string` standing in for a **container**: concatenating one widens the whole path to `string`, and there is nothing left to match against. The fix is upstream of the call that fails, so it is worth recognising by sight. Type the variable the prefix came from, usually a prop; [`injectForm`](/docs/cross-cutting-state/inject-form#rows-type-the-prefix-keep-the-generic) has the row-component version.
+
+When a path is rejected, the compiler names it:
+
+```
+attaform: 'boxes.0.nope' is not a path in this form's schema
+```
+
+and for `register`, which binds leaves rather than containers:
+
+```
+attaform: 'boxes.0' is not a registrable path. v-register binds a leaf
+input, so container paths are excluded.
+```
+
 ## Where to next
 
 - [`values`](/docs/reading-the-form/values): the in-flight read surface this page is built on.
 - [`handleSubmit`](/docs/submitting/handle-submit): the boundary where types tighten.
 - [Discriminated unions](/docs/schemas/discriminated-unions): the schema feature that benefits most from the tight side of this contract.
+- [Records & maps](/docs/schemas/records): dynamic keys, and why they stay checked.

@@ -30,18 +30,18 @@
  *   pnpm check:bundled-types
  *
  * Side effects:
- *   - Builds `dist/` if missing (calls `pnpm prepack`).
+ *   - Builds `dist/` when it is missing, stubbed, or behind `src/`
+ *     (`ensureFreshDist`, shared with the other dist-reading gates).
  *   - Runs `tsc --project <fixture>/tsconfig.json` for each fixture set.
  *   - Exits non-zero on any compile error.
  */
 import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { ensureFreshDist } from './dist-bundle.mjs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
-const distDir = resolve(repoRoot, 'dist')
 const fixtureProjects = [
   {
     label: 'v4 / default consumer',
@@ -52,27 +52,12 @@ const fixtureProjects = [
     tsconfig: resolve(repoRoot, 'tests/fixtures/bundled-types-v3/tsconfig.json'),
   },
 ]
-const sentinelDts = resolve(distDir, 'zod-v4.d.mts')
 
 function run(cmd, opts = {}) {
   return execSync(cmd, { stdio: 'inherit', cwd: repoRoot, ...opts })
 }
 
-function distIsRealBundle() {
-  try {
-    const head = readFileSync(sentinelDts, 'utf8').slice(0, 256)
-    // `unbuild --stub` writes `export * from "/app/src/..."` (absolute
-    // source paths). A real bundle imports from `./shared/...` chunks.
-    return !head.includes('/src/')
-  } catch {
-    return false
-  }
-}
-
-if (!distIsRealBundle()) {
-  console.log('[check-bundled-types] dist/ missing or stubbed — building real bundle first')
-  run('pnpm prepack')
-}
+ensureFreshDist('check-bundled-types')
 
 let failed = false
 for (const { label, tsconfig } of fixtureProjects) {

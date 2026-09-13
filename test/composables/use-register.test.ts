@@ -13,7 +13,7 @@ import {
 } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../src/zod'
-import type { UseFormReturn } from '../../src/zod'
+import type { RegisterValue, UseFormReturn } from '../../src/zod'
 import { useRegister } from '../../src/runtime/composables/use-register'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
@@ -226,8 +226,14 @@ describe('useRegister — inside child setup', () => {
   })
 
   it("with parent registerValue → returns ComputedRef whose .value === parent's RV (referential)", async () => {
+    // `RegisterValue<string>` is what `register('email')` returns, and
+    // naming it is the point: this slot used to read
+    // `ReturnType<UseFormReturn<typeof schema>['register']>`, which
+    // resolved to `any`, because the segment-array overload's parameter
+    // was branded `never` and a `never` parameter defeats `ReturnType`.
+    // The annotation checked nothing at all.
     const captured: {
-      parentRV?: ReturnType<UseFormReturn<typeof schema>['register']>
+      parentRV?: RegisterValue<string>
       childRegister?: ReturnType<typeof useRegister>
     } = {}
 

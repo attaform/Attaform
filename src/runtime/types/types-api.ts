@@ -22,6 +22,8 @@ import type {
   PresentValueOfUnion,
   RecordPath,
   RecordValue,
+  SegmentPathRejection,
+  SegmentRegisterRejection,
   WriteShape,
 } from './types-core'
 
@@ -3435,7 +3437,8 @@ export type FieldStateMap<Form extends GenericForm> = LeafWalker<Form, 'field'> 
    * descends.
    */
   <const S extends ReadonlyArray<string | number>>(
-    segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
+    segments: S &
+      ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : SegmentPathRejection<JoinSegments<S>>)
   ): FieldState<NestedType<Form, JoinSegments<S>>>
   /**
    * Dynamic-array fallback for callers passing `Path`-typed (runtime)
@@ -3511,7 +3514,8 @@ export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
    * Dynamic `Path`-typed inputs hit the untyped fallback overload below.
    */
   <const S extends ReadonlyArray<string | number>>(
-    segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
+    segments: S &
+      ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : SegmentPathRejection<JoinSegments<S>>)
   ): readonly ValidationError[]
   (segments: ReadonlyArray<string | number>): readonly ValidationError[]
   /**
@@ -3978,7 +3982,10 @@ export type UseFormReturnType<
       const S extends ReadonlyArray<string | number>,
       Value extends PathSetValuePayload<NestedType<Form, JoinSegments<S>>>,
     >(
-      segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never),
+      segments: S &
+        ([JoinSegments<S>] extends [FlatPath<Form>]
+          ? unknown
+          : SegmentPathRejection<JoinSegments<S>>),
       value: Value
     ): boolean
   }
@@ -4098,7 +4105,10 @@ export type UseFormReturnType<
       options?: RegisterOptions
     ): RegisterValue<NestedReadType<WriteShape<ReadForm>, Path>>
     <const S extends ReadonlyArray<string | number>>(
-      segments: S & ([JoinSegments<S>] extends [RegisterFlatPath<Form>] ? unknown : never),
+      segments: S &
+        ([JoinSegments<S>] extends [RegisterFlatPath<Form>]
+          ? unknown
+          : SegmentRegisterRejection<JoinSegments<S>>),
       options?: RegisterOptions
     ): RegisterValue<NestedReadType<WriteShape<ReadForm>, JoinSegments<S>>>
   }
@@ -4258,7 +4268,10 @@ export type UseFormReturnType<
       path: Path
     ): Readonly<Ref<NestedReadType<WriteShape<ReadForm>, Path>>>
     <const S extends ReadonlyArray<string | number>>(
-      segments: S & ([JoinSegments<S>] extends [FlatPath<Form>] ? unknown : never)
+      segments: S &
+        ([JoinSegments<S>] extends [FlatPath<Form>]
+          ? unknown
+          : SegmentPathRejection<JoinSegments<S>>)
     ): Readonly<Ref<NestedReadType<WriteShape<ReadForm>, JoinSegments<S>>>>
   }
 
@@ -4429,7 +4442,10 @@ export type UseFormReturnType<
     (): boolean
     <Path extends FlatPath<Form> | ''>(path: Path): boolean
     <const S extends ReadonlyArray<string | number>>(
-      segments: S & ([JoinSegments<S>] extends [FlatPath<Form> | ''] ? unknown : never)
+      segments: S &
+        ([JoinSegments<S>] extends [FlatPath<Form> | '']
+          ? unknown
+          : SegmentPathRejection<JoinSegments<S>>)
     ): boolean
   }
 

@@ -68,6 +68,81 @@ z.record(z.string(), z.number().min(0).max(100))
 const checked = form.values.prefs[userId] ?? false
 ```
 
+## Dynamic keys are still typed
+
+A dynamic key is not an escape hatch. A record contributes a `${string}` segment to the path union, so `register(\`prefs.${userId}\`)`is checked against the schema like any other path: the`prefs.`prefix has to be real, and the value type at the leaf is still`boolean`.
+
+What a path needs is for **every segment to carry a type**. An interpolated `string` is a typed segment; the record accepts it. A `string` standing in for the container above it is not, and there the compiler has nothing left to check:
+
+```ts
+import { useForm } from 'attaform'
+import { z } from 'zod'
+
+const schema = z.object({ prefs: z.record(z.string(), z.boolean()) })
+const form = useForm({ schema, key: 'prefs' })
+
+declare const userId: string
+
+form.register(`prefs.${userId}`) // the record key is dynamic, and checked
+```
+
+Swap the known prefix for an opaque one and the call stops compiling:
+
+```ts
+declare const anyPath: string
+
+form.register(`${anyPath}.enabled`) // rejected: nothing in this path is known
+```
+
+That rejection is about the prefix, not the record. The same call with no record anywhere in the path fails identically, and the diagnostic says so:
+
+```
+attaform: a plain string cannot be checked against the schema.
+Pass a literal path, type the dynamic prefix, or use the segment-array form.
+```
+
+This matters most in a row component, where it is tempting to accept the prefix as a plain `string` prop and then drop the whole component to an untyped form to make the binding compile. Type the prop as the prefix instead, and every binding underneath it stays checked:
+
+```vue
+<script setup lang="ts">
+  import { injectForm } from 'attaform'
+
+  type Shape = { boxes: { choice: string; pairs: Record<string, string> }[] }
+
+  // The prefix is a path, so type it as one.
+  const props = defineProps<{ rowPath: `boxes.${number}`; tokens: string[] }>()
+  const form = injectForm<Shape>('pdf')
+</script>
+
+<template>
+  <select v-register="form?.register(`${props.rowPath}.choice`)">
+    <option v-for="t in props.tokens" :key="t" :value="t">{{ t }}</option>
+  </select>
+  <input
+    v-for="t in props.tokens"
+    :key="t"
+    v-register="form?.register(`${props.rowPath}.pairs.${t}`)"
+  />
+</template>
+```
+
+The [segment-array form](/docs/writing-and-mutating/set-value#three-call-shapes) does the same job without the template literal, and is the better read when the prefix is assembled from separate variables:
+
+```ts
+import { useForm } from 'attaform'
+import { z } from 'zod'
+
+const schema = z.object({
+  boxes: z.array(z.object({ pairs: z.record(z.string(), z.string()) })),
+})
+const form = useForm({ schema, key: 'pdf' })
+
+declare const index: number
+declare const token: string
+
+form.register(['boxes', index, 'pairs', token])
+```
+
 ## Mutating records
 
 Records don't expose field-array helpers (`append` / `remove` / etc.); they're keyed dictionaries, not ordered sequences. Mutate them via `setValue` directly:

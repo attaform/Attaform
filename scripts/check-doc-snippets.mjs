@@ -28,7 +28,8 @@
  *   pnpm check:doc-snippets
  *
  * Side effects:
- *   - Builds `dist/` if missing/stubbed (`pnpm prepack`).
+ *   - Builds `dist/` when it is missing, stubbed, or behind `src/`
+ *     (`ensureFreshDist`, shared with the other dist-reading gates).
  *   - Regenerates `tests/fixtures/doc-snippets/.generated/*.ts`
  *     (gitignored) and runs `tsc` over them.
  *   - Exits non-zero on any compile error, remapped to the source
@@ -37,12 +38,11 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, readdirSync, rmSync, mkdirSync, existsSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { ensureFreshDist } from './dist-bundle.mjs'
 import { dirname, resolve, relative, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
-const distDir = resolve(repoRoot, 'dist')
-const sentinelDts = resolve(distDir, 'zod-v4.d.mts')
 const fixtureRoot = resolve(repoRoot, 'tests/fixtures/doc-snippets')
 const generatedDir = resolve(fixtureRoot, '.generated')
 const tsconfigPath = resolve(fixtureRoot, 'tsconfig.json')
@@ -194,21 +194,8 @@ if (fixtures.length === 0) {
   process.exit(1)
 }
 
-// --- ensure a real bundle (not the unbuild --stub shim) -----------------
-function distIsRealBundle() {
-  try {
-    // `unbuild --stub` writes `export * from "/app/src/..."`; a real
-    // bundle imports from `./shared/...` chunks.
-    return !readFileSync(sentinelDts, 'utf8').slice(0, 256).includes('/src/')
-  } catch {
-    return false
-  }
-}
-
-if (!distIsRealBundle()) {
-  console.log('[check-doc-snippets] dist/ missing or stubbed — building real bundle first')
-  execSync('pnpm prepack', { cwd: repoRoot, stdio: 'inherit' })
-}
+// --- ensure a real bundle, built from the source as it stands now -------
+ensureFreshDist('check-doc-snippets')
 
 // --- type-check ---------------------------------------------------------
 console.log(

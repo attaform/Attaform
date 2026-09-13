@@ -70,6 +70,40 @@ Any descendant grabs the same form:
 
 You supply the `Form` generic; Vue's injection system erases it, so Attaform can't recover the shape on your behalf. Other than that, `injectForm<Form>()` returns a form type-identical to `useForm`'s return.
 
+### Rows: type the prefix, keep the generic
+
+A per-field child binds a literal path, so nothing special is needed. A **row** binds a path it is handed, and there the shape of the prop decides whether the rest of the component stays typed.
+
+Accept the prefix as a plain `string` and every binding built from it widens to `string`, which cannot be checked against any schema. Dropping the `Form` generic to get past that works, but it is a per-component decision for a per-path problem: the row's other bindings lose their checking too. Type the prop as the prefix instead:
+
+```vue
+<!-- BoxRow.vue -->
+<script setup lang="ts">
+  import { injectForm } from 'attaform'
+
+  type Shape = { boxes: { choice: string; note: string }[] }
+
+  // `boxes.${number}`, not `string`.
+  const props = defineProps<{ rowPath: `boxes.${number}` }>()
+  const form = injectForm<Shape>('pdf')
+</script>
+
+<template>
+  <select v-register="form?.register(`${props.rowPath}.choice`)"></select>
+  <input v-register="form?.register(`${props.rowPath}.note`)" />
+</template>
+```
+
+The parent supplies it the same way it supplies any other prop:
+
+```vue
+<template>
+  <BoxRow v-for="(box, i) in form.values.boxes" :key="i" :row-path="`boxes.${i}`" />
+</template>
+```
+
+[`register`'s segment-array form](/docs/reading-the-form/to-ref#two-call-forms) is the other spelling, and reads better when the prefix arrives in pieces rather than as one string.
+
 ## Reaching a form that isn't an ancestor
 
 Floating save buttons, sidebar status widgets, anything in a different branch of the component tree:

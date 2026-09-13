@@ -72,6 +72,41 @@ const IDLE: DisplayMachine = Object.freeze({ display: 'idle' })
 // quietly instead of busy-firing.
 const MAX_DELAY = 2_147_483_647
 
+// Liveness floor for a spinner. A `'pending'` machine with no usable
+// deadline would have nothing scheduled to re-evaluate it, leaving it
+// dependent on an external reactive edge that may never arrive; this is
+// the interval at which the engine re-checks one anyway.
+//
+// Long enough that a spinner which is already animating does not churn,
+// short enough that a missed edge is a blink rather than a stuck field.
+export const PENDING_LIVENESS_MS = 250
+
+/**
+ * Guarantee that a spinner can always leave its own state.
+ *
+ * The reducer is policy and the engine owns the clock, so liveness
+ * belongs here: whatever a reducer returns, a stored `'pending'`
+ * machine carries a finite deadline and therefore gets re-evaluated.
+ *
+ * This is a floor, not a schedule. Every `'pending'` the default
+ * reducer produces normally leaves via a reactive change (a validation
+ * settling) or via its own deadline (the min-visible hold), both of
+ * which arrive first. The floor only matters when neither does.
+ *
+ * It is structural rather than a patch on one branch because the
+ * failure mode is not specific to one: `getDisplayState` is a
+ * consumer-overridable extension point that this engine already treats
+ * as untrusted for NaN, Infinity, and fixed-or-past deadlines. A custom
+ * reducer returning `'pending'` with no `reviewAt` is the same hazard
+ * with none of those tells, and the library's own reducer does exactly
+ * that on its in-flight branch. Neither can strand a field now.
+ */
+function withLiveness(machine: DisplayMachine, now: number): DisplayMachine {
+  if (machine.display !== 'pending') return machine
+  if (machine.reviewAt !== undefined && Number.isFinite(machine.reviewAt)) return machine
+  return { ...machine, reviewAt: now + PENDING_LIVENESS_MS }
+}
+
 export function createDisplayEngine(ssr: boolean): DisplayEngine {
   const machines = new Map<PathKey, DisplayMachine>()
   const tick: Ref<number> = ref(0)
@@ -161,11 +196,13 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     // subscription is registered even if the reducer throws.
     void tick.value
     const prev = machines.get(key) ?? IDLE
-    const machine = reducer(prev, ctx)
+    const reduced = reducer(prev, ctx)
     // Server render: never persist, never schedule. `prev` is always IDLE
-    // here (nothing stored), nothing is validating, so `machine` is the
+    // here (nothing stored), nothing is validating, so `reduced` is the
     // plain verdict the client reproduces on hydration.
-    if (ssr) return machine
+    if (ssr) return reduced
+    // A spinner always gets a deadline, even when the reducer omitted one.
+    const machine = withLiveness(reduced, ctx.now)
     // Retain anything non-idle, plus an idle machine that still carries a
     // usable (finite) deadline. An idle machine whose only claim to be kept
     // is a non-finite `reviewAt` is junk — evict it.

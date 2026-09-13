@@ -34,7 +34,7 @@
  *  - Containers recurse into children; leaves return their kind's
  *    canonical empty value (`'' / 0 / 0n / false / new Date(0) /
  *    null / undefined / NaN / first enum or literal value /
- *    [] / new Set() / {}`).
+ *    [] / new Set() / new Map() / {}`).
  *
  *  - Unions / DUs use the first option as the seed.
  *
@@ -47,8 +47,10 @@
  *    `useDefault=false` recurses the inner so the leaf's empty value
  *    wins.
  *
- *  - `void` / `any` / `unknown` / `never` / opaque kinds return
- *    `undefined`.
+ *  - `void` / `never` / the opaque kinds (`any` / `unknown` /
+ *    `custom`) and the three kinds with no canonical empty member
+ *    (`promise` / `symbol` / `function`) return `undefined` — the slot
+ *    stays genuinely absent until the consumer writes one.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { mergeDeep } from './merge-deep'
@@ -403,17 +405,29 @@ export function deriveDefaultWalk<Schema>(
       // emitting `null` here keeps `getEmptyValueAtPath` aligned with
       // what `form.clear(path)` writes.
       return null
+    case 'map':
+      // The empty Map is as honest a blank as `[]` is for an array or
+      // `new Set()` for a set: the container exists, holds nothing,
+      // and satisfies `z.map(K, V)` outright.
+      return new Map()
+    case 'template-literal':
+      // A template literal parses strings against a pattern, so the
+      // string blank is the right one. `''` need not satisfy the
+      // pattern, exactly as `''` does not satisfy `z.string().min(5)`
+      // — refinement-level conformance is validation's business, not
+      // the blank walker's.
+      return ''
     case 'any':
     case 'unknown':
     case 'custom':
     case 'void':
     case 'never':
     case 'promise':
-    case 'template-literal':
-    case 'transform':
-    case 'map':
     case 'symbol':
     case 'function':
+    case 'transform':
+      // Kinds with no honest blank. Two different reasons land here.
+      //
       // `any` / `unknown` / `custom` are opaque leaves: the schema
       // states nothing about the value's shape, so there is no blank
       // to derive and the slot stays absent until the consumer writes
@@ -421,12 +435,18 @@ export function deriveDefaultWalk<Schema>(
       // v4, and it lands here rather than on `file`'s `null` because
       // the predicate need not describe a File at all (#542).
       //
-      // `promise` / `template-literal` / `map` / `symbol` / `function`
-      // are rejected by `assertSupportedKinds` at adapter construction,
-      // so those branches are unreachable through the public surface.
+      // `promise` / `symbol` / `function` are describable but have no
+      // canonical empty member. There is no empty Promise, no empty
+      // function, and `Symbol()` mints a fresh value on every call —
+      // seeding one would make the derived blank non-deterministic and
+      // break both reference stability and fingerprint agreement
+      // between two structurally identical schemas. `undefined` leaves
+      // the slot genuinely absent until the consumer supplies a value,
+      // which is the truthful answer for all three.
+      //
       // `transform` is the input side of a `z.preprocess(fn, inner)`
       // and has no own default: callers walk to `inner` via the
-      // surrounding pipe / effects. Kept for exhaustive switch safety.
+      // surrounding pipe / effects.
       return undefined
     default:
       return ctx.unsupportedKindFallback(schema, kind)

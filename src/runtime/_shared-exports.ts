@@ -37,8 +37,8 @@
  *   re-exports per entry (Zod major matters for `withMeta`'s cloning
  *   strategy).
  * - Adapter-specific symbols (`zodAdapter`, `assertZodVersion`,
- *   `kindOf`, `ZodKind`, `UnsupportedSchemaError`, etc.) and per-
- *   adapter types — they diverge between v3 and v4.
+ *   `kindOf`, `ZodKind`, etc.) and per-adapter types — they diverge
+ *   between v3 and v4.
  * - `useForm`-adjacent projection types (`UseFormConfig`,
  *   `UseFormReturn`, and the per-major variants) — different per entry
  *   for the same divergence reason. The shared BASE types

@@ -155,15 +155,46 @@ const schema = z.object({
 })
 ```
 
-Containers behave the same way at every level: `z.set(...)` holds a real `Set`, `z.record(...)` a dictionary, `z.map(...)` is the one container shape still on the refused list below.
+Containers behave the same way at every level: `z.set(...)` holds a real `Set`, `z.map(...)` a real `Map`, `z.record(...)` a dictionary.
 
-A short list of kinds is refused, and hitting one raises [AF02](/e/af02) at `useForm(...)` with the offending path rather than failing later at render:
+**No kind is refused.** Attaform does not decide what a field is allowed to hold. A `z.symbol()` or a `z.function()` field is unusual, but it is your call to make, and if the value needs serializing before it crosses the wire that is work for your `handleSubmit` callback, not a reason for Attaform to reject the schema up front. The same goes for a kind a newer Zod introduces after this release: Attaform carries what it cannot describe rather than crashing on it.
 
-| Kind                                                 | Why                                                                                                                                                           |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `z.promise(...)`                                     | A pending box, not data. Nothing binds to it, no blank exists for it, and validation cannot read it synchronously. Await the value before it enters the form. |
-| `z.function(...)`                                    | A callback is behaviour, not form state. Keep it in your component, outside the schema.                                                                       |
-| `z.map(...)`, `z.symbol()`, `z.templateLiteral(...)` | Representable in principle, not yet modelled. Reshape a `Map` to a `z.record(...)`, and a template literal to a `z.string()` with a `.regex(...)`.            |
+Each kind gets a blank value, which is what `form.values` reads before anything is written and what `form.clear(path)` writes back:
+
+| Kind                                                      | Blank                        |
+| --------------------------------------------------------- | ---------------------------- |
+| `z.string()`, `z.templateLiteral(...)`                    | `''`                         |
+| `z.number()` / `z.bigint()` / `z.boolean()` / `z.date()`  | `0` / `0n` / `false` / epoch |
+| `z.array(...)` / `z.tuple(...)`                           | `[]`                         |
+| `z.object(...)` / `z.record(...)`                         | `{}` (recursed)              |
+| `z.set(...)` / `z.map(...)`                               | `new Set()` / `new Map()`    |
+| `z.file()`                                                | `null`                       |
+| `z.symbol()`, `z.function()`, `z.promise(...)`            | absent (`undefined`)         |
+| `z.any()`, `z.unknown()`, `z.custom()`, `z.instanceof(X)` | absent (`undefined`)         |
+
+The last two rows are absent for two different reasons. An opaque leaf declares nothing about its value's shape, so there is no blank to derive. A symbol, a function, and a promise are describable but have no empty member: there is no empty Promise, no empty function, and `Symbol()` mints a fresh value on every call, so seeding one would make the blank non-deterministic. In both cases the slot stays genuinely absent until you write to it.
+
+Three things are worth knowing before you reach for the referential kinds. All three are Zod's semantics rather than Attaform's, and all three are pinned by tests so they stay stated rather than discovered.
+
+- `setValue(path, fn)` normally means a functional update. At a `z.function()` leaf it means the value, because the schema said so. Everywhere else the updater reading stands, opaque leaves included.
+- Zod's own `parse` returns a validating **wrapper** around a `z.function()`, not the function you wrote. Storage keeps your identity; `handleSubmit` and `validate` hand you Zod's wrapper.
+- `z.promise(X)` does not mean "a field holding a promise". It means "a promise that must resolve to `X`", so validating one reaches through it, and the two Zod majors do that differently. On v4 the parse awaits the stored promise, so a slow one delays validation and a never-resolving one blocks it. On v3 the parse reports success immediately and puts a derived promise carrying the real verdict into its result; nothing awaits that, so a failing one surfaces as an unhandled rejection rather than as a form error. Attaform does not silence it, because a blanket catch would also swallow rejections from your own promises sitting in opaque leaves.
+
+  To park a promise in a field without Zod reaching into it, use `z.custom<Promise<T>>()` or `z.unknown()`. Both carry the value untouched on both majors.
+
+### The one rule: the root must hold keys
+
+A form is a set of addressable fields, so the schema you hand `useForm` has to have keys to address. Three shapes do: `z.object({ ... })`, `z.record(key, value)`, and `z.discriminatedUnion(key, [ ... ])`. A `z.string()` or a `z.array(...)` root raises [AF15](/e/af15) at `useForm(...)`.
+
+That rule is about addressability, not about kinds. Every kind above is welcome the moment you give it a name:
+
+```ts
+// Refused: nothing to address.
+const schema = z.string()
+
+// Accepted.
+const schema = z.object({ nickname: z.string() })
+```
 
 ### Class instances and reactivity
 

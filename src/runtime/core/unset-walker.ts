@@ -71,18 +71,21 @@ export function walkUnsetSentinels<T>(
 }
 
 /**
- * `true` for the non-recursable container kinds (`Date`, `RegExp`,
- * `Map`, `Set`, functions) the walkers treat as opaque leaf values:
- * passed through unchanged rather than descended into.
+ * `true` for a value the walkers descend into: a plain record or an
+ * array. Everything else is carried through unchanged.
+ *
+ * Stated as a structural test rather than a list of the built-ins to
+ * skip. The list version (`Date | RegExp | Map | Set | function`)
+ * flattened everything it had not been told about: a `File`, a `Blob`,
+ * a `URL`, or any consumer class instance reaching the walker through
+ * `defaultValues` was rebuilt key by key into a plain object, losing
+ * its prototype and every property that lives on it. A prototype test
+ * is closed over the values that exist, where a list is only ever
+ * closed over the ones someone remembered. Same defect and same fix as
+ * the two walkers in #605.
  */
-function isOpaqueLeaf(value: unknown): boolean {
-  return (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    value instanceof Map ||
-    value instanceof Set ||
-    typeof value === 'function'
-  )
+function isRecursable(value: unknown): boolean {
+  return Array.isArray(value) || isPlainRecord(value)
 }
 
 /**
@@ -126,7 +129,7 @@ function walkCore(
   }
   // Explicit null is the user's choice, not absence — pass through.
   if (input === null) return null
-  if (isOpaqueLeaf(input)) return input
+  if (!isRecursable(input)) return input
   if (Array.isArray(input)) {
     const out = new Array(input.length)
     let mutated = false
@@ -152,14 +155,8 @@ function walkCore(
       inputKeysSet = new Set(inputKeys)
       const allKeys = new Set<string>(inputKeys)
       const slim = schema.getDefaultAtPath(segments)
-      if (
-        slim !== null &&
-        slim !== undefined &&
-        typeof slim === 'object' &&
-        !Array.isArray(slim) &&
-        !isOpaqueLeaf(slim)
-      ) {
-        for (const k of Object.keys(slim as object)) allKeys.add(k)
+      if (isPlainRecord(slim)) {
+        for (const k of Object.keys(slim)) allKeys.add(k)
       }
       keys = allKeys
       mutated = allKeys.size !== inputKeys.length
@@ -214,24 +211,15 @@ export function walkUnspecified(slim: unknown, segments: Segment[], paths: PathK
     }
     return slim
   }
-  if (isOpaqueLeaf(slim)) {
-    return slim
+  // Arrays pass through without recursion (elements are runtime-added;
+  // tuple-shaped fixed arrays opt in via explicit per-element `unset`),
+  // and so does every other non-record value.
+  if (!isPlainRecord(slim)) return slim
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(slim)) {
+    safeAssign(out, key, walkUnspecified(slim[key], [...segments, key], paths))
   }
-  // Arrays: pass through without recursion. Elements are runtime-added;
-  // tuple-shaped fixed arrays opt-in via explicit per-element `unset`.
-  if (Array.isArray(slim)) return slim
-  if (slim !== null && typeof slim === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const key of Object.keys(slim as object)) {
-      safeAssign(
-        out,
-        key,
-        walkUnspecified((slim as Record<string, unknown>)[key], [...segments, key], paths)
-      )
-    }
-    return out
-  }
-  return slim
+  return out
 }
 
 /**
@@ -370,15 +358,19 @@ export function expandUnsetAt(
     return slim
   }
 
-  if (isOpaqueLeaf(slim)) {
+  if (Array.isArray(slim)) return slim
+
+  // Every non-record value is its own leaf: it marks its path and is
+  // returned whole. `Date` and `Map` reach here, and so do `File`,
+  // `Blob`, and consumer class instances, which the previous
+  // instanceof list did not name and therefore rebuilt key by key.
+  if (!isPlainRecord(slim)) {
     paths.push(canonicalizePath(segments).key)
     return slim
   }
 
-  if (Array.isArray(slim)) return slim
-
   const result: Record<string, unknown> = {}
-  for (const key of Object.keys(slim as object)) {
+  for (const key of Object.keys(slim)) {
     result[key] = expandUnsetAt([...segments, key], schema, paths)
   }
   return result

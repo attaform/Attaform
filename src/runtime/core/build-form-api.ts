@@ -289,6 +289,28 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return computed(() => getAtPath(state.form.value, segments)) as Readonly<Ref<unknown>>
   }
 
+  /**
+   * `true` when the schema declares this path as holding a function.
+   *
+   * `setValue(path, fn)` normally reads `fn` as a functional update.
+   * At a `z.function()` leaf that overload would make the kind
+   * unwritable: the updater runs, its RETURN value is written, and a
+   * consumer storing a callback gets whatever the callback returned.
+   *
+   * The schema is the authority on which reading is right, so this
+   * consults it rather than guessing from the value. Opaque leaves
+   * (`z.any()` / `z.unknown()` / `z.custom()`) are excluded on
+   * purpose: their accept set is the permissive one, which contains
+   * every kind including `'function'`, and a schema that describes
+   * nothing is no reason to drop the updater overload. Consumers who
+   * want to store a callback in an opaque slot can wrap it, or name
+   * the slot `z.function()` and say so.
+   */
+  function pathStoresFunctions(segments: Path): boolean {
+    if (state.schema.isOpaqueLeafAtPath(segments)) return false
+    return state.schema.getSlimPrimitiveTypesAtPath(segments).has('function')
+  }
+
   function setValueImpl(pathOrValue: unknown, maybeValue?: unknown): boolean {
     // A path is a dotted string or a segment array; with a single argument
     // this is always the whole form. So `(value)` is a whole-form write and
@@ -408,7 +430,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     // orphaned but unmutated). Consumers caching `prev` see frozen
     // pre-commit state.
     let resolvedValue: unknown
-    if (typeof maybeValue === 'function') {
+    if (typeof maybeValue === 'function' && !pathStoresFunctions(segments)) {
       const current = state.getValueAtPath(segments)
       const prev = current === undefined ? state.schema.getDefaultAtPath(segments) : current
       resolvedValue = (maybeValue as (prev: unknown) => unknown)(prev)

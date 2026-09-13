@@ -20,7 +20,6 @@ import type { StorageShape } from './types-storage-shape'
 import type { SupportedRootSchema } from './types-root'
 
 export { zodV4Adapter as zodAdapter } from './adapter'
-export { UnsupportedSchemaError } from './errors'
 export { assertZodVersion, kindOf } from './introspect'
 export type { ZodKind } from './introspect'
 export type { StorageLeaf, StorageShape } from './types-storage-shape'

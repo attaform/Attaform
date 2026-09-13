@@ -3,6 +3,17 @@
 ## Unreleased
 ### Added
 
+- **Every Zod kind is accepted.** `z.promise`, `z.function`, `z.map`,
+  `z.symbol`, and `z.templateLiteral` were refused at `useForm(...)`;
+  nothing is refused now. Attaform does not decide what a field is
+  allowed to hold: a symbol or a callback field is unusual, but it is
+  the developer's call, and serializing a value before it crosses the
+  wire is work for the `handleSubmit` callback rather than grounds for
+  rejecting the schema at mount. Each kind gets a blank
+  (`new Map()`, `''`) or stays absent where it has no empty member
+  (`z.symbol`, `z.function`, `z.promise`), and the schema contract
+  lists every blank.
+
 - **`AbstractSchema` gains `isOpaqueLeafAtPath(path)`.** It reports a
   path whose schema declares a value without describing its shape, and
   the write gate uses it to accept such a value whole instead of
@@ -18,7 +29,47 @@
   first-class API, had neither. Both now ship from every entry point
   and appear in the types reference beside their array halves. (#603)
 
+### Breaking
+
+- **The construction-time kind audit is gone, and with it
+  `UnsupportedSchemaError`.** The audit raised AF02 for a listed kind
+  and AF03 for a kind it had never heard of, which made the next Zod
+  minor a mount-time crash for anyone using its new kind, for a schema
+  Zod itself parsed fine. Every downstream walker already carried an
+  unknown kind opaquely. Both codes are retired, their pages stay
+  (builds in the wild still print those URLs), and
+  `UnsupportedSchemaError` is removed from `attaform/zod-v4` since
+  nothing can throw it.
+
+- **`setValue(path, fn)` writes the function at a `z.function()`
+  leaf.** It still means a functional update everywhere else, opaque
+  leaves included, whose permissive accept set names every kind and so
+  is no reason to drop the overload.
+
 ### Fixed
+
+- **The `useForm` schema root must be able to hold keys on Zod v4
+  too.** A form is a set of addressable fields, so the root has to be
+  a `z.object`, a `z.record`, or a `z.discriminatedUnion`. v3 has
+  rejected everything else since it shipped and `SupportedRootSchema`'s
+  docblock said v4 did too, but v4 never enforced it: `z.string()` as a
+  root mounted a form whose entire value was `''`, and `z.array(...)`
+  gave `[]`. The type-level constraint catches a TypeScript consumer at
+  the call site, not a JavaScript one or a schema arriving through a
+  generic that erased it. Both majors now raise the new AF15 naming the
+  offending kind, and both peel transparent wrappers first so
+  `.optional()` cannot dodge the check.
+
+- **Two more walkers stopped flattening values they had not been told
+  about.** The unset walker skipped a list of built-ins (`Date`,
+  `RegExp`, `Map`, `Set`, functions) and rebuilt everything else key by
+  key, so a class instance reaching it through `defaultValues` lost its
+  prototype, its methods, and any nested key on the rebuild. And
+  `canonicalStringify` collapsed every `Map`, every `Set`, and `{}` to
+  the same string, which let two `z.set()` schemas declaring different
+  defaults agree on a fingerprint. Both now test whether a value is a
+  plain record rather than asking whether it is one of the shapes
+  someone remembered. Same defect shape as #605.
 
 - **A field could hold its pending spinner forever.** The display
   engine refused to re-arm its timer for any deadline equal to the one

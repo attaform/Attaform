@@ -41,8 +41,8 @@
  *   major.
  *
  * Surfaces NOT exposed here (use the explicit subpath):
- * - `UnsupportedSchemaError`, `zodAdapter`, `assertZodVersion`,
- *   `kindOf`, `ZodKind` — diverge between v3 and v4.
+ * - `zodAdapter`, `assertZodVersion`, `kindOf`, `ZodKind` — diverge
+ *   between v3 and v4.
  */
 
 // Schema-agnostic core (plugin, registry, serialize, directive,

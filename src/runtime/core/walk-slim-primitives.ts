@@ -25,8 +25,11 @@
  *    value to a kind. Multi-value literals (`z.literal(['a', 1])`)
  *    register both.
  *  - Object / record → object; array / tuple → array; set → set;
- *    file → file + null (the directive's "no file selected"
- *    sentinel — v4 only).
+ *    map → map; template-literal → string; file → file + null (the
+ *    directive's "no file selected" sentinel — v4 only).
+ *  - symbol → symbol, function → function, promise → object, each
+ *    plus 'undefined': their derived blank IS undefined, and the gate
+ *    has to admit what `form.clear(path)` writes.
  *  - Optional adds 'undefined' to the inner set; nullable adds 'null'.
  *  - Default / readonly / catch / branded peel transparently.
  *  - Pipe (v4) consults both `in` and `out`: if `in` is a transform,
@@ -39,7 +42,7 @@
  *  - Intersection: intersect both sides (must satisfy both at parse
  *    time).
  *  - Native-enum (v3) walks values, categorising by typeof.
- *  - Never returns empty; any / unknown / unrecognised return
+ *  - Never returns empty; any / unknown / custom / unrecognised return
  *    permissive.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
@@ -84,6 +87,22 @@ const KIND_UNDEFINED: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set([
 const KIND_OBJECT: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['object'])
 const KIND_ARRAY: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['array'])
 const KIND_SET: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['set'])
+const KIND_MAP: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['map'])
+// The three kinds whose derived blank is `undefined` carry 'undefined'
+// in their accept set, for the same reason `z.file()` carries 'null':
+// the gate has to admit the value `form.clear(path)` is about to write,
+// or clearing the field is a no-op with a "wrong type" warning. It does
+// not loosen schema enforcement — the blank-path channel and the
+// derived "No value supplied" error still gate submission.
+const KIND_SYMBOL: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['symbol', 'undefined'])
+const KIND_FUNCTION: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set([
+  'function',
+  'undefined',
+])
+const KIND_PROMISE: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set([
+  'object',
+  'undefined',
+])
 const KIND_FILE: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['file', 'null'])
 const EMPTY_KINDS: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set()
 
@@ -156,6 +175,28 @@ export function slimPrimitivesWalk<Schema>(
       return KIND_ARRAY
     case 'set':
       return KIND_SET
+    case 'map':
+      return KIND_MAP
+    case 'symbol':
+      return KIND_SYMBOL
+    case 'function':
+      // A function value is stored by reference like any other opaque
+      // leaf. Note zod's own `parse` returns a VALIDATING WRAPPER for
+      // `z.function()`, not the input function, on both majors — the
+      // wrapper reaches the consumer through `handleSubmit` / `parse`,
+      // while storage keeps the identity the consumer wrote.
+      return KIND_FUNCTION
+    case 'promise':
+      // A Promise is `typeof 'object'` and not a plain record, so
+      // `slimKindOf` reports it as `'object'` and the gate accepts it
+      // at a promise path. A plain object also passes the gate here
+      // and then fails validation, the same split every refinement
+      // takes (`z.string().email()` accepts `'x'` at the gate too).
+      return KIND_PROMISE
+    case 'template-literal':
+      // Parses a string against a pattern; the pattern is a
+      // refinement-level concern the gate deliberately ignores.
+      return KIND_STRING
     case 'optional': {
       const inner = intro.unwrapInner(schema)
       const innerSet =
@@ -267,11 +308,10 @@ export function slimPrimitivesWalk<Schema>(
     case 'unknown':
     case 'custom':
       return PERMISSIVE_SLIM_KINDS
-    // Unsupported kinds: be permissive so legitimate writes aren't
-    // false-rejected. `map` / `symbol` / `function` / `promise` are
-    // rejected at adapter construction by `assertSupportedKinds`; this
-    // fallthrough keeps the walker defensive in case construction is
-    // skipped.
+    // A kind this walker has no case for — in practice a kind a newer
+    // Zod introduced. Be permissive rather than reject: the adapter
+    // carries the value opaquely and the schema's own parse is what
+    // decides whether it was legal.
     default:
       return PERMISSIVE_SLIM_KINDS
   }

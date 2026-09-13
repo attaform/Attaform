@@ -40,13 +40,13 @@ import type { GenericForm } from '../../types/types-core'
 const MAX_UNWRAP_STEPS = 64
 
 import { __DEV__ } from '../../core/dev'
+import { AttaformError } from '../../core/errors'
 import type { TypeWithNullableDynamicKeys } from './types-zod'
 // `ZodTypeWithInnerType` lives in types-zod.ts and is re-exported from
 // `attaform/zod-v3` as a narrow accessor type for custom-adapter
 // authors. Phase 7's introspect chokepoint means the v3 adapter no
 // longer reads `_def` directly inline; the public type stays available
 // for downstream consumers writing adapter-shaped code.
-import { assertSupportedKinds } from './assert-supported'
 import { isZodSchemaType } from './helpers'
 import {
   containsAsyncTransform,
@@ -85,22 +85,24 @@ export function zodAdapter<
 >(
   zodSchema: FormSchema
 ): (formKey: FormKey, options: SchemaFactoryOptions) => AbstractSchema<Form, GetValueFormType> {
-  // Walk the original schema (not the stripped one) so the assert
-  // descends through user-declared wrappers (`.optional()`,
-  // `.nullable()`, `.default()`) before checking each leaf. Throws
-  // for kinds we can't represent — `z.promise`, `z.function`,
-  // `z.map`, `z.symbol` — and for self-referencing `z.lazy(...)`.
-  assertSupportedKinds(zodSchema)
+  // The root of a form has to be able to hold keys, because a form IS
+  // a set of addressable fields. This is the one place the adapter
+  // refuses a schema, and it rejects on the absence of the single
+  // property the form engine requires rather than on a list of kinds.
+  // Every kind stays welcome UNDER a key. Mirrors v4's
+  // `assertKeyedRoot`, down to the AF15 code.
   const peeledRoot = peelAllV3Wrappers(zodSchema)
   if (
     !isZodSchemaType(peeledRoot, 'ZodObject') &&
     !isZodSchemaType(peeledRoot, 'ZodRecord') &&
     !isZodSchemaType(peeledRoot, 'ZodDiscriminatedUnion')
   ) {
-    const name = getTypeName(peeledRoot)
-    throw new Error(
-      `Attaform: useForm schema root must be a ZodObject, ZodRecord, or ` +
-        `ZodDiscriminatedUnion (got ${name}). Wrap other shapes under a key.`
+    const name = getTypeName(peeledRoot) ?? 'unknown'
+    throw new AttaformError(
+      __DEV__
+        ? `[attaform/zod-v3] useForm schema root must be a ZodObject, ZodRecord, or ` +
+            `ZodDiscriminatedUnion (got '${name}'). Wrap other shapes under a key.`
+        : `[attaform] AF15 attaform.dev/e/af15 '${name}'`
     )
   }
 

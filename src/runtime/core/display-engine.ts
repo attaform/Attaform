@@ -110,11 +110,35 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     // Already aimed at this deadline — leave the live timer alone so a
     // flush that re-resolves many fields doesn't churn clear/set.
     if (timer !== null && timerTarget === target) return
-    // Forward-progress guard: never re-arm for the exact deadline we just
-    // fired. Legit timing always advances the deadline (show-delay → pending,
-    // pending → settled) or drops it, so this only blocks a misbehaving
-    // reducer that re-emits a fixed or past `reviewAt`.
-    if (target === lastFiredTarget) {
+    // Forward-progress guard: never re-arm for a deadline we just fired
+    // that has ALSO already passed. That pair is the busy-loop shape this
+    // guards against, where a misbehaving reducer pins `reviewAt` to a
+    // fixed or past instant and every fire immediately re-emits it.
+    //
+    // The `target <= now` half is load-bearing, not belt-and-braces. An
+    // earlier version refused on the deadline alone, on the premise that
+    // legitimate timing always advances a deadline or drops it. The
+    // min-visible hold breaks that premise: while a spinner is inside its
+    // window the reducer re-emits `pendingShownAt + minVisible`, which is
+    // by design the SAME instant on every pass. A timer that fired a
+    // fraction early (or landed on a `Date.now()` that had not yet ticked
+    // past the deadline) left the reducer re-emitting that deadline while
+    // `lastFiredTarget` already held it, so the guard cleared the timer
+    // and armed nothing. Nothing else was scheduled to re-evaluate that
+    // field, so it held `'pending'` permanently: `aria-busy="true"` over a
+    // field whose validation had finished and whose error was already
+    // committed to `errorCells`, invisible because `showErrors` reads
+    // `displayState === 'error'`.
+    //
+    // That is the `docs-demos-smoke > async-refinements` flake, and it
+    // reproduces at ~2-3% per mount in a tight loop. It needs the field to
+    // reach `'pending'` at all, which is why it only ever appeared on a
+    // demo whose simulated latency exceeds `FOCUS_OUT_GRACE`.
+    //
+    // Re-arming for a still-future deadline cannot spin: the delay below
+    // is positive, and once a fire lands at or past `target` the guard
+    // engages again.
+    if (target === lastFiredTarget && target <= now) {
       clearTimer()
       return
     }

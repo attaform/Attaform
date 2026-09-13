@@ -526,6 +526,63 @@ describe('createDisplayEngine', () => {
       expect(vi.getTimerCount()).toBe(0)
     })
 
+    it('re-arms a still-future deadline it already fired for', () => {
+      // Regression: the forward-progress guard used to refuse any deadline
+      // equal to the one just fired, on the premise that legitimate timing
+      // always advances a deadline. The min-visible hold breaks that
+      // premise by design: while a spinner is inside its window the reducer
+      // re-emits `pendingShownAt + minVisible`, the SAME instant on every
+      // pass. A timer that fired a fraction early left the reducer
+      // re-emitting that deadline while the guard still held it, so the
+      // engine cleared the timer and armed nothing. The field then held
+      // `'pending'` forever, showing `aria-busy="true"` over a validation
+      // that had already finished and committed its error.
+      //
+      // This is the `docs-demos-smoke > async-refinements` flake. It is
+      // spelled out against the engine rather than the demo because the
+      // demo only reaches it at ~2-3% per mount.
+      const engine = createDisplayEngine(false)
+      // A reducer that pins one fixed future deadline, which is what the
+      // min-visible hold looks like from the engine's side.
+      const DEADLINE = 1000
+      const pinned: GetDisplayState = () => ({ display: 'pending', reviewAt: DEADLINE })
+
+      engine.resolve(KEY, ctx({ now: 900 }), pinned)
+      expect(engine.hasTimer?.()).toBe(true)
+
+      // Fire it. The engine records DEADLINE as the last fired target.
+      vi.advanceTimersByTime(100)
+
+      // Re-resolve with `now` still short of the deadline, exactly as a
+      // fractionally-early timer leaves it. The deadline is still in the
+      // future, so a review must stay armed.
+      engine.resolve(KEY, ctx({ now: DEADLINE - 1 }), pinned)
+      expect(engine.hasTimer?.()).toBe(true)
+
+      engine.dispose()
+    })
+
+    it('still refuses a deadline it fired for that has now passed', () => {
+      // The counterweight. A reducer pinning a fixed or past `reviewAt` is
+      // the busy-loop the guard exists to stop, and relaxing it for future
+      // deadlines must not reopen that.
+      const engine = createDisplayEngine(false)
+      const DEADLINE = 1000
+      const pinned: GetDisplayState = () => ({ display: 'pending', reviewAt: DEADLINE })
+
+      engine.resolve(KEY, ctx({ now: 900 }), pinned)
+      vi.advanceTimersByTime(100)
+
+      // `now` is at the deadline: re-emitting it would spin.
+      engine.resolve(KEY, ctx({ now: DEADLINE }), pinned)
+      expect(engine.hasTimer?.()).toBe(false)
+      // And past it.
+      engine.resolve(KEY, ctx({ now: DEADLINE + 500 }), pinned)
+      expect(engine.hasTimer?.()).toBe(false)
+
+      engine.dispose()
+    })
+
     it('clear() drops machines and cancels the timer', () => {
       const engine = createDisplayEngine(false)
       engine.resolve(

@@ -192,7 +192,7 @@ The key type you declared decides how a path segment is spelled. A path segment 
 Use map (over record) when:
 
 - You need `Map`-specific semantics: insertion order, key types beyond strings, or `.size` as an O(1) read.
-- The form persists to `'indexeddb'` and you want structured-clone fidelity. `JSON.stringify` flattens a `Map` to `{}`; structured clone preserves it.
+- You save the form's values through a structured-clone channel (IndexedDB, a worker `postMessage`) and want fidelity. `JSON.stringify` flattens a `Map` to `{}`; structured clone preserves it.
 
 Records are the right call for serialization-friendly dictionaries; maps are right when you need the primitive.
 

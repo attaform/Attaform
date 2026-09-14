@@ -1,13 +1,13 @@
 ---
 title: Why Attaform
-description: The case for picking Attaform for Vue 3 forms. Type-safe end to end, schema-driven defaults, layered validation, SSR-clean hydration, and built-in persistence, history, and devtools.
+description: The case for picking Attaform for Vue 3 forms. Type-safe end to end, schema-driven defaults, layered validation, SSR-clean hydration, and built-in field arrays, history, wizards, and devtools.
 ---
 
 # Why Attaform
 
 > Five marks of a great form library. Attaform's North star, top to bottom.
 
-Forms look simple from the outside. Inside, they're a thicket of subtle details: blank-value tracking, persistence, sensitive-name protection, SSR, async validation, nested objects and discriminated unions, efficient DOM tracking, errors flowing from validators and your server into one reactive form API. A great library handles every one for you, without making you reach for the type plumbing or wire up the side-channels yourself.
+Forms look simple from the outside. Inside, they're a thicket of subtle details: blank-value tracking, coercing DOM strings back to the types a schema declared, SSR, async validation, nested objects and discriminated unions, efficient DOM tracking, errors flowing from validators and your server into one reactive form API. A great library handles every one for you, without making you reach for the type plumbing or wire up the side-channels yourself.
 
 These five convictions guide Attaform's design:
 
@@ -78,9 +78,10 @@ These ship with the core, typed and orchestrated as first-class features:
 
 - Field arrays with stable keys and per-item validation.
 - Undo / redo with bounded history, opt-in per form.
-- Persistence with per-field opt-in, local / session / IndexedDB / custom backends, and sensitive-name guards out of the box.
 - Discriminated unions with variant memory across discriminator switches.
-- A DevTools panel that surfaces every form on the page: values, errors, history, persistence drafts.
+- Multistep wizards that compose plain `useForm` calls, with a hard-prerequisite `gate` and URL sync.
+- A one-option data freeze: `useForm({ disabled })` no-ops every write at the source, so a read-only screen cannot be written around.
+- A DevTools panel that surfaces every form on the page: values, errors, history.
 
 ## Where to next
 

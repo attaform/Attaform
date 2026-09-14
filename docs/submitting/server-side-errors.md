@@ -44,7 +44,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-`response.errors` is a `ValidationError[]`: each entry carries a `message`, an optional `path`, an optional `code`, and an optional `data` payload. An entry with a `path` lands at that field; an entry with no path lands at the form level, in the global `[]` bucket. `form.setErrors` stamps the form key on every entry as it lands, so errors stay isolated to this form.
+`response.errors` is a `ValidationError[]`: each entry carries a `message`, an optional `path`, an optional `code`, and an optional `data` payload. An entry with a `path` lands at that field; an entry with no path lands at the form level, in the global `[]` bucket. Isolation comes from the store rather than the entry: `setErrors` writes into this form's own error cells, and a `ValidationError` carries no form identity of its own, so the same entry object can be handed to two forms and lands independently in each.
 
 Returning after `setErrors` is a failed submit: `form.meta.submitted` stays `false` and focus pulls to the first error. It does not fire `onError`, though, that callback is the verdict on Attaform's own validation, which already passed here. You do not need to throw to signal the rejection, and you do not need to call `form.focusFirstError()` by hand. Reserve a thrown error for the unexpected (a network drop, a 500), which also lands on `form.meta.submitError` for inspection.
 

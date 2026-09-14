@@ -25,7 +25,7 @@ New projects pick `attaform`. The other subpaths cover explicit Zod pins, the br
 
 ## `attaform`: the recommended entry
 
-The default entry, and the one new projects reach for. `useForm` here takes a Zod schema and infers every field type from it. It auto-detects the installed Zod major (v3 or v4) and routes to the matching adapter: under the `attaform/vite` plugin (or `attaform/nuxt`, which installs it) that resolution happens at build time so the bundle ships one adapter, and without a plugin the entry dispatches at runtime instead.
+The default entry, and the one new projects reach for. `useForm` here takes a Zod schema and infers every field type from it. It reaches the right Zod major (v3 or v4) on its own, by one of two routes. Under the `attaform/vite` plugin (or `attaform/nuxt`, which installs it) the import is rewritten at build time against the version you have installed, so the bundle ships one adapter. Without a plugin the entry dispatches at runtime instead, on the shape of the schema it was handed rather than on what is installed, and carries both adapters to do it.
 
 ```ts
 import { createAttaform, useForm } from 'attaform'
@@ -54,7 +54,7 @@ import { useForm } from 'attaform/zod'
 
 ## `attaform/zod-v3`
 
-The Zod v3 adapter, pinned with no runtime dispatch, for projects still on v3.
+The Zod v3 adapter, pinned with no runtime dispatch. The entry for a project on v3, and the one that keeps the v4 adapter out of a bundle the Vite plugin never sees.
 
 ```ts
 import { useForm, withMeta } from 'attaform/zod-v3'
@@ -64,7 +64,7 @@ Ships the same form surface as `attaform`, plus the v3 `zodAdapter` and the `isZ
 
 ## `attaform/zod-v4`
 
-The Zod v4 adapter, pinned explicitly. It's the same adapter `attaform` selects when it detects zod@4, committed at the import instead of by detection.
+The Zod v4 adapter, pinned explicitly. It's the same adapter `attaform` routes v4 schemas to, committed at the import instead of resolved for you. On tooling the Vite plugin does not cover, that commitment is also what keeps the other adapter out of the bundle.
 
 ```ts
 import { useForm } from 'attaform/zod-v4'

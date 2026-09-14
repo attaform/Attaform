@@ -164,6 +164,8 @@ That makes the aggregate a live picture rather than a submission report, which i
 
 Each form keeps its own `meta.submissionAttempts`, incremented by `wizard.handleSubmit` for every form, since it always validates the whole step list. A gated Next built on `wizard.activeForm.handleSubmit(...)` bumps only the active form. The wizard-level `wizard.submissionAttempts` increments once per `handleSubmit` invocation, regardless of how many forms were involved. For "did the user submit the wizard?" reach for `wizard.submissionAttempts`; for "has the user tried this step?" reach for the form's own `meta.submissionAttempts`.
 
+The two counters also move at different moments, which matters if you read one from inside a callback. A wizard submit bumps both its own counter and every step's before it calls `onSubmit`, so both already count the run in progress: first finish, `wizard.submissionAttempts === 1` inside the callback. A form's own [`handleSubmit`](/docs/submitting/handle-submit) bumps last instead, after its callbacks have run, so `form.meta.submissionAttempts` reads `0` inside the first `onSubmit`. Same field name, opposite timing, depending on which handler you are inside.
+
 ## Where to next
 
 - [`useWizard`](/docs/multistep/use-wizard) for navigation and `activeForm`.

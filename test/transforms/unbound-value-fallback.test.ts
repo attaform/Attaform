@@ -91,18 +91,22 @@ describe('an element with no author binding is untouched', () => {
   })
 })
 
-describe('an <option> gets no fallback leg', () => {
-  it('leaves the author :selected out of the injected expression', () => {
-    // Deliberate. An option's `:selected` resolves in the OPTION's
-    // binding scope, and this injection is built while transforming the
-    // enclosing `<select>`, before the traversal has entered the option —
-    // so a `v-for` alias in that expression cannot be resolved from here
-    // (#566). An unbound `<select>` drives its selection through the
-    // restored `:value` instead, which is what a plain `<select :value>`
-    // does anyway.
+describe('an <option> keeps its own :selected as the unbound leg', () => {
+  it('falls back to the author :selected through a nullish test', () => {
     const code = compile(
       `<select v-register="rv"><option value="a" :selected="pick === 'a'">A</option></select>`
     )
-    expect(code).not.toContain("pick === 'a'")
+    expect(code).toContain("(_ctx.rv) == null ? (_ctx.pick === 'a')")
+  })
+
+  it('resolves a loop alias and an outer ref in the same expression', () => {
+    // The shape that made this impossible from the `<select>`: one
+    // expression referencing both a `v-for` alias (must stay bare, it is
+    // lexically in scope inside the loop callback) and an outer ref (must
+    // be prefixed). Only the option's own visit knows which is which.
+    const code = compile(
+      `<select v-register="rv"><option v-for="o in opts" :key="o" :value="o" :selected="o === pick">X</option></select>`
+    )
+    expect(code).toContain('(_ctx.rv) == null ? (o === _ctx.pick)')
   })
 })

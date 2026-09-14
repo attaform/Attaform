@@ -58,7 +58,7 @@ export { injectForm } from './composables/use-form-context'
 // re-bind v-register onto an inner native element. For wrappers that
 // bind multiple fields (compound forms), prefer `injectForm`.
 export { useRegister } from './composables/use-register'
-export type { UseRegisterReturn } from './composables/use-register'
+export type { UseRegisterOptions, UseRegisterReturn } from './composables/use-register'
 
 // Multistep-form orchestrator. Composes existing `useForm` instances
 // into a wizard with navigation, status aggregation, and activation

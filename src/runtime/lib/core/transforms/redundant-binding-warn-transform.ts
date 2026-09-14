@@ -6,7 +6,6 @@ import {
   type DirectiveNode,
   type ElementNode,
   type NodeTransform,
-  type TemplateChildNode,
 } from '@vue/compiler-core'
 import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
 
@@ -53,17 +52,6 @@ import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
  * bundler.
  */
 
-// Node types that hold iterable children worth recursing into when
-// walking a <select> for slotted <option>s. Mirrors the whitelist in
-// component-bridge-transform.ts: skip text / interpolation / comment
-// nodes, and don't crash on a future Vue node type we don't know.
-const RECURSABLE_NODE_TYPES: ReadonlySet<number> = new Set<number>([
-  NodeTypes.ELEMENT,
-  NodeTypes.FOR,
-  NodeTypes.IF,
-  NodeTypes.IF_BRANCH,
-])
-
 /**
  * The author-facing display form of the first redundant STATE binding
  * among `props`, or `null` if none. `v-model` is the only one left, and
@@ -82,39 +70,15 @@ const RECURSABLE_NODE_TYPES: ReadonlySet<number> = new Set<number>([
  *
  * `v-model` stays: it installs Vue's own model directive next to ours,
  * so two writers drive one element with no fallback story between them.
+ *
+ * An `<option>`'s `:selected` left for the same reason once its binding
+ * moved to the option's own visit, where the unbound leg became
+ * expressible. Nothing walks a `<select>`'s children here any more.
  */
 function findRedundantStateBinding(props: (AttributeNode | DirectiveNode)[]): string | null {
   for (const prop of props) {
     if (prop.type === NodeTypes.ATTRIBUTE) continue
     if (prop.name === 'model') return 'v-model'
-  }
-  return null
-}
-
-/**
- * The same question for an `<option>` under a `v-register`ed `<select>`,
- * where `selected` IS still redundant. The select's value injection
- * grew an unbound leg (#620); the option's `:selected` did not, because
- * an expression spliced in from the enclosing `<select>` cannot be
- * resolved in the option's own binding scope (#566). So an author's
- * `selected` here is still stripped with nothing put back, and saying so
- * remains the right diagnostic.
- */
-function findRedundantSelectedBinding(props: (AttributeNode | DirectiveNode)[]): string | null {
-  for (const prop of props) {
-    if (prop.type === NodeTypes.ATTRIBUTE) {
-      if (prop.name === 'selected') return 'selected'
-      continue
-    }
-    if (prop.name === 'model') return 'v-model'
-    if (
-      prop.name === 'bind' &&
-      prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
-      prop.arg.isStatic &&
-      prop.arg.content === 'selected'
-    ) {
-      return ':selected'
-    }
   }
   return null
 }
@@ -163,30 +127,6 @@ function emitRedundantWarning(tag: string, binding: string): void {
       `and stays silent.)`
   )
 }
-
-// Walk a <select v-register>'s children for a redundant <option :selected>.
-// The option's own `:value` / `value=` is its identity (silent); only a
-// `:selected` / `selected` is redundant, since the component-bridge transform
-// drives option selection from the select's single register. Options can be
-// nested under v-for / v-if, so recurse the same node types the bridge does.
-function walkOptionsForSelected(selectNode: ElementNode): void {
-  const visit = (candidate: TemplateChildNode): void => {
-    if (candidate.type === NodeTypes.ELEMENT && candidate.tag === 'option') {
-      const found = findRedundantSelectedBinding(candidate.props)
-      if (found !== null) emitRedundantWarning('option', found)
-      return // an <option>'s own children never hold another <option>
-    }
-    if (!RECURSABLE_NODE_TYPES.has(candidate.type)) return
-    if (!('children' in candidate)) return
-    for (const child of candidate.children) {
-      if (typeof child === 'string' || typeof child === 'symbol') continue
-      if (child.type === NodeTypes.SIMPLE_EXPRESSION) continue
-      visit(child)
-    }
-  }
-  for (const child of selectNode.children) visit(child)
-}
-
 // Warn for a native <input> / <select> / <textarea>. Component and
 // custom-element hosts are skipped: there a `:value` / `v-model` is the
 // legitimate prop channel, not a redundant state binding.
@@ -197,7 +137,6 @@ function warnIfRedundant(node: ElementNode): void {
   if (tag === 'select') {
     const found = findRedundantStateBinding(node.props)
     if (found !== null) emitRedundantWarning('select', found)
-    walkOptionsForSelected(node)
     return
   }
 

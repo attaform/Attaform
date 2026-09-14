@@ -1606,8 +1606,7 @@ function resolveDynamicModel(tagName: string, type: unknown) {
  * Carve-out: a radio's `:value` (`<input type="radio" :value="opt">`)
  * and a checkbox's `:value` (array / Set member) are the IDENTITY
  * channel `v-register` reads, never flagged — only the state attr for
- * each kind warns. `<option :selected>` is a child of the `<select>`,
- * not the bound element, so it's left to the compile layer.
+ * each kind warns.
  *
  * Second carve-out: an UNBOUND `v-register` never warns at all. Nothing
  * is redundant beside a directive that stands down (#620).

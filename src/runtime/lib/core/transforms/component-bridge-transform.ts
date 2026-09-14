@@ -9,6 +9,7 @@ import {
   type DirectiveNode,
   type ExpressionNode,
   type NodeTransform,
+  type PlainElementNode,
   type RootNode,
   type SourceLocation,
   type TemplateChildNode,
@@ -209,6 +210,128 @@ function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): strin
  * as a `<select>`-only transform, but the component-bridge path is
  * load-bearing for every `useRegister` consumer.
  */
+/**
+ * What an `<option>` needs from its enclosing `<select>` in order to
+ * build its own `:selected` binding, parked on the option node until the
+ * traversal reaches it.
+ */
+type PendingOptionBinding = {
+  readonly registerValue: SummarizedProp['value']
+  readonly multiple: CompoundExpressionNode['children']
+}
+
+/**
+ * The parking slot, keyed by the AST node itself. A `WeakMap` rather
+ * than a property on the node: it leaves the AST untouched, it cannot
+ * reach codegen, and entries die with the compile that made them. Node
+ * identity is what makes it work, and identity holds through the
+ * rewrites `v-for` / `v-if` perform — those wrap the element node
+ * rather than replacing it.
+ */
+const pendingOptionBindings = new WeakMap<object, PendingOptionBinding>()
+
+/**
+ * Why the option's binding is built on the OPTION's own visit rather
+ * than from the `<select>` that knows the register.
+ *
+ * An `<option>` resolves its expressions in whatever binding scope it
+ * landed in, and the enclosing `<select>` is visited BEFORE any of that
+ * scope exists. Reading an option's props from there hands back raw
+ * source text: `code` where the compiler would have written `_ctx.code`,
+ * and `o` for a `v-for` alias where `o` is correct. Splicing either into
+ * an injected expression makes it a plain string inside a compound node,
+ * which Vue's `transformExpression` cannot descend into — so whatever
+ * came out is what ships. The `v-for` alias survived that by luck; a
+ * plain `<option :value="code">` did not, and the emitted `:selected`
+ * threw `ReferenceError: code is not defined` wherever identifiers are
+ * prefixed rather than resolved lexically.
+ *
+ * By the option's own visit the compiler has already processed its props
+ * in the right scope (`_ctx.code`, and a bare `o` inside the loop), and
+ * `context.identifiers` carries the aliases. Both are simply read. This
+ * is #566's rule held from the other side: an expression belongs to the
+ * node it was written on, and the way to respect that is to build it
+ * there.
+ */
+function applyPendingOptionBinding(node: PlainElementNode, pending: PendingOptionBinding): void {
+  const optionProps = getSummarizedProps(node)
+  const valueIndex = optionProps.findIndex((p) => isExactKey(p.key, 'value'))
+
+  // D3: HTML lets `<option>apple</option>` use text content as the
+  // value. The original transform required an explicit `value=`
+  // attr and silently dropped value-less options — they'd render
+  // unselectable through `register('fruit')` because the AST
+  // emitted no `:selected` binding.
+  //
+  // Fallback: if no `value=`, look at the option's children. A
+  // single static TextNode → use it as the static value. Anything
+  // else (interpolation, mixed children, no children) → skip with
+  // a dev-warn rather than guess.
+  let optionValueSummarizedProp: SummarizedProp | undefined
+  if (valueIndex >= 0 && valueIndex < optionProps.length) {
+    optionValueSummarizedProp = optionProps[valueIndex]
+  } else {
+    const fallback = inferOptionValueFromChildren(node)
+    if (fallback === null) {
+      // Dynamic / mixed children — can't synthesize a static
+      // equality expression. Bail without binding so the option
+      // simply isn't reactive (matches pre-D3 behaviour for the
+      // genuinely-dynamic cases). Producing a wrong binding would
+      // be worse than no binding.
+      return
+    }
+    optionValueSummarizedProp = { key: 'value', value: fallback }
+  }
+
+  const props = node.props
+  const snapshot = [...props]
+  try {
+    removePropsByName(props, ['selected'])
+
+    // The author's own `:selected` becomes the UNBOUND leg, the same
+    // deal the `<select>`'s `:value` gets. Only reachable now that the
+    // expression is read in the option's own scope: from the `<select>`
+    // it would have been raw source text (#620).
+    const authorSelectedArr = toExpressionArray(
+      optionProps.find((p) => isExactKey(p.key, 'selected'))?.value
+    )
+    const registerArr = toExpressionArray(pending.registerValue) ?? ['undefined']
+    const boundExpression = generateEqualityExpression(
+      pending.registerValue,
+      optionValueSummarizedProp?.value ?? 'undefined',
+      pending.multiple
+    )
+
+    props.push({
+      arg: createSimpleExpression('selected', true),
+      exp: createCompoundExpression(
+        authorSelectedArr === undefined
+          ? boundExpression
+          : [
+              '((',
+              ...registerArr,
+              ') == null ? (',
+              ...authorSelectedArr,
+              ') : (',
+              ...boundExpression,
+              '))',
+            ]
+      ),
+      name: 'bind',
+      modifiers: [],
+      type: NodeTypes.DIRECTIVE,
+      loc: node.loc,
+    })
+  } catch (err) {
+    // Restore THIS option only. A failure here leaves one option
+    // non-reactive instead of taking the whole template down, and the
+    // blast radius is naturally one node now that each builds its own.
+    props.length = 0
+    props.push(...snapshot)
+    console.error('[attaform] component-bridge transform: option binding failed, skipping:', err)
+  }
+}
+
 export const componentBridgeTransform: NodeTransform = (node, context) => {
   // Snapshot every prop array we're about to mutate so a throw
   // mid-traversal rewinds to the pre-transform state. Without this,
@@ -225,6 +348,21 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     snapshots.push({ target, snapshot: [...target] })
   }
   try {
+    // An `<option>` the enclosing `<select>` parked a binding on. Its
+    // props are processed and its scope is live only at this point in
+    // the traversal, which is the whole reason the work waited.
+    if (node.type === NodeTypes.ELEMENT && node.tagType === ElementTypes.ELEMENT) {
+      const pending = pendingOptionBindings.get(node)
+      if (pending !== undefined) {
+        // Consumed once. A doubly-registered pipeline parks again on the
+        // second `<select>` pass and builds from whichever visit gets
+        // here first, so the option ends with exactly one binding.
+        pendingOptionBindings.delete(node)
+        applyPendingOptionBinding(node, pending)
+        return
+      }
+    }
+
     const isSelect = node.type === NodeTypes.ELEMENT && node.tag === 'select'
     const isCustomComponent =
       node.type === NodeTypes.ELEMENT && node.tagType === ElementTypes.COMPONENT
@@ -301,65 +439,13 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       // value channel stays :value (below) rather than the v-model pair.
       hasSlottedOptions = true
 
-      const optionProps = getSummarizedProps(_node)
-      const valueIndex = optionProps.findIndex((p) => isExactKey(p.key, 'value'))
-
-      // D3: HTML lets `<option>apple</option>` use text content as the
-      // value. The original transform required an explicit `value=`
-      // attr and silently dropped value-less options — they'd render
-      // unselectable through `register('fruit')` because the AST
-      // emitted no `:selected` binding.
-      //
-      // Fallback: if no `value=`, look at the option's children. A
-      // single static TextNode → use it as the static value. Anything
-      // else (interpolation, mixed children, no children) → skip with
-      // a dev-warn rather than guess.
-      let optionValueSummarizedProp: SummarizedProp | undefined
-      if (valueIndex >= 0 && valueIndex < optionProps.length) {
-        optionValueSummarizedProp = optionProps[valueIndex]
-      } else {
-        const fallback = inferOptionValueFromChildren(_node)
-        if (fallback === null) {
-          // Dynamic / mixed children — can't synthesize a static
-          // equality expression. Bail without binding so the option
-          // simply isn't reactive (matches pre-D3 behaviour for the
-          // genuinely-dynamic cases). Producing a wrong binding would
-          // be worse than no binding.
-          return
-        }
-        optionValueSummarizedProp = { key: 'value', value: fallback }
-      }
-
-      const props = _node.props
-      snapshotProps(props)
-      removePropsByName(props, ['selected'])
-
-      // No unbound fallback leg here, unlike the `<select>`'s own
-      // `:value` below. An option's author-written `:selected` lives in
-      // the OPTION's binding scope, and this transform reaches the
-      // option from the enclosing `<select>`, before the traversal has
-      // entered it — so an expression spliced in here cannot be given
-      // the identifier treatment the option's own scope would give it
-      // (a `v-for` alias above all). That is #566's rule, and it is not
-      // worth bending: an unbound `<select>` drives its selection
-      // through the restored `:value` binding, exactly as a plain
-      // `<select :value>` does, so the option marks have nothing to
-      // contribute there (#620).
-      const newProp: DirectiveNode = {
-        arg: createSimpleExpression('selected', true),
-        exp: createCompoundExpression(
-          generateEqualityExpression(
-            registerSummarizedProp?.value ?? 'undefined',
-            optionValueSummarizedProp?.value ?? 'undefined',
-            multipleExpression
-          )
-        ),
-        name: 'bind',
-        modifiers: [],
-        type: NodeTypes.DIRECTIVE,
-        loc: _node.loc,
-      }
-      props.push(newProp)
+      // Park what the option needs and leave. Everything else about the
+      // binding is the option's own business, in its own scope, on its
+      // own visit — see `applyPendingOptionBinding`.
+      pendingOptionBindings.set(_node, {
+        registerValue: registerSummarizedProp?.value ?? 'undefined',
+        multiple: multipleExpression,
+      })
     }
 
     const rawMultipleExpression = extractMultipleFromSelectSummarizedProps(selectSummarizedProps)

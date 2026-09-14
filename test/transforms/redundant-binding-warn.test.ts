@@ -67,31 +67,6 @@ describe('redundantBindingWarnTransform — state bindings warn', () => {
     expect(warns).toHaveLength(1)
     expect(warns[0]).toContain('v-model')
   })
-
-  it('warns on an <option :selected> inside a v-register-d select', () => {
-    const warns = redundantWarnsFor(
-      `<select v-register="reg"><option :value="o" :selected="s">A</option></select>`
-    )
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain(':selected')
-    expect(warns[0]).toContain('<option>')
-  })
-
-  it('warns on a static <option selected> inside a v-register-d select', () => {
-    const warns = redundantWarnsFor(
-      `<select v-register="reg"><option value="a" selected>A</option></select>`
-    )
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain('selected')
-  })
-
-  it('warns on an <option :selected> nested under v-for', () => {
-    const warns = redundantWarnsFor(
-      `<select v-register="reg"><option v-for="o in opts" :value="o" :selected="o === sel">{{ o }}</option></select>`
-    )
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain(':selected')
-  })
 })
 
 describe('the value channel is the unbound leg now, not a redundant binding (#620)', () => {
@@ -101,6 +76,11 @@ describe('the value channel is the unbound leg now, not a redundant binding (#62
   // dual-mode wrapper it is the ONLY binding in the mode that has no
   // field behind it. Warning there told the author to delete the thing
   // that made that mode work.
+  //
+  // An `<option>`'s `:selected` joined them once its binding moved to
+  // the option's own visit, where an unbound leg became expressible at
+  // all: from the enclosing `<select>` the author's expression was raw
+  // source text with no way to resolve it in the option's scope.
   //
   // `v-model` still warns, above: it installs Vue's own model directive
   // beside ours, so two writers drive one element with no fallback story
@@ -112,6 +92,18 @@ describe('the value channel is the unbound leg now, not a redundant binding (#62
     ['checkbox, :checked', `<input type="checkbox" v-register="reg" :checked="x" />`],
     ['radio, :checked', `<input type="radio" v-register="reg" :checked="x" />`],
     ['select, :value', `<select v-register="reg" :value="x"><option value="a">A</option></select>`],
+    [
+      'option, :selected',
+      `<select v-register="reg"><option :value="o" :selected="s">A</option></select>`,
+    ],
+    [
+      'option, static selected',
+      `<select v-register="reg"><option value="a" selected>A</option></select>`,
+    ],
+    [
+      'option, :selected under v-for',
+      `<select v-register="reg"><option v-for="o in opts" :value="o" :selected="o === sel">{{ o }}</option></select>`,
+    ],
   ])('is silent on a %s', (_label, template) => {
     expect(redundantWarnsFor(template)).toHaveLength(0)
     expect(redundantWarnsFor(template, FULL_PIPELINE)).toHaveLength(0)

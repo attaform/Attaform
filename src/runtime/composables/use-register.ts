@@ -44,6 +44,12 @@
  * composable's `onMounted` warn fires once per instance to surface
  * the misuse case at runtime.
  *
+ * A wrapper meant to work both ways says so with
+ * `useRegister({ optional: true })`, which silences the unbound
+ * diagnostic and changes nothing else. Without it the diagnostic still
+ * earns its keep: a single-mode wrapper whose parent forgot
+ * `v-register` renders a field that looks fine and stores nothing.
+ *
  * `rv?.isBound` is the test for "did a parent bind me", and it is the
  * one to reach for: script-setup code holds the Proxy, which is an
  * object and so always truthy, while a template holds the unwrapped
@@ -195,7 +201,30 @@ function makeRegisterValueProxy<V>(
   }) as unknown as UseRegisterReturn<V>
 }
 
-export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
+/**
+ * Options for `useRegister`.
+ */
+export type UseRegisterOptions = {
+  /**
+   * Declares that this wrapper is used both with and without a form, so
+   * a render with no parent binding is intended rather than a mistake.
+   * Silences the unbound diagnostic; nothing else changes.
+   *
+   * The diagnostic exists because a single-mode wrapper whose parent
+   * forgot `v-register` renders a field that looks fine and stores
+   * nothing, which is an expensive afternoon. Once a wrapper is
+   * deliberately dual-mode, the same signal fires on correct code and
+   * tells the author to do something wrong, so this is the one fact
+   * that separates the two cases and only the author has it (#620).
+   *
+   * Pair it with `rv?.isBound` to branch on what actually happened.
+   */
+  readonly optional?: boolean
+}
+
+export function useRegister<V = unknown>(
+  options?: UseRegisterOptions
+): UseRegisterReturn<V> | undefined {
   const instance = getCurrentInstance()
   if (instance === null) {
     warnOutsideSetup()
@@ -337,7 +366,7 @@ export function useRegister<V = unknown>(): UseRegisterReturn<V> | undefined {
     if (el !== null && el !== undefined && typeof el === 'object') {
       ;(el as unknown as { [k: symbol]: unknown })[REGISTER_OWNER_MARKER] = true
     }
-    if (capturedRegisterValue.value === undefined) {
+    if (capturedRegisterValue.value === undefined && options?.optional !== true) {
       warnNoParentRV(instance as unknown as object)
     }
   })
@@ -365,7 +394,9 @@ function warnNoParentRV(instance: object): void {
   const frame = captureUserCallSite()
   console.warn(
     `[attaform] useRegister: no parent registerValue prop; RegisterValue fields will read as undefined. ` +
-      `Pass v-register on the parent: \`<YourComponent v-register="form.register('field')" />\`.` +
+      `Pass v-register on the parent: \`<YourComponent v-register="form.register('field')" />\`. ` +
+      `If this component is meant to work without a form too, say so with ` +
+      `\`useRegister({ optional: true })\` and branch on \`rv?.isBound\`.` +
       (frame !== undefined ? ` ${frame}` : '')
   )
 }

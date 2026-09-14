@@ -47,10 +47,10 @@ const WRAPPER_TEMPLATE = `<div>
 /** What the wrapper reported about its own binding, per mount. */
 let observedIsBound: unknown
 
-function makeWrapper(model: ReturnType<typeof ref<string>>) {
+function makeWrapper(model: ReturnType<typeof ref<string>>, optional = true) {
   return defineComponent({
     setup() {
-      const rv = useRegister()
+      const rv = optional ? useRegister({ optional: true }) : useRegister()
       observedIsBound = rv?.isBound
       return {
         rv,
@@ -157,6 +157,30 @@ describe('a dual-mode wrapper used WITHOUT a form', () => {
       expect(el<HTMLSelectElement>(m.root, 'sel').selectedIndex).toBe(1)
       expect(el<HTMLInputElement>(m.root, 'txt').value).toBe('beta')
       expectNoRedundantWarn(m)
+    } finally {
+      m.restore()
+    }
+  })
+
+  it('says nothing when the wrapper declared itself optional', async () => {
+    const m = mount(makeWrapper(ref('beta')), appOut)
+    await waitUntil(() => m.root.querySelector('select'))
+    try {
+      expect(m.warns.filter((w) => w.includes('no parent registerValue'))).toEqual([])
+    } finally {
+      m.restore()
+    }
+  })
+
+  it('still flags a wrapper that did NOT declare itself optional', async () => {
+    // The diagnostic keeps earning its keep for the single-mode wrapper
+    // whose parent forgot `v-register`: that renders a field which looks
+    // fine and stores nothing. Only the author knows which case it is,
+    // which is why `optional` is theirs to declare.
+    const m = mount(makeWrapper(ref('beta'), false), appOut)
+    await waitUntil(() => m.root.querySelector('select'))
+    try {
+      expect(m.warns.filter((w) => w.includes('no parent registerValue'))).toHaveLength(1)
     } finally {
       m.restore()
     }

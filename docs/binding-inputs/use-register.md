@@ -85,6 +85,14 @@ const rv = useRegister()
 
 In dev mode, a single `console.warn` fires per instance at mount time when the parent never bound. The directive accepts `undefined` peacefully (its binding type is `RegisterValue<V> | undefined`), so `v-register="rv"` works whether or not a parent bound. No runtime crash, just the warn.
 
+A wrapper meant to work both ways says so, and the warn stands down:
+
+```ts
+const rv = useRegister({ optional: true })
+```
+
+Leave it off for a wrapper that always expects a binding. There the warn earns its keep: a parent that forgot `v-register` renders a field that looks fine and stores nothing, and only the author knows which of the two a given component is.
+
 `rv?.isBound` is the test for "did a parent bind me", and it is the one to reach for. Script code holds the hybrid Proxy, which is an object and so always truthy; a template holds the unwrapped ref, which is `undefined` when unbound. Those two disagree, and `isBound` reads the same on both:
 
 ```ts
@@ -102,7 +110,7 @@ It is reactive in both directions, because the answer can change after mount. A 
 
 ## One component, bound and unbound
 
-A wrapper that calls `useRegister` still works when nobody binds it, and it does not need a second copy of its markup to manage that. Write the plain binding you would write without Attaform, and `v-register` takes over whenever a field resolves:
+A wrapper that calls `useRegister({ optional: true })` still works when nobody binds it, and it does not need a second copy of its markup to manage that. Write the plain binding you would write without Attaform, and `v-register` takes over whenever a field resolves:
 
 ```vue
 <select v-register="rv" :value="modelValue" @change="onChange">
@@ -113,7 +121,9 @@ A wrapper that calls `useRegister` still works when nobody binds it, and it does
 
 Bound, the field drives the control and the `:value` is inert. Unbound, the `:value` is the whole binding and behaves exactly as it would on a bare `<select>`. The same holds for `:value` on a text input or textarea and for `:checked` on a checkbox or radio.
 
-Two things to know about the edges. A `v-model` is not a substitute here: it installs Vue's own model directive beside `v-register`, so two writers drive one element, and that still warns. And an `<option>`'s own `:selected` has no unbound mode, because the expression would have to resolve in the option's scope rather than the `<select>`'s; drive an unbound `<select>` through its `:value`, which is what a plain one does anyway.
+An `<option>`'s own `:selected` works the same way, so a hand-marked option list keeps its marks when nobody binds the `<select>`.
+
+One edge to know: `v-model` is not a substitute for `:value` here. It installs Vue's own model directive beside `v-register`, so two writers drive one element, and that still warns.
 
 ## Multi-field wrappers
 

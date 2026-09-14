@@ -1,4 +1,7 @@
-import { describe, expectTypeOf, it } from 'vitest'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { AbstractSchema } from '../../src/runtime/types/types-api'
 
 /**
@@ -31,6 +34,13 @@ import type { AbstractSchema } from '../../src/runtime/types/types-api'
  * is implemented by people outside this repo, so an undocumented
  * required method is an unimplementable one.
  */
+
+/**
+ * The published counts. Kept beside the type-level assertions below so a
+ * member change fails `pnpm typecheck` there and the prose scan here.
+ */
+const REQUIRED_COUNT = 15
+const OPTIONAL_COUNT = 4
 
 /** Every member the contract declares, required and optional. */
 type Members = keyof AbstractSchema<Record<string, unknown>, Record<string, unknown>>
@@ -83,5 +93,65 @@ describe('the AbstractSchema surface the docs publish', () => {
     expectTypeOf<
       AbstractSchema<Record<string, unknown>, Record<string, unknown>>['fingerprint']
     >().returns.toEqualTypeOf<Promise<string>>()
+  })
+
+  it('no page states a count the contract does not have', () => {
+    // The type-level assertions above fail `pnpm typecheck`, and their
+    // docblock names two pages to update. That was not enough:
+    // `reference/types.md` carried "12-method + 2-optional" through a
+    // sweep that fixed both named pages, because nothing read the prose.
+    // This does, across every page, so a third site cannot go quiet.
+    const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+    const WORDS: Record<string, number> = {
+      twelve: 12,
+      thirteen: 13,
+      fourteen: 14,
+      fifteen: 15,
+      sixteen: 16,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+    }
+    const files: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(join(REPO_ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${entry.name}`
+        if (entry.isDirectory()) walk(rel)
+        else if (entry.name.endsWith('.md')) files.push(rel)
+      }
+    }
+    walk('docs')
+    walk('skills')
+
+    const num = (raw: string): number => WORDS[raw.toLowerCase()] ?? Number(raw)
+    const wrong: string[] = []
+    for (const file of files) {
+      readFileSync(join(REPO_ROOT, file), 'utf8')
+        .split('\n')
+        .forEach((line, index) => {
+          const mentionsContract =
+            line.includes('AbstractSchema') ||
+            /\bcontract\b/i.test(line) ||
+            /required method/i.test(line)
+          if (!mentionsContract) return
+          for (const m of line.matchAll(/([A-Za-z]+|\d+)[- ](?:required )?methods?\b/gi)) {
+            const n = num(m[1] ?? '')
+            if (Number.isNaN(n) || n === REQUIRED_COUNT) continue
+            wrong.push(
+              `${file}:${index + 1} says ${m[1]} methods, the contract has ${REQUIRED_COUNT}`
+            )
+          }
+          for (const m of line.matchAll(/([A-Za-z]+|\d+)[- ]optional(?: hooks?)?\b/gi)) {
+            const n = num(m[1] ?? '')
+            if (Number.isNaN(n) || n === OPTIONAL_COUNT) continue
+            wrong.push(
+              `${file}:${index + 1} says ${m[1]} optional, the contract has ${OPTIONAL_COUNT}`
+            )
+          }
+        })
+    }
+    expect(wrong).toEqual([])
   })
 })

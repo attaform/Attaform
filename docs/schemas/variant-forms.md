@@ -92,7 +92,7 @@ The discriminator is an ordinary field: bind it to a `<select>` or a set of radi
 </template>
 ```
 
-A variant field's node is absent while its variant is inactive, so reach it through `?.`: `form.fields.cardNumber?.showErrors`. The same chaining applies to [`form.errors`](/docs/reading-the-form/errors), which is variant-filtered, so an inactive variant's errors stay silent.
+A variant field's node is absent while its variant is inactive, so reach it through `?.`: `form.fields.cardNumber?.showErrors`. The same chaining applies to [`form.errors`](/docs/reading-the-form/errors). A switch clears the outgoing variant's schema errors, so nothing stale is left to read there; an error you parked by hand with `form.setErrors` is the exception and stays at its path, which is why an inline message belongs inside the branch that renders its input.
 
 ## Switching variants reshapes the form
 

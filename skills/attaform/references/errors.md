@@ -28,7 +28,11 @@ If your backend emits Attaform's `ValidationError` shape, it pipes straight into
 ```ts
 import type { ValidationError, Json } from 'attaform'
 
-// { message: string; path: (string | number)[]; code?: string; data?: Json | null }
+// ValidationError, what you READ BACK:
+// { message: string; path: (string | number)[]; code: string; data?: Json | null }
+// What setErrors ACCEPTS is looser: every field optional, plus a bare
+// Error. A missing message becomes 'Unknown error', a missing path is
+// [] (form level), a missing code is 'atta:user-error'.
 ```
 
 - One entry per message at `path: [field]`; a form-level error is `path: []`; a dotted key splits into segments.

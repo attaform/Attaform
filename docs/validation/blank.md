@@ -135,8 +135,8 @@ Attaform never renders. The signal is exposed; your component decides what to do
 <template>
   <input v-register="form.register('income')" />
 
-  <!-- show errors only after the user has touched the field -->
-  <p v-if="form.fields.income.touched && form.fields.income.firstError" class="error">
+  <!-- the display gate decides when an error is ready to show -->
+  <p v-if="form.fields.income.showErrors" class="error">
     {{ form.fields.income.firstError?.message }}
   </p>
 

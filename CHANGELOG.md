@@ -57,6 +57,42 @@
 
 ### Fixed
 
+- **One component can be both form-bound and plain-bound.** A wrapper
+  that called `useRegister()` so it COULD take a `v-register` rendered a
+  blank control when used without one: the caller's own `:value` was
+  discarded and nothing replaced it, so a `<select>` showed no option and
+  a text input showed nothing. The directive was never the cause, it
+  stands down on a nullish binding and touches no element. The value
+  injection was: it strips an author's `:value` / `:checked` and puts the
+  field's own read in their place, which resolves to `undefined` when no
+  field resolved. The author's binding is now kept as the leg that read
+  falls back to, so one element serves both modes and a dual-mode wrapper
+  no longer has to duplicate itself into `v-if` / `v-else` branches
+  carrying two copies of every option and attribute. Bound behaviour is
+  untouched: the field's read always resolves to a string, `''` included,
+  so the fallback is reachable only when the binding itself is nullish,
+  never when a bound field merely holds an empty value. (#620)
+
+- **`useRegister()` gains `isBound`.** `v-if="rv"` was dead code in
+  script, where the hybrid Proxy is an object and so always truthy, while
+  a template saw the unwrapped ref and got `undefined`. `rv?.isBound`
+  reads the same on both and is reactive, which is also why the
+  composable cannot just return `undefined` when nothing has bound: a
+  parent is free to bind on a later render, and at setup time there is no
+  way to know. (#620)
+
+- **A value binding beside `v-register` no longer warns; `v-model`
+  still does.** `:value` / `:checked` now has a meaning (the unbound
+  leg above), so calling it redundant told authors to delete the only
+  thing making that mode work. `v-model` keeps warning, because it
+  installs Vue's own model directive beside `v-register` and two writers
+  then drive one element with no fallback between them. The runtime
+  diagnostic also stands down entirely for a `v-register` that resolved
+  no field. An `<option>`'s `:selected` is unchanged and still warns: it
+  has no unbound leg, because the expression would have to resolve in the
+  option's own binding scope rather than the enclosing `<select>`'s.
+  (#620)
+
 - **A `<select>` on a path the form does not hold shows the empty
   option, not an empty box.** Binding a `<select>` to a path that is
   absent from `defaultValues` left it with nothing selected, so an

@@ -48,49 +48,16 @@ function compile(template: string): string {
 }
 
 describe('redundantBindingWarnTransform — state bindings warn', () => {
-  it('warns on a text input with :value', () => {
-    const warns = redundantWarnsFor(`<input v-register="reg" :value="x" />`)
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain(':value')
-    expect(warns[0]).toContain('<input>')
-  })
-
-  it('warns on a text input with a static value= attribute', () => {
-    const warns = redundantWarnsFor(`<input v-register="reg" value="hi" />`)
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain('value')
-  })
-
   it('warns on a text input with v-model', () => {
     const warns = redundantWarnsFor(`<input v-register="reg" v-model="x" />`)
     expect(warns).toHaveLength(1)
     expect(warns[0]).toContain('v-model')
   })
 
-  it('warns on a textarea with :value', () => {
-    const warns = redundantWarnsFor(`<textarea v-register="reg" :value="x" />`)
+  it('warns on a textarea with v-model', () => {
+    const warns = redundantWarnsFor(`<textarea v-register="reg" v-model="x" />`)
     expect(warns).toHaveLength(1)
     expect(warns[0]).toContain('<textarea>')
-  })
-
-  it('warns on a checkbox with :checked', () => {
-    const warns = redundantWarnsFor(`<input type="checkbox" v-register="reg" :checked="x" />`)
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain(':checked')
-  })
-
-  it('warns on a radio with :checked', () => {
-    const warns = redundantWarnsFor(`<input type="radio" v-register="reg" :checked="x" />`)
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain(':checked')
-  })
-
-  it('warns on a select with :value', () => {
-    const warns = redundantWarnsFor(
-      `<select v-register="reg" :value="x"><option value="a">A</option></select>`
-    )
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain('<select>')
   })
 
   it('warns on a select with v-model', () => {
@@ -124,6 +91,30 @@ describe('redundantBindingWarnTransform — state bindings warn', () => {
     )
     expect(warns).toHaveLength(1)
     expect(warns[0]).toContain(':selected')
+  })
+})
+
+describe('the value channel is the unbound leg now, not a redundant binding (#620)', () => {
+  // A `:value` / `:checked` beside v-register used to warn. It no longer
+  // does: the value injection keeps an author-written one as the leg it
+  // falls back to when the register resolves to nothing, so on a
+  // dual-mode wrapper it is the ONLY binding in the mode that has no
+  // field behind it. Warning there told the author to delete the thing
+  // that made that mode work.
+  //
+  // `v-model` still warns, above: it installs Vue's own model directive
+  // beside ours, so two writers drive one element with no fallback story
+  // between them.
+  it.each([
+    ['text input, :value', `<input v-register="reg" :value="x" />`],
+    ['text input, static value=', `<input v-register="reg" value="hi" />`],
+    ['textarea, :value', `<textarea v-register="reg" :value="x" />`],
+    ['checkbox, :checked', `<input type="checkbox" v-register="reg" :checked="x" />`],
+    ['radio, :checked', `<input type="radio" v-register="reg" :checked="x" />`],
+    ['select, :value', `<select v-register="reg" :value="x"><option value="a">A</option></select>`],
+  ])('is silent on a %s', (_label, template) => {
+    expect(redundantWarnsFor(template)).toHaveLength(0)
+    expect(redundantWarnsFor(template, FULL_PIPELINE)).toHaveLength(0)
   })
 })
 
@@ -202,7 +193,7 @@ describe('redundantBindingWarnTransform — marker stamping', () => {
     try {
       // The same transform twice in the array simulates a doubly-registered
       // pipeline (test combinatorics / a re-run bundler config).
-      baseCompile(`<input v-register="reg" :value="x" />`, {
+      baseCompile(`<input v-register="reg" v-model="x" />`, {
         nodeTransforms: [redundantBindingWarnTransform, redundantBindingWarnTransform],
         mode: 'module',
       })
@@ -223,8 +214,8 @@ describe('redundantBindingWarnTransform — ordering / full pipeline (load-beari
     expect(redundantWarnsFor(`<input v-register="reg" />`, FULL_PIPELINE)).toHaveLength(0)
   })
 
-  it('warns exactly once on an authored :value through the real pipeline', () => {
-    expect(redundantWarnsFor(`<input v-register="reg" :value="x" />`, FULL_PIPELINE)).toHaveLength(
+  it('warns exactly once on an authored v-model through the real pipeline', () => {
+    expect(redundantWarnsFor(`<input v-register="reg" v-model="x" />`, FULL_PIPELINE)).toHaveLength(
       1
     )
   })
@@ -235,7 +226,7 @@ describe('redundantBindingWarnTransform — ordering / full pipeline (load-beari
     // clean "warn once for the pattern" story the runtime can't give a
     // non-plugin consumer.
     const warns = redundantWarnsFor(
-      `<div v-for="i in 3" :key="i"><input v-register="reg" :value="i" /></div>`,
+      `<div v-for="i in 3" :key="i"><input v-register="reg" v-model="rows[i]" /></div>`,
       FULL_PIPELINE
     )
     expect(warns).toHaveLength(1)

@@ -66,32 +66,54 @@ const RECURSABLE_NODE_TYPES: ReadonlySet<number> = new Set<number>([
 
 /**
  * The author-facing display form of the first redundant STATE binding
- * among `props` whose name is in `stateNames`, or `null` if none. A
- * static attribute renders as its bare name (`value`), a `:`-bind as
- * `:value`, and `v-model` as `v-model` — each is what the author would
- * search their template for. `value` / `checked` are the state names;
- * `stateNames` deliberately omits `value` for radio / checkbox, where
- * it is the identity channel.
+ * among `props`, or `null` if none. `v-model` is the only one left, and
+ * it renders as `v-model` — what the author would search their template
+ * for.
+ *
+ * A `:value` / `:checked` (or the static form of either) used to count
+ * too. It no longer does: the value injection keeps an author-written
+ * one as its UNBOUND leg, so on a dual-mode wrapper it is not redundant,
+ * it is the whole binding in the mode that has no field behind it. A
+ * warning there would have told the author to delete the only thing
+ * making that mode work (#620). Its one true-positive, a value binding
+ * beside a `v-register` that is ALWAYS bound, is dead code rather than a
+ * dual-binding bug, and the runtime layer still catches it wherever it
+ * can tell — it warns only once a field has actually resolved.
+ *
+ * `v-model` stays: it installs Vue's own model directive next to ours,
+ * so two writers drive one element with no fallback story between them.
  */
-function findRedundantStateBinding(
-  props: (AttributeNode | DirectiveNode)[],
-  stateNames: readonly string[]
-): string | null {
+function findRedundantStateBinding(props: (AttributeNode | DirectiveNode)[]): string | null {
+  for (const prop of props) {
+    if (prop.type === NodeTypes.ATTRIBUTE) continue
+    if (prop.name === 'model') return 'v-model'
+  }
+  return null
+}
+
+/**
+ * The same question for an `<option>` under a `v-register`ed `<select>`,
+ * where `selected` IS still redundant. The select's value injection
+ * grew an unbound leg (#620); the option's `:selected` did not, because
+ * an expression spliced in from the enclosing `<select>` cannot be
+ * resolved in the option's own binding scope (#566). So an author's
+ * `selected` here is still stripped with nothing put back, and saying so
+ * remains the right diagnostic.
+ */
+function findRedundantSelectedBinding(props: (AttributeNode | DirectiveNode)[]): string | null {
   for (const prop of props) {
     if (prop.type === NodeTypes.ATTRIBUTE) {
-      if (stateNames.includes(prop.name)) return prop.name
+      if (prop.name === 'selected') return 'selected'
       continue
     }
-    // v-model on a native control is always redundant beside v-register,
-    // regardless of the element's kind.
     if (prop.name === 'model') return 'v-model'
     if (
       prop.name === 'bind' &&
       prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
       prop.arg.isStatic &&
-      stateNames.includes(prop.arg.content)
+      prop.arg.content === 'selected'
     ) {
-      return `:${prop.arg.content}`
+      return ':selected'
     }
   }
   return null
@@ -150,7 +172,7 @@ function emitRedundantWarning(tag: string, binding: string): void {
 function walkOptionsForSelected(selectNode: ElementNode): void {
   const visit = (candidate: TemplateChildNode): void => {
     if (candidate.type === NodeTypes.ELEMENT && candidate.tag === 'option') {
-      const found = findRedundantStateBinding(candidate.props, ['selected'])
+      const found = findRedundantSelectedBinding(candidate.props)
       if (found !== null) emitRedundantWarning('option', found)
       return // an <option>'s own children never hold another <option>
     }
@@ -173,14 +195,14 @@ function warnIfRedundant(node: ElementNode): void {
   const tag = node.tag
 
   if (tag === 'select') {
-    const found = findRedundantStateBinding(node.props, ['value'])
+    const found = findRedundantStateBinding(node.props)
     if (found !== null) emitRedundantWarning('select', found)
     walkOptionsForSelected(node)
     return
   }
 
   if (tag === 'textarea') {
-    const found = findRedundantStateBinding(node.props, ['value'])
+    const found = findRedundantStateBinding(node.props)
     if (found !== null) emitRedundantWarning('textarea', found)
     return
   }
@@ -190,9 +212,7 @@ function warnIfRedundant(node: ElementNode): void {
   const kind = classifyInput(node.props)
   // Dynamic type: can't classify at compile time. File: out of scope.
   if (kind === 'dynamic' || kind === 'file') return
-  // Radio / checkbox omit `value` — it's the option identity, not state.
-  const stateNames = kind === 'checkbox' || kind === 'radio' ? ['checked'] : ['value']
-  const found = findRedundantStateBinding(node.props, stateNames)
+  const found = findRedundantStateBinding(node.props)
   if (found !== null) emitRedundantWarning('input', found)
 }
 

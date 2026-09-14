@@ -85,6 +85,36 @@ const rv = useRegister()
 
 In dev mode, a single `console.warn` fires per instance at mount time when the parent never bound. The directive accepts `undefined` peacefully (its binding type is `RegisterValue<V> | undefined`), so `v-register="rv"` works whether or not a parent bound. No runtime crash, just the warn.
 
+`rv?.isBound` is the test for "did a parent bind me", and it is the one to reach for. Script code holds the hybrid Proxy, which is an object and so always truthy; a template holds the unwrapped ref, which is `undefined` when unbound. Those two disagree, and `isBound` reads the same on both:
+
+```ts
+const rv = useRegister()
+if (rv?.isBound) {
+  // a parent bound this wrapper to a field
+}
+```
+
+It is reactive in both directions, because the answer can change after mount. A parent is free to bind on a later render, which is also why `useRegister` cannot simply return `undefined` when nothing has bound yet: at setup time it does not know, and giving up the Proxy would sever the binding that arrives later.
+
+```vue
+<AddressField v-register="ready ? form.register('street') : undefined" />
+```
+
+## One component, bound and unbound
+
+A wrapper that calls `useRegister` still works when nobody binds it, and it does not need a second copy of its markup to manage that. Write the plain binding you would write without Attaform, and `v-register` takes over whenever a field resolves:
+
+```vue
+<select v-register="rv" :value="modelValue" @change="onChange">
+  <option value="">None</option>
+  <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
+</select>
+```
+
+Bound, the field drives the control and the `:value` is inert. Unbound, the `:value` is the whole binding and behaves exactly as it would on a bare `<select>`. The same holds for `:value` on a text input or textarea and for `:checked` on a checkbox or radio.
+
+Two things to know about the edges. A `v-model` is not a substitute here: it installs Vue's own model directive beside `v-register`, so two writers drive one element, and that still warns. And an `<option>`'s own `:selected` has no unbound mode, because the expression would have to resolve in the option's scope rather than the `<select>`'s; drive an unbound `<select>` through its `:value`, which is what a plain one does anyway.
+
 ## Multi-field wrappers
 
 `useRegister` is the right call for **single-field** wrappers. For compound components binding **multiple paths** (a date-range picker exposing start + end fields, an address subform exposing street + city + zip), reach for `injectForm<Form>()` and call `ctx.register(path)` directly. That sidesteps the single-binding assumption `useRegister` makes.

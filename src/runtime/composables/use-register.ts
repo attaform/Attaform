@@ -44,6 +44,16 @@
  * composable's `onMounted` warn fires once per instance to surface
  * the misuse case at runtime.
  *
+ * `rv?.isBound` is the test for "did a parent bind me", and it is the
+ * one to reach for: script-setup code holds the Proxy, which is an
+ * object and so always truthy, while a template holds the unwrapped
+ * ref, which is `undefined` when unbound. Those two disagree, and
+ * `isBound` reads the same on both. A dual-mode wrapper (one used
+ * both `v-register`-bound and plain `v-model`-bound) branches on it,
+ * and does not need to duplicate its element to do so: the
+ * compile-time value injection keeps an author-written `:value` /
+ * `:checked` as its unbound leg, so one element serves both (#620).
+ *
  * Diagnostic: in dev mode, a single `console.warn` fires per instance
  * at `onMounted` if the captured value is still `undefined` — by then
  * the parent has had its full mount lifecycle to bind, so a missing
@@ -86,7 +96,28 @@ import type { RegisterValue } from '../types/types-api'
  * the hybrid's only `.value`. Older code that read `rv.value?.path`
  * keeps working; new code can write `rv.path` directly.
  */
-export type UseRegisterReturn<V = unknown> = RegisterValue<V> & Ref<RegisterValue<V> | undefined>
+export type UseRegisterReturn<V = unknown> = RegisterValue<V> &
+  Ref<RegisterValue<V> | undefined> & {
+    /**
+     * Whether a parent has actually bound this wrapper. `false` until a
+     * `RegisterValue` lands, `true` once one has, and reactive in both
+     * directions: a parent that binds on a later render flips it, and
+     * so does one that stops binding.
+     *
+     * This is the test a dual-mode wrapper reaches for, and the reason
+     * it exists as a field rather than a truthiness check on the
+     * return: the composable cannot answer "is this bound" at setup
+     * time. A parent is free to bind on a later render
+     * (`v-register="ready ? form.register('x') : undefined"`), and
+     * `useRegister` has to keep serving that, so it can never return a
+     * plain `undefined` for "unbound right now". Script-setup code
+     * reading `rv` directly sees the hybrid Proxy, which is an object
+     * and therefore always truthy; a template sees the unwrapped ref,
+     * which IS `undefined` when unbound. `rv?.isBound` reads the same
+     * on both sides (#620).
+     */
+    readonly isBound: boolean
+  }
 
 const warnedNoParentRV: WeakSet<object> | null = __DEV__ ? new WeakSet<object>() : null
 let warnedOutsideSetup = false
@@ -127,12 +158,18 @@ function makeRegisterValueProxy<V>(
     get(_target, prop) {
       if (prop === '__v_isRef') return true
       if (prop === 'value') return capturedRegisterValue.value
+      // Answered by the proxy rather than pierced, so it reports a real
+      // boolean in the unbound state instead of the `undefined` every
+      // other piercing read returns. The ref read keeps it reactive, so
+      // a `computed` / template branching on it re-runs when a parent
+      // binds or unbinds (#620).
+      if (prop === 'isBound') return capturedRegisterValue.value !== undefined
       const v = capturedRegisterValue.value
       if (v === undefined) return undefined
       return Reflect.get(v as object, prop)
     },
     has(_target, prop) {
-      if (prop === '__v_isRef' || prop === 'value') return true
+      if (prop === '__v_isRef' || prop === 'value' || prop === 'isBound') return true
       const v = capturedRegisterValue.value
       if (v === undefined) return false
       return Reflect.has(v as object, prop)

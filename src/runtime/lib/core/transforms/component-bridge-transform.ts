@@ -18,6 +18,7 @@ import {
   flattenExpression,
   getSummarizedProps,
   isExactKey,
+  toExpressionArray,
   removePropsByName,
   type SummarizedProp,
 } from './_shared-props'
@@ -333,6 +334,17 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       snapshotProps(props)
       removePropsByName(props, ['selected'])
 
+      // No unbound fallback leg here, unlike the `<select>`'s own
+      // `:value` below. An option's author-written `:selected` lives in
+      // the OPTION's binding scope, and this transform reaches the
+      // option from the enclosing `<select>`, before the traversal has
+      // entered it — so an expression spliced in here cannot be given
+      // the identifier treatment the option's own scope would give it
+      // (a `v-for` alias above all). That is #566's rule, and it is not
+      // worth bending: an unbound `<select>` drives its selection
+      // through the restored `:value` binding, exactly as a plain
+      // `<select :value>` does, so the option marks have nothing to
+      // contribute there (#620).
       const newProp: DirectiveNode = {
         arg: createSimpleExpression('selected', true),
         exp: createCompoundExpression(
@@ -413,6 +425,13 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     const isPlainComponentHost = isComponentHost && !hasSlottedOptions
 
     const selectProps = node.props
+    // Same capture-before-strip as the options above: an author-written
+    // `:value` on a dual-mode `<select>` is its unbound binding, not a
+    // redundant one, and the strip used to take it with nothing put back
+    // for a nullish register (#620).
+    const authorSelectValueArr = toExpressionArray(
+      selectSummarizedProps.find((p) => isExactKey(p.key, 'value'))?.value
+    )
     snapshotProps(selectProps)
     removePropsByName(selectProps, ['value']) // actively prevent an attribute collision
 
@@ -428,11 +447,21 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       // `String(storage)`; where it earns its keep is a path holding
       // nothing, which displays as `''` and so lands on an authored
       // `<option value="">` placeholder (#569).
-      const initExpression = createCompoundExpression([
-        '(',
-        ...valuePropExpArray,
-        ')?.displayValue.value',
-      ])
+      // `displayValue` always resolves to a string for a real register,
+      // `''` included, so the `??` fallback is reachable only when the
+      // register expression itself is nullish — never when a bound field
+      // merely holds an empty value.
+      const initExpression = createCompoundExpression(
+        authorSelectValueArr === undefined
+          ? ['(', ...valuePropExpArray, ')?.displayValue.value']
+          : [
+              '((',
+              ...valuePropExpArray,
+              ')?.displayValue.value ?? (',
+              ...authorSelectValueArr,
+              '))',
+            ]
+      )
 
       const simpleExpression = createSimpleExpression(flattenExpression(initExpression), false)
       // `processExpression` can throw on malformed identifiers or

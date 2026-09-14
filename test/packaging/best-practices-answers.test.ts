@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -72,25 +73,28 @@ describe('the badge answer key vs the repo it describes', () => {
   })
 
   it('the generated JSON is in step with the markdown that generates it', () => {
-    // The generator writes in place, so restore the committed bytes
-    // either way: a failing run must report the drift, not create it.
-    const target = join(REPO_ROOT, '.bestpractices.json')
-    const committed = readFileSync(target, 'utf8')
-    let regenerated: string
+    // The generator reads and writes relative to cwd, so it runs in a
+    // scratch directory holding a copy of its one input. A test must
+    // not write into the repo it is checking: a run that is
+    // interrupted between the write and the restore would leave the
+    // tracked file dirty, and a gate that can create the drift it
+    // reports is not a gate.
+    const scratch = mkdtempSync(join(tmpdir(), 'attaform-bestpractices-'))
     try {
+      mkdirSync(join(scratch, 'docs/scorecard'), { recursive: true })
+      copyFileSync(join(REPO_ROOT, ANSWERS), join(scratch, ANSWERS))
       const stdout = execFileSync(
         process.execPath,
         [join(REPO_ROOT, 'scripts/build-bestpractices-json.mjs')],
-        { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+        { cwd: scratch, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
       )
       expect(stdout).toContain('criteria + project metadata')
-      regenerated = readFileSync(target, 'utf8')
+      expect(
+        readFileSync(join(scratch, '.bestpractices.json'), 'utf8'),
+        'run `node scripts/build-bestpractices-json.mjs` and commit the result'
+      ).toBe(readFileSync(join(REPO_ROOT, '.bestpractices.json'), 'utf8'))
     } finally {
-      writeFileSync(target, committed)
+      rmSync(scratch, { recursive: true, force: true })
     }
-    expect(
-      regenerated,
-      'run `node scripts/build-bestpractices-json.mjs` and commit the result'
-    ).toBe(committed)
   })
 })

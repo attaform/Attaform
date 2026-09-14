@@ -240,7 +240,7 @@ The same holds for the values you write. Attaform walks them, so a property that
 
 Callbacks you hand over deliberately already have somewhere to go, and keep going there: a throw from `onSubmit` or `onError` lands on `form.meta.submitError`, and a throw from a `register({ transforms })` function lands on `field.transformError`.
 
-Two throws are deliberately loud, because both are a mistake at the call site rather than a failure at runtime: a malformed path (`form.errors('a..b')`) and an invalid `useForm` configuration.
+A handful of throws stay deliberately loud, on one rule: the mistake is at the call site rather than a failure at runtime, so surfacing it where it was made is the only useful answer. A malformed path (`form.errors('a..b')`), an invalid `useForm` configuration, a root with no keys to address ([AF15](/e/af15)), a schema built by the Zod major the pinned adapter cannot read ([AF01](/e/af01)), and `form.rehydrate()` on a form that captured no factory ([AF10](/e/af10)) all raise on the spot.
 
 ## Schema-agnostic core
 

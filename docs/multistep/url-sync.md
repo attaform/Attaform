@@ -39,7 +39,9 @@ const wizard = useWizard({
 - Reloading the page lands on the same step.
 - The URL is shareable: paste `/checkout?step=payment` into another tab and that tab opens on the payment step.
 
-The default write uses `history.replaceState`, so a single back-button press leaves the wizard's host page rather than walking backward through every step the user visited. If you want push semantics (back button retreats one step), see [Pushing each navigation](#pushing-each-navigation) below.
+The default write picks its history mode per navigation. A genuine step change calls `history.pushState`, so the step earns a real entry and the browser's Back and Forward buttons walk the flow one step at a time. Writing the step the URL is already effectively on calls `replaceState` instead, canonicalizing in place: a bare `/checkout` resolves to the first step, so stamping `?step=<first>` onto it at construction is bookkeeping rather than a navigation. That split is what keeps Back off a dead entry showing the step the user is already looking at, and it keeps the Forward stack alive across a Back round trip.
+
+Every navigation records an entry, including the wizard's own `back()`. Clicking the wizard's Back button pushes the earlier step onto the stack rather than popping the later one, so a browser Back press after it returns the user to the step they just left. If that is not the shape you want, own the write with a custom `persist`, as in [Replacing instead of pushing](#replacing-instead-of-pushing) below.
 
 ## SSR hand-off
 
@@ -93,72 +95,75 @@ const wizard = useWizard({
 
 The restore callback is invoked at construction and re-evaluated reactively (its tracked reads decide the dep set); the persist callback fires on every `currentStep` change, diffed to break the restore-persist loop. The wizard handles the loop break, so a persist write that triggers a restore re-read converges in one round.
 
+Those tracked reads are the whole story for a custom `restore`, and the easy thing to get wrong. A callback that reads `window.location` (or `localStorage`) directly tracks nothing, so it runs once at construction and never again: the wizard will not follow the browser's Back button, because nothing told it the URL moved. Read a `ref` you keep in sync instead, and the watcher re-fires the moment that ref changes. The default `restore` is built exactly this way, which is why Back and Forward work out of the box.
+
+Nothing is lost by restoring only at construction, as long as that is what you meant. The localStorage example above is a fair use of it: there is no back button for a storage key, so a one-shot read on mount is the whole job.
+
 ## Renaming the param
 
-The default `?step=<key>` works fine until two wizards land on the same page. Then the second wizard's writes overwrite the first's. Give each wizard its own param via custom callbacks:
+The default `?step=<key>` works fine until two wizards land on the same page. Then the second wizard's writes overwrite the first's. Give each wizard its own param via custom callbacks, and build the pair once so both wizards get the same behavior the default has:
 
 ```ts
-import { useForm, useWizard } from 'attaform'
+import { onScopeDispose, ref } from 'vue'
+import { useWizard } from 'attaform'
 
-const checkout = useWizard({
-  steps: [shipping, payment, review],
-  restore: () => {
-    const url = new URL(window.location.href)
-    const step = url.searchParams.get('checkout-step')
-    return step === null ? undefined : { step }
-  },
-  persist: ({ step }) => {
-    const url = new URL(window.location.href)
-    if (step === undefined) {
-      url.searchParams.delete('checkout-step')
-    } else {
-      url.searchParams.set('checkout-step', step)
-    }
-    history.replaceState(history.state, '', url.toString())
-  },
-})
+function stepParam(param: string) {
+  const read = (): string | undefined =>
+    typeof window === 'undefined'
+      ? undefined
+      : (new URL(window.location.href).searchParams.get(param) ?? undefined)
 
-const support = useWizard({
-  steps: [shipping, payment, review],
-  restore: () => {
-    const url = new URL(window.location.href)
-    const step = url.searchParams.get('support-step')
-    return step === null ? undefined : { step }
-  },
-  persist: ({ step }) => {
-    const url = new URL(window.location.href)
-    if (step === undefined) {
-      url.searchParams.delete('support-step')
-    } else {
-      url.searchParams.set('support-step', step)
+  // The reactive source `restore` tracks. Kept in sync with the URL so
+  // Back and Forward reach the wizard.
+  const mirror = ref(read())
+
+  if (typeof window !== 'undefined') {
+    const onPopstate = (): void => {
+      mirror.value = read()
     }
-    history.replaceState(history.state, '', url.toString())
-  },
-})
+    window.addEventListener('popstate', onPopstate)
+    onScopeDispose(() => window.removeEventListener('popstate', onPopstate))
+  }
+
+  return {
+    restore: () => (mirror.value === undefined ? undefined : { step: mirror.value }),
+    persist: ({ step }: { step?: string }): void => {
+      if (step === undefined || typeof window === 'undefined') return
+      const url = new URL(window.location.href)
+      url.searchParams.set(param, step)
+      // Same split as the default: canonicalize in place, push a move.
+      if (read() === step) history.replaceState(history.state, '', url.toString())
+      else history.pushState(history.state, '', url.toString())
+      mirror.value = step
+    },
+  }
+}
+
+const checkout = useWizard({ steps: [shipping, payment, review], ...stepParam('checkout-step') })
+const support = useWizard({ steps: [topic, details], ...stepParam('support-step') })
 ```
 
-Each wizard owns its own search param; the two never collide.
+Each wizard owns its own search param, so the two never collide, and each keeps its own history entries.
 
-## Pushing each navigation
+The `typeof window` guards keep the helper from crashing on the server, but they do not make it server-aware: a custom `restore` replaces the integration's server-side resolver, so a deep link renders step one on the first byte and corrects on hydration. Under vue-router (Nuxt included), skip the helper and read the route instead. `useRoute().query` is already reactive and already resolved on the server, so a `restore` that pulls the step off it keeps both the first byte and the Back button, while `router.push` in `persist` owns the history entry. Narrow the value on the way out: a query param can repeat, so `route.query[name]` is not a `string` until you say it is.
 
-The default `persist` uses `replaceState` so the browser's back button leaves the host page in one press. To get push semantics (back walks the visited steps), swap in a custom persist that calls `pushState`:
+## Replacing instead of pushing
+
+Walking the steps with Back is the right default for a page-level flow, and the wrong one for a wizard inside a modal, where the user expects Back to close the surrounding page in a single press. Swap in a custom `persist` that always replaces, so the URL still reflects the step but the history stack never grows:
 
 ```ts
 const wizard = useWizard({
   steps: [shipping, payment, review],
   persist: ({ step }) => {
+    if (step === undefined) return
     const url = new URL(window.location.href)
-    if (step === undefined) {
-      url.searchParams.delete('step')
-    } else {
-      url.searchParams.set('step', step)
-    }
-    history.pushState(history.state, '', url.toString())
+    url.searchParams.set('step', step)
+    history.replaceState(history.state, '', url.toString())
   },
 })
 ```
 
-The matching restore (the default one) already listens to `popstate` and re-reads the URL, so the back button retreats one step at a time once persist pushes.
+The default `restore` still reads the URL at construction and still listens for `popstate`, so a reload or a shared link lands on the right step. Only the stack behavior changes: there is one entry for the whole wizard, and Back leaves the page.
 
 ## Where to next
 

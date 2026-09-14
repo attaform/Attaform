@@ -1,6 +1,6 @@
 ---
 title: Performance
-description: Measured numbers for keystrokes, validation, submit, persistence, and the array helpers. Sub-500-leaf forms don't surface in profiling; the patterns to watch on bigger forms.
+description: Measured numbers for keystrokes, validation, submit, resets, and the array helpers. Sub-500-leaf forms don't surface in profiling; the patterns to watch on bigger forms.
 metaRows:
   - label: Category
     value: Reference
@@ -27,23 +27,20 @@ For how Attaform compares across the Vue form-library field on the same scenario
 
 Real-browser numbers from `pnpm bench`, single-threaded on contemporary hardware. Your machine will land elsewhere on the number line; the orders of magnitude won't.
 
-| Operation                                                     | Cost    |
-| ------------------------------------------------------------- | ------- |
-| Single-field keystroke, 100-leaf form                         | 6 µs    |
-| Single-field keystroke, 500-leaf form                         | 30 µs   |
-| Validation overhead per keystroke (`validateOn: 'change'`)    | 5 µs    |
-| Submit lifecycle (validate → submit → setErrors)              | 3.4 µs  |
-| Path canonicalization (cache hit)                             | 60 ns   |
-| Sensitive-name check (common pattern, early hit)              | 70 ns   |
-| Persistence write, `'local'` / `'session'` (100-leaf payload) | 2.8 µs  |
-| Persistence write, `'indexeddb'` (100-leaf payload)           | 62 µs   |
-| Debounced-writer schedule (steady-state typing)               | 0.18 µs |
-| Discriminated union, write into active variant                | 19 µs   |
-| Discriminated union, cross-variant flip                       | 25 µs   |
-| Reset, 100-leaf object form                                   | 678 µs  |
-| Field-array append, 100-item                                  | 2.5 ms  |
-| Field-array append, 1000-item                                 | 9 ms    |
-| Field-array swap on 500-item                                  | 3.9 ms  |
+| Operation                                                  | Cost    |
+| ---------------------------------------------------------- | ------- |
+| Single-field keystroke, 100-leaf form                      | 6 µs    |
+| Single-field keystroke, 500-leaf form                      | 30 µs   |
+| Validation overhead per keystroke (`validateOn: 'change'`) | 5 µs    |
+| Submit lifecycle (validate → submit → setErrors)           | 3.4 µs  |
+| Path canonicalization (cache hit)                          | 60 ns   |
+| Validation-debounce schedule (steady-state typing)         | 0.18 µs |
+| Discriminated union, write into active variant             | 19 µs   |
+| Discriminated union, cross-variant flip                    | 25 µs   |
+| Reset, 100-leaf object form                                | 678 µs  |
+| Field-array append, 100-item                               | 2.5 ms  |
+| Field-array append, 1000-item                              | 9 ms    |
+| Field-array swap on 500-item                               | 3.9 ms  |
 
 A 60 fps frame is **16.7 ms**. Single-keystroke work clears the budget by three orders of magnitude on a 100-leaf form and by two on a 500-leaf form; Vue's render gets the rest of the frame to itself.
 

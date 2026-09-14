@@ -251,10 +251,9 @@ The split is intentional. Refinements drive live feedback as users type; transfo
 
 ## Fingerprinting
 
-Every schema carries a structural fingerprint: a short string that changes when the shape changes (adding or removing a field, changing a leaf type, restructuring nesting) but stays stable under refinement, transform, or metadata tweaks. The fingerprint surfaces in two places:
+Every schema carries a structural fingerprint: a short string that changes when the shape changes (adding or removing a field, changing a leaf type, restructuring nesting) but stays stable under refinement, transform, or metadata tweaks.
 
-- Persistence keys (a schema change auto-invalidates stale drafts).
-- Shared-key form mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
+It has one consumer today: the dev-mode shared-key check. Two `useForm({ key: 'x' })` calls whose schemas disagree structurally warn at the second call, which is what catches a key you meant to be unique and a genuine shape drift between two components that share one form.
 
 `schema.fingerprint()` lives on the adapter; the runtime calls it when needed.
 

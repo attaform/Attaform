@@ -1,6 +1,6 @@
 ---
 title: Vue DevTools integration
-description: Vite and bare-Vue projects get an Attaform inspector + timeline in the Vue DevTools extension via an optional peer dependency. Same data as the Nuxt panel, different surface.
+description: Vite and bare-Vue projects get an Attaform inspector + timeline in the Vue DevTools extension via an optional peer dependency. One inspector node per Vue app on the page.
 metaRows:
   - label: Category
     value: Module
@@ -69,21 +69,21 @@ The wire-up is code-split, so the chunk isn't pulled in when `devtools: false`; 
 
 ## What you see
 
-The Vue DevTools panel surfaces the same data as the [Nuxt panel](/docs/devtools-and-debugging/devtools-panel): form list, editable JSON value tree, schema/user error split, aggregates, and the event timeline. Both surfaces render values raw; DevTools is a dev-only surface, so the sensitive-name list gates persistence, not display.
+The extension surfaces most of what the [Nuxt panel](/docs/devtools-and-debugging/devtools-panel) does: form list, editable JSON value tree, schema/user error split, aggregates, and the event timeline. Both render values raw. DevTools is a dev-only surface, and redacting there would be theatre while the same value sits in a breakpoint, a network tab, and a source map.
 
-| Surface              | What it is                                                              |
-| -------------------- | ----------------------------------------------------------------------- |
-| Form list            | One entry per registered form, keyed by `form.key`.                     |
-| Form value           | Editable JSON tree; writes flow through the same store-mutation path.   |
-| Schema / User errors | Split by source.                                                        |
-| Aggregates           | `submitting`, `submissionAttempts`, `submitError`, `activeValidations`. |
-| Timeline             | `form.change` / `submit.success` / `reset` events with value snapshots. |
+| Surface              | What it is                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| Form list            | One entry per registered form, keyed by `form.key`.                                       |
+| Form value           | Editable JSON tree; writes flow through the same store-mutation path.                     |
+| Schema / User errors | Split by source.                                                                          |
+| Aggregates           | `submitting`, `submissionAttempts`, `departAttempts`, `submitError`, `activeValidations`. |
+| Timeline             | `form.change` / `submit.success` / `reset` events with value snapshots.                   |
 
-The only difference is location: instead of the Nuxt DevTools overlay's sidebar, the panel appears in the Vue DevTools' inspector list under **Attaform**.
+It appears in the Vue DevTools' inspector list under **Attaform** rather than in the Nuxt DevTools overlay's sidebar. Two differences beyond location: the extension adds `departAttempts` to the aggregates, and it has no per-path Field state section, so the interaction flags for one path are a Nuxt-panel read.
 
 ## Multi-app setups
 
-Each Vue app registers its own inspector entry in the extension. Micro-frontend setups with parallel Vue apps each get their own **Attaform** node; the extension reads from `getCurrentApp()` per panel switch.
+Attaform registers its inspector against the app it was installed on, so each `createAttaform()` call in a micro-frontend setup contributes its own **Attaform** node.
 
 This is the practical advantage over the Nuxt panel for multi-app monorepos: pick the app in the DevTools' app-selector dropdown, the Attaform panel re-binds to that app's forms.
 
@@ -102,5 +102,5 @@ This is the practical advantage over the Nuxt panel for multi-app monorepos: pic
 
 ## Where to next
 
-- [The Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel): the Nuxt-native alternative, same data surface.
+- [The Attaform DevTools panel](/docs/devtools-and-debugging/devtools-panel): the Nuxt-native alternative, with a per-path Field state section this one does not have.
 - [Troubleshooting](/docs/devtools-and-debugging/troubleshooting): what to look for in the panels when forms misbehave.

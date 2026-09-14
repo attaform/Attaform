@@ -79,7 +79,7 @@ Each entry is typed `unknown`, because the wizard does not thread every step's s
 
 ## `forms` for typed cross-step access
 
-`wizard.forms` is the typed record of every form in the compiled list. Statically-known form slots contribute their concrete form type to the record; runtime-resolved positions (function slots, `lazy()` slots) fall under the catch-all `AnyForm` signature.
+`wizard.forms` is the typed record of every form in the compiled list. Statically-known form slots contribute their concrete form type to the record. Everything else falls under the catch-all `AnyForm` signature: the runtime-resolved positions (function slots, `lazy()` slots), and the noop behind an affordance string, which has no schema to type. `AnyForm` is the structural minimum the wizard needs, which is `{ key }` and nothing else, so those entries do not offer `values`, `meta`, or `fields` at the type level.
 
 ```ts
 const wizard = useWizard({ steps: [account, profile, review] })
@@ -88,8 +88,9 @@ const wizard = useWizard({ steps: [account, profile, review] })
 wizard.forms['signup-account'].values.email // typed string
 wizard.forms['signup-profile'].fields.city.showErrors // typed boolean
 
-// Function-slot positions: AnyForm fallback.
-wizard.forms['runtime-resolved-key'].values // typed unknown
+// Function-slot and affordance positions: the AnyForm fallback, `{ key }`.
+wizard.forms['runtime-resolved-key'].key // typed string
+wizard.forms['runtime-resolved-key'].values // compile error, not `unknown`
 ```
 
 The `forms` record is the right surface for cross-component reads. A floating-finish-button component reaches `wizard.forms[key]` to inspect any step's state, and the form handle that comes back is identity-equal to the original `useForm` ref. Mutations on one are observable on the other.
@@ -136,7 +137,17 @@ For a wizard-wide summary, flatten the record into one array and render the unio
 </template>
 ```
 
-A click on any summary row jumps the wizard to the step that produced the error. The consumer wires the focus / scroll behavior from there (see `wizard.activeForm.focusField()` on the form handle).
+A click on any summary row jumps the wizard to the step that produced the error. Focus is yours to wire from there. The step's own `focusFirstError()` is the one-liner, and it wants a tick, since the new step's inputs are not in the DOM the instant the pin moves:
+
+```ts
+async function jumpTo(err: WizardAggregateError): Promise<void> {
+  wizard.goTo(err.formKey)
+  await nextTick()
+  wizard.activeForm.focusFirstError()
+}
+```
+
+To land on the exact field the user clicked rather than that step's first error, go through its id: every field carries `form.fields.<path>.id`, so `document.getElementById(...)?.focus()` targets it precisely.
 
 For a per-step summary, index into the record directly:
 

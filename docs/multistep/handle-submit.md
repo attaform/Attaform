@@ -171,11 +171,39 @@ With the focus jump disabled, the wizard stays where it is and leaves navigation
 
 Disabling the button is belt-and-braces; the wizard refuses re-entry on its own. The flag also gates navigation: `wizard.next()`, `wizard.back()`, and `wizard.goTo()` all refuse while `submitting` is true so an in-flight submit can't be torn out from underneath itself.
 
+## When a callback throws
+
+A rejection you expected is not a throw. A server that says no is `form.setErrors(...)` on the relevant step and a plain `return`: those errors route through `onError`, `wizard.done` never latches, and the flow stays where it is.
+
+A throw is for the unexpected, and it lands on `wizard.submitError` as a real `Error`:
+
+```vue
+<script setup lang="ts">
+  import { useWizard } from 'attaform'
+
+  const wizard = useWizard({ steps: [shipping, payment, review] })
+  const onFinish = wizard.handleSubmit(async (ctx) => {
+    await api.checkout(ctx.values) // a network drop or a 500 throws
+  })
+</script>
+
+<template>
+  <p v-if="wizard.submitError" role="alert">
+    Something went wrong: {{ wizard.submitError.message }}. Try again.
+  </p>
+</template>
+```
+
+The handler parks it rather than re-throwing, and that is deliberate. It is bound to DOM events, where a rejected promise has nowhere to go but `window`'s `unhandledrejection`, which reads as a phantom crash for a failure you have already handled. So the returned handler always resolves, `wizard.submitting` clears through the `finally`, and navigation is never left stranded. A `submitError` you never render is an error nobody sees, so render it.
+
+It clears at the next submit's entry and on `wizard.reset()`. An `onError` callback that throws lands here too, wrapped so the cause is preserved.
+
 ## Degenerate inputs
 
 - **Empty steps list.** `handleSubmit` dev-warns and resolves no-op. `onSubmit` and `onError` are never invoked.
 - **Re-entrant submission.** The second call dev-warns and resolves no-op; the first call continues to settle.
 - **No `Event` argument.** Imperative calls (`onFinish()` with no event) work the same as `<form @submit>`; the `preventDefault` step is skipped.
+- **A throwing callback.** The handler resolves rather than rejecting, and the error parks on `wizard.submitError`. See [When a callback throws](#when-a-callback-throws).
 
 ## Where to next
 

@@ -92,7 +92,11 @@ The discriminator is an ordinary field: bind it to a `<select>` or a set of radi
 </template>
 ```
 
-A variant field's node is absent while its variant is inactive, so reach it through `?.`: `form.fields.cardNumber?.showErrors`. The same chaining applies to [`form.errors`](/docs/reading-the-form/errors). A switch clears the outgoing variant's schema errors, so nothing stale is left to read there; an error you parked by hand with `form.setErrors` is the exception and stays at its path, which is why an inline message belongs inside the branch that renders its input.
+A variant field's node types as `FieldState | undefined`, since it belongs to a variant that may not be live, so reach it through `?.`: `form.fields.cardNumber?.showErrors`. The node stays quiet off-variant (`showErrors` reads `false`), so an inline message bound to it does not paint on its own.
+
+What the node will not do is tell you which variant is live. Branch on the discriminator for that, `form.values.method`, and let the branch decide what renders. `form.values.cardNumber` is the read that genuinely goes `undefined` off-variant; a field node is a rendering handle, not a variant test.
+
+The same holds for [`form.errors`](/docs/reading-the-form/errors). A switch clears the outgoing variant's schema errors, so nothing stale is left to read there; an error you parked by hand with `form.setErrors` is the exception and stays at its path, which is the other reason an inline message belongs inside the branch that renders its input.
 
 ## Switching variants reshapes the form
 

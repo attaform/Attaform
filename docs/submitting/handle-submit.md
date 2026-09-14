@@ -43,12 +43,15 @@ The return value is a function ready for `<form @submit>`. Call signature: `(eve
 
 When the returned handler fires:
 
-1. The form's submit count increments. `form.meta.submissionAttempts` lifts; the default `getDisplayState` heuristic starts surfacing errors for every field.
+1. `form.meta.submitting` flips true for the whole run.
 2. Sync validation runs across every active path.
 3. Async refinements are awaited.
 4. If every refinement passes, `onSubmit(values)` is called with the **parsed** Zod output: `.transform`-aware, fully typed.
 5. The submit counts as a success, flipping `form.meta.submitted` to `true`, only when `onSubmit` resolves without throwing and leaves no errors set. A callback that hands a server rejection to `setErrors` and returns is a failed submit (see [server-side errors](/docs/submitting/server-side-errors)).
 6. Every failure pulls focus to the first invalid field. They differ in one respect: a **validation** failure (step 4 rejected, so `onSubmit` never ran) also calls `onError(errors)` when supplied. A failure your callback produces after it runs, a throw or a `setErrors` and return, does not. `onError` is the verdict on Attaform's own validation, and by then that had already passed. A thrown callback additionally lands on `form.meta.submitError` and surfaces on `form.errors`.
+7. `form.meta.submissionAttempts` increments, whichever way the run went.
+
+The counter lands at the end on purpose, which is the one ordering worth holding on to. Inside `onSubmit` or `onError` it still reads the count from before this run, so a "retry 2 of 3" affordance built on it inside a callback is off by one; read it after `await submit()`, or track your own attempt number in the callback. The same lateness is why the default display heuristic reveals every field's errors once the submit settles rather than while it is validating.
 
 While step 4 is awaiting your `onSubmit` callback, `form.meta.submitting` is `true`. It flips back when the callback resolves or rejects. A rejection is caught, not re-thrown, so it never escapes as an unhandled rejection: the raw error lands on `form.meta.submitError`, and a normalized copy joins `form.errors` (form-level, or path-scoped when you throw a `{ path, message }`), so a banner reading [`form.meta.firstOwnError`](/docs/reading-the-form/meta) catches it.
 

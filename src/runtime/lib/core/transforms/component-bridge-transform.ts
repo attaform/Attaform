@@ -72,6 +72,17 @@ function generateEqualityExpression(
   // false-positive against a single-element option.
   // The multi-select branch keeps `innerRef.value` because Array
   // / Set models need findIndex / membership iteration.
+  //
+  // The single-select comparison reads `displayValue`, the same ref
+  // the `:value` injection on the enclosing `<select>` reads and the
+  // same one the runtime `setSelected` matches against. For every
+  // value a form holds it equals `String(innerRef.value)`; where the
+  // two part is a path holding nothing, which displays as `''` and so
+  // marks an authored `<option value="">` placeholder server-side.
+  // Reading `innerRef` raw stringified an absent model to
+  // `'undefined'`, which matched nothing, so the server marked no
+  // option at all and the browser parsed the first one as selected —
+  // whichever it happened to be (#569).
   return [
     '(',
     ...getImplicitTrueMultipleExpression(multipleExpression),
@@ -81,9 +92,9 @@ function generateEqualityExpression(
     ...optionValueArr,
     `)) > -1) : (typeof (`,
     ...selectValueArr,
-    `)?.innerRef?.value !== 'object' && String((`,
+    `)?.innerRef?.value !== 'object' && (`,
     ...selectValueArr,
-    `)?.innerRef?.value) === String((`,
+    `)?.displayValue?.value === String((`,
     ...optionValueArr,
     `)))`,
   ]
@@ -411,13 +422,12 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         ? registerSummarizedProp.value
         : [registerSummarizedProp?.value ?? 'undefined']
       // Read `displayValue.value` rather than `innerRef.value` so
-      // selects share the same single read surface as text inputs.
-      // The directive never marks select paths blank (no
-      // DOM "empty" state), so in normal flow `displayValue` is just
-      // `String(storage)` — identical to today. The edge case where a
-      // consumer programmatically calls `setValue(numericPath, unset)`
-      // bound to a `<select>` is documented in the docs (browser falls
-      // back to first option; meta.blank surfaces the intent).
+      // selects share the same single read surface as text inputs, the
+      // per-option `:selected` expression above, and the runtime
+      // `setSelected`. For every value a form holds it is just
+      // `String(storage)`; where it earns its keep is a path holding
+      // nothing, which displays as `''` and so lands on an authored
+      // `<option value="">` placeholder (#569).
       const initExpression = createCompoundExpression([
         '(',
         ...valuePropExpArray,

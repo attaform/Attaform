@@ -33,7 +33,7 @@ Bind any native input to a schema path:
 The directive runs four pieces of plumbing for you:
 
 1. **Reads** the current value from `form.values.<path>` and writes it into the DOM input on initial render and on every reactive update.
-2. **Writes** back to `form.values.<path>` on every `input` event (or `change` / `blur` with modifiers).
+2. **Writes** back to `form.values.<path>` as you interact: a text input or `<textarea>` on every `input` event, a `<select>`, checkbox, radio, or file input on `change`. The [`.lazy` modifier](/docs/binding-inputs/modifiers) moves the text family onto `change` as well.
 3. **Coerces** the DOM string to the schema's leaf type: `type="number"` inputs land in storage as a number, checkboxes as a boolean, radio groups pick the option `value`.
 4. **Tracks** field state (`touched`, `focused`, `blurred`, `blank`) and surfaces it through `form.fields.<path>`.
 
@@ -60,14 +60,12 @@ The one `:value` that stays is an identity rather than state: the value a radio 
 </label>
 ```
 
-Two guards keep this right without you thinking about it:
+A guard keeps this right without you thinking about it, and which one you get follows your build:
 
-- A dev-console warning in every app, the moment the field mounts.
-- A build-time warning when you run Attaform's [Vite or Nuxt plugin](/docs/server-and-ssr/ssr-bare-vue), on every compile, so CI catches it too.
+- **With the [Vite or Nuxt plugin](/docs/getting-started/installation)**, the check runs at compile time, on every build including production and CI. It flags `v-model` and leaves `:value` / `:checked` / `:selected` alone, because under the plugin those compile into the element's fallback for when `v-register` resolves no field. That fallback is what lets [one wrapper serve both a bound and an unbound caller](/docs/binding-inputs/use-register).
+- **Building without either plugin** (the [`installVRegister` setup](#delivered-at-compile-time) below), a dev-console warning takes over the moment the field mounts. Nothing compiles a fallback leg there, so a `:value` beside a `v-register` that _did_ resolve a field is dead weight again, and the warning says so. It stands down for an unbound `v-register`, since nothing is redundant beside a directive that is not driving anything, and it never runs in production.
 
-Both are about `v-model` now, and both leave the radio and `<option>` identity `:value` alone. Under the [Vite or Nuxt plugin](/docs/getting-started/installation) a `:value` / `:checked` / `:selected` is not flagged at all: it is what the element falls back to when `v-register` resolves no field, which is what lets [one wrapper serve both a bound and an unbound caller](/docs/binding-inputs/use-register). The runtime warning also stands down entirely for a `v-register` that resolved no field, since nothing is redundant beside a directive that is not driving anything.
-
-That fallback is compiled in, so it needs the plugin. Building without one (the [`installVRegister` setup](#delivered-at-compile-time) below), nothing injects a fallback leg, and a `:value` beside a `v-register` that _did_ resolve a field is dead weight again. The dev-console warning still says so there, which is the right answer for that setup.
+Exactly one of the two speaks for any given build, so a misuse is reported once rather than twice. Both leave the radio and `<option>` identity `:value` alone.
 
 ## Listen without binding
 
@@ -116,7 +114,7 @@ installVRegister(app)
 
 This split is also what keeps Attaform lean: an app that never renders `v-register` never ships the directive's DOM machinery.
 
-If you wrap inputs inside a component whose root is **not** the input itself, [`useRegister`](/docs/binding-inputs/use-register) re-binds `v-register` onto an inner native element. For compound components binding multiple paths, prefer [`injectForm`](/docs/reading-the-form/the-form) over `useRegister`.
+If you wrap inputs inside a component whose root is **not** the input itself, [`useRegister`](/docs/binding-inputs/use-register) re-binds `v-register` onto an inner native element. For compound components binding multiple paths, prefer [`injectForm`](/docs/cross-cutting-state/inject-form) over `useRegister`.
 
 ## Reading errors per field
 

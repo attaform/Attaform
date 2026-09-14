@@ -193,6 +193,73 @@ describe('<input type="checkbox" v-register> — array group', () => {
     expect(captured.api.values.fruits).toEqual(['banana', 'cherry'])
   })
 
+  // Order is CHECK order, and deliberately not the order the boxes are
+  // declared in. The group handler appends each newly-checked value to
+  // the model, so the array is a record of what the user did rather
+  // than a projection of the template.
+  //
+  // This is the opposite of `<select multiple>`, which reads
+  // `el.options` and therefore lands in markup order (pinned in
+  // `test/composables/multi-select-write-order.test.ts`). Both rules
+  // are documented, they disagree on purpose, and nothing else in this
+  // suite separates check order from declaration order: every other
+  // group assertion here ticks boxes left to right, so the two orders
+  // coincide and a unifying refactor would sail through. Hence a case
+  // that ticks the LAST box first.
+  it('writes in check order, not declaration order', async () => {
+    const schema = z.object({ fruits: z.array(z.string()) })
+    const captured: { api?: UseFormReturn<typeof schema> } = {}
+
+    const Parent = defineComponent({
+      setup() {
+        const form = useForm({ schema, key: 'cb-array-order', strict: false })
+        captured.api = form
+        return () =>
+          h('div', [
+            withDirectives(h('input', { type: 'checkbox', value: 'apple', class: 'apple' }), [
+              [vRegister, form.register('fruits')],
+            ]),
+            withDirectives(h('input', { type: 'checkbox', value: 'banana', class: 'banana' }), [
+              [vRegister, form.register('fruits')],
+            ]),
+            withDirectives(h('input', { type: 'checkbox', value: 'cherry', class: 'cherry' }), [
+              [vRegister, form.register('fruits')],
+            ]),
+          ])
+      },
+    })
+
+    app = createApp(Parent).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    await waitUntil(() =>
+      JSON.stringify(captured.api?.values.fruits) === JSON.stringify([]) ? true : null
+    )
+    if (captured.api === undefined) throw new Error('unreachable')
+
+    const apple = root.querySelector('input.apple') as HTMLInputElement
+    const cherry = root.querySelector('input.cherry') as HTMLInputElement
+
+    // Last box first.
+    cherry.checked = true
+    dispatchChange(cherry)
+    await waitUntil(() =>
+      JSON.stringify(captured.api?.values.fruits) === JSON.stringify(['cherry']) ? true : null
+    )
+
+    apple.checked = true
+    dispatchChange(apple)
+    await waitUntil(() =>
+      JSON.stringify(captured.api?.values.fruits) === JSON.stringify(['cherry', 'apple'])
+        ? true
+        : null
+    )
+
+    // Declaration order would be ['apple', 'cherry'].
+    expect(captured.api.values.fruits).toEqual(['cherry', 'apple'])
+  })
+
   it('mounts with each checkbox checked iff its value is in the array', async () => {
     const schema = z.object({ fruits: z.array(z.string()) })
     const captured: { api?: UseFormReturn<typeof schema> } = {}

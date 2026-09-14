@@ -55,7 +55,11 @@ While `disabled` resolves truthy:
 - **Native inputs render the HTML `disabled` attribute** on the server and the client, component hosts and native selects receive a `:disabled` bind, and every field's display state settles to idle, so no error, pending, or success signal shows on a frozen field.
 - **`reset()` and `defaultValues` still hydrate.** A frozen form can be seeded or restored, which is exactly what a read-only review screen needs.
 
-The resolved state reads back on `form.meta.disabled` and `field.disabled`, both read-only, so a template can style the frozen state without tracking the flag itself.
+A blocked write is silent to your code: it no-ops and returns, and the first one logs a one-time dev warning naming the freeze. Nothing throws, so a handler that writes on a frozen form needs no guard of its own.
+
+The resolved state reads back on `form.meta.disabled` and `field.disabled`, both read-only, so a template can style the frozen state without tracking the flag itself. Set it once for every form in the app through [`createAttaform({ defaults: { disabled } })`](/docs/cross-cutting-state/app-defaults).
+
+One resolution rule to know when two components share a form: a keyed `FormStore` takes `disabled` from whichever `useForm({ key })` call ran first, and a later call passing a different value is ignored. Put the option on the call that owns the form.
 
 ## Gating a wizard step
 

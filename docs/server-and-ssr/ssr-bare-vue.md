@@ -34,14 +34,17 @@ import App from './App.vue'
 
 export async function render(url: string) {
   const app = createSSRApp(App)
-  app.use(createAttaform())
+  // `ssr: true` rather than the `typeof window` heuristic: a server
+  // that polyfills window / document would otherwise be detected as a
+  // client and skip payload serialisation entirely.
+  app.use(createAttaform({ ssr: true }))
 
   const html = await renderToString(app)
 
   const attaformState = renderAttaformState(app)
-  // escapeForInlineScript keeps </script> and U+2028 / U+2029
-  // separators out of the inline payload so it can't break out of
-  // the <script> tag.
+  // escapeForInlineScript encodes every character that could end the
+  // script element or be re-read as markup, so the payload can't break
+  // out of the <script> tag.
   const payload = escapeForInlineScript(JSON.stringify(attaformState))
 
   return { html, payload }
@@ -98,27 +101,28 @@ That's it. Every `useForm` call on the client resolves to the same values the se
 
 ## Why `escapeForInlineScript`
 
-Embedding JSON in an inline `<script>` looks safe, until the JSON contains a literal `</script>` or a U+2028 / U+2029 line separator that breaks JavaScript string parsing. `escapeForInlineScript`:
+Embedding JSON in an inline `<script>` looks safe, until the JSON contains a literal `</script>` or a U+2028 / U+2029 line separator that breaks JavaScript string parsing. `escapeForInlineScript` rewrites five characters to their `\uXXXX` escapes:
 
-- Replaces `</script>` with `<\/script>`.
-- Escapes U+2028 / U+2029 as ` ` / ` `.
-- Leaves the JSON valid for `JSON.parse` on the client.
+- `<` and `>`, so no sequence in the data can close the script element or open a tag of its own. That covers `</script>` without pattern-matching for it.
+- `&`, so nothing in the payload is re-read as an HTML entity.
+- U+2028 and U+2029, the two line separators JavaScript string parsing treats as newlines.
 
-Skip it and a `notes` field containing `</script>` would close the inline tag mid-payload, breaking the page. Defense in depth: the escape runs unconditionally, even when the data "couldn't" contain those bytes.
+The result is still valid JSON: `JSON.parse` on the client round-trips back to the original value, escapes and all. Skip the call and a `notes` field containing `</script>` closes the inline tag mid-payload and breaks the page. Defense in depth: the escape runs unconditionally, even when the data "couldn't" contain those bytes.
 
 ## What crosses the wire
 
 Same surfaces as the [Nuxt path](/docs/server-and-ssr/ssr-nuxt):
 
 - `form.values`: whole tree, including nested objects and arrays.
-- `errors`: every entry in the error map, keyed by path.
-- `fields`: `touched` / `focused` / `blurred` / `connected` / `updatedAt` per path.
-- `blankPaths`: numeric-blank state survives the boundary.
+- Schema errors: replayed at hydration, then re-derived by the client's own validation.
+- `setErrors` errors: replayed and left alone, so a server rejection survives the boundary.
+- `fields`: the whole per-path record: `touched`, `focused`, `blurred`, `connected`, `interacted`, `blurredAfterInteraction`, `updatedAt`.
+- `blankPaths`: the "shown empty" state, so a blanked field does not flash its slim default on hydrate.
 
 NOT on the wire:
 
 - History chain (each session walks its own undo timeline).
-- Validation in-flight state (re-runs locally on hydrate).
+- In-flight validation. Only settled errors ride the wire, and the client runs its own mount-time pass either way, which re-derives the schema half from the hydrated values and lands on the same errors. A field carrying an [async refinement](/docs/validation/async-refinements) pays for that pass.
 
 ## Vite plugin
 
@@ -135,7 +139,7 @@ export default defineConfig({
 })
 ```
 
-The plugin rewrites `v-register` directives to a SSR-correct form so the directive's element-tracking machinery matches between server and client renders. Without it, the directive can emit hydration mismatches on first paint.
+A native `<input v-register>` renders its value on the server with or without the plugin: the directive's own SSR hook supplies it. What the plugin adds is the rest of the picture. It marks each registered element as connected during the server render, which Vue otherwise skips along with the whole directive lifecycle, so `field.connected` reads `true` on the first paint instead of flipping after hydration. And it reaches inside component hosts: a `<MySelect v-register>` wrapping slotted `<option>`s renders with no `selected` option at all unless the plugin marks it, so the server paints the first option while the form holds a different value, and the client corrects it on hydrate with a mismatch warning to match.
 
 ## Common issues
 
@@ -144,13 +148,13 @@ The plugin rewrites `v-register` directives to a SSR-correct form so the directi
 - Did you call `hydrateAttaformState(app, payload)` before `app.mount(...)`? It has to land before `setup` runs.
 - Does the form's `key` match between server and client? Hard-code it as a string literal. `uuidv4()` or `Math.random()` produces a fresh key per render and breaks the match.
 
-### "Field errors from the server disappear on first interaction."
+### "The server's rejection disappeared as soon as the user typed."
 
-By design. Any mutation re-runs validation. Gate the display on `form.fields.<path>.touched` or `form.meta.dirty` to keep server-provided errors visible until the user touches the field.
+Check which layer it came from. An error Zod produced on the server is re-derived by the client's validation, so it clears exactly when the value stops being invalid. An error a server route parked with [`form.setErrors`](/docs/submitting/server-side-errors) lives in the user layer, which is never re-derived: it stays until you clear it. Render the message off the error itself, and let each layer decide its own lifetime. Gating it on `!form.fields.<path>.touched` looks like it protects the server's message and does the opposite: from the first interaction onward that field can never show an error again, however wrong the value gets.
 
-### "Hydration mismatch on a `<input v-register>` element."
+### "Hydration mismatch on a component that wraps an input."
 
-Install the `attaform/vite` plugin (see above). The runtime renders consistent attributes on server and client, but the directive's element-tracking emits identity markers that the compiler needs help to align between SSR and hydration phases.
+Install the `attaform/vite` plugin (see above). A component host is the shape the directive's SSR hook cannot reach on its own, so without the plugin the server renders the wrapper's inner control unmarked and the client marks it, which is the mismatch.
 
 ## Where to next
 

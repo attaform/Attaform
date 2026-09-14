@@ -59,7 +59,7 @@ form.values(['profile', 'name']) // the segment-array spelling
 
 Snapshots are memoized per change, so calling `form.values()` repeatedly between writes costs nothing extra. Inside a reactive scope, prefer dot access anyway: `form.values.age` re-runs its consumer when `age` changes, where `form.values()` depends on the whole form and re-runs on any change.
 
-The copy is deep across plain objects and arrays. Non-plain instances (`Map`, `Set`, `File`, `Date`) are shared by reference, the same way `JSON.stringify` treats them. Reach for `structuredClone(form.values())` when you need those detached too.
+The copy is deep across plain objects and arrays. Non-plain instances (`Map`, `Set`, `File`, `Date`) are not cloned: the snapshot hands back the instance the form holds, so two snapshots share one object and mutating it in place is not detached from the form. Reach for `structuredClone(form.values())` when you need those detached too.
 
 ### `form.values` itself is callable, not the data
 

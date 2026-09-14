@@ -14,13 +14,14 @@ import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
  * redundant-binding guard (#464). For every element carrying a
  * `v-register` directive it does two things:
  *
- *   1. Warns (at build time, on `console.warn`) when a redundant STATE
- *      binding sits beside `v-register` — a `:value` / `v-model` on a
- *      text input or `<select>`, a `:checked` / `v-model` on a
- *      checkbox or radio, or a `:selected` on an `<option>` inside a
- *      `v-register`'d `<select>`. `v-register` already drives all of
- *      these, so the extra binding is redundant at best and a
- *      dual-binding bug at worst.
+ *   1. Warns (at build time, on `console.warn`) when a `v-model` sits
+ *      beside `v-register` on a native `<input>` / `<select>` /
+ *      `<textarea>`. That installs Vue's own model directive next to
+ *      ours, so two writers drive one element with no fallback story
+ *      between them. A `:value` / `:checked` on those, and a
+ *      `:selected` on an `<option>`, used to warn here too; #620 made
+ *      each of them the UNBOUND leg of the injected binding instead.
+ *      See `findRedundantStateBinding` below for the full reasoning.
  *
  *   2. Stamps `V_REGISTER_COMPILED_MODIFIER` on the directive so the
  *      runtime diagnostic in `core/directive.ts` stands down. This

@@ -129,11 +129,12 @@ When the user picks `'business'` on the account step, the branching slot resolve
 
 ### Return values
 
-| Return               | Result                                                                                                                                                                                       |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An `AnyForm` ref     | The slot compiles to `{ key: form.key, form }`.                                                                                                                                              |
-| A `string` key       | The slot resolves to a noop affordance step under that key. New keys are built on the fly; the same key returned twice reuses the same noop. No pre-declaration needed elsewhere in `steps`. |
-| `null` / `undefined` | The slot is dropped from the compiled list. Useful for "this branch isn't relevant right now"; the step rail shortens accordingly.                                                           |
+| Return                 | Result                                                                                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An `AnyForm` ref       | The slot compiles to `{ key: form.key, form }`.                                                                                                                                              |
+| A `string` key         | The slot resolves to a noop affordance step under that key. New keys are built on the fly; the same key returned twice reuses the same noop. No pre-declaration needed elsewhere in `steps`. |
+| `null` / `undefined`   | The slot is dropped from the compiled list. Useful for "this branch isn't relevant right now"; the step rail shortens accordingly.                                                           |
+| A `gate()` or `lazy()` | The wrapper is unwrapped and its own result resolved by these same rules, so a slot can decide at runtime that a position is a prerequisite. See [Wrapping a slot](#wrapping-a-slot).        |
 
 ### Reactive re-evaluation
 
@@ -199,13 +200,34 @@ lazy(() => buildShippingFormForRegion(initialRegion))
 
 ### Resolution semantics
 
-| Return               | Behavior                                                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An `AnyForm` ref     | The form caches at that position. Subsequent reads reuse it until a tracked dep changes or `reset()` invalidates the cache.                             |
-| A `string` key       | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
-| `null` / `undefined` | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
+| Return                 | Behavior                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An `AnyForm` ref       | The form caches at that position. Subsequent reads reuse it until a tracked dep changes or `reset()` invalidates the cache.                             |
+| A `string` key         | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
+| `null` / `undefined`   | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
+| A `gate()` or `lazy()` | Unwrapped and resolved by these same rules. The memo caches the wrapper's result, so the nesting costs nothing extra per read.                          |
 
 Use `lazy()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler. They re-evaluate freely with the compiled list, and the wizard pays no cache-bookkeeping cost.
+
+## Wrapping a slot
+
+[`gate()`](/docs/multistep/gate) and `lazy()` are wrappers rather than kinds of their own. Each takes a slot, adds one property to that position, and hands back something the wizard resolves through the rules above: `gate()` makes the position a hard prerequisite, `lazy()` memoizes how it resolves. The slot underneath keeps its own behavior, and what compiles is still a plain `{ key, form }`.
+
+```ts
+import { useForm, useWizard, gate, lazy } from 'attaform'
+
+const wizard = useWizard({
+  steps: [
+    gate(consent), // a form slot that seals everything after it
+    gate('terms'), // an affordance slot the user has to acknowledge
+    transfer,
+    () => (transfer.values.amount > 10_000 ? gate(kyc) : null), // decided at runtime
+    gate(lazy((ctx) => buildPricingFor(ctx))), // either nesting order
+  ],
+})
+```
+
+Because a wrapper is transparent to the resolver, nesting order carries no meaning: `gate(lazy(resolve))` and `lazy((ctx) => gate(form))` compile to the same gated, memoized position. The wizard unwraps up to 32 levels and drops the slot with a dev-warn past that, which only catches a resolver that returns itself.
 
 ## The `ctx` surface
 
@@ -222,7 +244,7 @@ type WizardCtxForm = AnyForm & {
 }
 ```
 
-- `ctx.forms.<key>` is the projection over every form reachable through a top-level slot. Reads are loose-typed (`unknown`), since the wizard does not generically thread each form's schema through this surface. For typed access, close over the original form ref:
+- `ctx.forms.<key>` is the projection over the forms written directly into `steps`: every top-level form ref, plus the noop behind every top-level bare string. A form the wizard only reaches through a wrapper or a resolver is not in it, so `ctx.forms` has no entry for a `gate(consent)`, for a form a sibling function slot returned, or for one a `lazy()` built. Close over those refs instead. Reads are loose-typed (`unknown`) either way, since the wizard does not generically thread each form's schema through this surface, and closing over the original ref is what keeps it typed:
 
   ```ts
   const account = useForm({ schema: accountSchema, key: 'account' })

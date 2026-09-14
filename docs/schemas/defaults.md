@@ -43,7 +43,7 @@ form.values.count // 10
 form.values.tag // 'untitled'
 ```
 
-At mount, the adapter resolves the schema's declared defaults into a complete initial value tree. `form.values.<path>` reads concrete types: no `undefined`, no manual checks for "did the schema run yet?"
+At mount, the adapter resolves the schema's declared defaults into a complete initial value tree, synchronously, as part of the `useForm` call. `form.values.<path>` reads a concrete value from the first render, with no manual check for "did the schema run yet?" The exceptions are the kinds that have no honest blank to derive, listed in [the schema contract's blank table](/docs/schemas/contract#what-the-adapters-accept): an `.optional()` leaf, an opaque one, and a handful of others read `undefined` until something writes to them.
 
 The same defaults re-seed on `reset()`:
 
@@ -81,8 +81,8 @@ import { unset } from 'attaform'
 // 1. Plain values: explicit defaults flow into storage
 useForm({ schema, defaultValues: { email: 'me@example.com', count: 10 } })
 
-// 2. Omit defaultValues entirely: numeric leaves auto-mark blank,
-//    strings and booleans take their schema default
+// 2. Omit defaultValues entirely: every leaf takes its schema
+//    default, and a numeric leaf that declares none auto-marks blank
 useForm({ schema })
 
 // 3. Mark any path as `unset`: leaf, container, or the whole form.
@@ -113,6 +113,8 @@ const form = useForm({
 ```
 
 Each call to `form.rehydrate()` re-fires the captured factory, so a "new session" button is one method call away. The factory's closure picks up whatever the outer scope holds right now, which is the value over a plain frozen `defaultValues` object.
+
+`rehydrate()` needs a factory to replay, so calling it on a form whose `defaultValues` was a plain object throws [AF10](/e/af10) at the call site rather than resolving to nothing. It is the one method here that is function-form only.
 
 ::docs-demo{slug="defaults-sync-factory" label="Sync factory demo"}
 ::
@@ -161,7 +163,7 @@ form.errors.age // [{ code: 'atta:no-value-supplied', … }]
 
 form.values.title // ''      ← storage slim default
 form.fields.title.blank // false   ← NOT auto-marked (matches DOM)
-form.errors.title // undefined  (z.string() accepts '')
+form.errors.title // []        (z.string() accepts '')
 ```
 
 Strings and booleans don't auto-mark because their slim defaults match what the DOM natively shows. The schema is the authority on whether `''` / `false` is acceptable; numerics need the side-channel to disambiguate "user typed `0`" from "user supplied nothing." See [the `blank` field-state bit](/docs/validation/blank) for the full lifecycle.
@@ -171,12 +173,16 @@ Strings and booleans don't auto-mark because their slim defaults match what the 
 Zod offers three wrappers that influence the initial value:
 
 ```ts
-z.string().default('foo') // pre-parse: used when input is undefined
-z.string().prefault('foo') // same as default in Zod v4 (alias)
+z.string().default('foo') // used when input is undefined, and returned as-is
+z.string().prefault('foo') // used when input is undefined, and parsed like input
 z.string().catch('foo') // post-parse fallback: used when parse fails
 ```
 
-For form defaults, you usually want `.default(x)`; it fills the slot before any user input lands. `.catch(x)` is for recovery: if the schema would otherwise raise an error, fall back to `x`. The adapter recognizes all three and feeds the initial value into `form.values` the same way; the difference shows up at parse time.
+For form defaults, you usually want `.default(x)`; it fills the slot before any user input lands. `.catch(x)` is for recovery: if the schema would otherwise raise an error, fall back to `x`.
+
+`.prefault(x)` is Zod v4's third option (v3 has no equivalent), and in plain Zod it is genuinely distinct: `.default(x)` hands `x` straight back, while `.prefault(x)` feeds it through the rest of the pipeline first, so `z.string().trim().prefault('  hi  ')` parses to `'hi'` and the `.default()` spelling parses to `'  hi  '`.
+
+Inside a form that distinction never gets to fire. Attaform materializes the declared default into storage at mount, so by the time anything parses, the slot holds a real value rather than `undefined` and both wrappers are on the same path. All three feed `form.values` identically; pick whichever reads best.
 
 ## `reset()` vs. `clear()`
 

@@ -35,7 +35,7 @@ const lowercase: RegisterTransform = (v) => (typeof v === 'string' ? v.toLowerCa
 const dashify: RegisterTransform = (v) => (typeof v === 'string' ? v.replace(/\s+/g, '-') : v)
 ```
 
-`RegisterTransform` is `(value: unknown) => unknown`. The shape is intentionally generic, so a personal library of transforms plugs into any `register()` call site regardless of leaf type. Library authors defend against type mismatches by no-op'ing on the unexpected branch.
+`RegisterTransform` is `(value: unknown, ctx?: TransformContext) => unknown`. The [`ctx`](#cancel-stale-work-with-ctxsignal) is there for async work and a sync transform can ignore it. The shape is intentionally generic, so a personal library of transforms plugs into any `register()` call site regardless of leaf type. Library authors defend against type mismatches by no-op'ing on the unexpected branch.
 
 ## Attach via `transforms: [...]`
 
@@ -43,7 +43,7 @@ const dashify: RegisterTransform = (v) => (typeof v === 'string' ? v.replace(/\s
 form.register('slug', { transforms: [lowercase, dashify] })
 ```
 
-Pass an ordered array on the `register` options. Every keystroke (or `change`/`blur` with `.lazy`) flows through the transforms left-to-right; the final value is what lands in storage.
+Pass an ordered array on the `register` options. Every write flows through the transforms left-to-right and the final value is what lands in storage, on each keystroke by default and on `change` under [`.lazy`](/docs/binding-inputs/modifiers).
 
 ## Composition order
 
@@ -54,7 +54,7 @@ form.register('slug', { transforms: [trim, lowercase, dashify] })
 // 'Hello World ' → 'Hello World' → 'hello world' → 'hello-world'
 ```
 
-Pick the order that matches the data flow you want. The [`.trim`](/docs/binding-inputs/modifiers) modifier runs before any transform, so a `[trim, ...]` transforms array would be redundant. Reach for the modifier when you want trimming and the transforms array when you want anything else.
+Pick the order that matches the data flow you want. The [`.trim`](/docs/binding-inputs/modifiers) modifier is not a first entry in this array. It holds its strip until the user leaves the field, so a transform receives the untrimmed text on every keystroke and then runs once more on the trimmed value at blur. Reach for the modifier when whitespace should settle as the user moves on, which is the usual want, and put a trimming step in the array when every keystroke has to see it stripped.
 
 ## Async transforms
 

@@ -72,7 +72,9 @@ While `onSubmit` is running, `form.meta.submitting` is `true`. Use it to disable
 </button>
 ```
 
-`submitting` flips back to `false` when the callback resolves or rejects (`handleSubmit` catches the rejection and routes the failure to its error hook). The full `meta` surface (`submissionAttempts`, `submitError`, `submitted`, and the 22 inherited FieldState bits) lives on [the `meta` page](/docs/reading-the-form/meta).
+`submitting` flips back to `false` when the callback resolves or rejects. A rejection is caught rather than re-thrown, so it never escapes as an unhandled rejection: the raw error lands on `form.meta.submitError` and a normalized copy joins `form.errors`, ready for a banner.
+
+What it does not do is call `onError`. That hook is the verdict on Attaform's own validation, and by the time your callback runs, validation has already passed. [`handleSubmit`](/docs/submitting/handle-submit) traces both failure paths. The full `meta` surface (`submissionAttempts`, `submitError`, `submitted`, and every inherited FieldState read) lives on [the `meta` page](/docs/reading-the-form/meta).
 
 ## Where to next
 

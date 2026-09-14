@@ -101,19 +101,22 @@ A small, stable enum for Attaform-emitted `ValidationError.code` values. The cod
 ```ts
 import { AttaformErrorCode } from 'attaform'
 
-if (form.errors.email?.[0]?.code === AttaformErrorCode.NoValueSupplied) {
+if (form.errors.email[0]?.code === AttaformErrorCode.NoValueSupplied) {
   // …
 }
 ```
 
-| Code value               | Constant                             | Emitted when                                                                      |
-| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `atta:no-value-supplied` | `AttaformErrorCode.NoValueSupplied`  | A required leaf is in `blankPaths` (numeric auto-mark or `unset`).                |
-| `atta:adapter-threw`     | `AttaformErrorCode.AdapterThrew`     | An `AbstractSchema` method (validate, getDefaults, etc.) threw.                   |
-| `atta:validator-threw`   | `AttaformErrorCode.ValidatorThrew`   | User code inside a `z.preprocess` / `.refine` / `.transform` threw.               |
-| `atta:hydration-failed`  | `AttaformErrorCode.HydrationFailed`  | A function-form `defaultValues` factory threw or its promise rejected.            |
-| `atta:path-not-found`    | `AttaformErrorCode.PathNotFound`     | A path canonicalization rejected the input as not reachable.                      |
-| `atta:activation-failed` | `AttaformErrorCode.ActivationFailed` | A walked form's async `defaultValues` factory threw inside `wizard.handleSubmit`. |
+| Code value               | Constant                             | Emitted when                                                                        |
+| ------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------- |
+| `atta:no-value-supplied` | `AttaformErrorCode.NoValueSupplied`  | A required leaf is in `blankPaths` (numeric auto-mark or `unset`).                  |
+| `atta:user-error`        | `AttaformErrorCode.UserError`        | You put it there with `form.setErrors`. Every entry in the user layer carries it.   |
+| `atta:submit-error`      | `AttaformErrorCode.SubmitError`      | Your `onSubmit` callback threw or its promise rejected.                             |
+| `atta:adapter-threw`     | `AttaformErrorCode.AdapterThrew`     | An `AbstractSchema` method (validate, getDefaults, etc.) threw.                     |
+| `atta:validator-threw`   | `AttaformErrorCode.ValidatorThrew`   | User code inside a `z.preprocess` / `.refine` / `.transform` threw.                 |
+| `atta:hydration-failed`  | `AttaformErrorCode.HydrationFailed`  | A function-form `defaultValues` factory threw or its promise rejected.              |
+| `atta:path-not-found`    | `AttaformErrorCode.PathNotFound`     | A path canonicalization rejected the input as not reachable.                        |
+| `atta:activation-failed` | `AttaformErrorCode.ActivationFailed` | A walked form's async `defaultValues` factory threw inside `wizard.handleSubmit`.   |
+| `atta:gate-not-cleared`  | `AttaformErrorCode.GateNotCleared`   | A `wizard.handleSubmit` ran with a [`gate`](/docs/multistep/gate) step unsubmitted. |
 
 Don't expect every internal failure mode to surface as a stable code; the codes are reserved for cases where consumer templates legitimately want to branch on a specific failure mode without matching message strings.
 
@@ -123,19 +126,19 @@ Every error in `form.errors.<path>`, `form.meta.errors`, and the parser's result
 
 ```ts
 type ValidationError = {
-  readonly path: ReadonlyArray<string | number>
-  readonly message: string
-  readonly code: string
-  readonly formKey: string
-  readonly data?: Json | null
+  message: string
+  path: (string | number)[]
+  code: string
+  data?: Json | null
 }
 ```
 
-- `path`: the canonical segment tuple (`['profile', 'email']`). Field errors carry their field's path; global, form-level errors (a root `.refine()`, a path-less `setErrors` call) carry the empty root path `[]` and read through `form.meta.ownErrors`.
 - `message`: the human-readable error text.
+- `path`: the canonical segment tuple (`['profile', 'email']`). Field errors carry their field's path; global, form-level errors (a root `.refine()`, a path-less `setErrors` call) carry the empty root path `[]` and read through `form.meta.ownErrors`.
 - `code`: stable identifier (`atta:no-value-supplied`, `zod:invalid_type`, `api:duplicate-email`, etc.).
-- `formKey`: which form emitted the error. Useful for cross-form aggregation in wizards.
 - `data`: optional, opaque JSON payload a server attached to the error (a captcha challenge, a lockout `unlocks_at` timestamp, an MFA step-up descriptor). Attaform carries it untouched; your UI reads it. Typed as `Json` (the JSON-serialisable value shape).
+
+Which form an error came from is not on the error. It is envelope-level identity: `validate()` and `parse()` stamp `formKey` once on the result that carries the list, and the wizard stamps its own when it merges lists across forms, which is why [`wizard.allErrors`](/docs/multistep/aggregates) hands back a `WizardAggregateError` with a `formKey` on each entry rather than a bare `ValidationError`.
 
 The `code` is what consumers branch on; the `message` is what templates render. Avoid matching `message` strings; they're localized and may change over time without breaking the public contract.
 

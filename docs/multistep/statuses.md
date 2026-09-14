@@ -1,11 +1,11 @@
 ---
 title: Statuses
-description: wizard.statuses surfaces a per-step FormStatus rollup (valid, dirty, submitted, errorCount) for progress rails, gates, and summaries. Read it drillably, snapshot it, or seed it with defaultStatuses.
+description: wizard.statuses is a per-step FormStatus rollup (valid, dirty, submitted, errorCount, locked, gate) for rails, locks, and summaries. Read it drillably, snapshot it, or seed it with defaultStatuses.
 metaRows:
   - label: Category
     value: Reactive surface
   - label: Shape
-    value: '{ valid, dirty, submitted, errorCount }'
+    value: '{ valid, dirty, submitted, errorCount, locked, gate }'
     kind: code
   - label: Read patterns
     value: 'drillable · callable · called with a key'
@@ -29,10 +29,21 @@ type FormStatus = {
   readonly dirty: boolean
   readonly submitted: boolean
   readonly errorCount: number
+  readonly locked: boolean
+  readonly gate: 'cleared' | 'uncleared' | null
 }
 ```
 
-Each field tracks the per-step form's `meta`. A step's status flips when its meta does. The four scalars are deliberately small. They're what step indicators, navigation gates, and submit summaries reach for.
+The first four track the per-step form's `meta`, so a step's status flips when its meta does. They are deliberately small: they're what step indicators, navigation gates, and submit summaries reach for.
+
+The last two are the wizard's own, and they overlay whatever the four `meta` scalars resolve to:
+
+- `locked` is `true` when the step sits behind an earlier uncleared [`gate()`](/docs/multistep/gate), so it is sealed. That is the boolean a rail binds to `:disabled`.
+- `gate` is the step's own role as a prerequisite: `null` unless the step compiles to a `gate()`, then `'uncleared'` until its member form submits clean and `'cleared'` after.
+
+The two are independent axes. The first uncleared gate reads `gate: 'uncleared'` with `locked: false`, because you have to reach a gate to clear it.
+
+One thing `submitted` does not track: a whole-wizard [`wizard.handleSubmit`](/docs/multistep/handle-submit) leaves every step's `submitted` alone. It validates each form rather than submitting it, so the flag stays `false` even on a clean finish. `wizard.done` is the read for "the wizard finished"; `submitted` answers the narrower "did this step's own `handleSubmit` succeed".
 
 ## Reading patterns
 
@@ -130,6 +141,10 @@ The seed fills in until the real form data lands. Resolution priority per step:
 2. The step is an affordance (noop form). The built-in always-valid status renders.
 3. The step has a seed entry from `defaultStatuses`. The seed value renders.
 4. Otherwise, a pending status renders (`valid: false, dirty: false, submitted: false, errorCount: 0`).
+
+`locked` and `gate` sit outside that ladder. Both are derived live from the wizard's gate state and overlaid on whichever branch resolves, so a sealed step reads `locked: true` whether its status came from `meta`, from the seed, or from the pending sentinel.
+
+A seed entry is a `FormStatusSeed`, which is looser than the `FormStatus` you read back. Every field is optional, and an omitted one falls back to the pending sentinel rather than to the form's live meta, so seed the fields you actually know. `locked` is not accepted at all, since it is derived. `gate` is accepted but write-only: `{ gate: 'cleared' }` latches a gate cleared once at construction, and every later read comes from the live overlay. See [`gate`](/docs/multistep/gate#reading-the-gate-role) for that round trip.
 
 Unknown keys in the seed object dev-warn at construction; the wizard ignores them. Known keys still apply, so a partial seed is fine.
 

@@ -11,7 +11,7 @@ metaRows:
     value: '{ values, get(form), currentKey, isFinal }'
     kind: code
   - label: Error handler
-    value: '(errors: AggregateError[]) => void | Promise<void>'
+    value: '(errors: WizardAggregateError[]) => void | Promise<void>'
     kind: code
 ---
 
@@ -50,6 +50,8 @@ metaRows:
 
 Because it validates the whole wizard from any step, you can call it the moment every step is filled, whether or not the user has walked to the last one. The handler accepts an optional `Event` and calls `preventDefault()` when one is passed, so `@submit` and `@click` both work. Bare imperative calls (`onFinish()` with no event) are fine too; the handler just skips the prevent step.
 
+A clean finish latches `wizard.done`, and that is the flag to render a confirmation from. It stays `true` until `wizard.reset()`, so the state survives a user wandering back through the steps to look at what they sent. Nothing else on the wizard changes: the pin stays where it is, and each step's `submitted` stays as its own `handleSubmit` left it, because a whole-wizard pass validates each form rather than submitting it.
+
 ## The submit context
 
 The `onSubmit` callback receives one `ctx` argument:
@@ -80,7 +82,7 @@ const onFinish = wizard.handleSubmit(async (ctx) => {
 
 ## Gating advance per step
 
-`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin and never validate. To advance a step only when it is valid, reach for `wizard.tryNext()`:
+`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin without validating, with one exception: `next()` on an uncleared [`gate()`](/docs/multistep/gate) step submits instead, so the gate's confirmation cannot be stepped around. To advance a step only when it is valid, reach for `wizard.tryNext()`:
 
 ```vue
 <template>
@@ -133,7 +135,14 @@ const onFinish = wizard.handleSubmit(
 )
 ```
 
-Each error carries `formKey`, `path`, `message`, and an optional `code`. Because `handleSubmit` validates the whole wizard, the list spans every failing step at once, not just the active one, plus any errors the callback set with `setErrors` and any activation failures (e.g., a form whose async `defaultValues` rejected). For wizard-wide error summaries that persist between submissions, drive them off [`wizard.allErrors`](/docs/multistep/aggregates#allerrors-for-wizard-wide-summaries) instead.
+Each error is a `WizardAggregateError`, carrying `formKey`, `path`, `message`, and an optional `code`. Because `handleSubmit` validates the whole wizard, the list spans every failing step at once, not just the active one. Four things land in it:
+
+- **Validation errors**, from every step, each stamped with the step it came from.
+- **Errors the callback set** with `form.setErrors`, the server-rejection path. They route through `onError` exactly like a validation failure, and `wizard.done` never latches.
+- **Activation failures**, such as a form whose async `defaultValues` rejected.
+- **Uncleared [`gate()`](/docs/multistep/gate) steps**, one entry per gate, coded `atta:gate-not-cleared` and pathed at `[]`. A gate blocks the finish even when every form validates, since a gate opens on a confirming submit and not on validity. Validation errors sort ahead of gate entries, so `errors[0]` is a real field error when there is one.
+
+For wizard-wide error summaries that persist between submissions, drive them off [`wizard.allErrors`](/docs/multistep/aggregates#allerrors-for-wizard-wide-summaries) instead.
 
 ## `focusFirstError`
 
@@ -162,15 +171,43 @@ With the focus jump disabled, the wizard stays where it is and leaves navigation
 
 Disabling the button is belt-and-braces; the wizard refuses re-entry on its own. The flag also gates navigation: `wizard.next()`, `wizard.back()`, and `wizard.goTo()` all refuse while `submitting` is true so an in-flight submit can't be torn out from underneath itself.
 
+## When a callback throws
+
+A rejection you expected is not a throw. A server that says no is `form.setErrors(...)` on the relevant step and a plain `return`: those errors route through `onError`, `wizard.done` never latches, and the flow stays where it is.
+
+A throw is for the unexpected, and it lands on `wizard.submitError` as a real `Error`:
+
+```vue
+<script setup lang="ts">
+  import { useWizard } from 'attaform'
+
+  const wizard = useWizard({ steps: [shipping, payment, review] })
+  const onFinish = wizard.handleSubmit(async (ctx) => {
+    await api.checkout(ctx.values) // a network drop or a 500 throws
+  })
+</script>
+
+<template>
+  <p v-if="wizard.submitError" role="alert">
+    Something went wrong: {{ wizard.submitError.message }}. Try again.
+  </p>
+</template>
+```
+
+The handler parks it rather than re-throwing, and that is deliberate. It is bound to DOM events, where a rejected promise has nowhere to go but `window`'s `unhandledrejection`, which reads as a phantom crash for a failure you have already handled. So the returned handler always resolves, `wizard.submitting` clears through the `finally`, and navigation is never left stranded. A `submitError` you never render is an error nobody sees, so render it.
+
+It clears at the next submit's entry and on `wizard.reset()`. An `onError` callback that throws lands here too, wrapped so the cause is preserved.
+
 ## Degenerate inputs
 
 - **Empty steps list.** `handleSubmit` dev-warns and resolves no-op. `onSubmit` and `onError` are never invoked.
 - **Re-entrant submission.** The second call dev-warns and resolves no-op; the first call continues to settle.
 - **No `Event` argument.** Imperative calls (`onFinish()` with no event) work the same as `<form @submit>`; the `preventDefault` step is skipped.
+- **A throwing callback.** The handler resolves rather than rejecting, and the error parks on `wizard.submitError`. See [When a callback throws](#when-a-callback-throws).
 
 ## Where to next
 
 - [`useWizard`](/docs/multistep/use-wizard) for the construction signature and the full wizard handle.
 - [Aggregates](/docs/multistep/aggregates) for `wizard.allValues` and `wizard.allErrors`, which mirror the data `ctx.values` carries.
-- [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup that flips `submitted: true` when the callback succeeds.
+- [Statuses](/docs/multistep/statuses) for the per-step `FormStatus` rollup, including why a whole-wizard finish latches `wizard.done` rather than any step's `submitted`.
 - [Patterns](/docs/multistep/patterns) for branching flows and the gated-advance composition in context.

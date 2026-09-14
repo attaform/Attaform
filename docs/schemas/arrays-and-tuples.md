@@ -64,7 +64,7 @@ Templates iterate with `v-for`:
 </template>
 ```
 
-The `i` keyed loop pattern is fine for static lists. For lists where items can reorder, use a stable per-row identifier instead; see [Performance](/docs/server-and-ssr/performance) for the keying discussion.
+The `i` keyed loop pattern is fine for a list that only grows at the end. Once items can move, iterate with [`form.list`](/docs/reading-the-form/list) and key on `row.key`, the identity token that follows an element through every reorder.
 
 ## Field-array helpers
 
@@ -102,10 +102,13 @@ form.values.dateRange[0] // Date
 form.values.dateRange[1] // Date
 form.register('dateRange.0') // path autocomplete narrows to position 0
 form.register('dateRange.1') // position 1
-form.register('dateRange.2') // type error (tuple has only 2 positions)
 ```
 
-Tuples don't expose the field-array helpers; `form.append('dateRange', new Date())` is a type error because the tuple has a fixed shape. For mixed-shape sequences (a `[string, number, boolean]`), tuples are how you say "exactly this layout, in this order."
+A tuple keeps its declared length, and the write boundary is where that is enforced. `form.setValue('dateRange.2', new Date())` dev-warns that the path is not in your schema and refuses the write. The field-array helpers land in the same place, since `form.append('dateRange', new Date())` is a write at `dateRange.2` underneath: it warns and no-ops rather than growing the tuple. Nothing off-shape reaches storage.
+
+The compiler is the looser of the two here. A tuple is structurally an array in TypeScript, so a tuple path still satisfies the helpers' `ArrayPath` constraint and `register('dateRange.2')` still type-checks. Read the runtime diagnostic as the authority on tuple length.
+
+For mixed-shape sequences (a `[string, number, boolean]`), tuples are how you say "exactly this layout, in this order."
 
 ## When to pick which
 
@@ -123,7 +126,15 @@ form.errors.todos[0]?.title // ValidationError[] for todos[0].title
 form.errors.dateRange[1] // ValidationError[] for dateRange[1]
 ```
 
-The aggregate `form.meta.errors` flattens every leaf's errors into a single list. Cross-element refinements (a `.refine` on the whole array) land on the array path itself rather than a specific element. `form.errors.todos[0]` (note the `[0]` index after the `.errors.todos` access) reads the first error attached to the array, which is the cross-element one.
+The aggregate `form.meta.errors` flattens every leaf's errors into a single list. Cross-element refinements (a `.refine` on the whole array) land on the array path itself rather than on any element, and reading them needs the [`''` container-self sentinel](/docs/reading-the-form/errors#the-sentinel-container-self-errors), because dot and index access on `form.errors` is pure navigation:
+
+```ts
+form.errors.todos[''] // the cross-element errors, the array's own
+form.errors.todos[0] // element 0's sub-Proxy, NOT an error list
+form.errors('todos') // flat aggregate: the array's own plus every descendant's
+```
+
+`form.fields('todos').firstOwnError` is the same read as the first spelling, with the display gating and `firstError` sugar layered on.
 
 ## Async element-level refinements
 

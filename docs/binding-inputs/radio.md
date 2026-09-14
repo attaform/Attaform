@@ -40,7 +40,7 @@ Every radio bound to `form.register('plan')` belongs to the same group. The dire
 form.values.plan // 'starter' | 'pro' | 'team'
 ```
 
-No `name=` ceremony; the shared `register` call IS the group. The browser's per-name single-pick semantics still apply for keyboard navigation, and Attaform reads the result.
+No `name=` ceremony; the shared `register` call IS the group, and Attaform keeps the pick exclusive from the model: choosing one option writes it, and every other radio on the path falls out of step with storage and clears itself. Add a shared `name=` as well when you want the browser's own grouping, which is what gives a radio group its arrow-key navigation.
 
 ## Default selection
 
@@ -59,14 +59,14 @@ The directive sets `checked` on whichever radio's `value` matches the stored val
 
 ## Numeric and enum options
 
-Radio inputs only emit DOM strings, but the schema leaf can be a number, an enum literal, or any other scalar. The `.number` modifier coerces:
+Radio inputs only emit DOM strings, but the schema leaf can be a number, an enum literal, or any other scalar. Declaring the leaf is the whole job; nothing goes on the directive:
 
 ```vue
-<input v-register.number="form.register('priority')" type="radio" value="1" />
-<input v-register.number="form.register('priority')" type="radio" value="2" />
+<input v-register="form.register('priority')" type="radio" value="1" />
+<input v-register="form.register('priority')" type="radio" value="2" />
 ```
 
-The directive parses `'1'` → `1` before writing. The [Schema-driven coercion](/docs/binding-inputs/coercion) page covers every leaf-type mapping.
+Against a `z.number()` leaf, `'1'` lands as `1`. [Schema-driven coercion](/docs/binding-inputs/coercion) handles this for every radio and covers every leaf-type mapping. The `.number` modifier a text input or `<select>` reaches for has no role here, which is why the table above reads `none`: the radio binding takes no modifiers.
 
 ## Where to next
 

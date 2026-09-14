@@ -116,7 +116,7 @@ Because the gate wraps the slot rather than living in a separate policy, the con
 
 ## Rendering the lock
 
-Every gated step reports `wizard.statuses[key].locked === true`, so a progress rail can render a sealed step with a lock icon and a disabled button:
+Every step sealed behind an uncleared gate reports `wizard.statuses[key].locked === true`, so a progress rail can render it with a lock icon and a disabled button. The gate itself is not one of them: you have to be able to reach a gate to clear it, so it reads `locked: false` while it seals everything after it.
 
 ```vue
 <button

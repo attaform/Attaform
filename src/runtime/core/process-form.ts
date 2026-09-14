@@ -600,8 +600,8 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitted.value = true
         }
-        // Notify subscribers (persistence's clear-on-success handler,
-        // future hooks). Fires only when the user callback resolved —
+        // Notify subscribers (the wizard's step-advance handler, the
+        // devtools timeline). Fires only when the user callback resolved —
         // validation-failure and callback-throw skip it.
         state.emitSubmitSuccess()
       } catch (err) {

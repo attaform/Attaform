@@ -17,7 +17,8 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-- `setErrors(errors | updater | (path, errors))` is a **whole-layer replace**, so `clearErrors()` at the top of a fresh attempt drops errors a previous submit set. `clearErrors(path?)` scopes the clear.
+- `setErrors(errors | updater | (path, errors))` is a **whole-layer replace** of the user layer, so `clearErrors()` at the top of a fresh attempt drops errors a previous submit set. `clearErrors(path?)` scopes the clear.
+- `clearErrors` clears the **schema layer too**, at whatever path it targets, not just the user one. Inside a submit callback that costs nothing, since validation has already passed to get there, and with always-on validation the schema half re-populates on the next mutation if the value is still wrong. Pass `setErrors([])` instead when you mean to empty the user layer alone.
 - `handleSubmit` focuses the first offending field for user-set errors exactly as it does for client-invalid fields, so a `setErrors` call inside the callback needs no separate focus step.
 
 ## The `ValidationError` envelope
@@ -27,7 +28,11 @@ If your backend emits Attaform's `ValidationError` shape, it pipes straight into
 ```ts
 import type { ValidationError, Json } from 'attaform'
 
-// { message: string; path: (string | number)[]; code?: string; data?: Json | null }
+// ValidationError, what you READ BACK:
+// { message: string; path: (string | number)[]; code: string; data?: Json | null }
+// What setErrors ACCEPTS is looser: every field optional, plus a bare
+// Error. A missing message becomes 'Unknown error', a missing path is
+// [] (form level), a missing code is 'atta:user-error'.
 ```
 
 - One entry per message at `path: [field]`; a form-level error is `path: []`; a dotted key splits into segments.
@@ -55,7 +60,7 @@ A form-level banner wants the root's **own** bucket, not the aggregate:
 const banner = computed(() => form.meta.firstOwnError)
 ```
 
-Do not use `form.errors([])` for a banner: `errors(path)` uniformly means "path plus descendants", so `errors([])` is the whole-form aggregate and would surface individual field errors in the summary. `form.meta.firstOwnError` is the correct root-only read. The same own axis surfaces a container-level `.refine()` error, for example `form.fields.address.firstOwnError`.
+Do not use `form.errors([])` for a banner: `errors(path)` uniformly means "path plus descendants", so `errors([])` is the whole-form aggregate and would surface individual field errors in the summary. `form.meta.firstOwnError` is the correct root-only read. The same own axis surfaces a container-level `.refine()` error, through the CALL form: `form.fields('address').firstOwnError`. Dot access on a container (`form.fields.address`) is navigation toward leaves and carries no error state of its own, so the dotted spelling reads `undefined` no matter what the container holds.
 
 ## One normalizer, always non-empty
 

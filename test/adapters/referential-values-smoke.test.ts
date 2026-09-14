@@ -22,7 +22,7 @@
  * in `every-zod-kind.test.ts`.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick } from 'vue'
+import { effectScope, markRaw, nextTick } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
@@ -183,7 +183,7 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
     expect(api.values.label).toBe('hello')
   })
 
-  it('lets a private-field class instance stay callable through the store', () => {
+  it('keeps a class instance intact, private fields excepted', () => {
     // The sharpest edge in the reactive tree: Vue proxies a plain class
     // instance, and a method reading `#private` state throws through the
     // proxy. Attaform must not make that worse, and must not silently
@@ -191,19 +191,28 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
     const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
     const session = new Session('secret')
     api.setValue('session', session)
-    const read = api.values.session
+    const read = api.values.session as Session
+
     expect(read).toBeInstanceOf(Session)
-    // Reaching the private field may throw through the proxy (that is
-    // Vue's boundary, documented in the schema contract). What must NOT
-    // happen is a different value coming back.
-    let revealed: string | null
-    try {
-      revealed = (read as Session).reveal()
-    } catch {
-      revealed = null
-    }
-    expect(revealed === 'secret' || revealed === null).toBe(true)
-    expect((read as Session).label).toBe('session')
+    expect(read.label).toBe('session')
+    // Vue's boundary, and the reason the schema contract page tells
+    // readers to reach for `markRaw`. Asserted rather than tolerated:
+    // the page prescribes a remedy, so the problem it remedies has to
+    // stay real. A brand check on a proxy cannot reach the receiver's
+    // private slot, so this is a TypeError every time.
+    expect(() => read.reveal()).toThrow(TypeError)
+  })
+
+  it('lets `markRaw` restore private-field access, as the docs prescribe', () => {
+    // The other half. If this ever stopped working the schema contract
+    // page would be handing readers a remedy that does nothing, and
+    // nothing else in the suite would notice.
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
+    api.setValue('session', markRaw(new Session('secret')))
+    const read = api.values.session as Session
+
+    expect(read).toBeInstanceOf(Session)
+    expect(read.reveal()).toBe('secret')
   })
 
   it('churns an array of callbacks through every list helper', async () => {

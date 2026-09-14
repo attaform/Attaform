@@ -128,7 +128,7 @@ No "this one came from the server" branch in your template. The render code read
 
 ## Clearing on a fresh round-trip
 
-A server error stays put until you clear it: editing the field does not drop it on its own, which matches the network round-trip (the value is not re-checked until the next submit). Clearing the whole layer at the top of `handleSubmit` is the common rhythm, so each submit starts clean.
+A server error stays put while the user edits: the value is not re-checked until the next round-trip, so nothing on the client has grounds to drop it. The next submit is what clears it, and Attaform does that for you. `handleSubmit` wipes the whole user layer on entry, before validation and before your callback, so every attempt starts from a clean slate and the errors your callback sets are the verdict on this attempt rather than a merge with the last one.
 
 For clear-on-edit UX, watch the path and clear it:
 

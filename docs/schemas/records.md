@@ -70,7 +70,7 @@ const checked = form.values.prefs[userId] ?? false
 
 ## Dynamic keys are still typed
 
-A dynamic key is not an escape hatch. A record contributes a `${string}` segment to the path union, so `register(\`prefs.${userId}\`)`is checked against the schema like any other path: the`prefs.`prefix has to be real, and the value type at the leaf is still`boolean`.
+A dynamic key is not an escape hatch. A record contributes a `${string}` segment to the path union, so ``register(`prefs.${userId}`)`` is checked against the schema like any other path: the `prefs.` prefix has to be real, and the value type at the leaf is still `boolean`.
 
 What a path needs is for **every segment to carry a type**. An interpolated `string` is a typed segment; the record accepts it. A `string` standing in for the container above it is not, and there the compiler has nothing left to check:
 
@@ -244,7 +244,13 @@ form.values.tags // Set<string>
 form.setValue('tags', new Set([...form.values.tags, 'new-tag']))
 ```
 
-A validation error on a member lands on the set itself, at `form.errors.tags`, on both Zod majors.
+A validation error on a member lands on the set itself rather than on any member, on both Zod majors. That makes it a container-self error, so `form.errors.tags` navigates to the set's sub-Proxy and the list lives one step further on, at the [`''` sentinel](/docs/reading-the-form/errors#the-sentinel-container-self-errors):
+
+```ts
+form.errors.tags[''] // ValidationError[]: the set's own
+form.errors('tags') // the same list, through the flat call form
+form.fields('tags').firstOwnError // the first one, display gating included
+```
 
 ## When to pick which
 

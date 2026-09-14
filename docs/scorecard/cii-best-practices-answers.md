@@ -66,7 +66,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 ### 9. `documentation_interface`: The project MUST provide reference documentation describing external interfaces.
 
 **Answer:** Met.
-**URL/evidence:** [apps/site/content/docs](https://github.com/attaform/Attaform/tree/main/apps/site/content/docs)
+**URL/evidence:** [docs](https://github.com/attaform/Attaform/tree/main/docs)
 **Notes:** Per-symbol reference pages: `useForm`, `useRegister`, `useWizard`, `injectForm`, plus schema, validation, SSR, undo/redo. Every public API symbol has its own page with the inference-first DX walkthroughs Attaform is built around.
 
 ### 10. `sites_https`: Project sites MUST support HTTPS using TLS.

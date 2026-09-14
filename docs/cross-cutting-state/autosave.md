@@ -160,6 +160,29 @@ A network round-trip per keystroke is wasteful, so each path gets its own deboun
 
 Each watcher also owns an `AbortController`. When a newer edit lands before the previous save finished, the recipe aborts the prior controller and starts a fresh one, so a stale request to a slow endpoint cancels itself and the latest write wins. The `save` callback receives that `signal`, so passing it to `fetch` cancels the request in flight; checking `signal.aborted` after an `await` skips a status update for work that has been superseded. Because the scheduler returns immediately, the actual save runs after the watcher has finished, so `run` catches its own throw and sets `status[path] = 'error'` rather than letting it escape.
 
+## When the interaction is already the commit
+
+The debounce above exists because typing is continuous: a keystroke is not a decision, so the recipe waits for a pause before it believes one was made. Plenty of surfaces are not shaped that way. A `<select>`, a checkbox, a radio group, a star rating: one interaction is one whole decision, and there is nothing to wait for.
+
+Two shapes fit that, and the difference is what the reaction belongs to.
+
+When it belongs to the _value_, keep the recipe and drop the wait with `{ debounceMs: 0 }`. Each committed change saves immediately, and you keep the per-field `status`, the validity gate, the abort-on-supersede, and `runWithoutAutosave`. This is also the only shape that catches a programmatic write, since `form.setValue` and `form.reset()` fire no DOM event.
+
+When it belongs to the _interaction_, a plain listener beside `v-register` is enough:
+
+```vue
+<template>
+  <select v-register="form.register('boxes.3.choice')" @change="save('boxes.3.choice')">
+    <option value="asked">Asked</option>
+    <option value="not-asked">Not asked</option>
+  </select>
+</template>
+```
+
+The directive writes the field before your handler runs, so `save` reads the committed value. Nothing is stacked and nothing warns, because a listener that only reads is not a second binding. [Listen without binding](/docs/binding-inputs/v-register#listen-without-binding) has the ordering in full.
+
+Reaching for either one costs you nothing at the control. A row of server-rendered `<select>` elements is the case where that matters most: a selection is a DOM property rather than markup, so the server can only express it as `selected` on the right `<option>`, and hand-binding that per call site is a step every new row can forget. `v-register` emits it for you on every option it owns. Saving per decision never asks you to give that up.
+
 ## Pausing autosave for hydration and reset
 
 A `watch` reacts to every change to its source, including the writes you make yourself: loading a saved record with `form.setValue`, or a `form.reset()`. Left unguarded, hydrating ten fields would echo ten autosaves straight back at the server you just loaded from. `runWithoutAutosave` wraps such a write so the watchers skip it: it raises an internal flag, runs your write, then clears the flag on the next tick once the watchers have seen (and ignored) the change.

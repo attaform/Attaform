@@ -193,11 +193,23 @@ The same plugin ships for other bundlers at `attaform/rollup`, `attaform/esbuild
 
 ## `attaform/transforms`
 
-Raw Vue compiler-core node transforms. Use only when wiring a custom bundler pipeline; the Vite plugin already wraps these for the common case.
+Raw Vue compiler-core node transforms. Use only when wiring a custom bundler pipeline; `attaform/vite` already installs these for the common case, and the bundler plugins above do not (they only do the adapter rewrite).
+
+All five, in the order the Vite plugin installs them:
 
 ```ts
-import { vRegisterHintTransform, vRegisterPreambleTransform } from 'attaform/transforms'
+import {
+  redundantBindingWarnTransform,
+  componentBridgeTransform,
+  inputTextAreaNodeTransform,
+  vRegisterPreambleTransform,
+  vRegisterHintTransform,
+} from 'attaform/transforms'
 ```
+
+The order carries two hard constraints. `redundantBindingWarnTransform` has to run before the two that rewrite the value channel, because it reads what you wrote in the template and those two replace it with what they inject. `vRegisterPreambleTransform` has to run before `vRegisterHintTransform`, because the preamble captures each `v-register` expression before the hint wraps it, and reversing them wraps an already-wrapped expression twice.
+
+Wiring a subset is the trap worth naming. `componentBridgeTransform` and `inputTextAreaNodeTransform` are the two that bake `value` / `checked` / `selected` into the server-rendered HTML for component-wrapped inputs; leave them out and those fields render unset on the server and correct themselves on hydrate. `vRegisterHintTransform` is what marks registered elements connected during the server render, which Vue otherwise skips along with the whole directive lifecycle.
 
 ## `attaform/devtools-panel`
 

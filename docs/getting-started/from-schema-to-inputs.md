@@ -56,7 +56,7 @@ The rest of this page reaches for these three off the same `form` handle. The de
 That's the whole binding. The directive:
 
 - Reads from `form.values.email` and writes the current value into the DOM input.
-- Writes back to `form.values.email` on every `input` event (or `change` / `blur` with directive modifiers).
+- Writes back to `form.values.email` as you interact: a text input or `<textarea>` on every `input` event, a `<select>`, checkbox, radio, or file input on `change`.
 - Coerces values per the schema, so `type="number"` lands in `form.values.age` as a number, not a string.
 - Tracks per-field interaction state on `form.fields.email` (focused, touched, blurred, blank, plus errors and a few more). The [`fields` page](/docs/reading-the-form/fields) names every bit.
 

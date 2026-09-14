@@ -65,7 +65,44 @@ Two guards keep this right without you thinking about it:
 - A dev-console warning in every app, the moment the field mounts.
 - A build-time warning when you run Attaform's [Vite or Nuxt plugin](/docs/server-and-ssr/ssr-bare-vue), on every compile, so CI catches it too.
 
-Both are about `v-model` now, and both leave the radio and `<option>` identity `:value` alone. A `:value` / `:checked` / `:selected` is no longer flagged at all: it is what the element falls back to when `v-register` resolves no field, which is what lets [one wrapper serve both a bound and an unbound caller](/docs/binding-inputs/use-register). The runtime warning also stands down entirely for a `v-register` that resolved no field, since nothing is redundant beside a directive that is not driving anything.
+Both are about `v-model` now, and both leave the radio and `<option>` identity `:value` alone. Under the [Vite or Nuxt plugin](/docs/getting-started/installation) a `:value` / `:checked` / `:selected` is not flagged at all: it is what the element falls back to when `v-register` resolves no field, which is what lets [one wrapper serve both a bound and an unbound caller](/docs/binding-inputs/use-register). The runtime warning also stands down entirely for a `v-register` that resolved no field, since nothing is redundant beside a directive that is not driving anything.
+
+That fallback is compiled in, so it needs the plugin. Building without one (the [`installVRegister` setup](#delivered-at-compile-time) below), nothing injects a fallback leg, and a `:value` beside a `v-register` that _did_ resolve a field is dead weight again. The dev-console warning still says so there, which is the right answer for that setup.
+
+## Listen without binding
+
+A second _binding_ fights `v-register`. A _listener_ does not. The directive attaches its own handler in Vue's `created` hook, which runs before Vue applies the handlers you wrote, so `v-register` has already written the field by the time yours is called. What you read there is committed state, not the value the field held a moment ago.
+
+That ordering is what lets a surface save each decision as it is made. The control keeps the binding, the SSR value injection, and the ARIA that `v-register` gives it, and you observe the result:
+
+```vue
+<script setup lang="ts">
+  import { z } from 'zod'
+  import { useForm } from 'attaform'
+
+  const schema = z.object({ choice: z.string() })
+  const form = useForm({ schema })
+
+  async function save() {
+    // `form.values.choice` is already the newly picked value here.
+    await fetch('/api/choice', {
+      method: 'PATCH',
+      body: JSON.stringify({ value: form.values.choice }),
+    })
+  }
+</script>
+
+<template>
+  <select v-register="form.register('choice')" @change="save">
+    <option value="yes">Yes</option>
+    <option value="no">No</option>
+  </select>
+</template>
+```
+
+`@change` is not a second binding here: it never writes the field, so nothing competes with the directive and neither guard flags it. The same holds for `@input`, for a `v-register.lazy` control, and for a checkbox or radio.
+
+Reach for a listener when the reaction belongs to the interaction, and for a [watch on `form.toRef`](/docs/cross-cutting-state/autosave) when it belongs to the value. The watch also sees programmatic writes such as `form.setValue` and `form.reset()`, which a DOM event never fires for. The autosave recipe builds the whole policy on that: debouncing, per-field status, a validity gate, and a pause for hydrating writes.
 
 ## Delivered at compile time
 

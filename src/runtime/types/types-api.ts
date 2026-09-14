@@ -2770,9 +2770,11 @@ declare module 'vue' {
  * form.setValue((prev) => ({ ...prev, name: 'Ada' }))
  * ```
  *
- * The library fills any missing structural slots (e.g. nested
- * objects) against the schema's defaults after the callback returns,
- * so partial returns are safe.
+ * A whole-form callback replaces the whole form. Any key the return
+ * omits is refilled from the SCHEMA's declared defaults (the slim
+ * value where none is declared), so an omitted key is not carried
+ * over from the previous value or from `defaultValues` — spread
+ * `prev` to keep the rest of the form.
  */
 export type SetValueCallback<Read, Write = Read> = (prev: Read) => Read | Write
 

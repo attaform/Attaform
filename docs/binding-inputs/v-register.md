@@ -114,7 +114,7 @@ installVRegister(app)
 
 This split is also what keeps Attaform lean: an app that never renders `v-register` never ships the directive's DOM machinery.
 
-If you wrap inputs inside a component whose root is **not** the input itself, [`useRegister`](/docs/binding-inputs/use-register) re-binds `v-register` onto an inner native element. For compound components binding multiple paths, prefer [`injectForm`](/docs/reading-the-form/the-form) over `useRegister`.
+If you wrap inputs inside a component whose root is **not** the input itself, [`useRegister`](/docs/binding-inputs/use-register) re-binds `v-register` onto an inner native element. For compound components binding multiple paths, prefer [`injectForm`](/docs/cross-cutting-state/inject-form) over `useRegister`.
 
 ## Reading errors per field
 

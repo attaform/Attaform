@@ -194,8 +194,8 @@ importers:
         version: link:../..
     devDependencies:
       '@formisch/vue':
-        specifier: ^0.11.0
-        version: 0.11.0(typescript@6.0.3)(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))
+        specifier: ^1.0.0
+        version: 1.0.0(typescript@6.0.3)(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))
       '@formkit/vue':
         specifier: ^2.0.0
         version: 2.1.2(vue@3.5.42(typescript@6.0.3))
@@ -950,12 +950,12 @@ packages:
   '@floating-ui/vue@1.1.11':
     resolution: {integrity: sha512-HzHKCNVxnGS35r9fCHBc3+uCnjw9IWIlCPL683cGgM9Kgj2BiAl8x1mS7vtvP6F9S/e/q4O6MApwSHj8hNLGfw==}
 
-  '@formisch/vue@0.11.0':
-    resolution: {integrity: sha512-REXbZOa9O0qRCJXAPXRopfbpaLqOf1V7ZLcxuJiAm+WZBp9XiYToTPYLniueuSFCB7oTjUlbrd0utuom3l7bEQ==}
+  '@formisch/vue@1.0.0':
+    resolution: {integrity: sha512-zVZIrOIOyn2LvK6tRZOLamBqOftwh2LKf4rEMwTSRzjg4C4juiiUK/EVA94BZsDe//5g9+FEG7aVhrc30//0mA==}
     peerDependencies:
-      typescript: '>=5'
-      valibot: ^1.4.1
-      vue: ^3.3.0
+      typescript: '>=5 <8'
+      valibot: '>=1.4.1 <2'
+      vue: '>=3.3 <4'
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -8575,7 +8575,7 @@ snapshots:
       - '@vue/composition-api'
       - vue
 
-  '@formisch/vue@0.11.0(typescript@6.0.3)(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))':
+  '@formisch/vue@1.0.0(typescript@6.0.3)(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))':
     dependencies:
       valibot: 1.4.2(typescript@6.0.3)
       vue: 3.5.42(typescript@6.0.3)

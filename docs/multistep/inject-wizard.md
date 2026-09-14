@@ -107,11 +107,13 @@ Sticky finish buttons, sidebar status widgets, or any component in a different b
 </script>
 
 <template>
-  <button v-if="wizard" :disabled="!wizard.complete" @click="finish">Finish</button>
+  <button v-if="wizard" :disabled="wizard.submitting" @click="finish">Finish</button>
 </template>
 ```
 
 Pass the same `key` the parent passed to `useWizard({ key: 'checkout-wizard' })`. The handle returned is identity-equal to the parent's, so `wizard.handleSubmit` wired from a floating button runs the same submission pipeline the parent's Finish button would.
+
+The button gates on `wizard.submitting` rather than on validity, which is what lets it live anywhere. `wizard.handleSubmit` validates the whole flow from any step, so pressing it early is a real answer: the wizard jumps to the first failing step and reveals its errors. Reaching for `wizard.complete` here would strand the button, since `complete` is forward-looking and stays `false` until the user is standing on the final step.
 
 `injectWizard` accepts an object form too: `injectWizard({ key: 'checkout-wizard' })`. The positional and object forms are equivalent; pick whichever spreads better into the surrounding setup.
 
@@ -180,11 +182,11 @@ Guard the return so the consumer disappears cleanly when the wizard isn't mounte
 
 ## Lifetime
 
-Both resolution modes ref-count the wizard handle in the registry. In practice:
+A keyed lookup ref-counts the wizard handle in the registry. An ambient one does not, and does not need to: a descendant reading the ambient slot is by definition inside the subtree of the `useWizard` call that owns the lifetime, so it cannot outlive it. In practice:
 
-- The wizard survives until every component that reached it unmounts.
+- `useWizard` counts itself as a consumer, so a wizard nobody injects lives exactly as long as the component that built it.
+- A wizard reached by `injectWizard(key)` stays alive as long as at least one of those consumers is mounted, even if the parent `useWizard` owner unmounted first.
 - Cleanup is automatic; no explicit dispose call from the consumer.
-- A wizard accessed only by `injectWizard(key)` stays alive as long as at least one consumer is mounted, even if the parent `useWizard` owner unmounted first.
 
 Hot-module reload reuses the existing handle when the parent SFC re-mounts (deferred-eviction-cancel within the same microtask). Child `injectWizard` consumers see the same wizard reactive surface they had before, not a freshly created one, so a rail's pre-filled state survives every save.
 

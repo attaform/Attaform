@@ -150,8 +150,8 @@ export function useForm(configuration: any): any {
   const abstractSchema = isZodType(schema) ? zodAdapter(schema) : schema
 
   // Spread the full configuration so opt-in options (`onInvalidSubmit`,
-  // `validateOn`, `debounceMs`, `persist`, `history`, `key`, `strict`)
-  // reach useAbstractForm. Writing `strict: configuration.strict ?? true`
+  // `validateOn`, `debounceMs`, `history`, `rememberVariants`, `key`,
+  // `strict`) reach useAbstractForm. Writing `strict: configuration.strict ?? true`
   // here would short-circuit the registry's app-level defaults
   // (`createAttaform({ defaults: { strict: false } })`). The
   // library-level fallback to `true` lives downstream in

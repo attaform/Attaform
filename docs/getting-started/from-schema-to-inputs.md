@@ -15,7 +15,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-The demo binds five native inputs (a text input for `fullName`, a numeric `age`, a country `<select>`, a `newsletter` checkbox, a `bio` textarea) against a single Zod schema. Type into any of them and the live `form.values` JSON below the form updates with the right type: the number input lands as a `number`, the checkbox as a `boolean`, the select as its enum literal. One directive handles every shape; the [register / v-register pair](#the-register-v-register-pair) section unpacks why.
+The demo binds five native inputs (a text input for `fullName`, a numeric `age`, a country `<select>`, a `newsletter` checkbox, a `bio` textarea) against a single Zod schema. Type into any of them and the live `form.values` JSON below the form updates with the right type: the number input lands as a `number`, the checkbox as a `boolean`, the select as the country code it carries. One directive handles every shape; the [register / v-register pair](#the-register-v-register-pair) section unpacks why.
 
 ::docs-demo{slug="schema-to-inputs" label="Inputs Demo"}
 ::
@@ -47,18 +47,18 @@ The rest of this page reaches for these three off the same `form` handle. The de
 
 ## The register / v-register pair
 
-`form.register('email')` returns a small binding object the `v-register` directive consumes. Hand it off in the template:
+`form.register('fullName')` returns a small binding object the `v-register` directive consumes. Hand it off in the template:
 
 ```vue
-<input v-register="form.register('email')" />
+<input v-register="form.register('fullName')" />
 ```
 
 That's the whole binding. The directive:
 
-- Reads from `form.values.email` and writes the current value into the DOM input.
-- Writes back to `form.values.email` as you interact: a text input or `<textarea>` on every `input` event, a `<select>`, checkbox, radio, or file input on `change`.
+- Reads from `form.values.fullName` and writes the current value into the DOM input.
+- Writes back to `form.values.fullName` as you interact: a text input or `<textarea>` on every `input` event, a `<select>`, checkbox, radio, or file input on `change`. The [`.lazy` modifier](/docs/binding-inputs/modifiers) moves a text input onto `change` too.
 - Coerces values per the schema, so `type="number"` lands in `form.values.age` as a number, not a string.
-- Tracks per-field interaction state on `form.fields.email` (focused, touched, blurred, blank, plus errors and a few more). The [`fields` page](/docs/reading-the-form/fields) names every bit.
+- Tracks per-field interaction state on `form.fields.fullName` (focused, touched, blurred, blank, plus errors and a few more). The [`fields` page](/docs/reading-the-form/fields) names every bit.
 
 ## Native inputs, native types
 

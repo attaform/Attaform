@@ -14,7 +14,7 @@ metaRows:
 
 # `handleSubmit`
 
-> A submit handler that waits for validation, hands you parsed values, and routes rejections through `onError`.
+> A submit handler that waits for validation, hands you parsed values, and routes a validation failure through `onError`.
 
 ::docs-meta-table
 ::

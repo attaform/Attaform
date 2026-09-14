@@ -163,7 +163,7 @@ form.errors.age // [{ code: 'atta:no-value-supplied', … }]
 
 form.values.title // ''      ← storage slim default
 form.fields.title.blank // false   ← NOT auto-marked (matches DOM)
-form.errors.title // undefined  (z.string() accepts '')
+form.errors.title // []        (z.string() accepts '')
 ```
 
 Strings and booleans don't auto-mark because their slim defaults match what the DOM natively shows. The schema is the authority on whether `''` / `false` is acceptable; numerics need the side-channel to disambiguate "user typed `0`" from "user supplied nothing." See [the `blank` field-state bit](/docs/validation/blank) for the full lifecycle.

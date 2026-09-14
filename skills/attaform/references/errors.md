@@ -60,7 +60,7 @@ A form-level banner wants the root's **own** bucket, not the aggregate:
 const banner = computed(() => form.meta.firstOwnError)
 ```
 
-Do not use `form.errors([])` for a banner: `errors(path)` uniformly means "path plus descendants", so `errors([])` is the whole-form aggregate and would surface individual field errors in the summary. `form.meta.firstOwnError` is the correct root-only read. The same own axis surfaces a container-level `.refine()` error, for example `form.fields.address.firstOwnError`.
+Do not use `form.errors([])` for a banner: `errors(path)` uniformly means "path plus descendants", so `errors([])` is the whole-form aggregate and would surface individual field errors in the summary. `form.meta.firstOwnError` is the correct root-only read. The same own axis surfaces a container-level `.refine()` error, through the CALL form: `form.fields('address').firstOwnError`. Dot access on a container (`form.fields.address`) is navigation toward leaves and carries no error state of its own, so the dotted spelling reads `undefined` no matter what the container holds.
 
 ## One normalizer, always non-empty
 

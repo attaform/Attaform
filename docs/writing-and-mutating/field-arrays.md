@@ -72,7 +72,7 @@ Because each item carries its own baseline, Attaform still reads a structural ch
 
 Per-item validation tracks the item, not the slot. An error you set with `form.setErrors` on `checkpoints.0` follows the item through a `move(0, 4)` to `checkpoints.4`. Schema verdicts recompute from the live value after each shape change, so a still-invalid item shows its error at its new index, and a removed item's verdict clears at once instead of lingering on whatever shifts into the slot.
 
-For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length > 0)`), the error lands at the array path itself, not at any slot. Read it via `form.errors('checkpoints')` (or `form.fields('checkpoints').firstError`).
+For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length > 0)`), the error lands at the array path itself, not at any slot. Read it with `form.errors.checkpoints['']` or `form.fields('checkpoints').firstOwnError`, both of which mean the array's own errors. The looser `form.errors('checkpoints')` works too, but it is the flat aggregate for the whole subtree, so a bad element's message arrives alongside the array's.
 
 ## Reset behavior
 

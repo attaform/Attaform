@@ -123,7 +123,15 @@ form.errors.todos[0]?.title // ValidationError[] for todos[0].title
 form.errors.dateRange[1] // ValidationError[] for dateRange[1]
 ```
 
-The aggregate `form.meta.errors` flattens every leaf's errors into a single list. Cross-element refinements (a `.refine` on the whole array) land on the array path itself rather than a specific element. `form.errors.todos[0]` (note the `[0]` index after the `.errors.todos` access) reads the first error attached to the array, which is the cross-element one.
+The aggregate `form.meta.errors` flattens every leaf's errors into a single list. Cross-element refinements (a `.refine` on the whole array) land on the array path itself rather than on any element, and reading them needs the [`''` container-self sentinel](/docs/reading-the-form/errors#the-sentinel-container-self-errors), because dot and index access on `form.errors` is pure navigation:
+
+```ts
+form.errors.todos[''] // the cross-element errors, the array's own
+form.errors.todos[0] // element 0's sub-Proxy, NOT an error list
+form.errors('todos') // flat aggregate: the array's own plus every descendant's
+```
+
+`form.fields('todos').firstOwnError` is the same read as the first spelling, with the display gating and `firstError` sugar layered on.
 
 ## Async element-level refinements
 

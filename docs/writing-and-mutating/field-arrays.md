@@ -29,15 +29,15 @@ Use the row arrows and per-row × button to move and remove items; the buttons b
 
 Each helper is typed against the form's `ArrayPath<Form>` set; TypeScript autocompletes only the paths that actually point at an array. The value-shape generic narrows on the inferred element type.
 
-| Helper                        | Signature         | What it does                                            |
-| ----------------------------- | ----------------- | ------------------------------------------------------- |
-| `append(path, value)`         | adds at the end   | Appends one item to the array.                          |
-| `prepend(path, value)`        | adds at index 0   | Adds one item to the front; shifts the rest right.      |
-| `insert(path, index, value)`  | adds at index     | Inserts one item; shifts subsequent items right.        |
-| `remove(path, index)`         | drops at index    | Removes one item; shifts subsequent items left.         |
-| `swap(path, a, b)`            | swaps two indices | Exchanges the items at the two indices.                 |
-| `move(path, from, to)`        | moves an item     | Removes from `from` and re-inserts at `to` in one step. |
-| `replace(path, index, value)` | replaces at index | Overwrites the item at `index` without changing length. |
+| Helper                        | What it does                                            |
+| ----------------------------- | ------------------------------------------------------- |
+| `append(path, value)`         | Adds one item at the end.                               |
+| `prepend(path, value)`        | Adds one item to the front; shifts the rest right.      |
+| `insert(path, index, value)`  | Inserts one item at `index`; shifts the rest right.     |
+| `remove(path, index)`         | Removes the item at `index`; shifts the rest left.      |
+| `swap(path, a, b)`            | Exchanges the items at the two indices.                 |
+| `move(path, from, to)`        | Removes from `from` and re-inserts at `to` in one step. |
+| `replace(path, index, value)` | Overwrites the item at `index` without changing length. |
 
 ## Reading the path
 

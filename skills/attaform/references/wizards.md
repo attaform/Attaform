@@ -12,6 +12,8 @@ A step slot is one of:
 - a **function** returning any of those, for runtime branching,
 - a `lazy((ctx) => ...)`-wrapped function, which memoizes its resolution and re-fires only when its own tracked reads change.
 
+`gate(slot)` wraps any of them rather than being a kind of its own: it marks that position a hard prerequisite and leaves how the slot resolves alone. A function slot may return one, so whether a position is a gate can itself be a runtime decision.
+
 ```ts
 import { useForm, useWizard } from 'attaform'
 
@@ -58,9 +60,9 @@ const onComplete = wizard.handleSubmit(async (ctx) => {
 
 The wizard handle exposes the flow's rolled-up state, all reactive:
 
-- `wizard.forms[key]`: the live form handle for a step (a facade typed as a form).
+- `wizard.forms[key]`: the step's own form handle, identity-equal to the `useForm` ref that was slotted in.
 - `wizard.allValues` / `wizard.allErrors`: every form's values / aggregate errors, keyed.
-- `wizard.activeForm`: the currently active step's form facade.
+- `wizard.activeForm`: a live facade over whichever step is active, so a handler captured once retargets as the pin moves. Not the handle itself: use `wizard.forms[key]` for that.
 - `wizard.statuses`: per-form status. Plus `wizard.progress`, `wizard.canAdvance`, `wizard.canGoBack`, `wizard.isFinalStep`, `wizard.visited`.
 
 ## A declarative step registry
@@ -94,11 +96,11 @@ const wizard = useWizard({
 
 Everything derives from the registry: the step slots, the titles, any persisted key list. Add, remove, reorder, or gate a step by editing the registry alone. Do not add speculative registry fields with no consumer; add a hook when the second consumer arrives.
 
-## Keyed injection resolves by tree and timing
+## Keyed injection resolves by name and timing
 
-A string key passed to `injectForm('account')` or `injectWizard('onboarding')` _reads_ like a global address but resolves by the **caller's component-tree position and mount timing**, not as a global lookup:
+A string key passed to `injectForm('account')` or `injectWizard('onboarding')` is a name in Attaform's app-level registry, not a location in the component tree:
 
-- `provide` / `inject` is descendant-only, so a form created in a **leaf** is unreachable from an **ancestor**.
-- A keyed form is not resolvable until the creating component's `setup` has run, so mount order matters.
+- **Position-independent.** The lookup reaches any component in the app: a sibling branch, a floating toolbar, a teleported modal. Extracting a wrapper or changing how deep a component sits never changes what a key resolves to. The no-key ambient form is the opposite, and is the one that runs on `provide` / `inject`: it reaches descendants of the owning `useForm` only.
+- **Time-dependent.** The registry entry appears when the owner's own `useForm({ key })` / `useWizard({ key })` setup runs, and not before.
 
-The consequence: a purely structural refactor can silently break a lookup. The stable shape is to **lift a shared form's creation to the coordinating ancestor** (the component that owns the wizard) and have leaves `injectForm(key)` it downward by a prop key. Always chain `?.` on the result, which is `T | null`.
+Together they give one rule: **resolve downward.** Vue runs a parent's setup before its children's, so a descendant reaching an ancestor's keyed form always resolves, while an ancestor reaching a descendant's gets `null`. The stable shape is to **lift a shared form's creation to the coordinating ancestor** (the component that owns the wizard) and reach for it at or below that point. Always chain `?.` on the result, which is `T | null`.

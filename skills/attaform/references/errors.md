@@ -17,7 +17,8 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-- `setErrors(errors | updater | (path, errors))` is a **whole-layer replace**, so `clearErrors()` at the top of a fresh attempt drops errors a previous submit set. `clearErrors(path?)` scopes the clear.
+- `setErrors(errors | updater | (path, errors))` is a **whole-layer replace** of the user layer, so `clearErrors()` at the top of a fresh attempt drops errors a previous submit set. `clearErrors(path?)` scopes the clear.
+- `clearErrors` clears the **schema layer too**, at whatever path it targets, not just the user one. Inside a submit callback that costs nothing, since validation has already passed to get there, and with always-on validation the schema half re-populates on the next mutation if the value is still wrong. Pass `setErrors([])` instead when you mean to empty the user layer alone.
 - `handleSubmit` focuses the first offending field for user-set errors exactly as it does for client-invalid fields, so a `setErrors` call inside the callback needs no separate focus step.
 
 ## The `ValidationError` envelope

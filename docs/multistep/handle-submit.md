@@ -80,7 +80,7 @@ const onFinish = wizard.handleSubmit(async (ctx) => {
 
 ## Gating advance per step
 
-`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin and never validate. To advance a step only when it is valid, reach for `wizard.tryNext()`:
+`wizard.handleSubmit` submits; navigation is a separate verb. `wizard.next()`, `wizard.back()`, and `wizard.goTo()` move the pin without validating, with one exception: `next()` on an uncleared [`gate()`](/docs/multistep/gate) step submits instead, so the gate's confirmation cannot be stepped around. To advance a step only when it is valid, reach for `wizard.tryNext()`:
 
 ```vue
 <template>

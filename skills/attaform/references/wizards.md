@@ -24,7 +24,7 @@ const wizard = useWizard({ key: 'onboarding', steps: [account, 'review', profile
 ## Navigation vs submission
 
 - **`wizard.tryNext(): Promise<boolean>`** is the gated Next. It validates the active step and advances only on a clean pass, revealing that step's errors in place otherwise. It resolves to whether it advanced, and it is inline-bindable: `@click="wizard.tryNext()"`.
-- **`wizard.next()` / `wizard.back()` / `wizard.goTo(key)`** are positional moves with no validation gate. Use them for a Back button or a jump; use `tryNext` for a forward move that should validate.
+- **`wizard.next()` / `wizard.back()` / `wizard.goTo(key)`** are positional moves with no validation gate. Use them for a Back button or a jump; use `tryNext` for a forward move that should validate. Two exceptions: they refuse while a submit is in flight, and `next()` on an **uncleared `gate()` step behaves as `tryNext()`**, so wiring Next straight to it can never skip the gate's confirmation. Once that gate clears, `next()` is plain navigation again and does not re-submit.
 - **`wizard.handleSubmit(onSubmit, onError?)`** validates **every** step from any position and calls `onSubmit` once with all forms' values. It **never advances**. Wire it to the final Submit.
 
 For a forward move that runs a custom callback before advancing, compose the step form's own submit with `next`:

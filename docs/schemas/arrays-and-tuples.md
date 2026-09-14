@@ -102,10 +102,13 @@ form.values.dateRange[0] // Date
 form.values.dateRange[1] // Date
 form.register('dateRange.0') // path autocomplete narrows to position 0
 form.register('dateRange.1') // position 1
-form.register('dateRange.2') // type error (tuple has only 2 positions)
 ```
 
-Tuples don't expose the field-array helpers; `form.append('dateRange', new Date())` is a type error because the tuple has a fixed shape. For mixed-shape sequences (a `[string, number, boolean]`), tuples are how you say "exactly this layout, in this order."
+A tuple keeps its declared length, and the write boundary is where that is enforced. `form.setValue('dateRange.2', new Date())` dev-warns that the path is not in your schema and refuses the write. The field-array helpers land in the same place, since `form.append('dateRange', new Date())` is a write at `dateRange.2` underneath: it warns and no-ops rather than growing the tuple. Nothing off-shape reaches storage.
+
+The compiler is the looser of the two here. A tuple is structurally an array in TypeScript, so a tuple path still satisfies the helpers' `ArrayPath` constraint and `register('dateRange.2')` still type-checks. Read the runtime diagnostic as the authority on tuple length.
+
+For mixed-shape sequences (a `[string, number, boolean]`), tuples are how you say "exactly this layout, in this order."
 
 ## When to pick which
 

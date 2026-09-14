@@ -51,7 +51,7 @@ A 60 fps frame is **16.7 ms**. Single-keystroke work clears the budget by three 
 
 - **Keystrokes**: the `register` → form-state path runs against a per-PR threshold; see [`bench/keystroke.bench.ts`](https://github.com/attaform/Attaform/blob/main/bench/keystroke.bench.ts) for the measured scenarios (100-leaf and 500-leaf forms, single-leaf mutation).
 - **`form.meta.dirty`**: iterates the tracked leaves with no per-leaf parse cost.
-- **Path resolution**: dotted-string paths are LRU-cached (128 entries), so repeat canonicalization reduces to a map lookup.
+- **Path resolution**: dotted-string paths are cached (128 entries, FIFO eviction), so repeat canonicalization reduces to a map lookup.
 
 Sub-500-leaf forms don't surface in profiling.
 

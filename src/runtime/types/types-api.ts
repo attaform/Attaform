@@ -3663,7 +3663,9 @@ export type ValuesSurface<F> = Readonly<LiftedValueShape<F>> & {
  * `form.fields.<path>`; this is the aggregate view across the
  * whole form.
  *
- * Read-only at runtime — assignments throw. Destructuring snapshots
+ * Read-only at runtime — an assignment is refused with a dev-console
+ * warning and never lands (Attaform does not throw from a read
+ * surface). Destructuring snapshots
  * the current values; use `toRefs()` if you need reactive handles
  * to individual fields.
  */

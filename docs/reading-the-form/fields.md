@@ -10,7 +10,7 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (33 properties)
+    value: FieldState
     kind: code
 ---
 

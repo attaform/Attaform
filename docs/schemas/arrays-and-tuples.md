@@ -64,7 +64,7 @@ Templates iterate with `v-for`:
 </template>
 ```
 
-The `i` keyed loop pattern is fine for static lists. For lists where items can reorder, use a stable per-row identifier instead; see [Performance](/docs/server-and-ssr/performance) for the keying discussion.
+The `i` keyed loop pattern is fine for a list that only grows at the end. Once items can move, iterate with [`form.list`](/docs/reading-the-form/list) and key on `row.key`, the identity token that follows an element through every reorder.
 
 ## Field-array helpers
 

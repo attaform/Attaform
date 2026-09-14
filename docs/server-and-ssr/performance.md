@@ -74,17 +74,19 @@ For incremental population (the user appends one item at a time), per-append cos
 
 ## Keying `v-for` rows
 
-Use a stable per-row key: either an ID carried on the data or a client-generated `crypto.randomUUID()` stored when you append. Keying by index re-renders more than necessary when rows move and flickers focus / scroll state on reordered rows.
+Iterate a reorderable list with [`form.list`](/docs/reading-the-form/list) and key on `row.key`. That token is minted once per element and travels with it through `insert`, `remove`, `move`, and `swap`, so there is nothing to carry on the data and no id to generate yourself:
 
 ```vue
-<!-- Good: stable key follows the item -->
-<div v-for="item in form.values.items" :key="item.id">…</div>
+<!-- Stable: the key follows the element, whatever the list does around it -->
+<div v-for="(row, i) in form.list('items')" :key="row.key">
+  <input v-register="form.register(`items.${i}.title`)" />
+</div>
 
-<!-- Avoid for reorderable lists: index changes when items move -->
+<!-- Avoid for reorderable lists: the index names a slot, not an element -->
 <div v-for="(_, i) in form.values.items" :key="i">…</div>
 ```
 
-The index pattern is fine for append-only or short-lived lists; reach for stable IDs when the list can reorder.
+Keying by index ties each row to a position, so a reorder reshuffles which DOM node and component instance render which element, and a half-typed input can land on the wrong row. The index pattern is fine for append-only or short-lived lists.
 
 ## Discriminated unions vs. plain unions
 

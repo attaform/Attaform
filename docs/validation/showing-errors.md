@@ -159,7 +159,26 @@ useForm({
 })
 ```
 
-Pass a custom reducer to bend the rule, for example to reveal errors the moment a field is touched (ignoring focus and submit state). A reducer receives `(prev, ctx)`: `prev` is the field's previous `DisplayMachine`, and `ctx` carries the field's `FieldState` and the form's `FormMeta` (both with the derived `displayState` / `show*` / `firstError` keys omitted, so an accidental self-reference is impossible) plus `ctx.validatingSince` and `ctx.now` for timing. It returns the next machine: `{ display }` at minimum, optionally with a `reviewAt` timestamp telling Attaform when to look again.
+Pass a custom reducer to bend the rule, for example to reveal errors the moment a field is touched (ignoring focus and submit state). A reducer receives `(prev, ctx)` and returns the next machine: `{ display }` at minimum, optionally with a `reviewAt` timestamp telling Attaform when to look again.
+
+`prev` is the field's previous `DisplayMachine`. `ctx` is a `DisplayCtx`, and it has five members:
+
+```ts
+import type { GetDisplayState } from 'attaform'
+
+const reducer: GetDisplayState = (prev, ctx) => {
+  const {
+    field, // this field's FieldState
+    formMeta, // the form's FormMeta
+    validatingSince, // ms stamp the validation streak opened, else null
+    transformingSince, // same, for an in-flight async register transform
+    now, // the engine's clock, injected so the reducer stays pure
+  } = ctx
+  return field.errors.length > 0 && field.touched ? { display: 'error' } : { display: 'idle' }
+}
+```
+
+`field` and `formMeta` arrive with the derived `displayState` / `show*` / `firstError` keys omitted, so a reducer cannot read its own output and form a cycle. The two `*Since` anchors are what timing is measured against, not the `validating` and `transforming` booleans: elapsed wait is `now - validatingSince`, and the anchor pins to the start of a streak so overlapping sub-runs never reset it. Reading only `validatingSince` is the easy miss, and it costs you the spinner on an in-flight async `register` transform, which the default folds into the same clock.
 
 ## Compose with the default
 

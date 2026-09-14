@@ -128,6 +128,19 @@ export function removePropsByName(
  *   v-bind:name="x" -> "\"name\""      (quoted via renderAsStatic)
  *   static v-prefix -> "\"name\""
  */
+/**
+ * A summarized prop's value as compound-expression children, ready to
+ * splice into an injected expression. `undefined` in, `undefined` out,
+ * so a caller can ask "did the author bind this?" and build the
+ * fallback leg in one step.
+ */
+export function toExpressionArray(
+  value: SummarizedProp['value'] | undefined
+): CompoundExpressionNode['children'] | undefined {
+  if (value === undefined) return undefined
+  return Array.isArray(value) ? value : [value]
+}
+
 export function isExactKey(summarizedKey: string, name: string): boolean {
   return summarizedKey === name || summarizedKey === `"${name}"`
 }

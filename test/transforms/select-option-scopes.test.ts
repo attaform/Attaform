@@ -120,6 +120,66 @@ const ADAPTERS = [
   },
 ] as const
 
+// ── generated code: every option expression resolves in its OWN scope ──
+
+describe("option expressions are resolved in the option's own scope", () => {
+  // The other half of #566's rule, and a bug it left standing.
+  //
+  // The `:selected` binding used to be built while transforming the
+  // enclosing `<select>`, which is visited before any option's scope
+  // exists. Reading an option's props from there returns raw source
+  // text, and raw text spliced into a compound expression is opaque to
+  // the compiler's identifier pass — so whatever was read is what
+  // shipped. A `v-for` alias survived that by luck, because bare is
+  // what an alias needs. Anything else did not.
+  //
+  // The binding is built on the option's own visit now, where the props
+  // are already resolved and `context.identifiers` holds the aliases.
+  it('prefixes a plain dynamic `:value` that is not a loop alias', () => {
+    const code = compileModule(
+      `<select v-register="form.register('choice')"><option :value="code">X</option></select>`
+    )
+    // Was `String((code))`, which throws `ReferenceError: code is not
+    // defined` wherever identifiers are prefixed rather than resolved
+    // lexically.
+    expect(code).toContain('_ctx.code')
+    expect(code).not.toMatch(/String\(\(code\)\)/)
+  })
+
+  it('leaves a `v-for` alias bare while prefixing an outer ref beside it', () => {
+    // One expression, two scopes. Nothing built from the `<select>`
+    // could have told them apart.
+    const code = compileModule(
+      `<select v-register="form.register('choice')">` +
+        `<option v-for="o in opts" :key="o" :value="o" :selected="o === pick">X</option>` +
+        `</select>`
+    )
+    expect(code).toContain('o === _ctx.pick')
+    // Word-bounded: `_ctx.opts` (the loop SOURCE, correctly prefixed)
+    // contains `_ctx.o` as a substring, so a bare `toContain` would
+    // fail on correct output.
+    expect(code).not.toMatch(/_ctx\.o\b(?!pts)/)
+  })
+
+  it('resolves an alias from an enclosing `<optgroup v-for>`', () => {
+    const code = compileModule(
+      `<select v-register="form.register('choice')">` +
+        `<optgroup v-for="g in groups"><option v-for="o in g.items" :key="o" :value="o">X</option></optgroup>` +
+        `</select>`
+    )
+    expect(code).not.toMatch(/_ctx\.o\b/)
+    expect(code).not.toMatch(/_ctx\.g\b/)
+  })
+
+  it('still reads an option value from static text content', () => {
+    // The D3 text-content fallback rides along with the move.
+    const code = compileModule(
+      `<select v-register="form.register('choice')"><option>apple</option></select>`
+    )
+    expect(code).toContain('String(("apple"))')
+  })
+})
+
 // ── generated code: no option may reference a sibling's scope ────────
 
 describe('option `:selected` binding scopes — generated code', () => {

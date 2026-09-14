@@ -1606,12 +1606,21 @@ function resolveDynamicModel(tagName: string, type: unknown) {
  * Carve-out: a radio's `:value` (`<input type="radio" :value="opt">`)
  * and a checkbox's `:value` (array / Set member) are the IDENTITY
  * channel `v-register` reads, never flagged — only the state attr for
- * each kind warns. `<option :selected>` is a child of the `<select>`,
- * not the bound element, so it's left to the compile layer.
+ * each kind warns.
+ *
+ * Second carve-out: an UNBOUND `v-register` never warns at all. Nothing
+ * is redundant beside a directive that stands down (#620).
  */
 function warnRedundantStateBinding(el: HTMLElement, binding: DirectiveBinding, vnode: VNode): void {
   if (warnedRedundantBindings === null) return // production
   if (!INTERACTIVE_TAG_NAMES.has(el.tagName)) return // native controls only
+  // Redundant only once a field has actually resolved. An unbound
+  // `v-register` (a dual-mode wrapper used without a form, a
+  // `useRegister()` whose parent never bound) drives nothing, so the
+  // author's `:value` / `v-model` is not a second writer competing with
+  // v-register — it is the only writer there is, and telling them to
+  // drop it would empty the control (#620).
+  if (!isRegisterValue(binding.value)) return
   // Compile layer active: it owns detection, and vnode.props is
   // post-injection (not what the author wrote), so stand down.
   if (binding.modifiers[V_REGISTER_COMPILED_MODIFIER] === true) return

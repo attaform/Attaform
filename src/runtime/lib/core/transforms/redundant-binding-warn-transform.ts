@@ -6,7 +6,6 @@ import {
   type DirectiveNode,
   type ElementNode,
   type NodeTransform,
-  type TemplateChildNode,
 } from '@vue/compiler-core'
 import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
 
@@ -53,46 +52,33 @@ import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
  * bundler.
  */
 
-// Node types that hold iterable children worth recursing into when
-// walking a <select> for slotted <option>s. Mirrors the whitelist in
-// component-bridge-transform.ts: skip text / interpolation / comment
-// nodes, and don't crash on a future Vue node type we don't know.
-const RECURSABLE_NODE_TYPES: ReadonlySet<number> = new Set<number>([
-  NodeTypes.ELEMENT,
-  NodeTypes.FOR,
-  NodeTypes.IF,
-  NodeTypes.IF_BRANCH,
-])
-
 /**
  * The author-facing display form of the first redundant STATE binding
- * among `props` whose name is in `stateNames`, or `null` if none. A
- * static attribute renders as its bare name (`value`), a `:`-bind as
- * `:value`, and `v-model` as `v-model` — each is what the author would
- * search their template for. `value` / `checked` are the state names;
- * `stateNames` deliberately omits `value` for radio / checkbox, where
- * it is the identity channel.
+ * among `props`, or `null` if none. `v-model` is the only one left, and
+ * it renders as `v-model` — what the author would search their template
+ * for.
+ *
+ * A `:value` / `:checked` (or the static form of either) used to count
+ * too. It no longer does: the value injection keeps an author-written
+ * one as its UNBOUND leg, so on a dual-mode wrapper it is not redundant,
+ * it is the whole binding in the mode that has no field behind it. A
+ * warning there would have told the author to delete the only thing
+ * making that mode work (#620). Its one true-positive, a value binding
+ * beside a `v-register` that is ALWAYS bound, is dead code rather than a
+ * dual-binding bug, and the runtime layer still catches it wherever it
+ * can tell — it warns only once a field has actually resolved.
+ *
+ * `v-model` stays: it installs Vue's own model directive next to ours,
+ * so two writers drive one element with no fallback story between them.
+ *
+ * An `<option>`'s `:selected` left for the same reason once its binding
+ * moved to the option's own visit, where the unbound leg became
+ * expressible. Nothing walks a `<select>`'s children here any more.
  */
-function findRedundantStateBinding(
-  props: (AttributeNode | DirectiveNode)[],
-  stateNames: readonly string[]
-): string | null {
+function findRedundantStateBinding(props: (AttributeNode | DirectiveNode)[]): string | null {
   for (const prop of props) {
-    if (prop.type === NodeTypes.ATTRIBUTE) {
-      if (stateNames.includes(prop.name)) return prop.name
-      continue
-    }
-    // v-model on a native control is always redundant beside v-register,
-    // regardless of the element's kind.
+    if (prop.type === NodeTypes.ATTRIBUTE) continue
     if (prop.name === 'model') return 'v-model'
-    if (
-      prop.name === 'bind' &&
-      prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
-      prop.arg.isStatic &&
-      stateNames.includes(prop.arg.content)
-    ) {
-      return `:${prop.arg.content}`
-    }
   }
   return null
 }
@@ -141,30 +127,6 @@ function emitRedundantWarning(tag: string, binding: string): void {
       `and stays silent.)`
   )
 }
-
-// Walk a <select v-register>'s children for a redundant <option :selected>.
-// The option's own `:value` / `value=` is its identity (silent); only a
-// `:selected` / `selected` is redundant, since the component-bridge transform
-// drives option selection from the select's single register. Options can be
-// nested under v-for / v-if, so recurse the same node types the bridge does.
-function walkOptionsForSelected(selectNode: ElementNode): void {
-  const visit = (candidate: TemplateChildNode): void => {
-    if (candidate.type === NodeTypes.ELEMENT && candidate.tag === 'option') {
-      const found = findRedundantStateBinding(candidate.props, ['selected'])
-      if (found !== null) emitRedundantWarning('option', found)
-      return // an <option>'s own children never hold another <option>
-    }
-    if (!RECURSABLE_NODE_TYPES.has(candidate.type)) return
-    if (!('children' in candidate)) return
-    for (const child of candidate.children) {
-      if (typeof child === 'string' || typeof child === 'symbol') continue
-      if (child.type === NodeTypes.SIMPLE_EXPRESSION) continue
-      visit(child)
-    }
-  }
-  for (const child of selectNode.children) visit(child)
-}
-
 // Warn for a native <input> / <select> / <textarea>. Component and
 // custom-element hosts are skipped: there a `:value` / `v-model` is the
 // legitimate prop channel, not a redundant state binding.
@@ -173,14 +135,13 @@ function warnIfRedundant(node: ElementNode): void {
   const tag = node.tag
 
   if (tag === 'select') {
-    const found = findRedundantStateBinding(node.props, ['value'])
+    const found = findRedundantStateBinding(node.props)
     if (found !== null) emitRedundantWarning('select', found)
-    walkOptionsForSelected(node)
     return
   }
 
   if (tag === 'textarea') {
-    const found = findRedundantStateBinding(node.props, ['value'])
+    const found = findRedundantStateBinding(node.props)
     if (found !== null) emitRedundantWarning('textarea', found)
     return
   }
@@ -190,9 +151,7 @@ function warnIfRedundant(node: ElementNode): void {
   const kind = classifyInput(node.props)
   // Dynamic type: can't classify at compile time. File: out of scope.
   if (kind === 'dynamic' || kind === 'file') return
-  // Radio / checkbox omit `value` — it's the option identity, not state.
-  const stateNames = kind === 'checkbox' || kind === 'radio' ? ['checked'] : ['value']
-  const found = findRedundantStateBinding(node.props, stateNames)
+  const found = findRedundantStateBinding(node.props)
   if (found !== null) emitRedundantWarning('input', found)
 }
 

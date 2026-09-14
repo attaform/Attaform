@@ -39,15 +39,17 @@ The directive runs four pieces of plumbing for you:
 
 ## Let `v-register` own the value
 
-Because the directive already reads and writes the field's value, a second binding for the same value is redundant, and the two can end up fighting over the DOM. Leave off `:value` or `v-model` on a text input or `<select>`, `:checked` on a checkbox or radio, and `:selected` on an `<option>`:
+Because the directive already reads and writes the field's value, a second binding for the same value is dead weight: `v-register` wins, and yours never shows. Leave off `:value` on a text input or `<select>`, `:checked` on a checkbox or radio, and `:selected` on an `<option>`, unless the element is [meant to work unbound too](/docs/binding-inputs/use-register):
 
 ```vue
-<!-- Redundant: v-register already drives the value -->
+<!-- Dead: v-register already drives the value -->
 <input v-register="form.register('email')" :value="form.values.email" />
 
 <!-- Correct: v-register owns it -->
 <input v-register="form.register('email')" />
 ```
+
+`v-model` is the one that genuinely fights. It installs Vue's own model directive beside `v-register`, so two writers drive one element and the DOM goes where the last one to run put it. That one is a bug rather than dead weight, and it warns.
 
 The one `:value` that stays is an identity rather than state: the value a radio or an `<option>` stands for. Attaform reads that to decide which option is selected, so keep it.
 
@@ -63,7 +65,7 @@ Two guards keep this right without you thinking about it:
 - A dev-console warning in every app, the moment the field mounts.
 - A build-time warning when you run Attaform's [Vite or Nuxt plugin](/docs/server-and-ssr/ssr-bare-vue), on every compile, so CI catches it too.
 
-Each names the offending attribute and leaves the radio and `<option>` identity `:value` alone.
+Both are about `v-model` now, and both leave the radio and `<option>` identity `:value` alone. A `:value` / `:checked` / `:selected` is no longer flagged at all: it is what the element falls back to when `v-register` resolves no field, which is what lets [one wrapper serve both a bound and an unbound caller](/docs/binding-inputs/use-register). The runtime warning also stands down entirely for a `v-register` that resolved no field, since nothing is redundant beside a directive that is not driving anything.
 
 ## Delivered at compile time
 

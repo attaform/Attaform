@@ -57,6 +57,63 @@
 
 ### Fixed
 
+- **One component can be both form-bound and plain-bound.** A wrapper
+  that called `useRegister()` so it COULD take a `v-register` rendered a
+  blank control when used without one: the caller's own `:value` was
+  discarded and nothing replaced it, so a `<select>` showed no option and
+  a text input showed nothing. The directive was never the cause, it
+  stands down on a nullish binding and touches no element. The value
+  injection was: it strips an author's `:value` / `:checked` and puts the
+  field's own read in their place, which resolves to `undefined` when no
+  field resolved. The author's binding is now kept as the leg that read
+  falls back to, so one element serves both modes and a dual-mode wrapper
+  no longer has to duplicate itself into `v-if` / `v-else` branches
+  carrying two copies of every option and attribute. Bound behaviour is
+  untouched: the field's read always resolves to a string, `''` included,
+  so the fallback is reachable only when the binding itself is nullish,
+  never when a bound field merely holds an empty value. (#620)
+
+- **`useRegister()` gains `isBound`.** `v-if="rv"` was dead code in
+  script, where the hybrid Proxy is an object and so always truthy, while
+  a template saw the unwrapped ref and got `undefined`. `rv?.isBound`
+  reads the same on both and is reactive, which is also why the
+  composable cannot just return `undefined` when nothing has bound: a
+  parent is free to bind on a later render, and at setup time there is no
+  way to know. (#620)
+
+- **A value binding beside `v-register` no longer warns; `v-model`
+  still does.** `:value` / `:checked` / `:selected` now has a meaning
+  (the unbound leg above), so calling it redundant told authors to delete
+  the only thing making that mode work. `v-model` keeps warning, because
+  it installs Vue's own model directive beside `v-register` and two
+  writers then drive one element with no fallback between them. The
+  runtime diagnostic also stands down entirely for a `v-register` that
+  resolved no field. (#620)
+
+- **An `<option>`'s injected `:selected` resolves in the option's own
+  binding scope.** It was built while transforming the enclosing
+  `<select>`, which the compiler visits before any option's scope
+  exists, so an option's props came back as raw source text and raw text
+  spliced into an injected expression is opaque to the compiler's
+  identifier pass. A `v-for` alias survived that by luck, since bare is
+  what an alias needs; `<option :value="code">` did not, and the emitted
+  binding threw `ReferenceError: code is not defined` wherever
+  identifiers are prefixed rather than resolved lexically (an Options-API
+  parent, or a template compiled on its own). The binding is now built
+  when the traversal reaches the option, where its props are already
+  resolved and the loop aliases are in scope, so one expression can mix
+  a `v-for` alias with an outer ref and get both right. That is also
+  what made an option's own `:selected` usable as an unbound leg.
+
+- **`useRegister({ optional: true })` declares a wrapper that works
+  without a form.** The unbound diagnostic fired on every render of a
+  dual-mode wrapper, telling the author to bind a parent that was never
+  meant to bind, which is the sanctioned pattern above being scolded for
+  working. Declaring the intent silences it and changes nothing else;
+  leaving it off keeps the diagnostic for a single-mode wrapper whose
+  parent forgot `v-register`, which renders a field that looks fine and
+  stores nothing. (#620)
+
 - **A `<select>` on a path the form does not hold shows the empty
   option, not an empty box.** Binding a `<select>` to a path that is
   absent from `defaultValues` left it with nothing selected, so an

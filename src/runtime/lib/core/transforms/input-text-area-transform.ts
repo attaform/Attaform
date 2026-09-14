@@ -9,6 +9,7 @@ import { createCompoundExpression, createSimpleExpression, NodeTypes } from '@vu
 import {
   getSummarizedProps,
   isExactKey,
+  toExpressionArray,
   removePropsByName,
   type SummarizedProp,
 } from './_shared-props'
@@ -248,6 +249,25 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       // attribute (dynamic binds win over static attrs in mergeProps).
       const isDynamicType = typeProp !== undefined && isDynamicTypeValue(typeProp.value)
       const keepStaticValue = isStaticCheckbox || isStaticRadio || isDynamicType
+      // What the author bound on this element, captured BEFORE the strip
+      // below discards it. A dual-mode wrapper is one component used
+      // both `v-register`-bound and plain-bound, and the plain mode is
+      // the one that used to break: the strip took the author's `:value`
+      // and the injected expression resolved to `undefined` for a
+      // nullish register, so the control rendered with no value at all
+      // and the caller's binding was silently gone (#620). Kept as the
+      // UNBOUND leg of the injected expression instead, so one element
+      // serves both modes and the wrapper needs no `v-if` / `v-else`
+      // duplicate of itself.
+      //
+      // `checked` is always taken. `value` only when it is being
+      // stripped: under `keepStaticValue` it stays on the element as the
+      // option discriminator for a checkbox / radio, not as display
+      // state, so it is not a fallback for anything.
+      const authorCheckedProp = elementProps.find((p) => isExactKey(p.key, 'checked'))
+      const authorValueProp = keepStaticValue
+        ? undefined
+        : elementProps.find((p) => isExactKey(p.key, 'value'))
       removePropsByName(props, keepStaticValue ? ['checked'] : ['checked', 'value'])
       const registerValueArr = Array.isArray(registerSummarizedProp.value)
         ? registerSummarizedProp.value
@@ -261,11 +281,18 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       // injected expression. For checkbox / radio (the ternary's
       // truthy branch above), this leg is unreached, so behaviour
       // there is unchanged.
-      const valueExpression = createCompoundExpression([
-        '(',
-        ...registerValueArr,
-        ')?.displayValue?.value',
-      ])
+      //
+      // The author's own binding rides in as the `??` right-hand side.
+      // `displayValue` is typed `Ref<string>` and always resolves to a
+      // string for a real register, `''` included, so the fallback is
+      // reachable only when the register expression itself is nullish —
+      // never when a bound field merely holds an empty value.
+      const authorValueArr = toExpressionArray(authorValueProp?.value)
+      const valueExpression = createCompoundExpression(
+        authorValueArr === undefined
+          ? ['(', ...registerValueArr, ')?.displayValue?.value']
+          : ['((', ...registerValueArr, ')?.displayValue?.value ?? (', ...authorValueArr, '))']
+      )
 
       // Scalar-equality target. Three cases (see the long-form comment
       // on `generateEqualityExpression`):
@@ -290,16 +317,37 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       // radio), the register's `displayValue` for the `value` branch
       // (text / textarea). The arg (`elementSelectionLabelExpression`)
       // picks which attribute key this binds to at runtime.
+      // The checked leg cannot use `??`: the equality expression resolves
+      // to `false` for a nullish register, not to `undefined`, so the
+      // fallback needs an explicit nullish test on the register itself.
+      const authorCheckedArr = toExpressionArray(authorCheckedProp?.value)
+      const checkedExpression =
+        authorCheckedArr === undefined
+          ? generateEqualityExpression(
+              registerSummarizedProp.value,
+              elementValueSummarizedProp.value,
+              scalarTarget
+            )
+          : [
+              '((',
+              ...registerValueArr,
+              ') == null ? (',
+              ...authorCheckedArr,
+              ') : (',
+              ...generateEqualityExpression(
+                registerSummarizedProp.value,
+                elementValueSummarizedProp.value,
+                scalarTarget
+              ),
+              '))',
+            ]
+
       const coreExpression = [
         '(',
         ...elementSelectionLabelExpression.children,
         ") === 'checked' ? (",
         // resolves to a boolean
-        ...generateEqualityExpression(
-          registerSummarizedProp.value,
-          elementValueSummarizedProp.value,
-          scalarTarget
-        ),
+        ...checkedExpression,
         ') : (',
         // resolves to the provided register value
         ...valueExpression.children,

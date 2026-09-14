@@ -1,6 +1,6 @@
 ---
 title: Async refinements
-description: Zod's async .refine predicates run alongside sync ones. The directive surfaces fields.<path>.validating while they're in flight, and handleSubmit awaits every pending refinement before dispatch.
+description: Zod's async .refine predicates run alongside sync ones. The form surfaces fields.<path>.validating while they're in flight, and handleSubmit awaits every pending refinement before dispatch.
 metaRows:
   - label: Category
     value: Schema pattern
@@ -47,7 +47,7 @@ While an async refinement is pending at a path:
 Render a "Checking…" indicator next to the field:
 
 ```vue
-<small v-if="fields.username.validating">Checking availability…</small>
+<small v-if="form.fields.username.validating">Checking availability…</small>
 ```
 
 This is per-field UX; for a form-level spinner reach for `meta.validating` instead.
@@ -74,7 +74,7 @@ useForm({
 })
 ```
 
-Blur fires the probe only when the value actually changed since the last pass, so refocusing a field and tabbing away without editing it won't re-hit the server.
+Blur mostly fires the probe only when the value changed since the last pass, so refocusing a field and tabbing away without editing it won't re-hit the server. The one carve-out is the first blur after a real edit, which always runs: a user who types, deletes it all back to what was there, and tabs away has still earned a verdict, so that blur pays for a round-trip even though the value is where it started.
 
 Or stay on the per-keystroke trigger and coalesce bursts with `debounceMs`:
 
@@ -90,7 +90,9 @@ See [When validation runs](/docs/validation/when-validation-runs) for the full t
 
 ## Race-safety
 
-Two rapid edits before the first probe returns: the directive cancels the stale in-flight request (where the underlying client supports `AbortSignal`) or ignores its result (where it doesn't). The newest probe's result is the one that lands in `errors.<path>`. No "earlier request resolves last, overwrites the correct error" race.
+Two rapid edits before the first probe returns, and the slow first one resolves last: its verdict is dropped, not written. Every scheduled validation pass carries a form-level epoch, and a result whose epoch has already been superseded by a committed newer one never reaches the error store. So `errors.<path>` tracks the newest committed value, and the "earlier request resolves last, overwrites the correct error" race cannot happen.
+
+What Attaform does not do is cancel the request. A Zod refinement is handed the value and nothing else, so there is no signal Attaform could give your `fetch` to abort on. The superseded probe runs to completion and you still pay for it; only its answer is discarded. If those round-trips are expensive enough to care about, own an `AbortController` inside your own check, and cut the number of them with `validateOn: 'blur'` or a `debounceMs` as above.
 
 ## Validation, not persistence
 

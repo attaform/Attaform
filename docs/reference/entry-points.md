@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Reference
   - label: Entry points
-    value: 16
+    value: 15
   - label: Recommended entry
     value: attaform
     kind: code
@@ -21,7 +21,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the `v-register` delivery entry, the undo/redo plugin, the Nuxt and Vite integrations, the compiler internals, the DevTools panel, and the type-only surface.
+New projects pick `attaform`. The other subpaths cover explicit Zod pins, the bring-your-own-adapter escape hatch, the `v-register` delivery entry, the undo/redo plugin, the Nuxt and Vite integrations, the four other bundler plugins, the compiler internals, and the DevTools panel.
 
 ## `attaform`: the recommended entry
 
@@ -115,15 +115,20 @@ import {
   // Plugin + registry
   createAttaform,
   useRegistry,
+  createRegistry,
+  getRegistryFromApp,
+  kAttaformRegistry,
   // Multistep, injection, custom inputs
   useWizard,
   lazy,
+  gate,
   injectForm,
   injectWizard,
   useRegister,
   // Directive layer
   vRegister,
   assignKey,
+  isRegisterValue,
   defaultCoercionRules,
   defineCoercion,
   // SSR
@@ -143,8 +148,10 @@ import {
   SubmitErrorHandlerError,
   // Validation-error codes
   AttaformErrorCode,
-  // Display-state heuristic default
+  // Display-state heuristic default, and the knobs to retune it
   defaultDisplayState,
+  makeDefaultDisplayState,
+  DEFAULT_TIMINGS,
   // Path primitives (custom adapters only)
   canonicalizePath,
   parseDottedPath,
@@ -189,7 +196,22 @@ export default defineConfig({
 })
 ```
 
-The same plugin ships for other bundlers at `attaform/rollup`, `attaform/esbuild`, `attaform/webpack`, and `attaform/rspack`. See [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue) for the matching server and client wiring.
+See [SSR hydration: bare Vue](/docs/server-and-ssr/ssr-bare-vue) for the matching server and client wiring.
+
+## `attaform/rollup`, `attaform/esbuild`, `attaform/webpack`, `attaform/rspack`
+
+The adapter rewrite, for the other four bundlers. Each takes the same call as the Vite plugin:
+
+```ts
+// webpack.config.mjs
+import { attaform } from 'attaform/webpack'
+
+export default {
+  plugins: [attaform()],
+}
+```
+
+What they do **not** do is the compile-time template work, which is `@vitejs/plugin-vue`-specific: no `v-register` binding, and no SSR marking. Deliver the directive with [`attaform/directive`](#attaformdirective-the-v-register-delivery-entry), and if you server-render, wire [`attaform/transforms`](#attaformtransforms) into your Vue compiler yourself.
 
 ## `attaform/transforms`
 
@@ -226,20 +248,22 @@ Two consequences worth knowing:
 
 ## Which subpath for which job?
 
-| You want to…                                          | Import from          |
-| ----------------------------------------------------- | -------------------- |
-| Build a form in a Vue 3 / Nuxt app (Zod v3 or v4)     | `attaform`           |
-| Pin the Zod v3 adapter explicitly                     | `attaform/zod-v3`    |
-| Pin the Zod v4 adapter explicitly                     | `attaform/zod-v4`    |
-| Wire a custom or non-Zod schema library               | `attaform/abstract`  |
-| Install the Nuxt module                               | `attaform/nuxt`      |
-| Install the Vite plugin under bare Vue + Vite         | `attaform/vite`      |
-| Deliver `v-register` without a build plugin           | `attaform/directive` |
-| Enable undo/redo (`historyPlugin`)                    | `attaform/history`   |
-| Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`           |
-| Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`           |
-| Catch an Attaform-thrown error by class               | `attaform`           |
-| Type-only imports in a `.d.ts` file                   | `attaform`           |
+| You want to…                                          | Import from                                                                  |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Build a form in a Vue 3 / Nuxt app (Zod v3 or v4)     | `attaform`                                                                   |
+| Pin the Zod v3 adapter explicitly                     | `attaform/zod-v3`                                                            |
+| Pin the Zod v4 adapter explicitly                     | `attaform/zod-v4`                                                            |
+| Wire a custom or non-Zod schema library               | `attaform/abstract`                                                          |
+| Install the Nuxt module                               | `attaform/nuxt`                                                              |
+| Install the Vite plugin under bare Vue + Vite         | `attaform/vite`                                                              |
+| Ship one Zod adapter from a non-Vite bundler          | `attaform/webpack`, `attaform/rspack`, `attaform/rollup`, `attaform/esbuild` |
+| Wire the template transforms into your own compiler   | `attaform/transforms`                                                        |
+| Deliver `v-register` without a build plugin           | `attaform/directive`                                                         |
+| Enable undo/redo (`historyPlugin`)                    | `attaform/history`                                                           |
+| Reach directive symbols (`vRegister`, `assignKey`, …) | `attaform`                                                                   |
+| Use SSR helpers (`renderAttaformState`, etc.)         | `attaform`                                                                   |
+| Catch an Attaform-thrown error by class               | `attaform`                                                                   |
+| Type-only imports in a `.d.ts` file                   | `attaform`                                                                   |
 
 ## The Zod-default story
 

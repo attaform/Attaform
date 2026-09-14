@@ -59,7 +59,7 @@ The types follow the form through every state. While the user is typing, `form.v
 <input v-register="form.register('email')" />
 ```
 
-That's the whole binding. A11y attributes, value sync, focus state, blank tracking. All native.
+That's the whole binding, and the element on the page is still the one you wrote. `v-register` wires value sync, focus and blur state, blank tracking, and the a11y attributes onto it in place.
 
 ## Live, layered validation
 
@@ -70,7 +70,7 @@ That's the whole binding. A11y attributes, value sync, focus state, blank tracki
 
 ## SSR-first, hydration-clean
 
-Forms render server-side and hydrate without a flash. Nuxt is zero-config; bare Vue 3 plus `@vue/server-renderer` takes two one-liner helpers. The form your server rendered _is_ the form your client picks up.
+Forms render server-side and hydrate without a flash: values, both error layers, and every per-field flag ride the payload, so the form your server rendered _is_ the form your client picks up. Nuxt is zero-config. Bare Vue 3 with `@vue/server-renderer` is two helpers, one per side of the boundary, plus the build plugin that teaches the compiler to render a component-wrapped input's state on the server.
 
 ## Built into the core
 

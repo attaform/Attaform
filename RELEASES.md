@@ -1,5 +1,55 @@
 # Releases
 
+## v0.29.0 — 2026-09-15
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/565
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/572
+* fix(core): share field-meta state across duplicate copies (#577) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/578
+* chore(deps): clear 11 Dependabot alerts, gate the floors by @ozzyfromspace in https://github.com/attaform/Attaform/pull/579
+* chore(deps): raise the js-yaml floor to ^4.3.2 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/580
+* chore(deps): bump @nuxt/ui to 4.11.1, pin a single vite by @ozzyfromspace in https://github.com/attaform/Attaform/pull/582
+* chore(deps): make the vite constraint self-maintaining by @ozzyfromspace in https://github.com/attaform/Attaform/pull/584
+* chore(deps): make rollup and @nuxt/devtools self-maintaining too by @ozzyfromspace in https://github.com/attaform/Attaform/pull/585
+* chore(ci): bump five pinned actions in one pass by @ozzyfromspace in https://github.com/attaform/Attaform/pull/586
+* chore(deps): bump jsdom, @types/node, @types/jsdom and satori by @ozzyfromspace in https://github.com/attaform/Attaform/pull/587
+* chore(deps): pin the PrimeVue cluster to its last MIT release by @ozzyfromspace in https://github.com/attaform/Attaform/pull/588
+* chore(deps-dev): sweep 33 dev dependencies, unblock two gates by @ozzyfromspace in https://github.com/attaform/Attaform/pull/597
+* chore(ci): bump five pinned actions in one pass by @ozzyfromspace in https://github.com/attaform/Attaform/pull/598
+* chore(deps): bump the docs-site dependencies, better-sqlite3 to 13 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/599
+* fix(core): make reset(next) the form's durable defaults by @ozzyfromspace in https://github.com/attaform/Attaform/pull/600
+* fix(wizard): advance from inside a gate step's own submit by @ozzyfromspace in https://github.com/attaform/Attaform/pull/601
+* fix(nuxt): auto-import useRegister, pin the docs that name the set by @ozzyfromspace in https://github.com/attaform/Attaform/pull/602
+* fix(types): admit optional and DU-variant containers as array paths by @ozzyfromspace in https://github.com/attaform/Attaform/pull/603
+* test(harness): make waitUntil expiry loud, split out the negative case by @ozzyfromspace in https://github.com/attaform/Attaform/pull/604
+* fix(zod-v4): accept opaque leaves, and stop three walkers destroying them by @ozzyfromspace in https://github.com/attaform/Attaform/pull/605
+* fix(core): a pending spinner could never clear, and the flake that revealed it by @ozzyfromspace in https://github.com/attaform/Attaform/pull/606
+* feat(adapters): accept every Zod kind; enforce the keyed-root rule by @ozzyfromspace in https://github.com/attaform/Attaform/pull/607
+* fix(core): contain every throw from consumer code by @ozzyfromspace in https://github.com/attaform/Attaform/pull/608
+* fix(transforms): scope each <option> :selected to its own bindings by @ozzyfromspace in https://github.com/attaform/Attaform/pull/609
+* fix(types): say why a path was rejected, instead of `never` by @ozzyfromspace in https://github.com/attaform/Attaform/pull/610
+* fix(core): form.values() returns a snapshot, not the live proxy by @ozzyfromspace in https://github.com/attaform/Attaform/pull/611
+* fix(core): resolve an opaque leaf as a leaf on every surface by @ozzyfromspace in https://github.com/attaform/Attaform/pull/615
+* fix(core): release the dynamic paths a form no longer has by @ozzyfromspace in https://github.com/attaform/Attaform/pull/616
+* fix(core): make a map entry a path, and a set member not one by @ozzyfromspace in https://github.com/attaform/Attaform/pull/618
+* fix(core): release the surface caches for a path a form no longer has by @ozzyfromspace in https://github.com/attaform/Attaform/pull/619
+* fix(core): a select with no value shows the empty option by @ozzyfromspace in https://github.com/attaform/Attaform/pull/621
+* fix(core): one component, bound and unbound by @ozzyfromspace in https://github.com/attaform/Attaform/pull/622
+* docs(core): an observing listener is not a second binding by @ozzyfromspace in https://github.com/attaform/Attaform/pull/623
+* docs: accuracy pass over all 100 pages and the Agent Skill by @ozzyfromspace in https://github.com/attaform/Attaform/pull/632
+* test(packaging): the bestpractices gate wrote into the repo it checks by @ozzyfromspace in https://github.com/attaform/Attaform/pull/634
+* chore(ci): bump actions/attest-build-provenance from 4.1.1 to 4.2.2 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/626
+* chore(ci): bump three pinned actions in one pass by @ozzyfromspace in https://github.com/attaform/Attaform/pull/635
+* fix(zod-v3): rebuild survives a getter-only `_def` by @ozzyfromspace in https://github.com/attaform/Attaform/pull/637
+* chore(deps-dev): sweep six dev dependencies by @ozzyfromspace in https://github.com/attaform/Attaform/pull/636
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/638
+* docs(benchmarks): the sweep was never one fixed runner by @ozzyfromspace in https://github.com/attaform/Attaform/pull/639
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.28.0...v0.29.0
+
+---
+
 ## v0.28.0 — 2026-08-24
 
 ## What's Changed

@@ -71,6 +71,27 @@ describe('the arena cohort vs the page explaining it', () => {
     expect(unexplained, `${PAGE} leaves a doubled row unexplained`).toEqual([])
   })
 
+  it('does not promise a fixed runner the sweep never had', () => {
+    const results = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'apps/bench-arena/results.json'), 'utf8')
+    ) as { provenance: { runner?: { cpuModel?: string; shardCount?: number } } }
+    const { cpuModel = '', shardCount = 1 } = results.provenance.runner ?? {}
+
+    // The sweep shards across runners and takes whatever hardware the
+    // host assigns, so a refresh can move every absolute figure at once
+    // with no code behind it: the 2026-09 run moved `massive|mount` by
+    // roughly a quarter for all nine libraries. The page said the
+    // numbers came "from CI on a fixed runner" while the paragraph
+    // above it already promised the slope survives a change of machine,
+    // so the page contradicted itself about its own provenance.
+    const varies = /^mixed:/.test(cpuModel) || shardCount > 1
+    expect(varies, 'the sweep now runs on one machine; this caveat may be retired').toBe(true)
+    expect(
+      /fixed runner/i.test(page()),
+      `${PAGE} promises a fixed runner, but provenance records "${cpuModel}"`
+    ).toBe(false)
+  })
+
   it('describes the bundle figure as the split the measurement produces', () => {
     const results = JSON.parse(
       readFileSync(join(REPO_ROOT, 'apps/bench-arena/results.json'), 'utf8')

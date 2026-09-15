@@ -23,7 +23,7 @@
     "attaform": "workspace:*"
   },
   "devDependencies": {
-    "@formisch/vue": "^0.11.0",
+    "@formisch/vue": "^1.0.0",
     "@formkit/vue": "^2.0.0",
     "@formkit/zod": "^2.0.0",
     "@playwright/test": "^1.60.0",
@@ -35,7 +35,7 @@
     "@vitejs/plugin-vue": "^6.0.7",
     "@vuelidate/core": "^2.0.3",
     "@vuelidate/validators": "^2.0.4",
-    "pinia": "^3.0.4",
+    "pinia": "^4.0.3",
     "valibot": "^1.4.1",
     "vee-validate": "^4.15.1",
     "vite": "^8.0.10",

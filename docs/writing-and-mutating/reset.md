@@ -51,7 +51,7 @@ form.reset({ name: 'New Default', email: 'new@example.com' })
 
 After this call, the new object IS the form's defaults for any subsequent `reset()` or `resetField` call. Useful when the form needs to switch contexts: editing record A then loading record B's values as the new baseline.
 
-The argument is a `Partial<DefaultValuesInput<Form>>`. Fields you don't mention pick up the previous defaults. Pass `{}` to reset with no changes to the defaults.
+The argument is a `DefaultValuesInput<Form>`, which is already optional at every key, all the way down. Keys you don't mention keep the previous defaults at whatever depth you stop: `form.reset({ profile: { city: 'Ndola' } })` re-seats `profile.city` and leaves `profile.zip` on its old default rather than dropping it. Pass `{}` to reset with no changes to the defaults.
 
 Arrays are replaced wholesale rather than merged element-wise, so `form.reset({ tags: ['x'] })` leaves one tag, not four. To withdraw a value instead of changing it, pass [`unset`](/docs/writing-and-mutating/unset) at that path.
 

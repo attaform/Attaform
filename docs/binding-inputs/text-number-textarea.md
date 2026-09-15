@@ -46,11 +46,11 @@ Three modifiers apply across all text-family inputs:
 <input v-register.number="form.register('age')" type="text" />
 ```
 
-| Modifier  | Effect                                                                                                                          |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `.lazy`   | Writes fire on `change` / `blur` instead of every `input` event. Matches Vue's `v-model.lazy` semantics.                        |
-| `.trim`   | Strips leading and trailing whitespace before the write.                                                                        |
-| `.number` | Coerces the DOM string to a number before the write. Useful when `type="text"` is required but the schema leaf is `z.number()`. |
+| Modifier  | Effect                                                                                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.lazy`   | Writes fire on the `change` event instead of every `input` event, so the value lands when the user leaves the field. Matches Vue's `v-model.lazy` semantics. |
+| `.trim`   | Strips leading and trailing whitespace, committing the stripped value when the user leaves the field.                                                        |
+| `.number` | Coerces the DOM string to a number before the write. Useful when `type="text"` is required but the schema leaf is `z.number()`.                              |
 
 The full set lives in the [Modifiers](/docs/binding-inputs/modifiers) page; `.number` and `<input type="number">` are documented side-by-side there.
 

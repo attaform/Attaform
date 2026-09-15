@@ -69,7 +69,7 @@ form.register('profile.email') // bound writes via v-register
 form.append('todos', { title: '' }) // structural writes
 ```
 
-Attaform tracks dirty, touched, and validation state through those write paths. Assigning to `.value` directly throws; `toRef` is a read handle, not a backdoor.
+Attaform tracks dirty, touched, and validation state through those write paths. Assigning to `.value` directly never reaches storage: Vue refuses the write on a readonly computed and says so in the dev console. Nothing throws, so a stray assignment fails quietly in production rather than taking a render down. `toRef` is a read handle, not a backdoor.
 
 ## Reactivity contract
 

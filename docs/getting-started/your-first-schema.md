@@ -43,12 +43,12 @@ Object fields become reactive paths on `form.values`; nested objects become nest
 The schema above covers most of what a real signup form needs:
 
 - `email` and `password` are **required strings**. Attaform stores `''` as the default, so `form.values.email` starts as `''` and updates as the user types.
-- `displayName` is **optional**. Storage still starts at `''`; the `.optional()` flag lets the field's empty string pass schema parsing at submit time.
-- `age` is a **required number**. Storage starts at `0`; the `min(13)` refinement runs every time the field validates and shows up on `form.fields.age.errors`.
+- `displayName` is **optional**, and that changes what gets stored: nothing. `form.values.displayName` reads `undefined` until the user types, which is what lets an untouched optional field pass at submit. It is not holding an empty string that `.optional()` waves through; `z.string().min(2).optional()` rejects `''` like any other too-short string.
+- `age` is a **required number**. Storage starts at `0`, the slim default, and Attaform marks the field blank so that `0` is not read as a number the user chose. `form.fields.age.errors` carries both the `min(13)` failure and a "no value supplied" entry until they enter one.
 
 ## Defaults from the schema
 
-You don't redeclare defaults when you call `useForm`. Attaform reads them from the schema: `''` for strings, `0` for numbers, `false` for booleans, `[]` for arrays, `{}` for objects. Override per field with `defaultValues`:
+You don't redeclare defaults when you call `useForm`. Attaform reads them from the schema: `''` for strings, `0` for numbers, `false` for booleans, `[]` for arrays, `{}` for objects. An optional leaf is the exception and gets no seed at all, since the whole point of the slot is that it can be empty. [The schema contract](/docs/schemas/contract#defaults) has the table for every kind, and [Optional, nullable, defaulted](/docs/schemas/optional-nullable) covers what each wrapper does to it. Override per field with `defaultValues`:
 
 ```ts
 const form = useForm({

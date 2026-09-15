@@ -133,13 +133,17 @@ const schema = z.object({
 
 ## Zod adapters
 
-`attaform` is the canonical import for new projects. `useForm` here takes a Zod schema, walks it once at construction, caches structural metadata, and implements `AbstractSchema` against Zod's runtime. It auto-detects the installed Zod major (v4 by default, v3 when that's what's installed) and routes to the matching adapter.
+`attaform` is the canonical import for new projects. `useForm` here takes a Zod schema, walks it once at construction, caches structural metadata, and implements `AbstractSchema` against Zod's runtime. It reaches the right major on its own, by one of two routes.
+
+Under the `attaform/vite` plugin (or `attaform/nuxt`, which installs it), the import is rewritten at build time to `attaform/zod-v3` or `attaform/zod-v4` against the Zod version you have installed. That is the route to want: the resolution happens once, and the bundle carries one adapter.
+
+Without a build plugin (webpack, rspack, esbuild, plain ESM), `useForm` dispatches at runtime instead, on the shape of the schema you handed it rather than on what is installed. A v3 schema and a v4 schema both land on the right adapter, in the same app if it comes to that. The convenience is paid for in bundle size, since both adapters ship.
 
 ```ts
 import { useForm } from 'attaform'
 ```
 
-`attaform/zod` is the same surface named explicitly, and `attaform/zod-v3` / `attaform/zod-v4` pin one adapter with no detection. For projects still on Zod v3, `attaform/zod-v3` is the pin. The consumer-facing surface is identical across all four; the parsing engine and metadata walker differ to match each major's internals.
+`attaform/zod` is the same surface named explicitly. `attaform/zod-v3` and `attaform/zod-v4` pin one adapter outright: never rewritten, never carrying the other. That makes them the lean import on tooling the plugin does not cover, as well as the pin for a project staying on Zod v3. The consumer-facing surface is identical across all four; the parsing engine and metadata walker differ to match each major's internals.
 
 ### What the adapters accept
 
@@ -165,14 +169,21 @@ Each kind gets a blank value, which is what `form.values` reads before anything 
 | --------------------------------------------------------- | ---------------------------- |
 | `z.string()`, `z.templateLiteral(...)`                    | `''`                         |
 | `z.number()` / `z.bigint()` / `z.boolean()` / `z.date()`  | `0` / `0n` / `false` / epoch |
-| `z.array(...)` / `z.tuple(...)`                           | `[]`                         |
-| `z.object(...)` / `z.record(...)`                         | `{}` (recursed)              |
+| `z.enum([...])` / `z.literal(x)`                          | the first member / `x`       |
+| `z.array(...)`                                            | `[]`                         |
+| `z.tuple([a, b])`                                         | `[a's blank, b's blank]`     |
+| `z.object(...)`                                           | `{}`, every key recursed     |
+| `z.record(...)`                                           | `{}`                         |
 | `z.set(...)` / `z.map(...)`                               | `new Set()` / `new Map()`    |
 | `z.file()`                                                | `null`                       |
+| `z.union([...])` / `z.discriminatedUnion(...)`            | the first option's blank     |
+| `z.coerce.X()`, `z.preprocess(fn, X)`                     | absent (`undefined`)         |
 | `z.symbol()`, `z.function()`, `z.promise(...)`            | absent (`undefined`)         |
 | `z.any()`, `z.unknown()`, `z.custom()`, `z.instanceof(X)` | absent (`undefined`)         |
 
-The last two rows are absent for two different reasons. An opaque leaf declares nothing about its value's shape, so there is no blank to derive. A symbol, a function, and a promise are describable but have no empty member: there is no empty Promise, no empty function, and `Symbol()` mints a fresh value on every call, so seeding one would make the blank non-deterministic. In both cases the slot stays genuinely absent until you write to it.
+Two rows are worth reading twice, because both seed a value nobody chose. A tuple blanks position by position rather than to `[]`, so `z.tuple([z.string(), z.number()])` reads `['', 0]` on mount and a `v-for` over it renders both positions straight away. And a required `z.enum([...])` blanks to its **first member**, which a bound `<select>` then paints as the selected row. Neither one is marked [blank](/docs/validation/blank), so a user who never opens that dropdown still submits the first option. Where that matters, declare the field `.optional()` (the slot stays absent) or seed it yourself through `defaultValues`.
+
+The last three rows are absent for three different reasons. An opaque leaf declares nothing about its value's shape, so there is no blank to derive. A symbol, a function, and a promise are describable but have no empty member: there is no empty Promise, no empty function, and `Symbol()` mints a fresh value on every call, so seeding one would make the blank non-deterministic. `z.coerce.X()` and `z.preprocess(fn, X)` are the third case: both declare an input boundary your own code owns, so the inner leaf's blank would be a value Attaform invented on the far side of a conversion it cannot run yet. A `.default(x)` you declare on either one is still honored, so `z.coerce.number().default(5)` seeds `5`. In every case the slot stays genuinely absent until something writes to it.
 
 Three things are worth knowing before you reach for the referential kinds. All three are Zod's semantics rather than Attaform's, and all three are pinned by tests so they stay stated rather than discovered.
 
@@ -185,6 +196,8 @@ Three things are worth knowing before you reach for the referential kinds. All t
 ### The one rule: the root must hold keys
 
 A form is a set of addressable fields, so the schema you hand `useForm` has to have keys to address. Three shapes do: `z.object({ ... })`, `z.record(key, value)`, and `z.discriminatedUnion(key, [ ... ])`. A `z.string()` or a `z.array(...)` root raises [AF15](/e/af15) at `useForm(...)`.
+
+The check peels transparent wrappers before it decides, so `z.object({ ... }).optional()` or `.default({})` at the root is accepted for what it wraps, and `z.string().optional()` is refused for the same reason its bare form is.
 
 That rule is about addressability, not about kinds. Every kind above is welcome the moment you give it a name:
 
@@ -227,7 +240,7 @@ The same holds for the values you write. Attaform walks them, so a property that
 
 Callbacks you hand over deliberately already have somewhere to go, and keep going there: a throw from `onSubmit` or `onError` lands on `form.meta.submitError`, and a throw from a `register({ transforms })` function lands on `field.transformError`.
 
-Two throws are deliberately loud, because both are a mistake at the call site rather than a failure at runtime: a malformed path (`form.errors('a..b')`) and an invalid `useForm` configuration.
+A handful of throws stay deliberately loud, on one rule: the mistake is at the call site rather than a failure at runtime, so surfacing it where it was made is the only useful answer. A malformed path (`form.errors('a..b')`), an invalid `useForm` configuration, a root with no keys to address ([AF15](/e/af15)), a schema built by the Zod major the pinned adapter cannot read ([AF01](/e/af01)), and `form.rehydrate()` on a form that captured no factory ([AF10](/e/af10)) all raise on the spot.
 
 ## Schema-agnostic core
 
@@ -251,10 +264,9 @@ The split is intentional. Refinements drive live feedback as users type; transfo
 
 ## Fingerprinting
 
-Every schema carries a structural fingerprint: a short string that changes when the shape changes (adding or removing a field, changing a leaf type, restructuring nesting) but stays stable under refinement, transform, or metadata tweaks. The fingerprint surfaces in two places:
+Every schema carries a structural fingerprint: a short string that changes when the shape changes (adding or removing a field, changing a leaf type, restructuring nesting) but stays stable under refinement, transform, or metadata tweaks.
 
-- Persistence keys (a schema change auto-invalidates stale drafts).
-- Shared-key form mismatches in dev (two `useForm({ key: 'x' })` calls with different schemas warn).
+It has one consumer today: the dev-mode shared-key check. Two `useForm({ key: 'x' })` calls whose schemas disagree structurally warn at the second call, which is what catches a key you meant to be unique and a genuine shape drift between two components that share one form.
 
 `schema.fingerprint()` lives on the adapter; the runtime calls it when needed.
 

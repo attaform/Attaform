@@ -61,7 +61,7 @@ What this gets you: `v-register` bound into every template that uses it (no app-
 
 ## No build plugin?
 
-Building with a webpack-family bundler, importing from a CDN, or compiling templates at runtime? Register the directive once per app and everything else works the same:
+Building with a webpack-family bundler, importing from a CDN, or compiling templates at runtime? Register the directive once per app:
 
 ```ts
 import { createApp } from 'vue'
@@ -73,7 +73,7 @@ installVRegister(app)
 app.mount('#app')
 ```
 
-The bundler plugins at `attaform/webpack`, `attaform/rspack`, `attaform/rollup`, and `attaform/esbuild` still handle the single-Zod-adapter rewrite for their pipelines; `installVRegister` covers the directive.
+The bundler plugins at `attaform/webpack`, `attaform/rspack`, `attaform/rollup`, and `attaform/esbuild` still handle the single-Zod-adapter rewrite for their pipelines; `installVRegister` covers the directive. Client-rendered apps need nothing further. The one piece that does not travel is the compile-time template work, which is `@vitejs/plugin-vue`-specific: if you server-render, wire [`attaform/transforms`](/docs/reference/entry-points#attaformtransforms) into your Vue compiler so the server paints each bound input's state rather than leaving hydration to fix it.
 
 ## Auto-imports
 

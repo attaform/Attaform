@@ -1,6 +1,6 @@
 ---
 title: Select & multi-select
-description: <select> binds to a single picked value; <select multiple> binds to an array of picked values. The directive reads the schema leaf type and picks the mode automatically.
+description: <select> binds to a single picked value; <select multiple> binds to a list of picked values. The multiple attribute picks the mode, and the schema leaf matches it.
 metaRows:
   - label: Category
     value: Directive binding
@@ -11,18 +11,18 @@ metaRows:
     value: '.number'
     kind: code
   - label: Leaf types
-    value: scalar (single) · readonly Value[] (multiple)
+    value: scalar (single) · readonly Value[] · Set<Value> (multiple)
     kind: code
 ---
 
 # Select & multi-select
 
-> One element, two leaf shapes: a scalar for `<select>`, an array for `<select multiple>`. Pick the mode in the schema; the directive follows.
+> One element, two leaf shapes: a scalar for `<select>`, a list for `<select multiple>`. The `multiple` attribute picks the mode; the schema leaf matches it.
 
 ::docs-meta-table
 ::
 
-Pick a country from the single select to watch the JSON readout switch its scalar value. In the multi-select below, hold ⌘ (or Ctrl) and click multiple options. Every picked option's `value=` attribute lands in the `tags` array in selection order. The directive reads the schema leaf at each path and infers single vs. multi automatically.
+Pick a country from the single select to watch the JSON readout switch its scalar value. In the multi-select below, hold ⌘ (or Ctrl) and click multiple options. Every picked option's `value=` attribute lands in the `tags` array, in the order the options appear in the markup. The `multiple` attribute is what puts the directive in list mode.
 
 ::docs-demo{slug="select" label="Select Demo"}
 ::
@@ -42,7 +42,7 @@ The picked option's `value=` attribute lands in `form.values.country`. The schem
 
 ## Multi-select → array
 
-When the schema leaf is an array, `<select multiple>` writes every picked option's value into that array, in selection order:
+`<select multiple>` writes every picked option's value into a list leaf, ordered the way the options are written rather than the way they were clicked:
 
 ```vue
 <select v-register="form.register('tags')" multiple>
@@ -64,7 +64,11 @@ const form = useForm({
 form.values.tags // ['design', 'ops']
 ```
 
-Deselecting an option removes it from the array; the array shape always reflects the current visual selection. No event-listener wiring on your side; the directive infers multi-mode from the `multiple` attribute and the schema's array leaf.
+Deselecting an option removes it from the array; the array shape always reflects the current visual selection. No event-listener wiring on your side.
+
+The `multiple` attribute is the whole switch. The directive reads each picked option off the element in document order, so a user who clicks Ops and then Design still gets `['design', 'ops']`. Reach for a list leaf and `multiple` together: a list leaf on a plain `<select>`, or a scalar leaf on a `<select multiple>`, is a mismatch the directive names in the dev console rather than guessing at.
+
+A `z.set(...)` leaf works the same way and lands a `Set` instead of an array, members in that same order.
 
 ## A path the form does not hold
 

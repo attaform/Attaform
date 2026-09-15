@@ -15,7 +15,7 @@ metaRows:
 
 # The Attaform DevTools panel
 
-> A first-class native tab in the Nuxt DevTools sidebar. Every form's value, errors, aggregates, and event timeline, with an editable JSON tree for the values.
+> A first-class native tab in the Nuxt DevTools sidebar. Every form's value, errors, aggregates, per-field state, and event timeline, with an editable JSON tree for the values.
 
 ::docs-meta-table
 ::
@@ -50,12 +50,18 @@ The current `form.values` as an interactive JSON tree. **Editable from the panel
 
 Values render verbatim. The panel is dev-only, so it doesn't mask passwords / tokens / secrets; debugging a credential flow typically needs the actual value. Close the panel before a screen share if a value would be sensitive on camera, the same hygiene as the browser's own DevTools console.
 
+### Field state
+
+Click any key in the value tree and a **Field state** section opens beneath it for that path: `connected`, `touched`, `focused`, `blurred`, `updatedAt`, the schema and user error counts side by side, every error message with its `code`, and the value at that path. Click the same key again, or the × in the section header, to close it.
+
+This is the panel's answer to "the field looks wrong and I can't tell why": the interaction flags and the two error layers for one path, in one place, without reaching into `form.fields` from a breakpoint.
+
 ### Schema Errors / User Errors
 
 The error map keyed by path, split by source:
 
-- **Schema Errors**: what the validator (Zod adapter) produced. Cleared by `reset()` / `handleSubmit` success.
-- **User Errors**: the manual error layer you wrote via `setErrors` (server errors included). Persists across revalidation and successful submits.
+- **Schema Errors**: what the validator (Zod adapter) produced. Recomputed on every validation pass, so they track the current values.
+- **User Errors**: the manual error layer you wrote via `setErrors` (server errors included). Never re-derived, so an entry sits here until something clears it: `clearErrors`, `reset()`, or the next `handleSubmit`, which wipes the layer on entry.
 
 Splitting them tells you instantly whether validation or your application code emitted each error.
 
@@ -66,7 +72,7 @@ The reactive bundle:
 - `submitting`
 - `submissionAttempts`
 - `submitError`
-- `activeValidations`
+- `activeValidations`, the in-flight validation count that `form.meta.validating` reads as a boolean
 
 Useful for confirming your loading-state wiring is reading the right reactive thing.
 
@@ -88,7 +94,6 @@ The panel renders form values raw. DevTools is a dev-only surface, and redacting
 
 ## What's coming
 
-- **Field flags** (touched / focused / blurred) in the inspector: values + errors are surfaced today, UI interaction state isn't.
 - **History stack visualization.** Undo / redo snapshots show on the timeline via `form.change` entries; the stack itself isn't a separate node yet.
 
 ## Caveats

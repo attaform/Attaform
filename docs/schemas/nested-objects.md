@@ -91,19 +91,25 @@ const schema = z
 const form = useForm({ schema })
 ```
 
-A `.refine` on the outer object attaches its error to whatever `path` you specify. With no `path`, the error lands on the object root, accessible at `form.errors.<object-path>` directly. With a `path`, it lands on the named leaf, usually preferable for inline display, since the field component reads from `form.errors.confirm` either way.
+A `.refine` on an object attaches its error to whatever `path` you specify. Naming a leaf (`path: ['confirm']`) puts it there, where `form.errors.confirm` and that field's own state pick it up like any other error. That is what makes it the move for inline display, and for cross-field validations generally: password confirmation, address-postal-code matching, conditional-required dependencies.
 
-For cross-field validations (password confirmation, address-postal-code matching, conditional-required dependencies), the `.refine` + `path: ['leafName']` pattern is the canonical move.
+With no `path`, the error lands on the object's **own bucket** rather than on any leaf, and reading it takes a different spelling. At the root of the form that is `form.meta.ownErrors` (or `form.meta.firstOwnError`), since the root has no path to address it by. One level down it is the [`''` container-self sentinel](/docs/reading-the-form/errors#the-sentinel-container-self-errors):
 
-When a no-path refine lands on a nested object's own bucket, isolate it from the fieldset's child errors with the own-bucket accessor on its FieldState:
+```ts
+form.meta.firstOwnError // a refine on the root object
+form.errors.profile[''] // a refine on the nested `profile` object
+form.errors('profile') // the same list through the flat call form
+```
+
+To isolate that error from the fieldset's child errors, read the own bucket off the container's FieldState, which is the **call** form:
 
 ```vue
-<em v-if="form.fields.profile.firstOwnError">
-  {{ form.fields.profile.firstOwnError.message }}
+<em v-if="form.fields('profile').firstOwnError">
+  {{ form.fields('profile').firstOwnError?.message }}
 </em>
 ```
 
-`form.fields.profile.errors` rolls up the whole subtree (the object's own error plus every child's); `form.fields.profile.ownErrors` is the object's own bucket alone. See [reading FieldState](/docs/reading-the-form/fields) for the full own-versus-subtree axis.
+The call is the load-bearing part. `form.fields.profile` is a navigation node that keeps drilling toward leaves, so it carries no error state of its own and `form.fields.profile.firstOwnError` reads `undefined` however many errors the object holds. `form.fields('profile')` returns the container's own FieldState: `ownErrors` is its own bucket alone, `errors` rolls up the whole subtree. A leaf needs no such distinction, since it has no descendants and reads either way. See [reading FieldState](/docs/reading-the-form/fields) for the full own-versus-subtree axis.
 
 ## Per-nested defaults
 

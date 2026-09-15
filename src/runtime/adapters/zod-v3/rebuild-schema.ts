@@ -51,7 +51,21 @@ interface DefCarrier {
  */
 function rebuildWithDef<T extends z.ZodTypeAny>(original: T, defPatch: Record<string, unknown>): T {
   const node = Object.create(Object.getPrototypeOf(original)) as T & DefCarrier
-  node._def = { ...(original as unknown as DefCarrier)._def, ...defPatch }
+  // Defined, not assigned. Zod v3 carries `_def` as a writable own
+  // property, so a plain write lands; Zod 4.5 moved it to a
+  // getter-only accessor on the prototype, and writing through an
+  // inherited accessor that has no setter throws a TypeError under
+  // the strict mode every module runs in. Defining an own data
+  // property shadows the accessor instead, which lands on both
+  // realms — and a foreign-realm node is the exact case this module
+  // exists to survive. The flags reproduce what the old assignment
+  // produced on v3, so the intended path is byte-for-byte unchanged.
+  Object.defineProperty(node, '_def', {
+    value: { ...(original as unknown as DefCarrier)._def, ...defPatch },
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  })
   return node
 }
 

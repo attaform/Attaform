@@ -392,15 +392,20 @@ jobs:
           # sync-doc-versions.mjs stamps ride along only when their
           # version marker is present; that script is deliberately
           # tolerant and skips a re-worded doc, so they are allowed but
-          # not required. Any path outside this allow-list fails the
-          # release here, where the run log still shows what was modified.
+          # not required. `.bestpractices.json` rides along for the same
+          # reason: it is GENERATED from the scorecard doc the stamp just
+          # edited, so the two have to move together or the packaging
+          # gate that compares them fails the next PR to touch either.
+          # Any path outside this allow-list fails the release here,
+          # where the run log still shows what was modified.
           STAGED=$(git diff --cached --name-only | sort)
           REQUIRED=$(printf '%s\n' CHANGELOG.md RELEASES.md package.json | sort)
           ALLOWED=$(printf '%s\n' \
             CHANGELOG.md \
             RELEASES.md \
             package.json \
-            docs/scorecard/cii-best-practices-answers.md | sort)
+            docs/scorecard/cii-best-practices-answers.md \
+            .bestpractices.json | sort)
           MISSING=$(comm -23 <(printf '%s\n' "$REQUIRED") <(printf '%s\n' "$STAGED"))
           UNEXPECTED=$(comm -13 <(printf '%s\n' "$ALLOWED") <(printf '%s\n' "$STAGED"))
           if [ -n "$MISSING" ] || [ -n "$UNEXPECTED" ]; then
@@ -411,7 +416,7 @@ jobs:
             if [ -n "$UNEXPECTED" ]; then
               printf '%s\n' "$UNEXPECTED" | sed '/^$/d; s/^/::error::  unexpected staged file: /'
             fi
-            echo "::error::Required: CHANGELOG.md, RELEASES.md, package.json. Also allowed: docs/scorecard/cii-best-practices-answers.md"
+            echo "::error::Required: CHANGELOG.md, RELEASES.md, package.json. Also allowed: docs/scorecard/cii-best-practices-answers.md, .bestpractices.json"
             exit 1
           fi
           echo "Files staged for release commit:"
@@ -700,6 +705,7 @@ jobs:
               "- `CHANGELOG.md`: `## Unreleased` promoted to `## v" + version + "`",
               "- `RELEASES.md`: auto-generated GitHub release-notes entry prepended",
               "- `docs/scorecard/cii-best-practices-answers.md`: `current:` version marker stamped to `" + version + "`",
+              "- `.bestpractices.json`: regenerated from that doc, so the two stay in step",
               "",
               "### After merge",
               "",

@@ -59,7 +59,7 @@
     "check:doc-snippets": "node scripts/check-doc-snippets.mjs",
     "check:site": "pnpm dev:prepare && pnpm --filter attaform-site typecheck",
     "fallow": "DO_NOT_TRACK=1 FALLOW_TELEMETRY=0 npx --yes fallow@2.88.3 --score",
-    "version": "node scripts/promote-changelog.mjs && (node scripts/generate-release-notes.mjs || echo '[version] release-notes step failed; continuing') && node scripts/sync-doc-versions.mjs && git add CHANGELOG.md RELEASES.md docs/scorecard/cii-best-practices-answers.md",
+    "version": "node scripts/promote-changelog.mjs && (node scripts/generate-release-notes.mjs || echo '[version] release-notes step failed; continuing') && node scripts/sync-doc-versions.mjs && node scripts/build-bestpractices-json.mjs && git add CHANGELOG.md RELEASES.md docs/scorecard/cii-best-practices-answers.md .bestpractices.json",
     "prepare": "husky"
   },
   "description": "A type-safe, schema-driven form library for Vue 3 and Nuxt with first-class Zod support.",

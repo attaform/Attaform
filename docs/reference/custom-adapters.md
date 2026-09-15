@@ -1,6 +1,6 @@
 ---
 title: Custom schema adapters
-description: Implement the AbstractSchema contract (12 required methods plus 2 optional hooks) to wire any schema library into Attaform. Identity, defaults, shape introspection, validation.
+description: Implement the AbstractSchema contract (15 required methods plus 4 optional hooks) to wire any schema library into Attaform. Identity, defaults, shape introspection, validation.
 metaRows:
   - label: Category
     value: Reference
@@ -8,9 +8,9 @@ metaRows:
     value: AbstractSchema<Form, GetValue>
     kind: code
   - label: Required methods
-    value: 12
+    value: 15
   - label: Optional hooks
-    value: 2 (getFieldMetaAtPath, needsAsyncValidation)
+    value: 4 (metadata, async, container-refine, unions)
 ---
 
 # Custom schema adapters
@@ -27,17 +27,21 @@ This page is the contract reference. The Zod adapters under `attaform/zod` and `
 ```ts
 type AbstractSchema<Form, GetValueFormType = Form> = {
   // Identity
-  fingerprint(): string
+  fingerprint(): Promise<string>
 
   // Defaults
   getDefaultValues(config): DefaultValuesResponse<Form>
   getDefaultAtPath(path: Path): unknown
+  getEmptyValueAtPath(path: Path): unknown
 
   // Shape introspection
   arrayShapeAtPath(path: Path): number | null
   isLeafAtPath(path: Path): boolean
   isOpaqueLeafAtPath(path: Path): boolean
+  isPreprocessOrCoerceLeaf(path: Path): boolean
   isRequiredAtPath(path: Path): boolean
+  isFixedObjectAtPath(path: Path): boolean
+  entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined
   getSchemasAtPath(path: Path): AbstractSchema<unknown, GetValueFormType>[]
   getSlimPrimitiveTypesAtPath(path: Path): Set<SlimPrimitiveKind>
   getUnionDiscriminatorAtPath(path: Path): UnionDiscriminatorContext | undefined
@@ -52,16 +56,18 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   // Optional hooks
   getFieldMetaAtPath?(path: Path): ResolvedFieldMeta
   needsAsyncValidation?(): boolean
+  hasContainerOrRootRefine?(): boolean
+  hasDiscriminatedUnions?(): boolean
 }
 ```
 
-Twelve required methods. Two optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
+Fifteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
 
 ## Identity
 
 ### `fingerprint()`
 
-Structural signature of the schema. Two schemas with the same shape return the same string; different shapes return different strings. Used to catch shared-key mismatches in dev: two `useForm({ key: 'x' })` calls with different schemas warn.
+Structural signature of the schema, resolved asynchronously. Two schemas with the same shape resolve to the same string; different shapes resolve to different ones. The promise is what lets an adapter keep its fingerprint walker off the eager path and import it on demand, which is exactly what both Zod adapters do. Mark the method `async` if yours is cheap enough to answer outright. Used to catch shared-key mismatches in dev: two `useForm({ key: 'x' })` calls with different schemas warn.
 
 Must NOT throw. If it does, Attaform catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints make every schema look identical to the mismatch check (the key never changes), so prefer a real structural hash if your library exposes the metadata.
 
@@ -85,6 +91,17 @@ Returns the schema-prescribed default at a structured path. The runtime calls th
 
 Return `undefined` for paths that don't exist in the schema. Must NOT throw; the runtime skips filling on `undefined`.
 
+### `getEmptyValueAtPath(path: Path): unknown`
+
+The "clear this field" value, and the reason `form.clear(path)` differs from `form.reset()`: this one **ignores** declared defaults. A `.default(x)` / `.prefault(x)` / `.catch(x)` wrapper resolves to the inner schema's empty rather than to `x`.
+
+- Primitive leaf → the type's falsy concrete (`''`, `0`, `false`, `0n`, epoch).
+- Array / set / record → empty.
+- Object → recursive: every property gets its own empty.
+- `.optional()` → `undefined`; `.nullable()` → `null` (each wrapper's own marker).
+- Discriminated union → the first variant's recursive empty.
+- A path the schema doesn't declare → `undefined`, which callers read as "don't write" and leave storage alone.
+
 ## Shape introspection
 
 ### `arrayShapeAtPath(path: Path): number | null`
@@ -102,9 +119,27 @@ The answer is definitive: the runtime consults it on every structural write that
 
 `true` when the schema declares a value at `path` without describing its shape, the way Zod's `any` / `unknown` / `custom` do. The write gate then accepts the value whole rather than walking into it to check sub-paths the schema never declared, which is what lets a consumer store a `File`, a `Map`, or any class instance at a leaf. Return `false` throughout if every leaf in your library has a known shape.
 
+### `isPreprocessOrCoerceLeaf(path: Path): boolean`
+
+`true` where a schema-side normalizer sits between the consumer's write and the parse: Zod's `z.preprocess(fn, inner)` and `z.coerce.X()`. The slim-primitive write gate then accepts the raw value verbatim and stops walking children, so storage holds the user's input and the normalizer fires inside `safeParse` instead. That is the mechanism behind [How values are stored](/docs/schemas/storage-shape).
+
+The semantic is path-prefix, not leaf-only: return `true` if **any** ancestor of `path` resolves to such a wrapper, so descendants under a preprocess-wrapped container short-circuit the gate too. Return `false` throughout if your library has no such construct.
+
 ### `isRequiredAtPath(path: Path): boolean`
 
 `true` when the leaf is required (no `.optional()` / `.nullable()` / `.default()` / `.catch()` wrapper around it). Used by the blank validation augmentation to raise `'No value supplied'` for unfilled required fields.
+
+### `isFixedObjectAtPath(path: Path): boolean`
+
+`true` only for a closed object with declared keys. Open containers (records, unions) return `false`, and the proxy then falls back to the keys the data currently holds, so a genuinely-absent key (an out-of-bounds index, a missing record key, an inactive variant's key) reads `undefined` rather than resolving a phantom node.
+
+The empty path (the form root) is always a fixed object. Peel transparent wrappers before deciding, so `z.object({...}).optional()` still reports `true`. A path you don't declare reports `false`.
+
+### `entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined`
+
+How the container at `path` spells its own entry keys: `'number'` for a sequence, `'string'` for an object or a record, and for a map whatever its declared key type accepts. `undefined` for a leaf, for an undeclared path, and for any container whose entries a path segment cannot name.
+
+The write walkers consult it when a write has to **create** an entry, which is where a map needs the ruling: a path segment alone cannot say whether `scores.42` means the string `'42'` or the number `42`, and picking wrong fails the map's own parse. An entry the map already holds needs no ruling, since its existing key wins. A map keyed by something no segment can spell reports `undefined` and stays one whole value.
 
 ### `getSchemasAtPath(path: Path): AbstractSchema[]`
 
@@ -136,6 +171,18 @@ Resolves schema-attached metadata (label, description, placeholder, full payload
 
 Return `true` if `validateAtPath` may need a Promise to surface every error this schema can produce. The runtime uses this to decide whether to schedule a one-shot construction-time async pass.
 
+### `hasContainerOrRootRefine(): boolean` _(optional)_
+
+`true` when the schema holds a refinement above leaf level: a cross-field equality, a sum constraint, anything whose verdict a leaf write could move. The runtime uses it to decide whether a leaf write needs a whole-form pass or can validate the leaf alone, so it buys a scoped validation instead of a full one.
+
+Omitting it is treated as `() => true`, the conservative whole-form answer, which is why it is optional. Bias toward `true` when in doubt: a false `true` costs a little work, and a false `false` lets an ancestor verdict go stale, which is a wrong answer rather than a slow one.
+
+### `hasDiscriminatedUnions(): boolean` _(optional)_
+
+`true` when the schema tree holds at least one discriminated union at any depth, arrays, tuples, records, and lazy schemas included. The store reads it once at construction: `false` lets every write skip the cross-variant ancestor guard and the variant-reshape dispatch entirely.
+
+Omitting it is treated as "contains unions", so the conservative per-write probes stay on. Never return `false` for a schema that does hold one, which would disable variant reshape for the whole form.
+
 ## A minimal Valibot-ish adapter
 
 Assume your library exposes:
@@ -166,7 +213,7 @@ const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
 
 export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): AbstractSchema<F, F> {
   return {
-    fingerprint() {
+    async fingerprint() {
       return schema.signature?.() ?? 'my-lib:v1'
     },
 

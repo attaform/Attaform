@@ -22,28 +22,34 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Form configuration
 
-| Type                                | Source                  | Purpose                                                                                    |
-| ----------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
-| `UseFormConfiguration<Form>`        | runtime/types/types-api | The options bag passed to `useForm`.                                                       |
-| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                          |
-| `AttaformPluginOptions`             | runtime/core/plugin     | Options for `createAttaform({ defaults, devtools })`.                                      |
-| `AttaformDefaults`                  | runtime/types/types-api | The fields settable via `createAttaform({ defaults })`.                                    |
-| `HistoryPlugin`                     | runtime/types/types-api | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`. |
-| `OnInvalidSubmitPolicy`             | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.                |
-| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api | `validateOn` field and its discriminated config.                                           |
-| `DisplayState` / `GetDisplayState`  | runtime/types/types-api | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver.  |
+| Type                                | Source                     | Purpose                                                                                                  |
+| ----------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `UseFormConfiguration<Form>`        | runtime/types/types-api    | The options bag passed to `useForm`.                                                                     |
+| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api    | The whole reactive return: values, fields, errors, meta, methods.                                        |
+| `AttaformPluginOptions`             | runtime/core/plugin        | Options for `createAttaform({ defaults, devtools })`.                                                    |
+| `AttaformDefaults`                  | runtime/types/types-api    | The fields settable via `createAttaform({ defaults })`.                                                  |
+| `FormKey`                           | runtime/types/types-api    | The `useForm({ key })` identifier: distant lookup, error labelling, DevTools naming.                     |
+| `AttaformRegistry`                  | runtime/core/registry      | The per-Vue-app container every form registers into. Reached explicitly only for SSR or a custom plugin. |
+| `HistoryPlugin`                     | runtime/types/types-api    | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`.               |
+| `OnInvalidSubmitPolicy`             | runtime/types/types-api    | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.                              |
+| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api    | `validateOn` field and its discriminated config.                                                         |
+| `DisplayState` / `GetDisplayState`  | runtime/types/types-api    | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver.                |
+| `DisplayCtx`                        | runtime/types/types-api    | What a `getDisplayState` reducer receives: the field and form snapshots, plus the injected clock.        |
+| `DisplayMachine`                    | runtime/types/types-api    | What a reducer returns: the verdict to render now, plus optional timings to re-run itself.               |
+| `DisplayTimings`                    | runtime/core/display-state | The anti-flash delays the default reducer runs on (`showDelay`, `minDuration`), in milliseconds.         |
 
 ## Reactive surfaces
 
-| Type                            | Source                  | Purpose                                                   |
-| ------------------------------- | ----------------------- | --------------------------------------------------------- |
-| `FieldState<Value>`             | runtime/types/types-api | The 31-property per-leaf reactive bundle.                 |
-| `FieldStateMap<Form>` / `Entry` | runtime/types/types-api | The proxy shape exposing `form.fields`.                   |
-| `FormMeta<Form>`                | runtime/types/types-api | Form-level aggregates over every field's state.           |
-| `FormErrorsSurface<Form>`       | runtime/types/types-api | The proxy shape exposing `form.errors`.                   |
-| `FormErrorRecord`               | runtime/types/types-api | The per-path error array shape.                           |
-| `ErrorsProxyShape<Form>`        | runtime/types/types-api | Type-level view of the errors proxy for advanced helpers. |
-| `WriteMeta`                     | runtime/types/types-api | Metadata attached to a mutation (source, batch flags).    |
+| Type                          | Source                  | Purpose                                                                        |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------------------------ |
+| `FieldState<Value>`           | runtime/types/types-api | The 37-property per-leaf reactive bundle.                                      |
+| `FieldStateMap<Form>`         | runtime/types/types-api | The proxy shape exposing `form.fields`.                                        |
+| `FieldStateMapEntry<Form, P>` | runtime/types/types-api | One node in that proxy: a `FieldState` on a leaf, a nested map on a container. |
+| `FormMeta<Form>`              | runtime/types/types-api | Form-level aggregates over every field's state.                                |
+| `FormErrorsSurface<Form>`     | runtime/types/types-api | The proxy shape exposing `form.errors`.                                        |
+| `FormErrorRecord`             | runtime/types/types-api | The per-path error array shape.                                                |
+| `ErrorsProxyShape<Form>`      | runtime/types/types-api | Type-level view of the errors proxy for advanced helpers.                      |
+| `WriteMeta`                   | runtime/types/types-api | Metadata attached to a mutation (source, batch flags).                         |
 
 ## Validation
 
@@ -64,7 +70,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 | Type                             | Source                  | Purpose                                                          |
 | -------------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 12-method + 2-optional contract custom adapters implement.   |
+| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 15-method + 4-optional contract custom adapters implement.   |
 | `DefaultValuesResponse<Form>`    | runtime/types/types-api | What `getDefaultValues` returns.                                 |
 | `SlimPrimitiveKind`              | runtime/types/types-api | `'string'` \| `'number'` \| … (typeof-style kinds).              |
 | `SlimRuntimeOf<T>`               | runtime/types/types-api | Type-level helper to compute the slim primitive set for a type.  |
@@ -98,15 +104,16 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Binding
 
-| Type                                              | Source                           | Purpose                                                          |
-| ------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
-| `RegisterDirective`                               | runtime/types/types-api          | The `v-register` directive type.                                 |
-| `RegisterValue` / `RegisterOptions`               | runtime/types/types-api          | The value the directive accepts; the per-register options shape. |
-| `RegisterFlatPath<Form>`                          | runtime/types/types-api          | Paths bindable through `register`.                               |
-| `RegisterTextModifier` / `RegisterSelectModifier` | runtime/types/types-api          | The `.lazy` / `.trim` / `.number` modifier types.                |
-| `RegisterTransform<V>`                            | runtime/types/types-api          | Custom DOM ↔ value transform shape.                              |
-| `CustomDirectiveRegisterAssignerFn`               | runtime/types/types-api          | The `assignKey` custom-assigner signature.                       |
-| `UseRegisterReturn<V>`                            | runtime/composables/use-register | What `useRegister<V>()` returns.                                 |
+| Type                                              | Source                           | Purpose                                                                                         |
+| ------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `RegisterDirective`                               | runtime/types/types-api          | The `v-register` directive type.                                                                |
+| `RegisterValue` / `RegisterOptions`               | runtime/types/types-api          | The value the directive accepts; the per-register options shape.                                |
+| `RegisterFlatPath<Form>`                          | runtime/types/types-api          | Paths bindable through `register`.                                                              |
+| `RegisterTextModifier` / `RegisterSelectModifier` | runtime/types/types-api          | The `.lazy` / `.trim` / `.number` modifier types.                                               |
+| `RegisterTransform<V>`                            | runtime/types/types-api          | Custom DOM ↔ value transform shape.                                                             |
+| `CustomDirectiveRegisterAssignerFn`               | runtime/types/types-api          | The `assignKey` custom-assigner signature.                                                      |
+| `UseRegisterOptions`                              | runtime/composables/use-register | Options for `useRegister`, including the inner element to re-bind a parent's `v-register` onto. |
+| `UseRegisterReturn<V>`                            | runtime/composables/use-register | What `useRegister<V>()` returns.                                                                |
 
 ## Set / mutate
 
@@ -126,12 +133,24 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Wizard
 
-| Type                                         | Source                     | Purpose                                                 |
-| -------------------------------------------- | -------------------------- | ------------------------------------------------------- |
-| `UseWizardReturnType<Forms>`                 | runtime/types/types-wizard | The whole wizard return: current, statuses, navigation. |
-| `WizardOptions<Forms>`                       | runtime/types/types-wizard | The options bag.                                        |
-| `AnyForm` / `FormKeyOf<F>` / `KeysOf<Forms>` | runtime/types/types-wizard | Helpers for typing forms passed to `useWizard`.         |
-| `WizardNavOptions`                           | runtime/types/types-wizard | Options forwarded to `next` / `back` / `goTo`.          |
+| Type                                         | Source                            | Purpose                                                                                        |
+| -------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `UseWizardReturnType<Forms>`                 | runtime/types/types-wizard        | The whole wizard return: current, statuses, navigation.                                        |
+| `WizardOptions<Forms>`                       | runtime/types/types-wizard        | The options bag.                                                                               |
+| `AnyForm` / `FormKeyOf<F>` / `KeysOf<Forms>` | runtime/types/types-wizard        | Helpers for typing forms passed to `useWizard`.                                                |
+| `WizardNavOptions`                           | runtime/types/types-wizard        | Options forwarded to `next` / `back` / `goTo`.                                                 |
+| `StepSlot<Forms>`                            | runtime/types/types-wizard        | One position in the source `steps` array: a form, a string, a function, or a wrapped marker.   |
+| `CompiledStep<Forms>`                        | runtime/types/types-wizard        | One resolved position, as `wizard.steps` exposes it.                                           |
+| `GateMarker` / `LazyMarker`                  | runtime/types/types-wizard        | What `gate(step)` and `lazy(fn)` return. Opaque brands; you never construct one.               |
+| `FormStatus` / `FormStatusSeed`              | runtime/types/types-wizard        | What `wizard.statuses[key]` reads, and the shape `defaultStatuses` seeds it with.              |
+| `WizardStatusesProxy<S>`                     | runtime/types/types-wizard        | The call-or-read proxy behind `wizard.statuses`.                                               |
+| `WizardCtx<Forms>` / `WizardCtxForm`         | runtime/types/types-wizard        | What a function slot receives, and how a form looks through its `ctx.forms` lookup.            |
+| `WizardOnSubmit` / `WizardOnError`           | runtime/types/types-wizard        | The `wizard.handleSubmit` callback signatures. Both span every step, not the active one.       |
+| `WizardSubmitContext<Forms>`                 | runtime/types/types-wizard        | The context `wizard.handleSubmit`'s `onSubmit` receives.                                       |
+| `WizardAggregateError`                       | runtime/types/types-wizard        | One entry in `wizard.allErrors[key]`: a `ValidationError` plus the `formKey` that produced it. |
+| `WizardPersistFn` / `WizardRestoreFn`        | runtime/types/types-wizard        | The `persist` / `restore` callback signatures for step round-tripping.                         |
+| `WizardRestoreState`                         | runtime/types/types-wizard        | What `restore` hands back: the active step's key, in an open-ended object.                     |
+| `InjectWizardInput`                          | runtime/composables/inject-wizard | The object form of `injectWizard`'s argument, mirroring `injectForm`.                          |
 
 ## DevTools
 

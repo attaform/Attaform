@@ -46,15 +46,15 @@ export interface AttaformModuleOptions {
   resolveZodAlias?: boolean
   /**
    * Auto-import Attaform's form composables (`useForm`, `useWizard`,
-   * `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`) so
-   * components can call them without an explicit `import`. Default
-   * `true`. The set is declared in Attaform's auto-import manifest and
-   * resolves from `attaform/zod`, so the build-time adapter rewrite
-   * still ships a single Zod major. Set to `false` to suppress the
-   * names entirely and import the composables yourself. Note a Nuxt
-   * auto-import already loses to an explicit or local binding of the
-   * same name, so opting out is only needed to keep the names out of
-   * global scope altogether.
+   * `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`,
+   * `gate`, `useRegister`) so components can call them without an
+   * explicit `import`. Default `true`. The set is declared in
+   * Attaform's auto-import manifest and resolves from `attaform/zod`,
+   * so the build-time adapter rewrite still ships a single Zod major.
+   * Set to `false` to suppress the names entirely and import the
+   * composables yourself. Note a Nuxt auto-import already loses to an
+   * explicit or local binding of the same name, so opting out is only
+   * needed to keep the names out of global scope altogether.
    */
   autoImports?: boolean
 }
@@ -181,9 +181,9 @@ export default defineNuxtModule<AttaformModuleOptions>({
 
     // Auto-import the Zod-default form composables so a component can
     // reach for `useForm` / `useWizard` / `injectForm` / `injectWizard` /
-    // `fieldMeta` / `withMeta` / `lazy` with no import line. The manifest
-    // in `./runtime/auto-imports` is the single source of truth, shared
-    // with the `attaform/vite` preset re-export.
+    // `fieldMeta` / `withMeta` / `lazy` / `gate` / `useRegister` with no
+    // import line. The manifest in `./runtime/auto-imports` is the single
+    // source of truth, shared with the `attaform/vite` preset re-export.
     //
     // Each entry resolves from `attaform/zod`, not the bare `attaform`
     // barrel: the Vite/bundler plugin rewrites the exact `attaform/zod`

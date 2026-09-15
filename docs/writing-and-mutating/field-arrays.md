@@ -29,15 +29,15 @@ Use the row arrows and per-row × button to move and remove items; the buttons b
 
 Each helper is typed against the form's `ArrayPath<Form>` set; TypeScript autocompletes only the paths that actually point at an array. The value-shape generic narrows on the inferred element type.
 
-| Helper                        | Signature         | What it does                                            |
-| ----------------------------- | ----------------- | ------------------------------------------------------- |
-| `append(path, value)`         | adds at the end   | Appends one item to the array.                          |
-| `prepend(path, value)`        | adds at index 0   | Adds one item to the front; shifts the rest right.      |
-| `insert(path, index, value)`  | adds at index     | Inserts one item; shifts subsequent items right.        |
-| `remove(path, index)`         | drops at index    | Removes one item; shifts subsequent items left.         |
-| `swap(path, a, b)`            | swaps two indices | Exchanges the items at the two indices.                 |
-| `move(path, from, to)`        | moves an item     | Removes from `from` and re-inserts at `to` in one step. |
-| `replace(path, index, value)` | replaces at index | Overwrites the item at `index` without changing length. |
+| Helper                        | What it does                                            |
+| ----------------------------- | ------------------------------------------------------- |
+| `append(path, value)`         | Adds one item at the end.                               |
+| `prepend(path, value)`        | Adds one item to the front; shifts the rest right.      |
+| `insert(path, index, value)`  | Inserts one item at `index`; shifts the rest right.     |
+| `remove(path, index)`         | Removes the item at `index`; shifts the rest left.      |
+| `swap(path, a, b)`            | Exchanges the items at the two indices.                 |
+| `move(path, from, to)`        | Removes from `from` and re-inserts at `to` in one step. |
+| `replace(path, index, value)` | Overwrites the item at `index` without changing length. |
 
 ## Reading the path
 
@@ -72,7 +72,7 @@ Because each item carries its own baseline, Attaform still reads a structural ch
 
 Per-item validation tracks the item, not the slot. An error you set with `form.setErrors` on `checkpoints.0` follows the item through a `move(0, 4)` to `checkpoints.4`. Schema verdicts recompute from the live value after each shape change, so a still-invalid item shows its error at its new index, and a removed item's verdict clears at once instead of lingering on whatever shifts into the slot.
 
-For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length > 0)`), the error lands at the array path itself, not at any slot. Read it via `form.errors('checkpoints')` (or `form.fields('checkpoints').firstError`).
+For array-level refinements (`z.array(...).min(3)` or `.refine(arr => arr.length > 0)`), the error lands at the array path itself, not at any slot. Read it with `form.errors.checkpoints['']` or `form.fields('checkpoints').firstOwnError`, both of which mean the array's own errors. The looser `form.errors('checkpoints')` works too, but it is the flat aggregate for the whole subtree, so a bad element's message arrives alongside the array's.
 
 ## Reset behavior
 

@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Common Attaform pitfalls and how to fix them. Shared-form key collisions, missing v-register elements, hydration drift, handleSubmit bindings, never-typed register reads.
+description: Common Attaform pitfalls and how to fix them. Fields that never validate, never-typed register reads, handleSubmit bindings, v-register on a wrapper, blank-required errors, hydration drift.
 ---
 
 # Troubleshooting
@@ -12,7 +12,7 @@ description: Common Attaform pitfalls and how to fix them. Shared-form key colli
 Three independent causes:
 
 - **The schema doesn't include the field.** A `z.string().optional()` wrapper without an inner refinement accepts everything. Verify the schema.
-- **You're in `strict: false` and watching `validate()`.** Lax mode strips refinements during default-values derivation so the form mounts with empty values without failing; refinements re-apply on submit. Drop the `strict: false` opt-out if you want `validate()` to fire refinements immediately.
+- **You're in `strict: false` and watching `validate()`.** Lax mode strips refinements during default-values derivation so the form mounts with empty values without failing; refinements re-apply on submit. It also means construction-time validation never runs, so `form.meta.valid` reads `true` on a freshly mounted form holding values the schema would reject. Drop the `strict: false` opt-out if you want `validate()` to fire refinements immediately.
 - **The path doesn't match the schema.** `'items.0.name'` and `['items', 0, 'name']` canonicalize to the same path. But `['items', '0', 'name']` (string `'0'`) does NOT; emit numbers when the position is an array index.
 
 ## "`register('email')` returns a `never`-typed value"
@@ -41,7 +41,7 @@ The schema generic couldn't be inferred. Two likely causes:
 
 ## "v-register on my component does nothing"
 
-`<MyComponent v-register="...">` works only when the component's rendered root element is one Vue's directive can bind: `<input>`, `<textarea>`, or `<select>`. For components whose root is a `<div>` / `<label>` / styled wrapper, the directive skips listener attachment to avoid the bubbled-write bug.
+`v-register` drives a value through the element it lands on, and the built-in assigner only knows how to drive `<input>`, `<textarea>`, and `<select>`. When a component's rendered root is a `<div>` / `<label>` / styled wrapper, the directive skips listener attachment rather than guess, which avoids the bubbled-write bug. The path is still registered, so invalid-submit focus and error reads still find the field; what is missing is the two-way value binding.
 
 The fix: call `useRegister()` in the child's setup and re-bind `v-register` onto an inner native element:
 
@@ -59,7 +59,7 @@ The fix: call `useRegister()` in the child's setup and re-bind `v-register` onto
 </template>
 ```
 
-The dev-mode console warning `v-register on <div> is a no-op …` points here.
+The dev-mode console warning `v-register on <div> is a no-op …` points here. It also names the lower-level answer: teach the wrapper how to drive its own value with a [custom assigner](/docs/binding-inputs/custom-assigners) under the `assignKey` symbol. Either escape hatch silences the warning, because either one means the element really is bound.
 
 ## "Console warns that a `:value` / `:checked` is redundant beside v-register"
 
@@ -72,14 +72,14 @@ The dev-mode console warning `v-register on <div> is a no-op …` points here.
 <input v-register="form.register('email')" />
 ```
 
-A `:value` that gives a radio or an `<option>` its identity is expected and never flagged. The warning fires in the dev console for every app, and at build time (including CI) when you run Attaform's [Vite or Nuxt plugin](/docs/server-and-ssr/ssr-bare-vue). See [Let v-register own the value](/docs/binding-inputs/v-register#let-v-register-own-the-value) for the full rundown.
+A `:value` that gives a radio or an `<option>` its identity is expected and never flagged. The warning fires in the dev console for every app, and at build time (including CI) when you run Attaform's [Vite plugin or Nuxt module](/docs/getting-started/installation#vite-plugin-bare-vue-3--vite). See [Let v-register own the value](/docs/binding-inputs/v-register#let-v-register-own-the-value) for the full rundown.
 
 ## "Submit fails with 'No value supplied' on a field the user can leave blank"
 
 The path is in the form's `blankPaths` set and bound to a required schema. Three resolutions:
 
 - **The field is genuinely optional.** Wrap the schema: `z.string().optional()`, `z.number().nullable()`, or `z.string().default('')`.
-- **The field is required but `''` should count as "filled".** Supply an explicit default: `defaultValues: { email: '' }`. Attaform reads this as "empty string is intentional" and skips the auto-mark for that leaf.
+- **The field is required but its falsy value is a real answer.** Supply it explicitly: `defaultValues: { quantity: 0 }`. Attaform reads a provided default as intentional and skips the auto-mark for that leaf. Note the auto-mark is the numeric one: a `z.string()` leaf mounts at `''` unmarked and only lands in `blankPaths` when you put it there with [`unset`](/docs/writing-and-mutating/unset).
 - **Attaform should treat a blank field as "user didn't fill it."** Working as intended; the synthesized error (`code: 'atta:no-value-supplied'`) prevents silently submitting `0` / `''` / `false` for an unfilled required field.
 
 ## "Hydration mismatch after SSR"

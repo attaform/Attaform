@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Composable
   - label: Signature
-    value: 'useRegister<V>(): UseRegisterReturn<V> | undefined'
+    value: 'useRegister<V>(options?): UseRegisterReturn<V> | undefined'
     kind: code
   - label: Returns
     value: hybrid Ref + RegisterValue Proxy
@@ -127,7 +127,7 @@ One edge to know: `v-model` is not a substitute for `:value` here. It installs V
 
 ## Multi-field wrappers
 
-`useRegister` is the right call for **single-field** wrappers. For compound components binding **multiple paths** (a date-range picker exposing start + end fields, an address subform exposing street + city + zip), reach for `injectForm<Form>()` and call `ctx.register(path)` directly. That sidesteps the single-binding assumption `useRegister` makes.
+`useRegister` is the right call for **single-field** wrappers. For compound components binding **multiple paths** (a date-range picker exposing start + end fields, an address subform exposing street + city + zip), save `injectForm<Form>()` into a `form` handle and call `form?.register(path)` for each one. That sidesteps the single-binding assumption `useRegister` makes.
 
 ## Where to next
 

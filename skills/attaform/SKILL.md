@@ -88,7 +88,7 @@ Prefer an explicit `key` (`useForm({ schema, key: 'sign-in' })`): it makes the f
 - **Put labels on the schema, not the template.** `z.string().register(fieldMeta, { label: 'Email' })`; read it back through `form.fields.email.label` (resolved, with a humanized-path fallback).
 - **Native inputs first.** Bind `<input>`, `<select>`, `<textarea>` with `v-register`. Reach for `useRegister` only inside a custom input component. See `references/custom-components.md`.
 - **`v-register` alone does binding, SSR value injection, and ARIA.** Do not stack a second _writer_ on it: no `v-model`, no handler that writes the field back, no reset-signal prop. If a control seems to need that scaffolding, the idiomatic shape is being missed.
-- **Observing the field is fine, and is how a per-interaction save is built.** A `@change` that only reads, or a `watch(form.toRef('path'), ...)`, sits beside `v-register` without fighting it: the directive writes the field before your handler runs, so the value you read is the committed one. Reach for this whenever a surface persists each decision as it is made rather than on submit. The copy-paste recipe is at https://attaform.dev/docs/cross-cutting-state/autosave.
+- **Observing the field is fine, and is how a per-interaction save is built.** A `@change` that only reads, or a `watch(form.toRef('path'), ...)`, sits beside `v-register` without fighting it: the directive writes the field before your handler runs, so the value you read is the committed one. Reach for this whenever a surface persists each decision as it is made rather than on submit. See `references/saving.md`.
 
 ## Wizards
 
@@ -122,6 +122,7 @@ Load one when the task reaches its area:
 - **`references/custom-components.md`**: wrapping an input or binding a third-party component. `useRegister`, the three orthogonal primitives, attribute fallthrough, and the optional `form-key` prop.
 - **`references/ssr.md`**: debugging SSR and hydration. Why the value injection is a build-time transform, how to confirm it faithfully, and the test traps to avoid.
 - **`references/validation.md`**: designing the schema. Client-is-UX / server-is-truth, keeping closed sets in sync, and why a clearable edit field is a required string.
+- **`references/saving.md`**: persisting each decision as it is made. Choosing between an observing listener and a `watch`, the ordering that makes a listener safe, and the four things a production autosave adds.
 
 ## Going deeper
 

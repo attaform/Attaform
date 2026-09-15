@@ -35,7 +35,7 @@ const onComplete = wizard.handleSubmit(async (ctx) => {
 })
 ```
 
-Steps can be `useForm` references, bare strings (affordance-only positions), `null` / `undefined` (filtered out), eager function slots, or `lazy(ctx => ...)` markers. `wizard.handleSubmit` validates every step from any position and calls `onSubmit` once with all values; it never advances. `wizard.tryNext()` is the gated Next: it validates the active step and advances only on a clean pass.
+Steps can be `useForm` references, bare strings (affordance-only positions), `null` / `undefined` (filtered out), eager function slots, or `lazy(ctx => ...)` markers. `gate(slot)` wraps any of those to make that position a hard prerequisite: every later step stays frozen and unreachable until the gate's own form submits clean, and `wizard.relock(key, commit)` re-seals one once your `commit` callback resolves. `wizard.handleSubmit` validates every step from any position and calls `onSubmit` once with all values; it never advances. `wizard.tryNext()` is the gated Next: it validates the active step and advances only on a clean pass.
 
 ## Quick reference
 
@@ -59,7 +59,7 @@ The form handle returned by `useForm({ schema })`:
 The wizard handle returned by `useWizard({ steps })`:
 
 - `wizard.currentStep`, `wizard.activeForm`, `wizard.activeIndex`, `wizard.count`, `wizard.isFinalStep` position.
-- `wizard.next()`, `wizard.back()`, `wizard.goTo(key)`, `wizard.tryNext()`, `wizard.reset()` navigation. `tryNext()` validates the active step and advances only if it passes; the others move the pin without validating.
+- `wizard.next()`, `wizard.back()`, `wizard.goTo(key)`, `wizard.tryNext()`, `wizard.reset()` navigation. `tryNext()` validates the active step and advances only if it passes; the others move the pin without validating, except that `next()` on an uncleared `gate()` step behaves as `tryNext()` so the confirmation cannot be skipped.
 - `wizard.handleSubmit(onSubmit, onError?)` whole-wizard submit. Validates every step from any position and calls `onSubmit` once with all values; it never advances (compose with `tryNext` / `next` to move between steps).
 - `wizard.forms.<key>` typed map of step forms.
 - `wizard.allValues`, `wizard.allErrors`, `wizard.statuses` namespaced aggregates.

@@ -813,8 +813,8 @@ const vRegisterSelect: RegisterSelectCustomDirective = {
       // suppress the next `updated` hook's `setSelected` — we want
       // the DOM to revert to `innerRef.value` since the form state
       // didn't change. `undefined` from a consumer-installed assigner
-      // counts as "succeeded" for back-compat (their assigner has no
-      // way to signal otherwise).
+      // counts as "succeeded": returning nothing is the documented
+      // shape for a simple assigner, so it cannot mean rejection.
       if (wrote !== false) {
         el._assigning = true
         void nextTick(() => {

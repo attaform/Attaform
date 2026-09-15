@@ -42,7 +42,9 @@ The same schema runs in every mode: the only thing that changes is _when_ a refi
 ::docs-demo{slug="validate-on-modes" label="validateOn modes"}
 ::
 
-Under `validateOn: 'blur'`, leaving a field you never edited can't change any verdict, so Attaform skips the pass: it tracks whether the form has changed since the last validation and only revalidates when it has. Refocus a field that's showing an error, then tab away, and the error holds steady instead of blinking through `'pending'` and back.
+Under `validateOn: 'blur'`, leaving a field you never edited can't change any verdict, so Attaform skips the pass. The comparison is per path, not per form: the blurred path's own subtree is measured against what was last validated there, so an edit somewhere else on the form does not make this blur re-run. Refocus a field that's showing an error, then tab away, and the error holds steady instead of blinking through `'pending'` and back.
+
+One blur always runs regardless: the first one after the user actually edits the field. Type into a field, delete it back to what was there, and tab away, and that pass still fires even though the value is unchanged.
 
 ## Debouncing
 

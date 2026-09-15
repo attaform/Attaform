@@ -45,6 +45,18 @@ const ENUMERATIONS: ReadonlyArray<{ file: string; anchor: string }> = [
 /** The one skill block a coding agent copies verbatim. */
 const SKILL_FILE = 'skills/attaform/SKILL.md'
 
+/**
+ * Phrases that introduce the COMPLEMENT of the manifest: "everything
+ * else stays an explicit import", and the names that follow. A positive
+ * enumeration and its complement drift in opposite directions, and only
+ * the positive one was pinned — so when `useRegister` joined the manifest
+ * in #573, `ssr-nuxt.md` gained it in the auto-import sentence and kept
+ * it in the explicit-import sentence eight lines below, contradicting
+ * itself on the same page. A manifest name on one of these lines is
+ * always wrong.
+ */
+const COMPLEMENT_PHRASES = ['explicit import', 'explicit imports', 'stays explicit']
+
 function read(file: string): string {
   return readFileSync(join(REPO_ROOT, file), 'utf8')
 }
@@ -89,6 +101,26 @@ describe('auto-import manifest vs the prose that enumerates it', () => {
       .map((line) => line.trim().replace(/,$/, ''))
       .filter((line) => line.length > 0)
     expect([...named].sort()).toEqual([...MANIFEST].sort())
+  })
+
+  it('never calls a manifest member an explicit-only import', () => {
+    // Scoped to the SENTENCE, not the line: `entry-points.md` states the
+    // manifest and its complement in one paragraph, and a line-wide check
+    // cannot tell which half a name sits in.
+    const offenders: string[] = []
+    for (const file of [...markdownFiles('docs', []), ...markdownFiles('skills', [])]) {
+      read(file)
+        .split('\n')
+        .forEach((line, index) => {
+          for (const sentence of line.split(/(?<=\.)\s+/)) {
+            if (!COMPLEMENT_PHRASES.some((phrase) => sentence.includes(phrase))) continue
+            for (const name of manifestNamesIn(sentence)) {
+              offenders.push(`${file}:${index + 1} calls \`${name}\` an explicit import`)
+            }
+          }
+        })
+    }
+    expect(offenders).toEqual([])
   })
 
   it('registers every auto-import enumeration in docs/ and skills/', () => {

@@ -28,7 +28,7 @@ import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
-import { makeMounter } from '../utils/form-harness'
+import { makeMounter, waitUntil } from '../utils/form-harness'
 
 const defaultValues = {
   links: ['alpha', 'beta'],
@@ -168,5 +168,75 @@ describe.each(adapters)('truthful absence — $name', ({ mount }) => {
   it('errors: an out-of-bounds array index with no error is undefined', () => {
     const form = mountForm(mount)
     expect(form.errors.links[5]).toBeUndefined()
+  })
+})
+
+/**
+ * A container's OWN error only reads through the call form.
+ *
+ * The counterpart to "container's own rolled-up state reads through the
+ * call-form" above, and the half that was never asserted. Three docs
+ * surfaces taught the dotted spelling for a container-level `.refine()`
+ * — `schemas/nested-objects.md` twice and the Agent Skill's
+ * `references/errors.md` once — and each one renders nothing, because
+ * `form.fields.profile` is a navigation node with no error state of its
+ * own. Nothing caught it, since `undefined` behind a `v-if` looks like
+ * "no error" rather than like a wrong read.
+ */
+const refinedV4 = zV4.object({
+  creds: zV4
+    .object({ password: zV4.string(), confirm: zV4.string() })
+    .refine((d) => d.password === d.confirm, { message: 'Passwords must match' }),
+})
+const refinedV3 = zV3.object({
+  creds: zV3
+    .object({ password: zV3.string(), confirm: zV3.string() })
+    .refine((d) => d.password === d.confirm, { message: 'Passwords must match' }),
+})
+
+const refinedAdapters = [
+  {
+    name: 'v4',
+    mount: makeMounter(useFormV4, refinedV4, {
+      defaultValues: { creds: { password: 'abcdefgh', confirm: 'different' } },
+    }),
+  },
+  {
+    name: 'v3',
+    mount: makeMounter(useFormV3, refinedV3, {
+      defaultValues: { creds: { password: 'abcdefgh', confirm: 'different' } },
+    }),
+  },
+] as const
+
+describe.each(refinedAdapters)("a container's own refine error — $name", ({ mount }) => {
+  it('reads through the call form, and is absent on the dot surface', async () => {
+    const form = mountForm(mount)
+    // Nothing validates at mount under the default `validateOn: 'change'`,
+    // so drive one write to make the refine fire.
+    form.setValue('creds.confirm', 'still-different')
+    await waitUntil(() => (form.fields('creds').firstOwnError == null ? null : true))
+
+    expect(form.fields('creds').firstOwnError?.message).toBe('Passwords must match')
+    expect(form.fields('creds').ownErrors).toHaveLength(1)
+
+    // The spelling three docs pages taught. It has to stay falsy, or
+    // the correction is pointless; it has to stay NON-throwing, because
+    // a template reads it behind a `v-if`.
+    expect(form.fields.creds.firstOwnError).toBeUndefined()
+    expect(form.fields.creds.ownErrors).toBeUndefined()
+    // Still a navigation node: the leaves under it resolve.
+    expect(form.fields.creds.password.value).toBe('abcdefgh')
+  })
+
+  it('reads through the container-self sentinel on form.errors', async () => {
+    const form = mountForm(mount)
+    form.setValue('creds.confirm', 'still-different')
+    await waitUntil(() => (form.errors('creds').length === 0 ? null : true))
+
+    expect(form.errors.creds['']).toEqual([
+      expect.objectContaining({ message: 'Passwords must match' }),
+    ])
+    expect(form.errors('creds')).toHaveLength(1)
   })
 })

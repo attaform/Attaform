@@ -32,7 +32,7 @@ Type into the lazy field and watch the readout only update on blur. Pad spaces a
 <input v-register.lazy="form.register('name')" type="text" />
 ```
 
-Writes fire on `change` / `blur` instead of every `input` event. Matches Vue's `v-model.lazy` semantics, so readers familiar with the convention can reach for it without re-learning.
+Writes fire on the `change` event instead of every `input` event, which for a text field means the write lands when the user leaves it after an edit. Matches Vue's `v-model.lazy` semantics, so readers familiar with the convention can reach for it without re-learning.
 
 When to reach for it:
 
@@ -45,9 +45,9 @@ When to reach for it:
 <input v-register.trim="form.register('username')" type="text" />
 ```
 
-Strips leading and trailing whitespace from the DOM string before the write lands in storage. Cleaner storage values + cleaner validation (no `"hello   "` failing a regex that meant to allow `"hello"`).
+Strips leading and trailing whitespace from the DOM string, and commits the stripped value when the user leaves the field. Cleaner storage values + cleaner validation (no `"hello   "` failing a regex that meant to allow `"hello"`).
 
-The `.trim` modifier runs before any [register transform](/docs/binding-inputs/transforms) you've supplied, so transforms see the already-trimmed value.
+The strip waits for blur by design. Trimming on each keystroke fights Vue's own patch of the element: the trimmed value reaches storage first, Vue then finds the DOM ahead of it and rewrites the field, and the space the user is still typing disappears under them. So a [register transform](/docs/binding-inputs/transforms) sees the raw text on each keystroke and runs once more on the trimmed text at blur. Put a trimming step in the `transforms` array when every keystroke has to see it stripped.
 
 ## `.number`
 

@@ -1,14 +1,13 @@
 /**
- * Deterministic non-cryptographic string hash. Used to compact long
- * structural-fingerprint strings into bounded-size storage-key tokens
- * (`attaform:formKey:<hash>` instead of
- * `attaform:formKey:object{"a":string,"b":number,...}`).
+ * Deterministic non-cryptographic string hash. Used by `field-ids.ts`
+ * to compact a `${formInstanceId}:${pathKey}` pair into a short DOM-id
+ * token, so a field's `id` and its satellite `aria-describedby` targets
+ * stay stable for a path without carrying the whole path in the markup.
  *
  * Output: 11-char base36 string with leading zeros padded —
  * stable size regardless of input. ~53 bits of entropy (base of the
- * cyrb53 algorithm); collision space is 2^53. For the storage-key
- * disambiguation use case (a single app's worth of form schemas, all
- * fingerprinted at runtime) this is overkill.
+ * cyrb53 algorithm); collision space is 2^53. For the id-disambiguation
+ * use case (one page's worth of mounted fields) this is overkill.
  *
  * Properties:
  *   - **Deterministic**: same input always produces the same output.

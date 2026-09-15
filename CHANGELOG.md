@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.29.0
 ### Added
 
 - **Every Zod kind is accepted.** `z.promise`, `z.function`, `z.map`,

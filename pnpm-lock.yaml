@@ -201,7 +201,7 @@ importers:
         version: 2.1.2(vue@3.5.42(typescript@6.0.3))
       '@formkit/zod':
         specifier: ^2.0.0
-        version: 2.1.2(zod@4.6.5)
+        version: 2.1.2(zod@3.25.76)
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.63.0
@@ -213,13 +213,13 @@ importers:
         version: 1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(vue@3.5.42(typescript@6.0.3))
       '@regle/schemas':
         specifier: ^1.26.1
-        version: 1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))(zod@4.6.5)
+        version: 1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))(zod@3.25.76)
       '@tanstack/vue-form':
         specifier: ^1.33.0
         version: 1.33.5(vue@3.5.42(typescript@6.0.3))
       '@vee-validate/zod':
         specifier: ^4.15.1
-        version: 4.15.1(vue@3.5.42(typescript@6.0.3))(zod@4.6.5)
+        version: 4.15.1(vue@3.5.42(typescript@6.0.3))(zod@3.25.76)
       '@vitejs/plugin-vue':
         specifier: ^6.0.7
         version: 6.0.8(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vue@3.5.42(typescript@6.0.3))
@@ -248,8 +248,8 @@ importers:
         specifier: ^3.2.7
         version: 3.3.11(typescript@6.0.3)
       zod:
-        specifier: ^4.5.4
-        version: 4.6.5
+        specifier: ^3.25.76
+        version: 3.25.76
       zod-v4:
         specifier: npm:zod@^4.4.3
         version: zod@4.4.3
@@ -7923,9 +7923,6 @@ packages:
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
-
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -8660,10 +8657,10 @@ snapshots:
       '@formkit/validation': 2.1.2
       vue: 3.5.42(typescript@6.0.3)
 
-  '@formkit/zod@2.1.2(zod@4.6.5)':
+  '@formkit/zod@2.1.2(zod@3.25.76)':
     dependencies:
       '@formkit/core': 2.1.2
-      zod: 4.6.5
+      zod: 3.25.76
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -10623,7 +10620,7 @@ snapshots:
       - pinia
       - vue
 
-  '@regle/schemas@1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))(zod@4.6.5)':
+  '@regle/schemas@1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(valibot@1.4.2(typescript@6.0.3))(vue@3.5.42(typescript@6.0.3))(zod@3.25.76)':
     dependencies:
       '@regle/core': 1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(vue@3.5.42(typescript@6.0.3))
       '@regle/rules': 1.29.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.42(typescript@6.0.3)))(vue@3.5.42(typescript@6.0.3))
@@ -10631,7 +10628,7 @@ snapshots:
       type-fest: 5.8.0
     optionalDependencies:
       valibot: 1.4.2(typescript@6.0.3)
-      zod: 4.6.5
+      zod: 3.25.76
     transitivePeerDependencies:
       - pinia
       - vue
@@ -11557,11 +11554,11 @@ snapshots:
       - rollup
       - unloader
 
-  '@vee-validate/zod@4.15.1(vue@3.5.42(typescript@6.0.3))(zod@4.6.5)':
+  '@vee-validate/zod@4.15.1(vue@3.5.42(typescript@6.0.3))(zod@3.25.76)':
     dependencies:
       type-fest: 4.41.0
       vee-validate: 4.15.1(vue@3.5.42(typescript@6.0.3))
-      zod: 4.6.5
+      zod: 3.25.76
     transitivePeerDependencies:
       - vue
 
@@ -17816,7 +17813,5 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.4.3: {}
-
-  zod@4.6.5: {}
 
   zwitch@2.0.4: {}

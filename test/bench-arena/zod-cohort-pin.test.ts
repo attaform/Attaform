@@ -28,11 +28,20 @@ import { describe, expect, it } from 'vitest'
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const PAGE = 'docs/comparison/benchmarks.md'
+const LOCKFILE = 'pnpm-lock.yaml'
 
 function devDeps(manifest: string): Record<string, string> {
   const parsed: unknown = JSON.parse(readFileSync(join(REPO_ROOT, manifest), 'utf8'))
   const { devDependencies } = parsed as { devDependencies?: Record<string, string> }
   return devDependencies ?? {}
+}
+
+/** The `apps/bench-arena:` block of the lockfile, where peers carry their resolved zod. */
+function benchArenaImporter(): string {
+  const lock = readFileSync(join(REPO_ROOT, LOCKFILE), 'utf8')
+  const found = /\n {2}apps\/bench-arena:\n(.*?)(?=\n {2}[a-zA-Z]|\npackages:)/s.exec(lock)
+  if (found?.[1] === undefined) throw new Error('apps/bench-arena importer not found in lockfile')
+  return found[1]
 }
 
 /** The major a range or `npm:` alias resolves to, e.g. '^3.25.76' -> 3. */
@@ -61,6 +70,23 @@ describe('the arena pins Zod v3 across the cohort', () => {
     expect(majorOf(deps['zod'] ?? ''), 'root `zod` is the default adapter target').toBe(4)
     expect(deps['zod-v3']).toMatch(/^npm:zod@/)
     expect(majorOf(deps['zod-v3'] ?? '')).toBe(3)
+  })
+
+  it('resolves every cohort peer onto that same v3, in the lockfile', () => {
+    // The manifest states the intent; the lockfile is what installs.
+    // They can part company without either looking wrong on its own:
+    // a `pnpm install` run against a briefly-edited manifest floated
+    // @formkit/zod, @regle/schemas and @vee-validate/zod onto zod 4
+    // while `zod` in the same block still read 3.25.76. The cohort
+    // would have validated against a major the pin says it does not
+    // use, and every runtime row would have shifted under it.
+    const importer = benchArenaImporter()
+    const peers = [...importer.matchAll(/\(zod@([\d.]+)\)/g)].map((found) => found[1])
+
+    expect(peers.length, 'the Zod-capable cohort resolves through a zod peer').toBeGreaterThan(0)
+    for (const version of peers) {
+      expect(majorOf(version ?? ''), `a cohort peer resolved to zod ${version}`).toBe(3)
+    }
   })
 
   it('is the claim the benchmarks page makes to readers', () => {

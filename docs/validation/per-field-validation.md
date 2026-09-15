@@ -45,7 +45,9 @@ z.object({
 })
 ```
 
-Each refinement's error message appears at `errors.username`. The order matters: refinements stop at the first failure, so `.min(3)` runs before `.regex`. Read the field's `firstError` to get the first failure's message; the full array is available at `errors.<path>` for surfacing every refinement that fired.
+Every check in the chain runs on every pass, and each one that fails contributes its own message at `errors.username`. A value can break several at once: `'A'` is both too short and not lowercase, so `form.errors.username` holds two entries, not one. Declaration order is the order they land in, which makes `form.fields.username.firstError` the first rule you wrote that this value breaks.
+
+So pick a rendering and stick to it. Bind `firstError?.message` to show one message at a time and let the user work down the list, or map over `form.errors.username` to surface every broken rule at once. What you cannot assume is that there is only ever one.
 
 ### Cross-field refinements
 

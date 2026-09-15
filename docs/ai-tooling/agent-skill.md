@@ -24,7 +24,7 @@ metaRows:
 
 Attaform hands your coding assistant the same map the humans get. Three artifacts, all kept honest by the build: this installable skill, a curated [`llms.txt`](/docs/ai-tooling/llms-txt) index, and a full-text [`llms-full.txt`](/docs/ai-tooling/llms-full-txt) dump. Left to guess, a low-context model reaches for whatever it assumes a form library looks like: the wrong import, a hand-rolled `v-model`, a write straight through `values`. The skill replaces that guess with the real shape. Where `llms.txt` is a reference an agent reads, the skill is guidance an agent follows while it writes.
 
-It is built for progressive disclosure. The main file covers the common case end to end: the import surface, the build-a-form shape, the core rules, and short wizard and SSR summaries. It links five reference files an agent loads only when the task reaches their area, served alongside it under `references/`: wizards, errors, custom components, SSR, and validation. The lean main keeps the everyday case cheap, and the depth is one hop away when a form needs it.
+It is built for progressive disclosure. The main file covers the common case end to end: the import surface, the build-a-form shape, the core rules, and short wizard and SSR summaries. It links six reference files an agent loads only when the task reaches their area, served alongside it under `references/`: wizards, errors, custom components, SSR, validation, and saving each decision as the user makes it. The lean main keeps the everyday case cheap, and the depth is one hop away when a form needs it.
 
 ::skill-viewer
 ::

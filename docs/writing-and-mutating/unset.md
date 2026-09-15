@@ -81,13 +81,16 @@ Root-level `unset` is admitted too. `defaultValues: unset` or `form.reset(unset)
 | ------------------------------ | -------------------------------------- | ----------------------------------------- |
 | Primitive leaf                 | Schema's slim primitive                | The leaf path                             |
 | Bare object                    | Recursive slim subtree                 | Every primitive descendant under the path |
-| Array / tuple / record         | `[]` / slim tuple / `{}`               | The container path itself                 |
+| Array / record                 | `[]` / `{}`                            | Nothing (there are no descendants yet)    |
+| Tuple                          | Slim positions                         | Nothing                                   |
 | Discriminated union container  | `{ <discriminatorKey>: <kind-blank> }` | The discriminator's path                  |
 | `.optional()` wrapper          | `undefined`                            | The wrapper path                          |
 | `.nullable()` wrapper          | `null`                                 | The wrapper path                          |
 | Date / RegExp / Map / Set leaf | The schema's slim concrete             | The leaf path                             |
 
-The container path itself does NOT enter `form.blankPaths`. `form.fields('profile').blank` derives reactively from the conjunction "every primitive descendant is blank," so an empty container reads blank by vacuous truth, and one descendant filled flips the container's blank false automatically.
+The container path itself never enters `form.blankPaths`; only primitive descendants do. `form.fields('profile').blank` derives reactively from the conjunction "every primitive descendant is blank," so an empty container reads blank by vacuous truth, and one descendant filled flips the container's blank false automatically. That is why an array or record still reads blank after `unset` while contributing no entry of its own: it has no descendants to fail the conjunction.
+
+The tuple is the position to watch. It writes its slim positions but marks none of them, so `form.fields('coords.1').blank` stays false and a numeric position keeps showing the `0` that was written. Reach for `unset` at each position (`setValue('coords.1', unset)`) when a tuple should present as unanswered.
 
 ## Reading the blank state
 

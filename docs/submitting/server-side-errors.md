@@ -44,7 +44,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 })
 ```
 
-`response.errors` is a `ValidationError[]`: each entry carries a `message`, an optional `path`, an optional `code`, and an optional `data` payload. An entry with a `path` lands at that field; an entry with no path lands at the form level, in the global `[]` bucket. `form.setErrors` stamps the form key on every entry as it lands, so errors stay isolated to this form.
+`response.errors` is a `ValidationError[]`: each entry carries a `message`, an optional `path`, an optional `code`, and an optional `data` payload. An entry with a `path` lands at that field; an entry with no path lands at the form level, in the global `[]` bucket. Isolation comes from the store rather than the entry: `setErrors` writes into this form's own error cells, and a `ValidationError` carries no form identity of its own, so the same entry object can be handed to two forms and lands independently in each.
 
 Returning after `setErrors` is a failed submit: `form.meta.submitted` stays `false` and focus pulls to the first error. It does not fire `onError`, though, that callback is the verdict on Attaform's own validation, which already passed here. You do not need to throw to signal the rejection, and you do not need to call `form.focusFirstError()` by hand. Reserve a thrown error for the unexpected (a network drop, a 500), which also lands on `form.meta.submitError` for inspection.
 
@@ -128,7 +128,7 @@ No "this one came from the server" branch in your template. The render code read
 
 ## Clearing on a fresh round-trip
 
-A server error stays put until you clear it: editing the field does not drop it on its own, which matches the network round-trip (the value is not re-checked until the next submit). Clearing the whole layer at the top of `handleSubmit` is the common rhythm, so each submit starts clean.
+A server error stays put while the user edits: the value is not re-checked until the next round-trip, so nothing on the client has grounds to drop it. The next submit is what clears it, and Attaform does that for you. `handleSubmit` wipes the whole user layer on entry, before validation and before your callback, so every attempt starts from a clean slate and the errors your callback sets are the verdict on this attempt rather than a merge with the last one.
 
 For clear-on-edit UX, watch the path and clear it:
 

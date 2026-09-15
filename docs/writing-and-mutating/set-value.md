@@ -8,7 +8,7 @@ metaRows:
     value: setValue(value) · setValue(path, value) · setValue(segments, value)
     kind: code
   - label: Callback form
-    value: (prev, ctx) => next
+    value: (prev) => next
     kind: code
   - label: Returns
     value: boolean
@@ -51,11 +51,15 @@ form.setValue('tags', (prev) => [...prev, 'new-tag'])
 form.setValue(['profile', 'name'], (prev) => prev.trim().toLowerCase())
 ```
 
-The callback receives the current value at the path; its return value lands in storage. Equivalent to reading `form.values.<path>`, computing the next value, and writing it, in one atomic step.
+The callback receives the current value at the path and nothing else; its return value lands in storage. Equivalent to reading `form.values.<path>`, computing the next value, and writing it, in one step.
+
+Spread `prev` in a whole-form callback. The return replaces the entire form, and a key the return leaves out is refilled from the **schema's** declared defaults, not carried over: against `profile: z.object({ city: z.string().default('Lusaka') })`, a return of `{ name: 'Ada' }` lands `city: 'Lusaka'` no matter what the user had typed or what `defaultValues` declared. `(prev) => ({ ...prev, name: 'Ada' })` is the shape that keeps the rest of the form.
 
 ## Returns `boolean`
 
-`setValue` returns `true` when the write was accepted, `false` when it was rejected by the slim-type gate (value didn't match the leaf's accept set). Reach for the return value when a downstream action depends on the write succeeding:
+`setValue` returns `true` when the write was accepted, `false` when it was rejected by the slim-type gate (the value didn't match the leaf's accept set, for example a number written to a string field). A `false` return leaves form state untouched.
+
+The gate is about the leaf's **kind**, not its constraints. An out-of-enum string, a failing email format, a below-`.min()` number all write successfully and return `true`; they surface as field errors instead. So a `false` return means the call site has the wrong type, not that the user has the wrong value. Reach for it when a downstream action depends on the write landing:
 
 ```ts
 if (form.setValue('age', 21)) {
@@ -65,7 +69,7 @@ if (form.setValue('age', 21)) {
 
 ## Same pipeline as `v-register`
 
-Every `setValue` call flows through the same write pipeline as the directive: slim-type gating, dirty / touched tracking, persistence, history. The reactive surface (`values`, `fields`, validation) reacts identically. No "programmatic writes are second-class" carve-out.
+Every `setValue` call flows through the same write pipeline as the directive: slim-type gating, dirty / touched tracking, variant memory, history, and change listeners. The reactive surface (`values`, `fields`, validation) reacts identically. No "programmatic writes are second-class" carve-out.
 
 The one difference: `setValue` writes are **never coerced**. Coercion is for user-typed DOM strings; values you pass to `setValue` are already typed at the call site (TypeScript checks it), so coercion would be a no-op at best and a footgun at worst.
 
@@ -76,7 +80,7 @@ To flag a path as displayed-empty, pass the `unset` sentinel. The runtime writes
 ```ts
 import { unset } from 'attaform'
 
-form.setValue('middleName', unset) // storage holds '', form.blankPaths has 'middleName'
+form.setValue('middleName', unset) // storage holds '', blankPaths.value has 'middleName'
 form.setValue('profile', unset) // recursive, marks every primitive descendant
 form.setValue('cargo', unset) // DU stub, writes { kind: '' } with no variant body
 ```

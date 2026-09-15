@@ -71,18 +71,20 @@ When the discriminator value flips:
 2. The new variant's slim default seeds storage.
 3. On a subsequent switch to a remembered variant, the snapshot rehydrates over the seeded default.
 
-What's stored: the value subtree only. Field-state (touched, blurred, focused, etc.) is NOT part of the snapshot; that travels with the active field state, which lives outside the union's storage tree.
+What's stored: the value subtree, plus the blank marks under it. A field the user deliberately emptied comes back empty rather than showing its slim value, which keeps "the user cleared this" distinguishable from "nothing was ever entered" across a switch. Turn `rememberVariants` off and the blank marks go with the values.
+
+Interaction state (`touched`, `blurred`, `focused`) is NOT part of the snapshot. It lives outside the union's storage tree, so it survives a switch either way, memory on or off.
 
 ## Memory is in-memory only
 
-Variant memory does NOT survive a page reload. Persisted state (`useForm({ persist: 'local' })`) restores values into form storage on hydration, but the variant memory map starts empty: the first discriminator switch after reload loses any persisted typing in the outgoing variant.
+Variant memory lives for the lifetime of the form instance and goes nowhere else. Nothing writes it to storage, to the URL, or to the server, so it does not survive a page reload, and a form rehydrated from a saved draft starts with an empty memory map: the first discriminator switch after the reload has no prior variant to restore.
 
-For cross-session continuity of inactive-variant typing, persist beyond the union boundary yourself. Mirror the inactive subtree into a separate persisted slot via a watcher on the discriminator.
+For cross-session continuity of inactive-variant typing, carry it beyond the union boundary yourself. Watch the discriminator, mirror the outgoing subtree into a slot you save, and write it back when the user returns to that variant.
 
 ## `reset()` and `resetField()` interactions
 
 - **`reset()`** clears all variant memory. The reset state becomes the new "no memory" baseline.
-- **`resetField(path)`** clears any memory entry whose union path equals or sits under `path`. Resetting a single union's path drops only that union's memory; sibling unions retain theirs.
+- **`resetField(path)`** clears any memory entry whose union path equals or sits under `path`. Sibling unions keep theirs, and so does a union sitting **above** the reset path: `resetField('notify.address')` leaves the memory for the union at `notify` intact, because that snapshot self-corrects on the next switch-out.
 
 ## Where to next
 

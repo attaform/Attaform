@@ -66,7 +66,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 ### 9. `documentation_interface`: The project MUST provide reference documentation describing external interfaces.
 
 **Answer:** Met.
-**URL/evidence:** [apps/site/content/docs](https://github.com/attaform/Attaform/tree/main/apps/site/content/docs)
+**URL/evidence:** [docs](https://github.com/attaform/Attaform/tree/main/docs)
 **Notes:** Per-symbol reference pages: `useForm`, `useRegister`, `useWizard`, `injectForm`, plus schema, validation, SSR, undo/redo. Every public API symbol has its own page with the inference-first DX walkthroughs Attaform is built around.
 
 ### 10. `sites_https`: Project sites MUST support HTTPS using TLS.
@@ -111,7 +111,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [Commit history](https://github.com/attaform/Attaform/commits/main), [Pull Requests](https://github.com/attaform/Attaform/pulls)
-**Notes:** Every commit lands via PR; the full development history (~300+ PRs as of May 2026) is the interim record between npm releases.
+**Notes:** Every commit lands via PR, so the PR history is the complete interim record between npm releases.
 
 ### 17. `repo_distributed`: Common distributed version control software SHOULD be used.
 
@@ -223,7 +223,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [test/](https://github.com/attaform/Attaform/tree/main/test), [vitest.config.ts](https://github.com/attaform/Attaform/blob/main/vitest.config.ts)
-**Notes:** Vitest (MIT-licensed) is the test runner. 3,580+ tests as of May 2026.
+**Notes:** Vitest (MIT-licensed) is the test runner. The suite lives under `test/` and runs on every push and every PR via `matrix.yml`.
 
 ### 35. `test_invocation`: Test suite SHOULD be invocable in a standard way.
 
@@ -235,13 +235,13 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [Coverage report (per matrix.yml artifact)](https://github.com/attaform/Attaform/actions/workflows/matrix.yml)
-**Notes:** Current coverage: 87% statements, 81% branches, 88% functions, 91% lines. Coverage budget enforced by `pnpm check:coverage`; PRs that drop coverage fail CI.
+**Notes:** `pnpm check:coverage` runs in CI and fails below the floor declared in `vitest.config.ts`: 75% statements, 70% branches, 80% functions, 75% lines. The suite runs comfortably above every floor; the floor is what the gate holds, so it is the durable number to quote.
 
 ### 37. `test_continuous_integration`: Project SHOULD implement continuous integration with automated tests.
 
 **Answer:** Met.
 **URL/evidence:** [.github/workflows/matrix.yml](https://github.com/attaform/Attaform/blob/main/.github/workflows/matrix.yml)
-**Notes:** `matrix.yml` runs full `pnpm check` (lint, format, typecheck, site build, tests, size, bench, coverage) on every push to `main` and every PR. `peer-matrix.yml` runs the Vue 3.5+, Vite 5/6, Nuxt 3/4 compatibility sweep weekly.
+**Notes:** `matrix.yml` runs the `pnpm check` pipeline as parallel jobs on every push to `main` and every PR: lint plus format, typecheck, the Vitest suite across the Node matrix, bundle size with bundled types and doc snippets, the benchmark gate, the docs-site build, and coverage. `peer-matrix.yml` runs the Vue 3.5+, Vite 5/6, Nuxt 3/4 compatibility sweep weekly.
 
 ### 38. `test_policy`: Project MUST have a policy that tests be added as major new functionality is added.
 
@@ -400,7 +400,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [test/](https://github.com/attaform/Attaform/tree/main/test), [.github/workflows/matrix.yml](https://github.com/attaform/Attaform/blob/main/.github/workflows/matrix.yml)
-**Notes:** Vitest unit + integration tests (3,580+) run on every commit. Coverage report enforces branch and statement budgets. `peer-matrix.yml` runs cross-version compatibility tests weekly (Vue 3.5+, Vite 5/6, Nuxt 3/4).
+**Notes:** Vitest unit + integration tests run on every commit. Coverage report enforces branch and statement budgets. `peer-matrix.yml` runs cross-version compatibility tests weekly (Vue 3.5+, Vite 5/6, Nuxt 3/4).
 
 ### 65. `dynamic_analysis_unsafe`: Memory-unsafe languages SHOULD use dynamic tools with memory safety detection.
 
@@ -430,13 +430,15 @@ The repo ships a generated `.bestpractices.json` at the root. bestpractices.dev 
 5. Open each of the six sections in order (`BASICS` → `CHANGE_CONTROL` → `REPORTING` → `QUALITY` → `SECURITY` → `ANALYSIS`). The first edit per section triggers the auto-fill from `.bestpractices.json`. Spot-check the pre-filled answers against the table above.
 6. Click **Save (and continue) 🤖** at the bottom of each section.
 7. The form's status flips to "passing" once every MUST and most SHOULD criteria are Met or N/A. The pre-fill produces that state by design; if the badge meter doesn't move, find the offending criterion in the upstream form and trace the value back to the markdown above.
-8. After approval (usually same-day for clean submissions), file a follow-up PR adding the badge image + link to README.md:
+8. After approval (usually same-day for clean submissions), add the badge image + link to README.md:
 
    ```markdown
    [![CII Best Practices](https://www.bestpractices.dev/projects/<id>/badge)](https://www.bestpractices.dev/projects/<id>)
    ```
 
    Replace `<id>` with the integer the form assigns on submission. The badge sits in the existing README badges row alongside the Scorecard badge.
+
+Steps 2 through 8 are done: Attaform is [project 13042](https://www.bestpractices.dev/projects/13042) and the badge is in the README. What remains is step 1 on each renewal, and the maintenance pass below.
 
 ## What this answer-key does not cover
 

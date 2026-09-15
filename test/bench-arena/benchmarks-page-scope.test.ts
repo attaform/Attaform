@@ -1,0 +1,86 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+/*
+ * `docs/comparison/benchmarks.md` is the methodology behind the tables
+ * the page renders, and the tables come from the arena. Two ways they
+ * drifted apart.
+ *
+ * Attaform runs two rows, one per Zod adapter, and Regle runs two, one
+ * per validation mode. The page explained neither, so a reader met an
+ * "Attaform (Zod 4)" row the methodology never mentioned while the
+ * same section told them Zod v3 was pinned across the cohort.
+ *
+ * And the bundle caveat still said "Bundle is total, not first-paint",
+ * from before the measurement code-split. Two sections above it, the
+ * page already described the current figure correctly, so the page
+ * contradicted itself about its own headline number.
+ */
+
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+const ADAPTERS = join(REPO_ROOT, 'apps/bench-arena/src/adapters')
+const PAGE = 'docs/comparison/benchmarks.md'
+
+function page(): string {
+  return readFileSync(join(REPO_ROOT, PAGE), 'utf8')
+}
+
+/** Every adapter's display name, as the arena labels its row. */
+function displayNames(): string[] {
+  const names: string[] = []
+  for (const entry of readdirSync(ADAPTERS, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    for (const file of readdirSync(join(ADAPTERS, entry.name))) {
+      if (!file.endsWith('.ts')) continue
+      const source = readFileSync(join(ADAPTERS, entry.name, file), 'utf8')
+      const found = /displayName: '([^']+)'/.exec(source)
+      if (found?.[1] !== undefined) names.push(found[1])
+    }
+  }
+  return names
+}
+
+/** "Attaform (Zod 4)" and "Attaform" are one family; "Regle (schema)" and "Regle (rules)" another. */
+function family(displayName: string): string {
+  return displayName.replace(/ \(.*\)$/, '')
+}
+
+describe('the arena cohort vs the page explaining it', () => {
+  const names = displayNames()
+
+  it('finds the adapters (the scan is alive)', () => {
+    expect(names.length).toBeGreaterThan(5)
+    expect(names).toContain('Attaform (Zod 3)')
+  })
+
+  it('names every row of a library that contributes more than one', () => {
+    const byFamily = new Map<string, string[]>()
+    for (const name of names) {
+      byFamily.set(family(name), [...(byFamily.get(family(name)) ?? []), name])
+    }
+    const text = page()
+    const unexplained = [...byFamily.values()]
+      .filter((group) => group.length > 1)
+      .flat()
+      .filter((name) => !text.includes(name))
+      .sort()
+    // A library the page never singles out is fine; the widget labels
+    // it. A library that shows up twice needs the page to say why.
+    expect(unexplained, `${PAGE} leaves a doubled row unexplained`).toEqual([])
+  })
+
+  it('describes the bundle figure as the split the measurement produces', () => {
+    const results = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'apps/bench-arena/results.json'), 'utf8')
+    ) as { bundle: { asyncGzBytes?: number }[] }
+    const splits = results.bundle.some((row) => (row.asyncGzBytes ?? 0) > 0)
+    expect(splits, 'no row defers a chunk; the caveat below may no longer apply').toBe(true)
+    expect(page()).toContain('deferred')
+    expect(
+      /Bundle is total/.test(page()),
+      'the bundle figure is the initial load, not the total'
+    ).toBe(false)
+  })
+})

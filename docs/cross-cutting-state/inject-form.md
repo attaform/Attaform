@@ -5,7 +5,7 @@ metaRows:
   - label: Category
     value: Composable
   - label: Signature
-    value: 'injectForm<Form>(key?) => ReturnType<typeof useForm<Form>>'
+    value: 'injectForm<Form>(key?) => ReturnType<typeof useForm<Form>> | null'
     kind: code
   - label: Ambient mode
     value: useForm({ schema }) without a key
@@ -102,7 +102,7 @@ The parent supplies it the same way it supplies any other prop:
 </template>
 ```
 
-[`register`'s segment-array form](/docs/reading-the-form/to-ref#two-call-forms) is the other spelling, and reads better when the prefix arrives in pieces rather than as one string.
+[`register`'s segment-array form](/docs/reading-the-form/type-safety#paths-are-typed-too) is the other spelling, and reads better when the prefix arrives in pieces rather than as one string.
 
 ## Reaching a form that isn't an ancestor
 
@@ -155,7 +155,7 @@ The two resolution modes are cleanly split:
 - **Anonymous (no `key`) → ambient access.** `useForm({ schema })` fills the parent's ambient slot. Any descendant's `injectForm<Form>()` (no key) resolves to it; closest ancestor wins when nested.
 - **Keyed (`key: 'x'`) → explicit access only.** `useForm({ schema, key: 'x' })` registers the form under `'x'` but does NOT fill the ambient slot. Descendants reach it via `injectForm<Form>('x')`, not via the no-key form.
 
-Skip `key` for single-component one-off forms (login modal, settings panel). Supply one when you want cross-component lookup, multi-call-site shared state, a stable persistence default, or a legible DevTools label.
+Skip `key` for single-component one-off forms (login modal, settings panel). Supply one when you want cross-component lookup, multi-call-site shared state, a step a wizard can address (`wizard.forms[key]`, and the key each entry carries in `wizard.allValues`), or a legible DevTools label.
 
 ### Gotcha: multiple anonymous `useForm` in one component
 
@@ -210,12 +210,12 @@ Keep the return as `T | null` and reach for it with `?.` at the consumption site
 
 ```vue
 <script setup lang="ts">
-  const ctx = injectForm<Form>('signup')
+  const form = injectForm<Form>('signup')
 </script>
 
 <template>
-  <input v-register="ctx?.register('email')" />
-  <em v-if="ctx?.fields.email.showErrors">{{ ctx?.fields.email.firstError?.message }}</em>
+  <input v-register="form?.register('email')" />
+  <em v-if="form?.fields.email.showErrors">{{ form?.fields.email.firstError?.message }}</em>
 </template>
 ```
 
@@ -223,11 +223,11 @@ For optional consumers (a floating panel that should hide entirely when the form
 
 ```vue
 <template>
-  <div v-if="ctx" class="status">{{ ctx.meta.dirty ? '●' : '' }}</div>
+  <div v-if="form" class="status">{{ form.meta.dirty ? '●' : '' }}</div>
 </template>
 ```
 
-Either way, the non-null assertion (`ctx!`) is a pattern to avoid: it teaches the type checker to look the other way, and a single mount-order regression turns into a runtime crash instead of a quiet no-op.
+Either way, the non-null assertion (`form!`) is a pattern to avoid: it teaches the type checker to look the other way, and a single mount-order regression turns into a runtime crash instead of a quiet no-op.
 
 `injectForm` does throw `OutsideSetupError` if called outside a Vue setup function: a structural mistake the runtime can catch unambiguously.
 

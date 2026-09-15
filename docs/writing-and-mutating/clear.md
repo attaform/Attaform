@@ -40,7 +40,17 @@ Click the per-field clear buttons to watch each path drop to its schema-slim emp
 | `z.date()`    | `new Date(0)`         |
 | `z.file()`    | `null`                |
 
+Wrappers resolve to the wrapper's own empty rather than the inner type's, which is what makes the cleared value visible to a partial-update backend:
+
+| Wrapper       | Cleared value                            |
+| ------------- | ---------------------------------------- |
+| `.optional()` | `undefined` (the key leaves the payload) |
+| `.nullable()` | `null`                                   |
+| `.default(x)` | the inner type's empty, **not** `x`      |
+
 Same shapes Attaform uses for the initial defaults when nothing is declared in `defaultValues` or `schema.default(...)`. The blank predicate (`fields.<path>.blank`) flips true at every cleared path.
+
+The `.optional()` row is the one to design around. A cleared optional leaf drops out of `form.values()` entirely, and a backend that reads an absent key as "leave unchanged" turns the user's deliberate clear into a no-op. Spell a field the user must be able to empty as a required `z.string()` so the clear ships as `''`.
 
 ## Clear is not reset
 
@@ -51,7 +61,7 @@ form.reset() // values.title === 'A great draft'  (the default)
 form.clear() // values.title === ''  (the schema-slim empty)
 ```
 
-Both wipe `dirty` / `touched` along with the value; both surface the same reactive pipeline.
+The destination is not the only difference. `reset` is a fresh start, so it wipes `dirty` and `touched` back to their mount values. `clear` is an ordinary write that happens to write the empty value, so it leaves both alone: a cleared field stays `touched` if the user had been in it, and reads `dirty` because the empty value differs from the default. That is the right pair of answers for a "Discard" button, which should still count as an edit, but it does mean a submit gated on `!form.meta.dirty` stays enabled after a `clear()`.
 
 ## Three call shapes
 
@@ -63,9 +73,11 @@ form.clear(['profile', 'email']) // segment tuple
 
 Same call ergonomics as `setValue`. The whole-form call clears every path recursively; the per-path forms scope to one leaf or container.
 
+`clear()` and `clear('')` are not the same call. The no-argument form targets the whole form; `''` is a path like any other, so `clear('')` targets a schema key literally named `''` and leaves every sibling untouched. `touch()` and `touch('')` split the same way.
+
 ## Returns `boolean`
 
-`true` on accepted writes, `false` when the slim-type gate rejects (rare; the empty value should always be valid for the path's accept set, but containers with required fields may flag).
+`true` on accepted writes, `false` when Attaform could not resolve an empty value at the path, which in practice means the path is not in the schema. A required leaf never causes a `false`: `clear` writes the empty value regardless and lets validation raise the error. On a `false` return the form is unchanged.
 
 ## When `clear()` is the right call
 

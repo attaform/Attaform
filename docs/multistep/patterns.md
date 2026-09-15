@@ -8,7 +8,7 @@ metaRows:
     value: 'steps: [a, b, c]'
     kind: code
   - label: Branching
-    value: '(ctx) => pickedForm | string | undefined'
+    value: '(ctx) => pickedForm | string | nullish'
     kind: code
   - label: Per-step
     value: undo follows each form
@@ -23,7 +23,7 @@ metaRows:
 
 ## Linear wizards
 
-The default shape: a list of forms in reading order. `wizard.next()` advances and `wizard.back()` retreats; neither validates (navigation and submission are separate verbs). Out-of-bounds calls dev-warn and no-op.
+The default shape: a list of forms in reading order. `wizard.next()` advances and `wizard.back()` retreats; neither validates, because navigation and submission are separate verbs (the exception is a [`gate()`](/docs/multistep/gate) step, covered below, which `next()` submits rather than steps past). Out-of-bounds calls dev-warn and no-op.
 
 ```ts
 import { useForm, useWizard } from 'attaform'
@@ -66,7 +66,7 @@ See [Step slots](/docs/multistep/step-slots) for the affordance-slot story.
 
 ## Branching wizards
 
-When the next step depends on a live value on an earlier form, use a function slot. The slot is a `(ctx) => Form | string | undefined` callback that re-evaluates reactively as its tracked reads change:
+When the next step depends on a live value on an earlier form, use a function slot. The slot is a `(ctx) => Form | string | null | undefined` callback that re-evaluates reactively as its tracked reads change:
 
 ```ts
 import { useForm, useWizard } from 'attaform'
@@ -132,7 +132,7 @@ For heavier branching (a slot whose resolver is expensive enough that re-evaluat
 
 ## Manual jumps with `goTo`
 
-`wizard.goTo(key)` skips the validation gate. Use it when the user explicitly clicked a rail item:
+`wizard.goTo(key)` skips the validation gate (though not a [`gate()`](/docs/multistep/gate), which refuses the jump). Use it when the user explicitly clicked a rail item:
 
 ```vue
 <button type="button" @click="wizard.goTo(step.key)">Jump to {{ step.key }}</button>
@@ -213,7 +213,7 @@ A keyboard shortcut bound to the active step:
 </template>
 ```
 
-`wizard.activeForm` is a live view of the current step's form, so undo / redo always dispatches to the active chain. It is no longer identity-equal to `wizard.forms[wizard.currentStep]`; reach for that record when you need a specific step's raw handle.
+`wizard.activeForm` is a live view of the current step's form, so undo / redo always dispatches to the active chain. Being a view, it is not the handle itself; reach for `wizard.forms[key]` when you need a specific step's raw handle.
 
 Each step's history is independent: undoing on the `cargo` step doesn't retreat changes the user made on `billing`. That matches the user's mental model: "undo what I just typed here," not "undo the entire flow."
 

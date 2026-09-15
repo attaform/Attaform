@@ -98,25 +98,37 @@ useForm({ schema, debounceMs: 25 })
 
 ## What's supported
 
-`AttaformDefaults` covers the form-shaping options:
+`AttaformDefaults` covers the form-shaping options. Every key is optional; this is the whole set, annotated with the real exported type so the list stays honest:
 
 ```ts
-type AttaformDefaults = {
-  strict?: boolean
-  validateOn?: 'change' | 'blur' | 'submit'
-  debounceMs?: number
-  onInvalidSubmit?: 'none' | 'focus-first-error' | 'scroll-to-first-error' | 'both'
-  history?: HistoryPlugin
-  rememberVariants?: boolean
-  coerce?: boolean | CoercionRegistry
-  getDisplayState?: GetDisplayState
-  maxRecursionDepth?: number
+import { createAttaform, makeDefaultDisplayState } from 'attaform'
+import { historyPlugin } from 'attaform/history'
+import type { AttaformDefaults } from 'attaform'
+
+const defaults: AttaformDefaults = {
+  strict: true,
+  validateOn: 'change',
+  debounceMs: 100,
+  onInvalidSubmit: 'focus-first-error',
+  history: historyPlugin(),
+  rememberVariants: true,
+  disabled: false,
+  coerce: true,
+  autoAria: true,
+  getDisplayState: makeDefaultDisplayState({ showDelay: 120, minVisible: 120 }),
+  maxRecursionDepth: 64,
 }
+
+const attaform = createAttaform({ defaults })
 ```
 
 `getDisplayState` resolves `field.displayState` and its `show*` projections: the centralized "what should this field surface right now?" reducer, returning one of idle, pending, error, or success. Set it once at the app level so every form follows the same convention. To keep the default behavior but retune the anti-flash spinner timing, pass `makeDefaultDisplayState({ showDelay, minVisible })`. See [Display state and showing errors](/docs/validation/showing-errors) for the full contract.
 
 `history` takes a `historyPlugin()` instance from the `attaform/history` entry. One instance set here is a shared configuration, and every form still gets its own independent undo/redo chain. See [Undo & redo](/docs/cross-cutting-state/undo-redo).
+
+`disabled` freezes every form's data app-wide, which is the shape an app-level read-only or impersonation mode wants. It takes the same `boolean | ref | computed | getter` a per-form call takes, so one reactive source can flip the whole app at once. See [`disabled`](/docs/cross-cutting-state/disabled).
+
+`autoAria: false` hands ARIA back to your own markup for every form, rather than per call site. Authored attributes always win regardless, so reach for this only when a design system owns the whole accessibility layer. See [`v-register`](/docs/binding-inputs/v-register#turning-it-off).
 
 ## What's NOT supported (and why)
 

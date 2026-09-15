@@ -52,6 +52,8 @@ DOM event → extract → modifier (.trim, .number) → transforms[] → coerce 
 
 A value the registry can't coerce (`coerced: false`) passes through unchanged; the slim gate handles the rejection downstream with a typed diagnostic.
 
+One modifier sits outside that line. [`.trim`](/docs/binding-inputs/modifiers) holds its strip until the user leaves the field, so on each keystroke the transforms and the registry both see the untrimmed string, and the trimmed one travels the same line again at blur. `.number` and `.lazy.trim` land exactly where the diagram puts them.
+
 [`<input type="file">`](/docs/binding-inputs/file) inputs skip coercion entirely; `File` handles are objects, not strings, and land in storage as-is.
 
 ## Extending the default registry

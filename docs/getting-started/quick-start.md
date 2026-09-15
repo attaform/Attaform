@@ -15,14 +15,14 @@ metaRows:
 ::docs-meta-table
 ::
 
-Try the form below: clear the password and submit to watch focus pull to the broken field; submit with valid values to see the alert fire. Every behavior on screen comes from the Zod schema in code, which you'll see in the [Build a form](#build-a-form) section next.
+Try the form below. Submit it empty and focus pulls to the first broken field with its message beside it; fill both in and submit again for the success toast. Every behavior on screen comes from the Zod schema in code, which you'll see in the [Build a form](#build-a-form) section next.
 
 ::docs-demo{slug="quick-start" label="Sign-in Demo"}
 ::
 
 ## Build a form
 
-Hand `useForm` a Zod schema and the reactive form comes back ready. This page reaches for three properties on the returned form: `register` for the input binding, `handleSubmit` for the submit gate, and `fields` for per-field error reads.
+Hand `useForm` a Zod schema and the reactive form comes back ready. This page reaches for four things on it: `register` for the input binding, `handleSubmit` for the submit gate, `fields` for per-field error reads, and `meta` for the whole-form state the button disables on.
 
 <!-- @generated-start:quick-start-script -->
 

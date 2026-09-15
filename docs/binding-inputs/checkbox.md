@@ -10,7 +10,7 @@ metaRows:
   - label: Modifiers
     value: none
   - label: Leaf types
-    value: boolean · readonly Value[]
+    value: boolean · readonly Value[] · Set<Value>
     kind: code
 ---
 
@@ -46,12 +46,14 @@ When the schema leaf is `z.array(z.enum([...]))` (or any array type), every `<in
 <input v-register="form.register('languages')" type="checkbox" value="rust" />
 ```
 
-Each input's `value` attribute is the entry written into the array when it's checked. Unchecking removes the entry. Storage holds only the currently-checked values; the array starts empty when no box is ticked.
+Each input's `value` attribute is the entry written into the array when it's checked. Unchecking removes the entry. Storage holds only the currently-checked values; the array starts empty when no box is ticked. A `z.set(...)` leaf groups the same way and holds a `Set` instead.
+
+The array is a record of what the user did: each newly-checked value is appended, so the order follows the ticks and not the template. A [`<select multiple>`](/docs/binding-inputs/select) answers this differently, reading its picks off the element in markup order, so the two are worth keeping straight when a form uses both.
 
 The directive picks the binding mode from the schema, not from how you write the template. Declare `z.array(z.string())` and the same `form.register('languages')` call site automatically groups every bound checkbox.
 
 ## Where to next
 
 - [Radio groups](/docs/binding-inputs/radio): the single-pick counterpart.
-- [Select & multi-select](/docs/binding-inputs/select): the same array semantics in a dropdown shape.
+- [Select & multi-select](/docs/binding-inputs/select): the array shape in a dropdown, with one difference worth knowing: a multi-select lands its values in markup order rather than pick order.
 - [Schema-driven coercion](/docs/binding-inputs/coercion): how leaf types drive binding shape.

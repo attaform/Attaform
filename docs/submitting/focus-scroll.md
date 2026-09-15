@@ -39,10 +39,10 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 When validation fails, the handler:
 
-1. Increments `form.meta.submissionAttempts`. `form.meta.submitted` stays `false`; it only flips on a successful callback.
-2. Surfaces errors at every invalid path.
-3. Calls `form.focusFirstError()` (the same method exposed below).
-4. Calls `onError(errors)` if you passed one.
+1. Surfaces errors at every invalid path.
+2. Calls `form.focusFirstError()` (the same method exposed below).
+3. Calls `onError(errors)` if you passed one.
+4. Increments `form.meta.submissionAttempts`, last, so a read inside `onError` still sees the previous count. `form.meta.submitted` stays `false` either way; it only flips on a successful callback.
 
 The "first" invalid field is in schema-declaration order, which matches the visual reading order for most forms (top to bottom, left to right).
 

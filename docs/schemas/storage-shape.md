@@ -59,14 +59,14 @@ const form = useForm({ schema })
 
 // READ: storage holds the concrete, resolved type
 form.values.flag // boolean       ← .default(true) peeled
-form.values.count // unknown        ← z.coerce.X() input is unknown
-form.values.phone // unknown        ← preprocess input is unknown
+form.values.count // unknown        ← z.coerce.X() input is unknown, and absent until written
+form.values.phone // unknown        ← preprocess input is unknown, and absent until written
 form.values.ratio // string        ← transform deferred to parse
 
-// WRITE: anything goes at preprocess / coerce leaves; defaulted leaves accept undefined
-form.setValue('flag', undefined) // OK; default fills the gap
+// WRITE: anything goes at a preprocess / coerce leaf
 form.setValue('count', '42') // OK; raw string lands in storage as-is
 form.setValue('phone', '1231231234') // OK; raw digits land in storage as-is
+form.resetField('flag') // back to the declared default; see below
 
 // SUBMIT: schema-side normalizers fire here
 form.handleSubmit((data) => {
@@ -75,6 +75,8 @@ form.handleSubmit((data) => {
   data.ratio // number ← .transform() produced this
 })
 ```
+
+Writing `undefined` at a defaulted leaf is not how you get the default back. `form.setValue('flag', undefined)` is a no-op: the write fails the schema's own type gate, dev-warns that the schema expects a boolean, and leaves storage exactly as it was. Reach for `form.resetField('flag')` to re-seed the declared default, `form.clear('flag')` to write the type's falsy concrete instead, or the [`unset`](/docs/writing-and-mutating/unset) sentinel to write the slim value and mark the leaf blank.
 
 ## Two layers of mutation
 
@@ -110,7 +112,7 @@ Reads at every nested level get the same treatment recursively.
 
 ## Blank-path synthesis
 
-Required leaves that haven't been written to aren't `undefined`. The runtime fills them with the type's falsy concrete at mount:
+A required leaf usually holds a concrete value from the first render rather than `undefined`. The runtime fills it with the type's falsy concrete at mount:
 
 | Schema at path    | Initial `form.values.<path>`                          |
 | ----------------- | ----------------------------------------------------- |
@@ -125,6 +127,8 @@ Required leaves that haven't been written to aren't `undefined`. The runtime fil
 | `z.object({...})` | recursive: every required property gets its own falsy |
 
 The runtime tracks which paths are still "blank" through the same field-state bit `field.blank` covers; see [the `blank` field-state bit](/docs/validation/blank) for the storage / display divergence story.
+
+The word doing work there is _usually_. Some kinds have no honest blank to synthesise and stay absent until something writes to them, and two of them are in this page's own example schema: `z.coerce.number()` and `z.preprocess(fn, T)` both declare an input boundary your code owns, so the runtime declines to invent a value on the far side of a conversion it cannot run yet. An opaque leaf and a `z.symbol()` / `z.function()` / `z.promise()` leaf are absent too, for their own reasons. [The schema contract](/docs/schemas/contract#what-the-adapters-accept) carries the full kind-by-kind table, including the two containers that do not blank the way you would guess.
 
 ## Three edges the invariant doesn't promise to flatten
 

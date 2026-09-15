@@ -32,7 +32,7 @@ A signup form takes a site URL. Users type informally (`example.com`, not `https
 4. Surface a specific message for each failure mode: empty, malformed, or taken.
 5. Avoid hammering the backend on every keystroke; reuse previous answers.
 
-Preprocess and async refine map onto that work cleanly. Preprocess **prepares** the value (trim, add protocol, decide whether it's URL-shaped at all). Refine **validates** it (ask the backend, surface a message). Storage stays as the user's raw text, so re-rendering, persistence, and history all carry the input the user actually typed.
+Preprocess and async refine map onto that work cleanly. Preprocess **prepares** the value (trim, add protocol, decide whether it's URL-shaped at all). Refine **validates** it (ask the backend, surface a message). Storage stays as the user's raw text, so re-rendering, SSR hydration, and history all carry the input the user actually typed.
 
 ## The schema
 
@@ -143,7 +143,7 @@ If you need the typed shape outside submit, call `form.parse()`. It runs the sam
 ## Tweaks
 
 - **One sentinel instead of two.** If you only need a single "rejected" message ("That URL won't work"), collapse `EMPTY_URL` and `INVALID_URL` into one sentinel and short-circuit refine on that single check. You lose the empty-vs-malformed distinction but the schema gets a few lines shorter.
-- **Throttle the network round-trip.** The form checks on every change by default. For a network-backed check you'll usually want `validateOn: 'blur'` (hit the endpoint when the field loses focus) or `validateOn: 'submit'` (defer entirely), optionally paired with `debounceMs` to coalesce bursts. The cache absorbs repeat checks regardless.
+- **Throttle the network round-trip.** The form checks on every change by default. Pick one of two ways down: move the trigger with `validateOn: 'blur'` (hit the endpoint when the field loses focus) or `validateOn: 'submit'` (defer entirely), or keep the per-keystroke trigger and coalesce bursts with `debounceMs`. They are alternatives, not a pair: `debounceMs` is typed `never` under `'blur'` and `'submit'`, so combining them is a compile error rather than a setting that quietly does nothing. The cache absorbs repeat checks either way.
 - **Invalidate on success.** After a successful signup, call `availabilityCache.delete(submittedUrl)` so a subsequent re-check picks up the new "taken" state on the server.
 - **Real backend.** Swap the `setTimeout`-based `checkAvailability` for your API call. A library like TanStack Query gives you the cache + de-duplication for free; the schema stays exactly as written.
 

@@ -10,13 +10,13 @@ metaRows:
   - label: Reactive
     value: 'Yes'
   - label: Read shape per leaf
-    value: FieldState (33 properties)
+    value: FieldState
     kind: code
 ---
 
 # `fields`
 
-> A reactive Proxy keyed by schema paths. Every leaf surfaces a 33-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
+> A reactive Proxy keyed by schema paths. Every leaf surfaces a 37-property FieldState: state bits, value reads, validation reads, DOM handles, and schema metadata, all in one snapshot the form keeps in sync as users interact.
 
 ::docs-meta-table
 ::
@@ -76,24 +76,25 @@ form.fields('links').transformError
 
 ## What FieldState carries
 
-Each leaf exposes a 33-property `FieldState` object. The properties fall into five jobs:
+Each leaf exposes a 37-property `FieldState` object. The properties fall into five jobs:
 
 ### State bits
 
 The reactive lifecycle of a field: how it got here, what it's doing now.
 
-| Property                  | Type              | Meaning                                                                                                     |
-| ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| `pristine`                | `boolean`         | `true` until the value diverges from the original.                                                          |
-| `dirty`                   | `boolean`         | Inverse of `pristine`.                                                                                      |
-| `focused`                 | `boolean \| null` | `true` while the element is focused; `null` while disconnected.                                             |
-| `blurred`                 | `boolean \| null` | Inverse of `focused` when connected; `null` while disconnected.                                             |
-| `touched`                 | `boolean`         | `true` after the first blur; survives reset cycles.                                                         |
-| `interacted`              | `boolean`         | `true` after the user's first value edit through `v-register`; survives reset cycles.                       |
-| `blurredAfterInteraction` | `boolean`         | `true` after the first blur that follows an edit (edited, then left); drives the default error-reveal gate. |
-| `connected`               | `boolean`         | `true` while at least one element is bound via `v-register`.                                                |
-| `blank`                   | `boolean`         | `true` while the leaf reads as empty per the [blank predicate](/docs/validation/showing-errors).            |
-| `updatedAt`               | `string \| null`  | ISO timestamp of the last write; `null` until first write.                                                  |
+| Property                  | Type              | Meaning                                                                                                                                                |
+| ------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pristine`                | `boolean`         | `true` until the value diverges from the original.                                                                                                     |
+| `dirty`                   | `boolean`         | Inverse of `pristine`.                                                                                                                                 |
+| `focused`                 | `boolean \| null` | `true` while the element is focused; `null` while disconnected.                                                                                        |
+| `blurred`                 | `boolean \| null` | Inverse of `focused` when connected; `null` while disconnected.                                                                                        |
+| `touched`                 | `boolean`         | `true` after the first blur; survives reset cycles.                                                                                                    |
+| `interacted`              | `boolean`         | `true` after the user's first value edit through `v-register`; survives reset cycles.                                                                  |
+| `blurredAfterInteraction` | `boolean`         | `true` after the first blur that follows an edit (edited, then left); drives the default error-reveal gate.                                            |
+| `connected`               | `boolean`         | `true` while at least one element is bound via `v-register`.                                                                                           |
+| `blank`                   | `boolean`         | `true` while the leaf reads as empty per the [blank predicate](/docs/validation/showing-errors).                                                       |
+| `disabled`                | `boolean`         | `true` while the form is frozen by [`useForm({ disabled })`](/docs/cross-cutting-state/disabled). Form-level: every field of a disabled form reads it. |
+| `updatedAt`               | `string \| null`  | ISO timestamp of the last write; `null` until first write.                                                                                             |
 
 ### Value reads
 
@@ -108,19 +109,22 @@ The data sitting at this path right now, and what it was at hydration.
 
 The error surface at this path: raw, ergonomic, and gated.
 
-| Property        | Type                                          | Meaning                                                                                              |
-| --------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `errors`        | `readonly ValidationError[]`                  | Every error in this path's subtree (this node plus descendants), schema-declaration order.           |
-| `firstError`    | `ValidationError \| undefined`                | Sugar for `errors[0]`.                                                                               |
-| `ownErrors`     | `readonly ValidationError[]`                  | Every error at this path's own bucket only, excluding descendants. On a leaf, identical to `errors`. |
-| `firstOwnError` | `ValidationError \| undefined`                | Sugar for `ownErrors[0]`.                                                                            |
-| `valid`         | `boolean`                                     | `errors.length === 0 && !validating`.                                                                |
-| `validating`    | `boolean`                                     | `true` while a per-field validation run is in flight.                                                |
-| `displayState`  | `'idle' \| 'pending' \| 'error' \| 'success'` | The single display-state verdict, resolved by [`getDisplayState`](/docs/validation/showing-errors).  |
-| `showErrors`    | `boolean`                                     | `displayState === 'error'`. The display-time error gate.                                             |
-| `showPending`   | `boolean`                                     | `displayState === 'pending'`. A check has run long enough to earn a spinner.                         |
-| `showSuccess`   | `boolean`                                     | `displayState === 'success'`. The field has passed.                                                  |
-| `showIdle`      | `boolean`                                     | `displayState === 'idle'`. Nothing to surface yet.                                                   |
+| Property         | Type                                          | Meaning                                                                                                                                                                                  |
+| ---------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `errors`         | `readonly ValidationError[]`                  | Every error in this path's subtree (this node plus descendants), schema-declaration order.                                                                                               |
+| `firstError`     | `ValidationError \| undefined`                | Sugar for `errors[0]`.                                                                                                                                                                   |
+| `ownErrors`      | `readonly ValidationError[]`                  | Every error at this path's own bucket only, excluding descendants. On a leaf, identical to `errors`.                                                                                     |
+| `firstOwnError`  | `ValidationError \| undefined`                | Sugar for `ownErrors[0]`.                                                                                                                                                                |
+| `valid`          | `boolean`                                     | `errors.length === 0 && !validating`.                                                                                                                                                    |
+| `validating`     | `boolean`                                     | `true` while a per-field validation run is in flight.                                                                                                                                    |
+| `transforming`   | `boolean`                                     | `true` while an [async `register` transform](/docs/binding-inputs/transforms) at this path has not yet committed. Containers roll it up.                                                 |
+| `busy`           | `boolean`                                     | `transforming \|\| validating`. The signal to bind a busy indicator to, since it covers both kinds of work.                                                                              |
+| `transformError` | `Error \| null`                               | The `Error` from the most recent async transform that rejected here. Leaf-only, and separate from `errors`: a transform that fails is a normalization failure, not a validation verdict. |
+| `displayState`   | `'idle' \| 'pending' \| 'error' \| 'success'` | The single display-state verdict, resolved by [`getDisplayState`](/docs/validation/showing-errors).                                                                                      |
+| `showErrors`     | `boolean`                                     | `displayState === 'error'`. The display-time error gate.                                                                                                                                 |
+| `showPending`    | `boolean`                                     | `displayState === 'pending'`. A check has run long enough to earn a spinner.                                                                                                             |
+| `showSuccess`    | `boolean`                                     | `displayState === 'success'`. The field has passed.                                                                                                                                      |
+| `showIdle`       | `boolean`                                     | `displayState === 'idle'`. Nothing to surface yet.                                                                                                                                       |
 
 Two error scopes sit side by side. `errors` and `firstError` roll up the **subtree**: a container's `errors` is non-empty whenever any descendant is invalid. `ownErrors` and `firstOwnError` read the **own bucket** at this exact path, so a container's own cross-field `.refine()` surfaces on its own without dragging in child errors. On a leaf the two scopes coincide (a leaf has no descendants), and `ownErrors` is the very same array as `errors`.
 

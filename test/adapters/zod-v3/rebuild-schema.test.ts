@@ -207,3 +207,43 @@ describe('realm faithfulness (the anti-skew invariant)', () => {
     expect(Object.getPrototypeOf(rebuildObject(v4obj, {}))).not.toBe(Object.getPrototypeOf(v3obj))
   })
 })
+
+describe('a getter-only `_def` (the shape Zod 4.5 moved to)', () => {
+  /**
+   * Builds a node whose `_def` is a getter-only accessor on the
+   * PROTOTYPE, the arrangement Zod 4.5 switched to. Hand-rolled rather
+   * than imported from a zod so the invariant holds whatever version
+   * the tree happens to hoist: the assertions below have to bite on a
+   * lockfile pinned to a Zod whose `_def` is still a writable own
+   * property, which is where this regression slipped through once.
+   */
+  function nodeWithAccessorDef(def: Record<string, unknown>): z.ZodTypeAny {
+    const proto = {}
+    Object.defineProperty(proto, '_def', { get: () => def, configurable: true })
+    return Object.create(proto) as z.ZodTypeAny
+  }
+
+  it('rebuilds without throwing through the inherited accessor', () => {
+    const original = nodeWithAccessorDef({ typeName: 'ZodObject', shape: () => ({}) })
+
+    // A plain `node._def = …` throws a TypeError here, which is a
+    // library throw reaching consumer code on the very path written
+    // to survive a mismatched hoisted major.
+    expect(() => rebuildObject(original, { a: z.string() })).not.toThrow()
+  })
+
+  it('shadows the accessor with the patched def and keeps the prototype', () => {
+    const shape = { a: z.string() }
+    const original = nodeWithAccessorDef({ typeName: 'ZodObject', unknownKeys: 'strict' })
+    const rebuilt = rebuildObject(original, shape)
+
+    expect(Object.getPrototypeOf(rebuilt)).toBe(Object.getPrototypeOf(original))
+    expect(Object.getOwnPropertyDescriptor(rebuilt, '_def')?.get).toBeUndefined()
+    expect((rebuilt as unknown as { _def: { shape: () => unknown } })._def.shape()).toBe(shape)
+    // Carried from the original's def, and the original is untouched.
+    expect((rebuilt as unknown as { _def: { typeName: string } })._def.typeName).toBe('ZodObject')
+    expect((original as unknown as { _def: { unknownKeys: string } })._def.unknownKeys).toBe(
+      'strict'
+    )
+  })
+})

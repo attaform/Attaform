@@ -475,7 +475,20 @@ export async function measureEager(define = PROD_DEFINE) {
 // sketches both schemas over the public AbstractSchema surface, which
 // costs nothing eager because that module is __DEV__-gated and dropped.
 // Budget 34_850 -> 34_050 (~0.33 kB headroom).
-const BUDGET_GZ = 34_050
+// E1 + E2 (defects, 2026-09-16): 33,722 -> 33,846 (+124). Three write- and
+// read-path defects and three adapter ones cost bytes rather than saving
+// them: the store-owned liveness sweep, and two zod kinds that had been
+// resolving to `'unknown'` needing a case in each of four walkers. Held
+// inside the E0 budget rather than raising it.
+// E3 SWEEP (2026-09-16): 33,846 -> 33,589 measured (-257) over seven
+// mechanical items. Three of the ten planned items were REFUSED on
+// measurement and the refusals are the reusable part: folding the last
+// error-store twin measured +10, folding v4's three no-op introspector
+// stubs +5, and collapsing the whole 43-entry method-skin table into a
+// bound table -29 against a -505 ablation ceiling. gzip had already
+// collected the rent on all three. Only unique deletions paid. Budget
+// 34_050 -> 33_900 (~0.31 kB headroom).
+const BUDGET_GZ = 33_900
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

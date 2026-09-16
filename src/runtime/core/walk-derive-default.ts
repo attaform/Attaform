@@ -3,9 +3,7 @@
  * runtime places at every leaf of a Zod schema tree.
  *
  * Both v3 and v4 adapters dispatch through this body via their
- * `SchemaIntrospector` instance plus a small `DeriveDefaultContext`
- * carrying per-adapter knobs (`unsupportedKindFallback`, `formKey`).
- * The per-version kind sets — v3's `branded` / `effects` / `pipeline`
+ * `SchemaIntrospector` instance. The per-version kind sets — v3's `branded` / `effects` / `pipeline`
  * / `native-enum`, v4's `pipe` / `file` — collapse to distinct cases
  * on the SharedZodKind switch.
  *
@@ -55,17 +53,6 @@
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { mergeDeep } from './merge-deep'
 import { safeAssign } from './safe-assign'
-
-export interface DeriveDefaultContext<Schema> {
-  /**
-   * Fallback for a kind the walker doesn't have a case for. Returning
-   * `undefined` is the safe default; v3 wires a `console.warn` here
-   * for visibility into custom-adapter consumers, v4 returns
-   * `undefined` silently (its kind set is exhaustive against
-   * `SchemaIntrospector.kindOf`).
-   */
-  unsupportedKindFallback(schema: Schema, kind: string): unknown
-}
 
 /**
  * Sentinel for the chain-peel-default helper. Distinct from
@@ -160,7 +147,6 @@ export function deriveDefaultWalk<Schema>(
   useDefault: boolean,
   intro: SchemaIntrospector<Schema>,
   maxDepth: number,
-  ctx: DeriveDefaultContext<Schema>,
   lazyDepth = 0
 ): unknown {
   // Pre-check the wrapper chain for an embedded ZodDefault / ZodCatch
@@ -195,11 +181,7 @@ export function deriveDefaultWalk<Schema>(
       // `safeAssign` lands such a key as an own data property.
       const out: Record<string, unknown> = {}
       for (const [key, subSchema] of Object.entries(shape)) {
-        safeAssign(
-          out,
-          key,
-          deriveDefaultWalk(subSchema, useDefault, intro, maxDepth, ctx, lazyDepth)
-        )
+        safeAssign(out, key, deriveDefaultWalk(subSchema, useDefault, intro, maxDepth, lazyDepth))
       }
       return out
     }
@@ -211,23 +193,21 @@ export function deriveDefaultWalk<Schema>(
       return {}
     case 'tuple': {
       const items = intro.getTupleItems(schema)
-      return items.map((item) =>
-        deriveDefaultWalk(item, useDefault, intro, maxDepth, ctx, lazyDepth)
-      )
+      return items.map((item) => deriveDefaultWalk(item, useDefault, intro, maxDepth, lazyDepth))
     }
     case 'union': {
       const options = intro.getUnionOptions(schema)
       const first = options[0]
       return first === undefined
         ? undefined
-        : deriveDefaultWalk(first, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(first, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'discriminated-union': {
       const options = intro.getDiscriminatedOptions(schema)
       const first = options[0]
       return first === undefined
         ? undefined
-        : deriveDefaultWalk(first, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(first, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'optional':
       return undefined
@@ -243,7 +223,7 @@ export function deriveDefaultWalk<Schema>(
       const inner = intro.unwrapInner(schema)
       return inner === undefined
         ? undefined
-        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'nonoptional':
     case 'success':
@@ -254,7 +234,7 @@ export function deriveDefaultWalk<Schema>(
       const inner = kind === 'branded' ? intro.unwrapBranded(schema) : intro.unwrapInner(schema)
       return inner === undefined
         ? undefined
-        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'effects': {
       // v3-only. `ZodEffects` wraps refine / transform / preprocess.
@@ -268,13 +248,13 @@ export function deriveDefaultWalk<Schema>(
       const inner = intro.unwrapEffectsSource(schema)
       if (intro.isPreprocessNode(schema)) {
         if (inner !== undefined && hasDeclaredDefaultInChain(inner, intro)) {
-          return deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
+          return deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
         }
         return undefined
       }
       return inner === undefined
         ? undefined
-        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'pipeline': {
       // v3-only. The pre-transform default is the input schema's
@@ -282,7 +262,7 @@ export function deriveDefaultWalk<Schema>(
       const inner = intro.unwrapPipeIn(schema)
       return inner === undefined
         ? undefined
-        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'pipe': {
       // v4-only. Two sub-cases mirroring v3's preprocess branch:
@@ -297,7 +277,7 @@ export function deriveDefaultWalk<Schema>(
       if (inn !== undefined && intro.kindOf(inn) === 'transform') {
         const out = intro.unwrapPipeOut(schema)
         if (out !== undefined && hasDeclaredDefaultInChain(out, intro)) {
-          return deriveDefaultWalk(out, useDefault, intro, maxDepth, ctx, lazyDepth)
+          return deriveDefaultWalk(out, useDefault, intro, maxDepth, lazyDepth)
         }
         return undefined
       }
@@ -310,7 +290,7 @@ export function deriveDefaultWalk<Schema>(
             : (inn ?? out)
       return real === undefined
         ? undefined
-        : deriveDefaultWalk(real, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(real, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'string':
       return ''
@@ -369,7 +349,7 @@ export function deriveDefaultWalk<Schema>(
       }
       return inner === undefined
         ? undefined
-        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth + 1)
+        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth + 1)
     }
     case 'intersection': {
       const left = intro.getIntersectionLeft(schema)
@@ -377,11 +357,11 @@ export function deriveDefaultWalk<Schema>(
       const l =
         left === undefined
           ? undefined
-          : deriveDefaultWalk(left, useDefault, intro, maxDepth, ctx, lazyDepth)
+          : deriveDefaultWalk(left, useDefault, intro, maxDepth, lazyDepth)
       const r =
         right === undefined
           ? undefined
-          : deriveDefaultWalk(right, useDefault, intro, maxDepth, ctx, lazyDepth)
+          : deriveDefaultWalk(right, useDefault, intro, maxDepth, lazyDepth)
       // `mergeDeep` prefers `right` where both sides carry a plain-
       // record value at a key, and returns `right` wholesale when
       // either side is a leaf. Matches parse-time semantics: an
@@ -398,7 +378,7 @@ export function deriveDefaultWalk<Schema>(
       const inner = intro.unwrapInner(schema)
       return inner === undefined
         ? undefined
-        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
+        : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'file':
       // `z.file()` has no canonical "empty file" — the user picks one
@@ -451,6 +431,14 @@ export function deriveDefaultWalk<Schema>(
       // surrounding pipe / effects.
       return undefined
     default:
-      return ctx.unsupportedKindFallback(schema, kind)
+      // Every kind the introspector can name has a case above, and an
+      // unrecognised spelling resolves to `'unknown'`, which has one of
+      // its own — so this is unreachable by construction rather than by
+      // convention. It used to be a per-adapter hook: v4 returned
+      // `undefined` silently, v3 wired a `console.warn` (AF13, now
+      // retired) whose own standing test existed to prove it never
+      // fired. A branch that cannot be reached is a better guarantee
+      // than a test asserting it is not.
+      return undefined
   }
 }

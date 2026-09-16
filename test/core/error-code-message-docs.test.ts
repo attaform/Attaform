@@ -118,7 +118,6 @@ describe('docs/e pages quote the message their code carries', () => {
       'AF10',
       'AF11',
       'AF12',
-      'AF13',
       'AF14',
       'AF15',
     ])

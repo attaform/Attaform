@@ -21,6 +21,7 @@ import { captureUserCallSite } from '../core/dev-stack-trace'
 import { InvalidUseFormConfigError, ReservedFormKeyError } from '../core/errors'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
+import type { PathKey } from '../core/paths'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
@@ -444,7 +445,7 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   // keys `blankPaths` by the same PathKey form, so we pass
   // `walked.paths` straight through to `createFormStore` without
   // reformatting at this boundary.
-  let initialBlankPaths: ReadonlyArray<string> | undefined
+  let initialBlankPaths: ReadonlyArray<PathKey> | undefined
   if (pending === undefined) {
     initialBlankPaths = walked.paths
   }

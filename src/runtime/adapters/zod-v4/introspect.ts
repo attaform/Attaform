@@ -357,6 +357,11 @@ export function getDefaultValue(schema: z.ZodType): unknown {
  * Kept on the introspect surface so the shared `SchemaIntrospector`
  * contract is uniform between v3 and v4; the core walkers consult this
  * for the v3-specific native-enum branch and silently skip on v4.
+ *
+ * The three stubs here read as one helper waiting to happen. Folding
+ * them into a shared `noV3Construct` was tried and measured 5 B LARGER:
+ * three adjacent identical bodies are something gzip already collects,
+ * while the shared name and its three re-exports are new tokens.
  */
 export function getNativeEnumValues(_schema: z.ZodType): Record<string, unknown> | undefined {
   return undefined

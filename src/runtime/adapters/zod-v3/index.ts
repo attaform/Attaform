@@ -196,8 +196,8 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     getNestedSchemasInSlimMode: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodSchema, path, maxRecursionDepth),
     slimPrimitivesOf: (schema, _maxRecursionDepth) => slimPrimitivesV3(schema),
-    deriveDefault: (schema, useDefault, _maxRecursionDepth, formKey) =>
-      getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault, formKey),
+    deriveDefault: (schema, useDefault) =>
+      getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault),
     runStrictGetDefaults: (schema, config, formKey, maxRecursionDepth) =>
       runStrictGetDefaultsV3<Form>(schema as z.ZodSchema, config, formKey, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralLeafV3(schema),
@@ -696,7 +696,7 @@ function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
 function getDefaultValuesFromZodSchema<
   FormSchema extends z.ZodSchema,
   Form extends z.infer<FormSchema>,
->(formSchema: FormSchema, useDefaultSchemaValues: boolean, formKey: FormKey): Form {
+>(formSchema: FormSchema, useDefaultSchemaValues: boolean): Form {
   // Thin wrapper around the shared `deriveDefaultWalk` core walker;
   // v3 and v4 dispatch through the same body via their respective
   // `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
@@ -707,20 +707,7 @@ function getDefaultValuesFromZodSchema<
   // adapter doesn't thread the consumer-supplied cap into this
   // call site — every existing v3 test passes against the embedded
   // 64-cap so the dedup preserves the prior behavior.
-  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64, {
-    unsupportedKindFallback: (schema) => {
-      const kindName =
-        (schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'
-      console.warn(
-        __DEV__
-          ? `[attaform] zod-v3 adapter: unsupported schema kind '${kindName}' ` +
-              `on form '${formKey}'. Defaulting the field to null. ` +
-              `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
-          : `[attaform] AF13 attaform.dev/e/af13 '${kindName}' on '${formKey}'`
-      )
-      return null
-    },
-  }) as Form
+  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64) as Form
 }
 
 function resolveFieldMetaAtPathV3(
@@ -806,8 +793,7 @@ function runStrictGetDefaultsV3<Form>(
 ): DefaultValuesResponse<Form> {
   const defaultValuesWithoutConstraints = getDefaultValuesFromZodSchema(
     rootSchema,
-    config.useDefaultSchemaValues,
-    formKey
+    config.useDefaultSchemaValues
   )
 
   // Shared core `mergeDeep` (NOT lodash `merge`) so arrays replace
@@ -838,7 +824,7 @@ function runStrictGetDefaultsV3<Form>(
       intro: V3_INTROSPECTOR,
       slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
       deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
-        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault, formKey),
+        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault),
       unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
     }
   ).data

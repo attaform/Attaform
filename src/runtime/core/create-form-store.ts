@@ -56,7 +56,6 @@ import { runFactoryAndApply } from './form-activation'
 import { mergeSparseHydration } from './merge-hydration'
 import {
   canonicalizePath,
-  coerceToPathKey,
   isPathPrefix,
   ROOT_PATH_KEY,
   segmentsForPathKey,
@@ -463,19 +462,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly firstValidationDone: Ref<boolean>
   /**
-   * `true` when the sub-schema rooted at `path` (or any of its
-   * descendants) declares async work — composes
-   * `schema.getSchemasAtPath(path)` with each candidate's
-   * `needsAsyncValidation()`, memoised per canonical path key for
-   * the lifetime of the FormStore. Used by `meta.valid` /
-   * `field.valid` to skip the `firstValidationDone` gate on subtrees
-   * that are fully synchronous: their verdict resolves at construction
-   * (or on the next per-field run) without waiting on a microtask, so
-   * honouring the form-wide gate would just play dumb about a known
-   * answer.
-   */
-  pathHasAsyncValidation(path: Path): boolean
-  /**
    * Precomputed-key shortcut for `pathHasAsyncValidation`. The
    * canonical key is required and must correspond to `segments`; the
    * helper skips the `canonicalizePath` round-trip so descendant-walk
@@ -713,17 +699,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
 
   // --- derived ---
   /**
-   * Leaf-only pristine check. `originals` is populated via
-   * `diffAndApply`'s `added` patches, which fire only on primitive
-   * leaves — a container path (e.g. `['profile']`) that isn't in
-   * `originals` returns `true` here even when a descendant is dirty.
-   * Callers that need container semantics should either loop over
-   * leaves or walk `originals` manually. The public `getFieldState`
-   * surface is typed to accept leaf paths only, so in practice this
-   * isn't exposed to consumers.
-   */
-  isPristineAtPath(path: Path): boolean
-  /**
    * Precomputed-key shortcut for `isPristineAtPath`. The canonical
    * key is required and must correspond to `segments`; the helper
    * skips the `canonicalizePath` round-trip so descendant-walk loops
@@ -749,7 +724,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   hasRemovedSubtreeUnder(path: Path): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
-  getOriginalAtPath(path: Path): unknown
 
   /**
    * Cancel every in-flight field-level validation run — clears timers
@@ -776,12 +750,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   endTransform(key: PathKey, token: number): void
   /** Record a per-field normalization failure at `key` (`field.transformError`). */
   setTransformError(key: PathKey, err: Error): void
-  /**
-   * Abort + release every in-flight async-transform run (all paths) and
-   * clear `transformErrors`. Mirrors `cancelFieldValidation`; called by
-   * `reset()` and store teardown.
-   */
-  cancelTransforms(): void
   /**
    * Path-scoped counterpart to `cancelTransforms`: abort + release only
    * the runs at-or-under `prefix`, clearing their `transformError`.
@@ -813,11 +781,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * store's captured `debounceMs`. Used so sibling instances sharing a
    * FormStore can each validate on their own cadence.
    */
-  scheduleFieldValidation(
-    path: Path,
-    immediate: boolean,
-    override?: { readonly mode?: ValidateOn; readonly debounceMs?: number }
-  ): void
+  scheduleFieldValidation(path: Path, immediate: boolean, instance?: WriteMeta['instance']): void
 
   /**
    * Subscribe to every `applyFormReplacement`. Fires synchronously
@@ -947,7 +911,7 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * pass (commit 7 wires the producer); commit 2 plumbs the channel
    * through with no callers yet.
    */
-  readonly initialBlankPaths?: ReadonlyArray<string> | undefined
+  readonly initialBlankPaths?: ReadonlyArray<PathKey> | undefined
   /**
    * Whether to remember per-variant typed state across discriminated-
    * union switches. Default `true`. See `UseFormConfiguration.rememberVariants`
@@ -1457,14 +1421,6 @@ function ensurePathOrdinal<F extends GenericForm, G extends GenericForm = F>(
     st.nextOrdinal += 1
   }
   return ordinal
-}
-
-function pathHasAsyncValidation<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path
-): boolean {
-  const { key } = canonicalizePath(path)
-  return pathHasAsyncValidationByKey(st, key, path)
 }
 
 function pathHasAsyncValidationByKey<F extends GenericForm, G extends GenericForm = F>(
@@ -2270,12 +2226,7 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
     if (newlyAuthored && st.schema.isPreprocessOrCoerceLeaf(path)) {
       const modeForAuthoringTransition = meta?.instance?.validateOn ?? st.fieldValidationMode
       if (modeForAuthoringTransition === 'change') {
-        scheduleFieldValidation(st, path, false /* debounced */, {
-          ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-          ...(meta?.instance?.debounceMs !== undefined
-            ? { debounceMs: meta.instance.debounceMs }
-            : {}),
-        })
+        scheduleFieldValidation(st, path, false /* debounced */, meta?.instance)
       }
     }
     return true
@@ -2319,15 +2270,12 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
     // optional section that was empty at construction — added, then cleared
     // again — lands back at pristine rather than reading dirty.
     if (subtreeHadRealBaseline(st, path, currentValue)) {
-      st.removedSubtrees.add(canonicalizePath(path).key)
+      st.removedSubtrees.add(pathKey)
     }
   }
   const effectiveModeAfterWrite = meta?.instance?.validateOn ?? st.fieldValidationMode
   if (effectiveModeAfterWrite === 'change') {
-    scheduleFieldValidation(st, path, false /* debounced */, {
-      ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-      ...(meta?.instance?.debounceMs !== undefined ? { debounceMs: meta.instance.debounceMs } : {}),
-    })
+    scheduleFieldValidation(st, path, false /* debounced */, meta?.instance)
   }
   return true
 }
@@ -2512,7 +2460,6 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
       applySchemaErrorsForSubtree(st, parentPath, reStamped)
       // Cancel any in-flight async validation at this path so a
       // late-arriving result can't clobber the sync write.
-      const { key: parentKey } = canonicalizePath(parentPath)
       const prevValidation = st.fieldValidationState.get(parentKey)
       if (prevValidation !== undefined) {
         if (prevValidation.timer !== null) clearTimeout(prevValidation.timer)
@@ -2525,10 +2472,7 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
   applyFormReplacement(st, nextForm, meta)
   for (const k of newBlankPaths) st.blankPaths.add(k)
   if (reshapeMode === 'change' && !appliedSync) {
-    scheduleFieldValidation(st, parentPath, false /* debounced */, {
-      ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-      ...(meta?.instance?.debounceMs !== undefined ? { debounceMs: meta.instance.debounceMs } : {}),
-    })
+    scheduleFieldValidation(st, parentPath, false /* debounced */, meta?.instance)
   }
   return true
 }
@@ -2549,11 +2493,19 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
   st: FormState<F, G>,
   path: Path,
   immediate: boolean,
-  override?: { readonly mode?: ValidateOn; readonly debounceMs?: number }
+  // The write's per-instance overrides, taken whole. Every caller had
+  // exactly this bag in hand and rebuilt a two-key object from it under
+  // a different spelling, guarded by a `!== undefined ? {k} : {}` spread
+  // per key — four copies of a ceremony that exists only because
+  // `exactOptionalPropertyTypes` rejects an explicit `undefined` at an
+  // optional slot. The reads below use `??`, which cannot tell an absent
+  // key from an undefined one, so the ceremony never meant anything at
+  // runtime.
+  instance?: WriteMeta['instance']
 ): void {
-  const effectiveMode = override?.mode ?? st.fieldValidationMode
+  const effectiveMode = instance?.validateOn ?? st.fieldValidationMode
   if (effectiveMode === 'submit') return
-  const effectiveDebounce = override?.debounceMs ?? st.fieldValidationDebounceMs
+  const effectiveDebounce = instance?.debounceMs ?? st.fieldValidationDebounceMs
   const { key } = canonicalizePath(path)
   const prev = st.fieldValidationState.get(key)
   if (prev !== undefined) {
@@ -3157,12 +3109,7 @@ function markFocused<F extends GenericForm, G extends GenericForm = F>(
       })
     }
     if (changed) {
-      scheduleFieldValidation(st, path, true /* immediate */, {
-        ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-        ...(meta?.instance?.debounceMs !== undefined
-          ? { debounceMs: meta.instance.debounceMs }
-          : {}),
-      })
+      scheduleFieldValidation(st, path, true /* immediate */, meta?.instance)
     }
   }
 }
@@ -3217,11 +3164,13 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
 ): void {
   const formValue = st.form.value
   let touchedAny = false
-  for (const [, entry] of st.originals) {
+  // `originals` is keyed by the canonical key of each entry's own
+  // segments, so the iteration already yields what a `canonicalizePath`
+  // here would recompute — once per leaf, on a whole-form walk.
+  for (const [leafKey, entry] of st.originals) {
     if (!isPathPrefix(segments, entry.segments)) continue
     if (!hasAtPath(formValue, entry.segments)) continue
     touchedAny = true
-    const leafKey = canonicalizePath(entry.segments).key
     const current = st.fields.get(leafKey)
     if (current?.touched === true) continue
     touchFieldRecord(st, leafKey, entry.segments, { touched: true })
@@ -3277,11 +3226,12 @@ function interactAtPath<F extends GenericForm, G extends GenericForm = F>(
   if (st.effectiveDisabled.value) return false
   const formValue = st.form.value
   let interactedAny = false
-  for (const [, entry] of st.originals) {
+  // Same as `touchSubtree`: the map key is already this leaf's canonical
+  // key, so re-deriving it per leaf bought nothing.
+  for (const [leafKey, entry] of st.originals) {
     if (!isPathPrefix(segments, entry.segments)) continue
     if (!hasAtPath(formValue, entry.segments)) continue
     interactedAny = true
-    const leafKey = canonicalizePath(entry.segments).key
     const current = st.fields.get(leafKey)
     // Skip the reactive write once the whole ladder is already set —
     // records are replaced wholesale, so an unconditional
@@ -3790,14 +3740,6 @@ function clearFieldRecordFlags<F extends GenericForm, G extends GenericForm = F>
 
 // --- Derived ---
 
-function isPristineAtPath<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path
-): boolean {
-  const { key, segments } = canonicalizePath(path)
-  return isPristineAtPathByKey(st, key, segments)
-}
-
 function isPristineAtPathByKey<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   key: PathKey,
@@ -3868,14 +3810,6 @@ function getFieldRecord<F extends GenericForm, G extends GenericForm = F>(
 ): FieldRecord | undefined {
   const { key } = canonicalizePath(path)
   return st.fields.get(key)
-}
-
-function getOriginalAtPath<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path
-): unknown {
-  const { key } = canonicalizePath(path)
-  return st.originals.get(key)?.value
 }
 
 export function createFormStore<F extends GenericForm, G extends GenericForm = F>(
@@ -4055,24 +3989,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // (the SSR snapshot wins when present), matching how the hydrated
   // `form` value overrides the schema's getDefaultValues result.
   //
-  // The I/O boundary accepts strings in either shape:
-  //
-  //  - dotted-string paths (`'user.email'`) — what the public path
-  //    notation looks like, also what persistence writes to disk
-  //    (`buildPersistedPayload` converts via `pathKeyToDotted`);
-  //  - already-canonical `PathKey` strings (`'["user","email"]'`) —
-  //    what the construction-time unset walker emits and what the rest
-  //    of the runtime keys on.
-  //
-  // `coerceToPathKey` normalises both shapes to a canonical `PathKey`
-  // so the live Set is uniformly keyed regardless of which seed source
-  // (walker, SSR hydration payload, persisted draft) supplied the entry.
-  const initialTransientList: ReadonlyArray<string> =
-    hydration?.blankPaths ?? options.initialBlankPaths ?? []
+  // Two seed sources, and each one's shape is known here rather than
+  // guessed. A hydration payload arrives DOTTED, because `serialize.ts`
+  // converts at the wire boundary so the payload matches public path
+  // notation; the construction-time unset walker already emits canonical
+  // keys. Branching on the source replaced a per-entry sniff that tried
+  // `JSON.parse` on anything starting with `[`, which by its own
+  // docblock misread a literal key spelled like JSON.
   const blankPaths = reactive(new Set<PathKey>()) as Set<PathKey>
   const originalBlankPaths = new Set<PathKey>()
-  for (const raw of initialTransientList) {
-    const key = coerceToPathKey(raw)
+  const seededBlankPaths: readonly PathKey[] =
+    hydration !== undefined
+      ? (hydration.blankPaths ?? []).map((dotted) => canonicalizePath(dotted).key)
+      : (options.initialBlankPaths ?? [])
+  for (const key of seededBlankPaths) {
     blankPaths.add(key)
     originalBlankPaths.add(key)
   }
@@ -4306,6 +4236,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     decFieldValidation: (key) => decFieldValidation(st, key),
   })
 
+  // Bind the module kernel's `st`-first functions into the per-instance
+  // skin table. Every entry was an arrow that forwarded its own
+  // parameters verbatim, so the parameter list was pure repetition.
+  const bind =
+    <A extends unknown[], R>(fn: (state: FormState<F, G>, ...args: A) => R) =>
+    (...args: A): R =>
+      fn(st, ...args)
+
   const st: FormState<F, G> = {
     // --- public data (the FormStore contract's state members) ---
     formKey,
@@ -4388,17 +4326,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     warnedDisabledWrite: false,
 
     // --- methods: thin per-instance skins over the module kernel ---
-    rehydrate: () => rehydrate(st),
-    activate: () => activate(st),
-    adoptResolvedDefaults: (value) => adoptResolvedDefaults(st, value),
-    pathHasAsyncValidation: (path) => pathHasAsyncValidation(st, path),
-    pathHasAsyncValidationByKey: (key, segments) => pathHasAsyncValidationByKey(st, key, segments),
-    applyFormReplacement: (next, meta) => applyFormReplacement(st, next, meta),
-    setValueAtPath: (path, value, meta) => setValueAtPath(st, path, value, meta),
-    getValueAtPath: (path) => getValueAtPath(st, path),
-    arrayElementKey: (path) => arrayElementKey(st, path),
-    reset: (nextDefaultValues) => reset(st, nextDefaultValues),
-    resetField: (path) => resetField(st, path),
+    rehydrate: bind(rehydrate),
+    activate: bind(activate),
+    adoptResolvedDefaults: bind(adoptResolvedDefaults),
+    pathHasAsyncValidationByKey: bind(pathHasAsyncValidationByKey),
+    applyFormReplacement: bind(applyFormReplacement),
+    setValueAtPath: bind(setValueAtPath),
+    getValueAtPath: bind(getValueAtPath),
+    arrayElementKey: bind(arrayElementKey),
+    reset: bind(reset),
+    resetField: bind(resetField),
+    // The schema/user pair below reads as a fold waiting to happen. It was
+    // tried: a `setErrorsForPathIn(channel)` factory measured 10 B LARGER,
+    // because gzip had already collected the rent on two adjacent copies
+    // and the helper added a name the original did not need.
     setSchemaErrorsForPath: (path, entries) =>
       setErrorChannelForKey(
         st,
@@ -4408,7 +4349,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       ),
     setAllSchemaErrors: (entries) => replaceErrorChannel(st, 'schema', entries),
     clearSchemaErrors: (path) => clearErrorChannel(st, 'schema', path),
-    applySchemaErrorsForSubtree: (path, entries) => applySchemaErrorsForSubtree(st, path, entries),
+    applySchemaErrorsForSubtree: bind(applySchemaErrorsForSubtree),
     setAllUserErrors: (entries) => replaceErrorChannel(st, 'user', entries),
     setUserErrorsForPath: (path, entries) =>
       setErrorChannelForKey(
@@ -4418,38 +4359,34 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         entries.length === 0 ? NO_ERRORS : [...entries]
       ),
     clearUserErrors: (path) => clearErrorChannel(st, 'user', path),
-    restoreErrorCells: (entries) => restoreErrorCells(st, entries),
-    getErrorsForPath: (path) => getErrorsForPath(st, path),
-    ensurePathOrdinal: (key) => ensurePathOrdinal(st, key),
-    noteDomConnected: (path) => noteDomConnected(st, path),
-    noteDomDisconnected: (path) => noteDomDisconnected(st, path),
-    markFocused: (path, focused, meta) => markFocused(st, path, focused, meta),
-    markInteracted: (path) => markInteracted(st, path),
-    touchAtPath: (segments) => touchAtPath(st, segments),
-    interactAtPath: (segments) => interactAtPath(st, segments),
-    markConnectedOptimistically: (path) => markConnectedOptimistically(st, path),
-    isPristineAtPath: (path) => isPristineAtPath(st, path),
-    isPristineAtPathByKey: (key, segments) => isPristineAtPathByKey(st, key, segments),
-    hasStructuralChangeUnder: (path) => hasStructuralChangeUnder(st, path),
-    hasRemovedSubtreeUnder: (path) => hasRemovedSubtreeUnder(st, path),
-    getFieldRecord: (path) => getFieldRecord(st, path),
-    getOriginalAtPath: (path) => getOriginalAtPath(st, path),
-    cancelFieldValidation: () => cancelFieldValidation(st),
-    beginTransform: (key, holder) => beginTransform(st, key, holder),
-    isCurrentTransform: (key, token) => isCurrentTransform(st, key, token),
-    endTransform: (key, token) => endTransform(st, key, token),
-    setTransformError: (key, err) => setTransformError(st, key, err),
-    cancelTransforms: () => cancelTransforms(st),
-    cancelTransformsUnder: (prefix) => cancelTransformsUnder(st, prefix),
-    settleTransforms: (path) => settleTransforms(st, path),
-    scheduleFieldValidation: (path, immediate, override) =>
-      scheduleFieldValidation(st, path, immediate, override),
-    onFormChange: (listener) => onFormChange(st, listener),
-    onSubmitSuccess: (listener) => onSubmitSuccess(st, listener),
-    onReset: (listener) => onReset(st, listener),
-    emitSubmitSuccess: () => emitSubmitSuccess(st),
-    registerCleanup: (fn) => registerCleanup(st, fn),
-    dispose: () => dispose(st),
+    restoreErrorCells: bind(restoreErrorCells),
+    getErrorsForPath: bind(getErrorsForPath),
+    ensurePathOrdinal: bind(ensurePathOrdinal),
+    noteDomConnected: bind(noteDomConnected),
+    noteDomDisconnected: bind(noteDomDisconnected),
+    markFocused: bind(markFocused),
+    markInteracted: bind(markInteracted),
+    touchAtPath: bind(touchAtPath),
+    interactAtPath: bind(interactAtPath),
+    markConnectedOptimistically: bind(markConnectedOptimistically),
+    isPristineAtPathByKey: bind(isPristineAtPathByKey),
+    hasStructuralChangeUnder: bind(hasStructuralChangeUnder),
+    hasRemovedSubtreeUnder: bind(hasRemovedSubtreeUnder),
+    getFieldRecord: bind(getFieldRecord),
+    cancelFieldValidation: bind(cancelFieldValidation),
+    beginTransform: bind(beginTransform),
+    isCurrentTransform: bind(isCurrentTransform),
+    endTransform: bind(endTransform),
+    setTransformError: bind(setTransformError),
+    cancelTransformsUnder: bind(cancelTransformsUnder),
+    settleTransforms: bind(settleTransforms),
+    scheduleFieldValidation: bind(scheduleFieldValidation),
+    onFormChange: bind(onFormChange),
+    onSubmitSuccess: bind(onSubmitSuccess),
+    onReset: bind(onReset),
+    emitSubmitSuccess: bind(emitSubmitSuccess),
+    registerCleanup: bind(registerCleanup),
+    dispose: bind(dispose),
   }
 
   // --- Construction sequence (the reset-shared baseline + the

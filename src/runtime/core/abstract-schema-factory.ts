@@ -217,8 +217,6 @@ export interface SchemaIntrospector<Schema> {
   getArrayElement(schema: Schema): Schema | undefined
   /** Element schema of a `z.set(...)`. Undefined for non-sets / malformed defs. */
   getSetValueType(schema: Schema): Schema | undefined
-  /** Key schema of a `z.record(K, V)`. Undefined for non-records / single-arg records. */
-  getRecordKeyType(schema: Schema): Schema | undefined
   /** Value schema of a `z.record(...)`. Undefined for non-records / malformed defs. */
   getRecordValueType(schema: Schema): Schema | undefined
   /**
@@ -273,12 +271,6 @@ export interface SchemaIntrospector<Schema> {
    * its target is constructed) returns `undefined`.
    */
   unwrapLazy(schema: Schema): Schema | undefined
-  /**
-   * Getter function reference of a `z.lazy()` wrapper — used by walkers
-   * that track cycle identity by the getter rather than its result
-   * (each call returns a distinct schema instance).
-   */
-  getLazyGetter(schema: Schema): (() => unknown) | undefined
 
   /**
    * Resolve a `z.default(...)` wrapper to its declared default value.

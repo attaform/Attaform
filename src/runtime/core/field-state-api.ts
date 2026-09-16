@@ -198,7 +198,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const record = state.fields.get(key)
   const value = state.getValueAtPath(segments)
   const original = state.originals.get(key)?.value
-  const pristine = state.isPristineAtPath(segments)
+  const pristine = state.isPristineAtPathByKey(key, segments)
   const cell = state.errorCells.get(key)
   const schemaForKey = cell !== undefined && cell.schema.length > 0 ? cell.schema : undefined
   // Synthesize this leaf's blank-required error from its OWN blank membership
@@ -229,7 +229,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   // `z.string()` leaf) skip the gate — there's nothing to wait on,
   // and clamping every such field to `false` at mount would defeat
   // the green-checkmark UX pattern that `field.valid` is built for.
-  const gated = state.pathHasAsyncValidation(segments) && !state.firstValidationDone.value
+  const gated = state.pathHasAsyncValidationByKey(key, segments) && !state.firstValidationDone.value
   // Stub-state orphan gate: when a leaf is structurally absent from
   // `form.value` AND any DU ancestor is in stub state (its disc value
   // isn't a known variant), the surface MUST NOT report `valid: true`.
@@ -576,7 +576,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // leaf `pathHasAsyncValidation` reading. Check the container's
   // OWN path too, so the firstValidationDone gate fires until that
   // pass lands.
-  if (!asyncPending && state.pathHasAsyncValidation(segments)) asyncPending = true
+  if (!asyncPending && state.pathHasAsyncValidationByKey(key, segments)) asyncPending = true
   // A transform or validation registered directly on THIS container path runs
   // at the container key itself, not at a descendant leaf — the walk above
   // skips self (`segments.length === entry.segments.length`). The file

@@ -5,6 +5,7 @@ import { createDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import type { ValidationError } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
+import { originalAt, pristineAt } from '../utils/store-path-probes'
 
 type SignupForm = {
   email: string
@@ -44,9 +45,9 @@ describe('createFormStore', () => {
 
     it('populates originals for every initial leaf path', () => {
       const state = makeState()
-      expect(state.getOriginalAtPath(['email'])).toBe('')
-      expect(state.getOriginalAtPath(['profile', 'name'])).toBe('')
-      expect(state.getOriginalAtPath(['profile', 'age'])).toBe(0)
+      expect(originalAt(state, ['email'])).toBe('')
+      expect(originalAt(state, ['profile', 'name'])).toBe('')
+      expect(originalAt(state, ['profile', 'age'])).toBe(0)
     })
 
     it('populates fields with updatedAt timestamps for every initial leaf', () => {
@@ -132,20 +133,20 @@ describe('createFormStore', () => {
   describe('originals and pristine/dirty', () => {
     it('reports pristine=true when the field is untouched since init', () => {
       const state = makeState({ defaultValues: { email: 'initial@x' } })
-      expect(state.isPristineAtPath(['email'])).toBe(true)
+      expect(pristineAt(state, ['email'])).toBe(true)
     })
 
     it('reports pristine=false after a change', () => {
       const state = makeState({ defaultValues: { email: 'initial@x' } })
       state.setValueAtPath(['email'], 'changed@x')
-      expect(state.isPristineAtPath(['email'])).toBe(false)
+      expect(pristineAt(state, ['email'])).toBe(false)
     })
 
     it('reports pristine=true when the field is restored to its original value', () => {
       const state = makeState({ defaultValues: { email: 'initial@x' } })
       state.setValueAtPath(['email'], 'changed@x')
       state.setValueAtPath(['email'], 'initial@x')
-      expect(state.isPristineAtPath(['email'])).toBe(true)
+      expect(pristineAt(state, ['email'])).toBe(true)
     })
 
     it('newly-added paths (post-init) compare against undefined as their original', () => {
@@ -156,8 +157,8 @@ describe('createFormStore', () => {
       // correctly seen as a dirty change.
       const state = makeState()
       state.setValueAtPath(['profile', 'nickname' as keyof SignupForm['profile']], 'xyz')
-      expect(state.getOriginalAtPath(['profile', 'nickname'])).toBeUndefined()
-      expect(state.isPristineAtPath(['profile', 'nickname'])).toBe(false)
+      expect(originalAt(state, ['profile', 'nickname'])).toBeUndefined()
+      expect(pristineAt(state, ['profile', 'nickname'])).toBe(false)
     })
   })
 

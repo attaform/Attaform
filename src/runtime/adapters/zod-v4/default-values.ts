@@ -30,11 +30,7 @@ export function deriveDefault(
   useDefault: boolean,
   maxRecursionDepth: number
 ): unknown {
-  return deriveDefaultWalk(schema, useDefault, V4_INTROSPECTOR, maxRecursionDepth, {
-    // v4 has an exhaustive switch against `SchemaIntrospector.kindOf`;
-    // unknown kinds genuinely shouldn't appear, so return undefined.
-    unsupportedKindFallback: () => undefined,
-  })
+  return deriveDefaultWalk(schema, useDefault, V4_INTROSPECTOR, maxRecursionDepth)
 }
 
 export type GetDefaultValuesOptions = {

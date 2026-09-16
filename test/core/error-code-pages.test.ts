@@ -39,6 +39,14 @@ const RETIRED_CODES = new Set<string>([
   // nothing is refused now and neither code has a call site.
   'AF02',
   'AF03',
+  // The blank-derivation walker's unsupported-kind backstop. It had a
+  // standing test whose whole job was to prove it never fired: every
+  // kind the introspector names has a case, and an unrecognised
+  // spelling resolves to `'unknown'`, which has one of its own. The
+  // branch is gone, so the guarantee is now structural rather than
+  // asserted, and the per-adapter hook that carried the warning went
+  // with it.
+  'AF13',
 ])
 
 function walkFiles(dir: string, out: string[]): string[] {

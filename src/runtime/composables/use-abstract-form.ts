@@ -181,9 +181,16 @@ export function useAbstractForm<
     min: 0,
     defaultValue: DEFAULT_MAX_RECURSION_DEPTH,
   })
-  const resolvedSchema = getComputedSchema(key, configuration.schema, { maxRecursionDepth })
-
   const existing = registry.forms.get(key) as FormStore<Form, GetValueFormType> | undefined
+  // A second `useForm({ key })` on a live store drops its own schema in
+  // favour of the first caller's wiring, so resolving one is pure
+  // garbage in a production build. A dev build still resolves it,
+  // because the key-collision warning below needs this call site's own
+  // answer to compare against.
+  const resolvedSchema =
+    existing === undefined || __DEV__
+      ? getComputedSchema(key, configuration.schema, { maxRecursionDepth })
+      : existing.schema
   if (__DEV__ && existing !== undefined) {
     // Two `useForm({ key })` calls resolve to one FormStore by design;
     // the second call's schema is then dropped in favour of the first's

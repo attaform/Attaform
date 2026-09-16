@@ -1,11 +1,13 @@
 import { getCurrentScope, onScopeDispose, ref, watchEffect, type Ref } from 'vue'
 import type {
   ErrorInput,
+  FormKey,
   HandleSubmit,
   OnError,
   OnInvalidSubmitPolicy,
   OnSubmit,
   ReactiveValidationStatus,
+  SchemaParseResult,
   SubmitHandler,
   ValidationError,
   ValidationResponse,
@@ -363,7 +365,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     data: unknown,
     path: Path | undefined
   ): Promise<ValidationResponse<Out>> {
-    return await state.schema.validateAtPath(data, path)
+    return stampFormKey(await state.schema.validateAtPath(data, path), state.formKey)
   }
 
   /**
@@ -681,6 +683,24 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   return { validate, parse, handleSubmit }
+}
+
+/**
+ * Name the form a schema verdict belongs to.
+ *
+ * An `AbstractSchema` answers for the SCHEMA: one instance is shared by
+ * every form built on the same schema, so it cannot know which of them
+ * asked and returns a verdict with no form key on it. The owning store
+ * is where that identity lives, so the store is what stamps it.
+ */
+function stampFormKey<T>(verdict: SchemaParseResult<T>, formKey: FormKey): ValidationResponse<T> {
+  if (verdict.success) return { ...verdict, formKey }
+  // Split on `data` as well as `success`: "failed with no data" and
+  // "failed with partial data" are separate arms of the public response,
+  // and a spread alone would not tell them apart.
+  return verdict.data === undefined
+    ? { data: undefined, errors: verdict.errors, success: false, formKey }
+    : { data: verdict.data, errors: verdict.errors, success: false, formKey }
 }
 
 function toSegments(pathInput: string | Path): Path {

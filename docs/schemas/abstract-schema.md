@@ -27,7 +27,7 @@ This page is the contract reference. The Zod adapters under `attaform/zod` and `
 ```ts
 type AbstractSchema<Form, GetValueFormType = Form> = {
   // Defaults
-  getDefaultValues(config): DefaultValuesResponse<Form>
+  getDefaultValues(config): SchemaDefaultsResult<Form>
   getDefaultAtPath(path: Path): unknown
   getEmptyValueAtPath(path: Path): unknown
 
@@ -48,7 +48,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
     data: unknown,
     path: Path | undefined,
     options?: ValidateOptions
-  ): MaybePromise<ValidationResponse<Form>>
+  ): MaybePromise<SchemaParseResult<Form>>
 
   // Optional hooks
   getFieldMetaAtPath?(path: Path): ResolvedFieldMeta
@@ -62,9 +62,9 @@ Fourteen required methods. Four optional hooks. The runtime fills in sensible fa
 
 ## Defaults
 
-### `getDefaultValues(config): DefaultValuesResponse<Form>`
+### `getDefaultValues(config): SchemaDefaultsResult<Form>`
 
-Returns `{ data, errors, success, formKey }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues`, `constraints`, and `strict` flags.
+Returns `{ data, errors, success }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues`, `constraints`, and `strict` flags.
 
 ### `getDefaultAtPath(path: Path): unknown`
 
@@ -144,9 +144,11 @@ For discriminated-union containers, return `{ discriminatorKey, getVariantDefaul
 
 ## Validation
 
-### `validateAtPath(data, path?, options?): MaybePromise<ValidationResponse>`
+### `validateAtPath(data, path?, options?): MaybePromise<SchemaParseResult>`
 
-Returns `MaybePromise<ValidationResponse>`. `path` is a `Segment[]` or `undefined` (whole-form validation). Honor `options.sync` when the schema is sync-capable; the runtime uses it to batch error writes inside DU variant reshape.
+Returns `MaybePromise<SchemaParseResult>`. `path` is a `Segment[]` or `undefined` (whole-form validation). Honor `options.sync` when the schema is sync-capable; the runtime uses it to batch error writes inside DU variant reshape.
+
+An `AbstractSchema` never names a form. One instance is shared by every form built on the same schema, and the owning store stamps its own `formKey` onto the verdict on the way out, which is why nothing you return here carries one.
 
 Must NOT throw. Return `{ success: false, errors }` for validation failures.
 
@@ -182,11 +184,10 @@ Assume your library exposes:
 ```ts
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
   GenericForm,
+  SchemaDefaultsResult,
   SlimPrimitiveKind,
   ValidationError,
-  ValidationResponse,
 } from 'attaform/abstract'
 
 const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
@@ -202,10 +203,10 @@ const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
 
 export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): AbstractSchema<F, F> {
   return {
-    getDefaultValues({ constraints }): DefaultValuesResponse<F> {
+    getDefaultValues({ constraints }): SchemaDefaultsResult<F> {
       const defaults = schema.defaultValues()
       const merged = mergeDeepPartial(defaults, constraints)
-      return { data: merged, errors: undefined, success: true, formKey: '' }
+      return { data: merged, errors: undefined, success: true }
     },
 
     getDefaultAtPath(path) {
@@ -285,7 +286,7 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       const result = path !== undefined ? schema.parseAtPath(data, path) : schema.parse(data)
 
       if (result.success) {
-        return { success: true, data: result.data, errors: undefined, formKey: '' }
+        return { success: true, data: result.data, errors: undefined }
       }
 
       const errors: ValidationError[] = result.issues.map((issue) => ({
@@ -294,7 +295,7 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
         code: `my-lib:${issue.code ?? 'unknown'}`,
       }))
 
-      return { success: false, errors, data: undefined, formKey: '' }
+      return { success: false, errors, data: undefined }
     },
   }
 }

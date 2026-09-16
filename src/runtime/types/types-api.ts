@@ -156,27 +156,52 @@ export type ErrorInput =
       data?: Json | null
     }
 
-/** Settled validation result when the form (or subtree) parsed successfully. */
-export type ValidationResponseSuccess<TData> = {
+/**
+ * A parse verdict as an `AbstractSchema` produces it.
+ *
+ * A schema knows nothing about which form asked: it is a pure function
+ * of the schema it wraps, which is what lets one `AbstractSchema` serve
+ * every form built on the same schema. The owning store stamps its own
+ * `formKey` on the way out, producing the `ValidationResponse*` arms
+ * below. Adapter authors implement THESE.
+ */
+export type SchemaParseSuccess<TData> = {
   /** The parsed value at the validated subtree (whole form when `validate()` was called without a path). */
   data: TData
   errors: undefined
   success: true
-  formKey: FormKey
 }
-/** Settled validation result when no data could be produced (e.g. a top-level type mismatch). */
-export type ValidationResponseErrorWithoutData = {
+/** Schema-level verdict when no data could be produced (e.g. a top-level type mismatch). */
+export type SchemaParseErrorWithoutData = {
   data: undefined
   /** Non-empty list of failures. */
   errors: ValidationError[]
   success: false
-  formKey: FormKey
 }
-/** Settled validation result when the parser produced partial data alongside failures. */
-export type ValidationResponseErrorWithData<TData> = {
+/** Schema-level verdict when the parser produced partial data alongside failures. */
+export type SchemaParseErrorWithData<TData> = {
   data: TData
   errors: ValidationError[]
   success: false
+}
+/** Settled schema-level verdict. Discriminate on `success`. */
+export type SchemaParseResult<TData> =
+  SchemaParseSuccess<TData> | SchemaParseErrorWithData<TData> | SchemaParseErrorWithoutData
+/** Schema-level `getDefaultValues` verdict: defaults always come back. */
+export type SchemaDefaultsResult<TData> =
+  SchemaParseSuccess<TData> | SchemaParseErrorWithData<TData>
+
+/** Settled validation result when the form (or subtree) parsed successfully. */
+export type ValidationResponseSuccess<TData> = SchemaParseSuccess<TData> & {
+  /** The form this verdict belongs to. Stamped by the store, not the schema. */
+  formKey: FormKey
+}
+/** Settled validation result when no data could be produced (e.g. a top-level type mismatch). */
+export type ValidationResponseErrorWithoutData = SchemaParseErrorWithoutData & {
+  formKey: FormKey
+}
+/** Settled validation result when the parser produced partial data alongside failures. */
+export type ValidationResponseErrorWithData<TData> = SchemaParseErrorWithData<TData> & {
   formKey: FormKey
 }
 
@@ -195,14 +220,6 @@ export type ValidationResponse<TData> =
   | ValidationResponseSuccess<TData>
   | ValidationResponseErrorWithData<TData>
   | ValidationResponseErrorWithoutData
-
-/**
- * Result of resolving the form's default values. Always returns at
- * least the shape derived from the schema; `errors` carry any
- * failures from validating those defaults against the schema.
- */
-export type DefaultValuesResponse<TData> =
-  ValidationResponseSuccess<TData> | ValidationResponseErrorWithData<TData>
 
 /**
  * Trimmed `ValidationResponse` that omits the `data` payload. Used by
@@ -284,7 +301,7 @@ export type GetDefaultValuesConfig<Form> = {
  * adding support for a new schema library (Valibot, ArkType, custom).
  */
 export type AbstractSchema<Form, GetValueFormType> = {
-  getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form>
+  getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form>
   /**
    * Return the schema-prescribed default value at the given path. The
    * runtime uses this to fill structural gaps so every `setValue` write
@@ -489,7 +506,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
     data: unknown,
     path: Path | undefined,
     options?: ValidateOptions
-  ): MaybePromise<ValidationResponse<GetValueFormType>>
+  ): MaybePromise<SchemaParseResult<GetValueFormType>>
   /**
    * Sync sister to `getSchemasAtPath` / `validateAtPath`. Returns the
    * set of primitive `typeof`-style kinds the path's leaf schema

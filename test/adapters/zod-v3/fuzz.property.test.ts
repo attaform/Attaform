@@ -60,17 +60,24 @@ describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
   })
 
   test.prop([arbRootSchema, fc.string({ minLength: 1, maxLength: 8 })])(
-    'validateAtPath error responses carry the right formKey',
+    'a validateAtPath error verdict is the same whichever form asked',
     async (schema, formKey) => {
-      const adapter = zodAdapter(schema as z.ZodObject<z.ZodRawShape>)(formKey, {
-        maxRecursionDepth: 64,
-      })
-      // Use a value guaranteed to fail shape-check — null — so we're on
-      // the error branch of validateAtPath.
-      const result = await adapter.validateAtPath(null, undefined)
-      expect(result.formKey).toBe(formKey)
-      if (!result.success) {
-        for (const err of result.errors) {
+      // The property that lets ONE AbstractSchema serve every form built
+      // on a schema: the key the caller happens to carry changes nothing
+      // about the answer. The owning store stamps its own `formKey` on
+      // the way out; the schema never sees one.
+      const built = zodAdapter(schema as z.ZodObject<z.ZodRawShape>)
+      // `null` is guaranteed to fail shape-check, so this is the error
+      // branch of validateAtPath.
+      const mine = await built(formKey, { maxRecursionDepth: 64 }).validateAtPath(null, undefined)
+      const theirs = await built('some-other-form', { maxRecursionDepth: 64 }).validateAtPath(
+        null,
+        undefined
+      )
+      expect(mine).toEqual(theirs)
+      expect(mine.success).toBe(false)
+      if (!mine.success) {
+        for (const err of mine.errors) {
           expect(typeof err.code).toBe('string')
         }
       }

@@ -18,7 +18,7 @@ import type {
   CoercionRegistry,
   ErrorCell,
   FormKey,
-  DefaultValuesResponse,
+  SchemaDefaultsResult,
   GetDisplayState,
   TransformAbortHolder,
   ValidateOn,
@@ -1271,7 +1271,7 @@ function computeBaselineResponse<F extends GenericForm, G extends GenericForm = 
   schema: AbstractSchema<F, G>,
   strict: boolean,
   source: DeepPartial<WriteShape<F>> | undefined
-): DefaultValuesResponse<F> {
+): SchemaDefaultsResult<F> {
   const completed =
     source === undefined
       ? undefined
@@ -3871,7 +3871,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Schema is ALWAYS consulted: we need the schema-derived originals even
   // when hydrating, so pristine/dirty computation survives SSR round-trip.
   // The form's actual starting value, though, prefers hydration data.
-  const schemaResponse: DefaultValuesResponse<F> = computeBaselineResponse(
+  const schemaResponse: SchemaDefaultsResult<F> = computeBaselineResponse(
     schema,
     strict,
     defaultValues

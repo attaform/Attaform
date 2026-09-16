@@ -8,7 +8,7 @@
 import type { z } from 'zod-v3'
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
+  SchemaDefaultsResult,
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
@@ -17,6 +17,7 @@ import type {
 } from '../../types/types-api'
 import {
   createAbstractSchema,
+  createSharedSchemaStore,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
 import { mergeDeep } from '../../core/merge-deep'
@@ -113,15 +114,22 @@ export function zodAdapter<
   // `maxRecursionDepth + 1` lazy boundaries it returns `[]`, so writes
   // at recursive paths deeper than the cap fall back to a permissive
   // type gate. Matches the v4 adapter's path-walker contract.
-  return (formKey: FormKey, options: SchemaFactoryOptions) =>
-    createAbstractSchema<z.ZodTypeAny, Form, GetValueFormType>(
-      zodSchema,
-      V3_INTROSPECTOR,
-      buildV3Services<Form, GetValueFormType>(options.maxRecursionDepth),
-      formKey,
-      options
+  return (_formKey: FormKey, options: SchemaFactoryOptions) =>
+    sharedV3Schemas(zodSchema, options.maxRecursionDepth, () =>
+      createAbstractSchema<z.ZodTypeAny, Form, GetValueFormType>(
+        zodSchema,
+        V3_INTROSPECTOR,
+        buildV3Services<Form, GetValueFormType>(options.maxRecursionDepth),
+        options
+      )
     )
 }
+
+/**
+ * v3's store of shared `AbstractSchema` instances, keyed weakly on the
+ * root schema. See `createSharedSchemaStore`.
+ */
+const sharedV3Schemas = createSharedSchemaStore()
 
 /**
  * Build the v3 `AbstractSchemaServices` instance. Services are stateless
@@ -198,8 +206,8 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     slimPrimitivesOf: (schema, _maxRecursionDepth) => slimPrimitivesV3(schema),
     deriveDefault: (schema, useDefault) =>
       getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault),
-    runStrictGetDefaults: (schema, config, formKey, maxRecursionDepth) =>
-      runStrictGetDefaultsV3<Form>(schema as z.ZodSchema, config, formKey, maxRecursionDepth),
+    runStrictGetDefaults: (schema, config, maxRecursionDepth) =>
+      runStrictGetDefaultsV3<Form>(schema as z.ZodSchema, config, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralLeafV3(schema),
     unwrapToDiscriminatedUnion: (schema) =>
       unwrapToDiscriminatedUnion(schema) as z.ZodTypeAny | undefined,
@@ -224,12 +232,11 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     // historical shape) — `getSchemasAtPath` consumers may probe any
     // method on the result. The factory call rebuilds the full surface
     // against the sub-schema with its own per-form caches.
-    makeSubSchema: (sub, formKey, maxRecursionDepth) =>
+    makeSubSchema: (sub, maxRecursionDepth) =>
       createAbstractSchema<z.ZodTypeAny, unknown, GetValueFormType>(
         sub,
         V3_INTROSPECTOR,
         buildV3Services<GenericForm, GetValueFormType>(maxRecursionDepth),
-        formKey,
         { maxRecursionDepth }
       ),
   }
@@ -788,9 +795,8 @@ function resolveFieldMetaAtPathV3(
 function runStrictGetDefaultsV3<Form>(
   rootSchema: z.ZodSchema,
   config: GetDefaultValuesConfig<Form>,
-  formKey: FormKey,
   maxRecursionDepth: number
-): DefaultValuesResponse<Form> {
+): SchemaDefaultsResult<Form> {
   const defaultValuesWithoutConstraints = getDefaultValuesFromZodSchema(
     rootSchema,
     config.useDefaultSchemaValues
@@ -845,7 +851,6 @@ function runStrictGetDefaultsV3<Form>(
         data: rawDefaultValues as Form,
         errors: undefined,
         success: true,
-        formKey,
       }
     }
 
@@ -866,14 +871,12 @@ function runStrictGetDefaultsV3<Form>(
           data: rawDefaultValues as Form,
           errors: undefined,
           success: true,
-          formKey,
         }
       }
       return {
         data: rawDefaultValues as Form,
         errors: zodIssuesToValidationErrors(strictResult.error.issues),
         success: false,
-        formKey,
       }
     } catch {
       // A throw here is either v3's async-detect (a standard `Error`
@@ -894,7 +897,6 @@ function runStrictGetDefaultsV3<Form>(
         data: rawDefaultValues as Form,
         errors: undefined,
         success: true,
-        formKey,
       }
     }
   }
@@ -907,6 +909,5 @@ function runStrictGetDefaultsV3<Form>(
     data: rawDefaultValues as Form,
     errors: undefined,
     success: true,
-    formKey,
   }
 }

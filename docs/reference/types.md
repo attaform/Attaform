@@ -71,7 +71,11 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | Type                             | Source                  | Purpose                                                          |
 | -------------------------------- | ----------------------- | ---------------------------------------------------------------- |
 | `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 14-method + 4-optional contract custom adapters implement.   |
-| `DefaultValuesResponse<Form>`    | runtime/types/types-api | What `getDefaultValues` returns.                                 |
+| `SchemaDefaultsResult<Form>`     | runtime/types/types-api | What `getDefaultValues` returns.                                 |
+| `SchemaParseResult<Form>`        | runtime/types/types-api | What `validateAtPath` settles as: a verdict with no form key.    |
+| `SchemaParseSuccess<Form>`       | runtime/types/types-api | The `success: true` arm of `SchemaParseResult`.                  |
+| `SchemaParseErrorWithData<Form>` | runtime/types/types-api | Failed, but partial data came back with the errors.              |
+| `SchemaParseErrorWithoutData`    | runtime/types/types-api | Failed with no data (for example a top-level type mismatch).     |
 | `SlimPrimitiveKind`              | runtime/types/types-api | `'string'` \| `'number'` \| … (typeof-style kinds).              |
 | `SlimRuntimeOf<T>`               | runtime/types/types-api | Type-level helper to compute the slim primitive set for a type.  |
 | `FieldMetaPayload`               | runtime/types/types-api | Schema-attached metadata: label, description, placeholder, meta. |

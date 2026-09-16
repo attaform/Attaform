@@ -201,7 +201,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (typeof slot !== 'string') continue
     if (noopForms.has(slot)) continue
     const noop = useAbstractForm({
-      schema: buildNoopWizardSchema(slot),
+      schema: buildNoopWizardSchema(),
       key: slot,
     }) as unknown as AnyForm
     noopForms.set(slot, noop)
@@ -214,7 +214,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       () =>
         useAbstractForm(
           {
-            schema: buildNoopWizardSchema(key),
+            schema: buildNoopWizardSchema(),
             key,
           },
           { registry }

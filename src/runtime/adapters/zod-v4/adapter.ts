@@ -1,7 +1,7 @@
 import type { z } from 'zod'
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
+  SchemaDefaultsResult,
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
@@ -9,6 +9,7 @@ import type {
 } from '../../types/types-api'
 import {
   createAbstractSchema,
+  createSharedSchemaStore,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
 import {
@@ -288,15 +289,22 @@ export function zodV4Adapter<
   assertZodVersion(rootSchema)
   assertKeyedRoot(rootSchema)
 
-  return (formKey: FormKey, options: SchemaFactoryOptions) =>
-    createAbstractSchema<z.ZodType, Form, GetValueFormType>(
-      rootSchema,
-      V4_INTROSPECTOR,
-      buildV4Services<Form, GetValueFormType>(),
-      formKey,
-      options
+  return (_formKey: FormKey, options: SchemaFactoryOptions) =>
+    sharedV4Schemas(rootSchema, options.maxRecursionDepth, () =>
+      createAbstractSchema<z.ZodType, Form, GetValueFormType>(
+        rootSchema,
+        V4_INTROSPECTOR,
+        buildV4Services<Form, GetValueFormType>(),
+        options
+      )
     )
 }
+
+/**
+ * v4's store of shared `AbstractSchema` instances, keyed weakly on the
+ * root schema. See `createSharedSchemaStore`.
+ */
+const sharedV4Schemas = createSharedSchemaStore()
 
 /**
  * Build the v4 `AbstractSchemaServices` instance. The services are
@@ -321,8 +329,8 @@ function buildV4Services<
     slimPrimitivesOf: (schema, maxRecursionDepth) => slimPrimitivesOf(schema, maxRecursionDepth),
     deriveDefault: (schema, useDefault, maxRecursionDepth) =>
       deriveDefault(schema, useDefault, maxRecursionDepth),
-    runStrictGetDefaults: (schema, config, fk, maxRecursionDepth) =>
-      runStrictGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, fk, maxRecursionDepth),
+    runStrictGetDefaults: (schema, config, maxRecursionDepth) =>
+      runStrictGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralWrappers(schema),
     unwrapToDiscriminatedUnion: (schema) => unwrapToDiscriminatedUnion(schema),
     peelAllWrappers: (schema) => peelAllWrappers(schema),
@@ -342,8 +350,8 @@ function buildV4Services<
         ? { success: true, data: result.data }
         : { success: false, issues: result.error.issues }
     },
-    makeSubSchema: (schema, fk, maxRecursionDepth) =>
-      buildSubSchemaStubV4<GetValueFormType>(schema, fk, maxRecursionDepth),
+    makeSubSchema: (schema, maxRecursionDepth) =>
+      buildSubSchemaStubV4<GetValueFormType>(schema, maxRecursionDepth),
   }
 }
 
@@ -375,9 +383,8 @@ type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
 function runStrictGetDefaultsV4<Form>(
   rootSchema: z.ZodType & { _output: Form },
   config: GetDefaultValuesConfig<Form>,
-  formKey: FormKey,
   maxRecursionDepth: number
-): DefaultValuesResponse<Form> {
+): SchemaDefaultsResult<Form> {
   const { data } = getDefaultValuesFromZodSchema<Form>({
     schema: rootSchema,
     useDefaultSchemaValues: config.useDefaultSchemaValues,
@@ -388,7 +395,7 @@ function runStrictGetDefaultsV4<Form>(
   if (config.strict === false) {
     // Lax mode: see docblock — partial-valid initial state preferred
     // to a mount-time exception.
-    return { data, errors: undefined, success: true, formKey }
+    return { data, errors: undefined, success: true }
   }
 
   // A schema carrying async work of any kind skips the construction
@@ -411,7 +418,7 @@ function runStrictGetDefaultsV4<Form>(
   // verdict either way; what changed is only how early the sync half of
   // them appears, and only for schemas that mix the two.
   if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) {
-    return { data, errors: undefined, success: true, formKey }
+    return { data, errors: undefined, success: true }
   }
 
   try {
@@ -423,13 +430,12 @@ function runStrictGetDefaultsV4<Form>(
       // (the post-transform `z.output`). For schemas without
       // `.transform()` the two coincide; for schemas with one the
       // storage stays the honest input view that `form.values` reflects.
-      return { data, errors: undefined, success: true, formKey }
+      return { data, errors: undefined, success: true }
     }
     return {
       data,
       errors: zodIssuesToValidationErrors(strictResult.error.issues),
       success: false,
-      formKey,
     }
   } catch {
     // Defensive floor: the strip walker covers every ZodKind, but a
@@ -437,7 +443,7 @@ function runStrictGetDefaultsV4<Form>(
     // throws would land here. Mount cleanly; the post-mount async
     // pass is the source of truth for any verdict this code path
     // can't surface.
-    return { data, errors: undefined, success: true, formKey }
+    return { data, errors: undefined, success: true }
   }
 }
 
@@ -452,7 +458,6 @@ function runStrictGetDefaultsV4<Form>(
  */
 function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
   schema: z.ZodType,
-  formKey: FormKey,
   maxRecursionDepth: number
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
@@ -461,7 +466,6 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
       data: deriveDefault(schema, true, maxRecursionDepth) as unknown,
       errors: undefined,
       success: true,
-      formKey,
     }),
     getSchemasAtPath: () => [],
     validateAtPath: async (data: unknown) => {
@@ -474,14 +478,12 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
           data: result.data as GetValueFormType,
           errors: undefined,
           success: true,
-          formKey,
         }
       }
       return {
         data: undefined,
         errors: zodIssuesToValidationErrors(result.error.issues),
         success: false,
-        formKey,
       }
     },
   } as unknown as AbstractSchema<unknown, GetValueFormType>

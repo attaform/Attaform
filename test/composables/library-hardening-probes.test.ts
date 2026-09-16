@@ -5320,9 +5320,7 @@ describe('chaos — plugin defaults with a throwing predicate', () => {
           return () => h('div')
         },
       })
-      const app = createApp(App).use(
-        createAttaform({ defaults: { getDisplayState: explosivePredicate } })
-      )
+      const app = createApp(App).use(createAttaform())
       app.mount(document.createElement('div'))
       apps.push(app)
     } catch {

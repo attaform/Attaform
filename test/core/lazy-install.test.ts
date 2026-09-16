@@ -52,27 +52,28 @@ describe('useForm — lazy install', () => {
     expect(app._attaform?.forms.has('lazy-useform')).toBe(true)
   })
 
-  it('does not double-install when createAttaform() ran first (defaults preserved)', () => {
+  it('does not double-install when createAttaform() ran first (options preserved)', () => {
     const Probe = defineComponent({
       setup() {
         useForm({
           schema: z.object({ email: z.string() }),
-          key: 'lazy-defaults',
+          key: 'lazy-explicit-options',
         })
         return () => h('div')
       },
     })
     const app = createApp(Probe)
-    app.use(createAttaform({ defaults: { debounceMs: 250 } }))
+    app.use(createAttaform({ ssr: true }))
     const host = document.createElement('div')
     app.mount(host)
     mountedHosts.push(host)
     mountedApps.push(app)
 
-    // Defaults flow through — the explicit install ran first, the lazy
-    // path is a no-op, the registry's defaults reflect the explicit
-    // install's options.
-    expect(app._attaform?.defaults.debounceMs).toBe(250)
+    // The explicit install ran first, so the lazy path is a no-op and
+    // the registry still carries the explicit install's options. A
+    // second install would have rebuilt the registry with the lazy
+    // path's empty options and flipped this back to false.
+    expect(app._attaform?.ssr).toBe(true)
   })
 })
 

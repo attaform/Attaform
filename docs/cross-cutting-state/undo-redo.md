@@ -49,13 +49,15 @@ Tune the depth:
 const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
 ```
 
-Or set it once for the whole app; one plugin instance is a reusable configuration, and every form still gets its own independent chain:
+One plugin instance is a reusable configuration, so you can hand the same instance to several forms and each still gets its own independent chain:
 
 ```ts
-import { createAttaform } from 'attaform'
 import { historyPlugin } from 'attaform/history'
 
-app.use(createAttaform({ defaults: { history: historyPlugin() } }))
+const undoable = historyPlugin({ max: 200 })
+
+const draft = useForm({ schema: draftSchema, key: 'draft', history: undoable })
+const review = useForm({ schema: reviewSchema, key: 'review', history: undoable })
 ```
 
 When omitted, history is off. The namespace is still present on the form return so templates don't need conditional logic, but every method is a no-op and the flags read `false` / `0`.

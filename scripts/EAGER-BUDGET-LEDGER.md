@@ -405,3 +405,33 @@ bound on the per-path memos that sharing made load-bearing.
 Against `main` the branch is still -750 B eager. A budget exists to
 catch drift nobody chose, not to forbid a trade somebody priced.
 Budget 33_450 -> 34_050 (~0.29 kB headroom).
+
+## A1 Ratchet: the app-level defaults layer, 2026-09-16
+
+A1 RATCHET (2026-09-16): 33,764 -> 33,637 measured (-127), against a
+-94 estimate. The pass-2 feature audit opened here.
+
+`createAttaform({ defaults })` let an app set nine `useForm` options
+once and have every form inherit them. It is gone, along with
+`AttaformDefaults`, `mergeWithDefaults`, `AttaformRegistry.defaults`,
+and the Nuxt module's `attaform: { defaults }` config key plus its
+`useRuntimeConfig().public.attaform.defaults` slot. The replacement is
+three lines of consumer code:
+
+```ts
+const useAppForm = (cfg) => useForm({ ...appDefaults, ...cfg })
+```
+
+Why it went: 137 `useForm` calls across the downstream consumer pass
+`defaultValues` 114x, `key` 113x, `schema` 108x, `validateOn` 2x, and
+every other option zero times. `createAttaform()` is called bare.
+`attaform/nuxt` is registered with no options. The layer resolved
+nothing that was ever set.
+
+The measurement beat the estimate because the ablation that produced
+the -94 cut the merge, and the real deletion also took the frozen
+registry field and the option-resolution plumbing around it. That is
+the program's byte law running the friendly way for once: this was a
+unique deletion, not a fold.
+
+Budget 34_050 -> 33_940 (~0.30 kB headroom).

@@ -45,8 +45,7 @@ import type {
  *      pending, else error if any descendant (or own cross-field) error
  *      has cleared its own reveal gate, else earned success, else idle.
  *      An ungated sibling error never surfaces at the container.
- *   2. `createAttaform({ defaults: { getDisplayState } })`.
- *   3. `useForm({ getDisplayState })`, wins over both above.
+ *   2. `useForm({ getDisplayState })`, which wins over the above.
  *
  * The reducer runs unconditionally (it must see the no-error states to
  * resolve success / idle / pending). Its `ctx.field` / `ctx.formMeta` are
@@ -54,7 +53,7 @@ import type {
  * BOTH the type and runtime level, so a self-referential reducer is
  * impossible regardless of language (TS or JS). The pure timing matrix is
  * locked in `display-reducer.test.ts`; this file covers the verdicts and
- * the override tiers through a real mounted form.
+ * the per-form override through a real mounted form.
  */
 
 const apps: App[] = []
@@ -63,10 +62,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-function mountWithApp<T>(
-  setup: () => T,
-  pluginOptions: Parameters<typeof createAttaform>[0] = {}
-): T {
+function mountWithApp<T>(setup: () => T): T {
   const handle: { captured?: T } = {}
   const App = defineComponent({
     setup() {
@@ -74,7 +70,7 @@ function mountWithApp<T>(
       return () => h('div')
     },
   })
-  const app = createApp(App).use(createAttaform({ ...pluginOptions }))
+  const app = createApp(App).use(createAttaform())
   const root = document.createElement('div')
   document.body.appendChild(root)
   app.mount(root)
@@ -319,10 +315,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
 
 function describeOverrideTier(
   label: string,
-  makeForm: (
-    pluginDefault: GetDisplayState | undefined,
-    perFormConfig: GetDisplayState | undefined
-  ) => FormLike
+  makeForm: (perFormConfig: GetDisplayState | undefined) => FormLike
 ): void {
   describe(label, () => {
     function inject(form: FormLike) {
@@ -339,8 +332,8 @@ function describeOverrideTier(
     // "Never surface anything."
     const silent: GetDisplayState = () => ({ display: 'idle' })
 
-    it('plugin-level override: custom predicate ignores submissionAttempts', async () => {
-      const form = makeForm(touchOnly, undefined)
+    it('custom predicate ignores submissionAttempts', async () => {
+      const form = makeForm(touchOnly)
       inject(form)
       await form.handleSubmit(() => {})()
       await nextTick()
@@ -352,40 +345,19 @@ function describeOverrideTier(
       expect(form.fields('email').displayState).toBe('error')
     })
 
-    it('plugin-level override: eager predicate shows as soon as errors exist', async () => {
-      const form = makeForm(eager, undefined)
+    it('eager predicate shows as soon as errors exist', async () => {
+      const form = makeForm(eager)
       inject(form)
       await nextTick()
       expect(form.fields('email').displayState).toBe('error')
     })
 
-    it('plugin-level override: silent predicate never surfaces even after submit', async () => {
-      const form = makeForm(silent, undefined)
+    it('silent predicate never surfaces even after submit', async () => {
+      const form = makeForm(silent)
       inject(form)
       await form.handleSubmit(() => {})()
       await nextTick()
       expect(form.fields('email').displayState).toBe('idle')
-    })
-
-    it('per-form useForm override beats plugin-level', async () => {
-      // Plugin says ALWAYS show; per-form overrides to NEVER surface.
-      const form = makeForm(eager, silent)
-      inject(form)
-      await form.handleSubmit(() => {})()
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('idle')
-    })
-
-    it('per-form useForm override beats plugin-level (touch-gated)', async () => {
-      // Plugin says always; per-form gates on touched only.
-      const form = makeForm(eager, touchOnly)
-      inject(form)
-      await form.handleSubmit(() => {})()
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('idle')
-      form.touch('email')
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('error')
     })
   })
 }
@@ -418,18 +390,16 @@ describeAdapter('displayState — zod-v3 adapter', () =>
   )
 )
 
-describeOverrideTier('getDisplayState override resolution — zod-v3', (pluginDefault, perForm) =>
+describeOverrideTier('getDisplayState override resolution — zod-v3', (perForm) =>
   asForm(
-    mountWithApp(
-      () =>
-        useFormV3({
-          schema: v3Schema,
-          key: `display-state-override-v3-${Math.random()}`,
-          strict: false,
-          defaultValues: v3Defaults,
-          ...(perForm === undefined ? {} : { getDisplayState: perForm }),
-        }),
-      pluginDefault === undefined ? {} : { defaults: { getDisplayState: pluginDefault } }
+    mountWithApp(() =>
+      useFormV3({
+        schema: v3Schema,
+        key: `display-state-override-v3-${Math.random()}`,
+        strict: false,
+        defaultValues: v3Defaults,
+        ...(perForm === undefined ? {} : { getDisplayState: perForm }),
+      })
     )
   )
 )
@@ -462,18 +432,16 @@ describeAdapter('displayState — zod-v4 adapter', () =>
   )
 )
 
-describeOverrideTier('getDisplayState override resolution — zod-v4', (pluginDefault, perForm) =>
+describeOverrideTier('getDisplayState override resolution — zod-v4', (perForm) =>
   asForm(
-    mountWithApp(
-      () =>
-        useFormV4({
-          schema: v4Schema,
-          key: `display-state-override-v4-${Math.random()}`,
-          strict: false,
-          defaultValues: v4Defaults,
-          ...(perForm === undefined ? {} : { getDisplayState: perForm }),
-        }),
-      pluginDefault === undefined ? {} : { defaults: { getDisplayState: pluginDefault } }
+    mountWithApp(() =>
+      useFormV4({
+        schema: v4Schema,
+        key: `display-state-override-v4-${Math.random()}`,
+        strict: false,
+        defaultValues: v4Defaults,
+        ...(perForm === undefined ? {} : { getDisplayState: perForm }),
+      })
     )
   )
 )

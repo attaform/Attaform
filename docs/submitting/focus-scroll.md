@@ -101,7 +101,7 @@ const onSubmit = form.handleSubmit(onSubmitValid, () => {
 })
 ```
 
-The `'focus-first-error'` (default), `'scroll-to-first-error'`, `'both'`, and `'none'` policy options live on the form config and on `createAttaform({ defaults })` for an app-wide default. See the [Types reference](/docs/reference/types) for the full set.
+The `'focus-first-error'` (default), `'scroll-to-first-error'`, `'both'`, and `'none'` policy options live on the form config. See the [Types reference](/docs/reference/types) for the full set.
 
 ## Where to next
 

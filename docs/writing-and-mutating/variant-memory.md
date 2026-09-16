@@ -90,4 +90,3 @@ For cross-session continuity of inactive-variant typing, carry it beyond the uni
 
 - [Discriminated unions](/docs/schemas/discriminated-unions): the schema feature variant memory rides on top of.
 - [`reset` & `resetField`](/docs/writing-and-mutating/reset): both interact with the memory map deterministically.
-- [App-wide defaults](/docs/cross-cutting-state/app-defaults): set `rememberVariants` once for every form in the app.

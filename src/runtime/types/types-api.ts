@@ -1061,8 +1061,7 @@ export type HistoryModule = {
  * and `undo()` cannot reach the transient pre-hydration default.
  *
  * One plugin instance is a reusable configuration, not per-form state:
- * passing the same instance to several forms (or setting it once via
- * `createAttaform({ defaults: { history } })`) gives each form its own
+ * passing the same instance to several forms gives each form its own
  * independent chain.
  */
 export type HistoryPlugin = {
@@ -1267,7 +1266,6 @@ export type UseFormConfiguration<
    *
    * Accepts a boolean, a ref, a computed, or a getter, read live so the
    * freeze tracks a reactive source. `undefined` resolves to `false`.
-   * Falls back to `AttaformDefaults.disabled`.
    *
    * A shared FormStore resolves `disabled` from its first `useForm({ key })`
    * call; a later caller passing a different value is ignored.
@@ -1337,8 +1335,7 @@ export type UseFormConfiguration<
   rememberVariants?: boolean
   /**
    * Schema-driven coercion of user-typed DOM values at the v-register
-   * directive layer. Per-form override of the plugin-level
-   * `AttaformDefaults.coerce`.
+   * directive layer.
    *
    * - `true` / `undefined` — runs the built-in `defaultCoercionRules`.
    * - `false` — disables coercion; the slim gate rejects mismatches.
@@ -1354,17 +1351,25 @@ export type UseFormConfiguration<
   /**
    * Per-form override of the `getDisplayState` heuristic that drives
    * `field.displayState` and the `show*` booleans (and their `form.meta`
-   * rollups). Falls back to `AttaformDefaults.getDisplayState`, then to
-   * the library default (`defaultDisplayState`). See
-   * `AttaformDefaults.getDisplayState` for the resolution rules and
-   * predicate signature.
+   * rollups). Falls back to the library default
+   * (`defaultDisplayState`).
+   *
+   * The library default opens one timing gate, then resolves by
+   * precedence: gate closed → `'idle'`; a run in flight → a delayed
+   * `'pending'`; an own-path error → `'error'`; otherwise earned
+   * `valid` → `'success'`, else `'idle'`. The gate opens after the
+   * first submit attempt OR once the field is edited and left.
+   * Compose with it via the public `defaultDisplayState` export, or
+   * retune its timing via `makeDefaultDisplayState`.
+   *
+   * The reducer's `ctx.field` / `ctx.formMeta` are `Omit`'d of the
+   * derived `displayState` / `show*` / `firstError` keys (see
+   * `FieldStateDerivedKey`) to prevent a self-referential reducer.
    */
   getDisplayState?: GetDisplayState
   /**
    * Recursion ceiling for schema walks that descend through recursive
-   * schemas (Zod's `z.lazy(...)` today). Default `64`. Per-form value
-   * overrides `AttaformDefaults.maxRecursionDepth`, which overrides
-   * the library default.
+   * schemas (Zod's `z.lazy(...)` today). Default `64`.
    *
    * Schemas that don't include a recursive boundary ignore this knob
    * entirely — it's read only at the descent step through a recursive
@@ -1381,8 +1386,11 @@ export type UseFormConfiguration<
    * stops short of the cap. Raise the cap if you regularly edit nodes
    * beyond the default depth.
    *
-   * See `AttaformDefaults.maxRecursionDepth` for the resolution rules
-   * and the broader description of where the cap is read.
+   * Pass `Infinity` to disable the cap entirely. Walks then descend
+   * through recursive boundaries until they terminate structurally; a
+   * schema with no structural terminator will exhaust the JS call
+   * stack. Reserve it for schemas whose authors are confident the
+   * recursion is bounded by the actual data shape.
    */
   maxRecursionDepth?: number
   /**
@@ -1390,9 +1398,9 @@ export type UseFormConfiguration<
    * (`aria-invalid`, `aria-busy`, `aria-required`, `aria-describedby`)
    * from the field's display state. **Defaults to `true`.**
    *
-   * **Resolution order (per-register override > per-form > global > library):**
+   * **Resolution order (per-register override > per-form > library):**
    *
-   *   register(path, { autoAria })  >  useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
+   *   register(path, { autoAria })  >  useForm({ autoAria })  >  library default (`true`)
    *
    * Set `false` to leave all aria wiring to your own markup form-wide.
    * Any aria attribute you author yourself is always left untouched,
@@ -1414,177 +1422,6 @@ export type UseFormConfiguration<
    * access, headless contexts).
    */
   __ssrAccessed?: boolean
-}
-
-/**
- * App-level defaults applied to every `useForm` call. Set these once
- * per app via `createAttaform({ defaults })` (bare Vue) or
- * `attaform.defaults` (Nuxt module).
- *
- * Resolution order (per-form wins):
- *
- *   useForm({ ... })  >  createAttaform({ defaults })  >  library default
- *
- * `validateOn` and `debounceMs` resolve per-field — set the debounce
- * globally while still overriding the trigger per form:
- *
- * ```ts
- * createAttaform({
- *   defaults: { debounceMs: 100 },
- * })
- * // later
- * useForm({ schema, validateOn: 'blur' })
- * // → { validateOn: 'blur', debounceMs: <ignored under blur> }
- * ```
- *
- * Note: per the discriminated union, `debounceMs` only takes effect
- * when `validateOn` is `'change'` (or omitted). Setting it as an
- * app-level default is fine — forms that switch to `'blur'` /
- * `'submit'` simply ignore the inherited `debounceMs`.
- *
- * `schema`, `key`, and `defaultValues` are not configurable here —
- * they belong on the per-form call.
- */
-export type AttaformDefaults = {
-  /** Default for `useForm({ strict })`. Default `true`. */
-  strict?: boolean
-  /** Default for `useForm({ onInvalidSubmit })`. */
-  onInvalidSubmit?: OnInvalidSubmitPolicy
-  /** Default for `useForm({ validateOn })` — when validation runs. */
-  validateOn?: ValidateOn
-  /**
-   * Default for `useForm({ debounceMs })` — ms to wait after the last
-   * input event before re-running validation. Only meaningful when
-   * `validateOn` resolves to `'change'`. Default `0` (synchronous).
-   */
-  debounceMs?: number
-  /** Default for `useForm({ history })` — a `historyPlugin()` instance. */
-  history?: HistoryPlugin
-  /** Default for `useForm({ rememberVariants })`. */
-  rememberVariants?: boolean
-  /** Default for `useForm({ disabled })` — freeze the form's data. */
-  disabled?: MaybeRefOrGetter<boolean | undefined>
-  /**
-   * Default for `useForm({ coerce })`. Schema-driven coercion of
-   * user-typed DOM values at the v-register directive layer.
-   *
-   * - `true` (default) — runs the built-in `defaultCoercionRules`
-   *   (`string→number`, `string→boolean`).
-   * - `false` — disables coercion globally; the slim-primitive gate
-   *   rejects type mismatches with its existing dev-warn instead.
-   * - `CoercionRegistry` — a custom array of `CoercionEntry` records.
-   *   Spread `defaultCoercionRules` to extend rather than replace:
-   *   `[...defaultCoercionRules, defineCoercion({ ... })]`.
-   *
-   * Coercion applies ONLY to user-typed DOM values flowing through
-   * the directive's assigner. Programmatic writes (`form.setValue`,
-   * `setValueWithInternalPath`) are NEVER coerced — they're
-   * authoritative writes whose strict typing is on the caller.
-   */
-  coerce?: boolean | CoercionRegistry
-  /**
-   * Default for `useForm({ getDisplayState })`. The centralised
-   * heuristic that resolves every path's `field.displayState` — and thus
-   * the `show*` booleans and their `form.meta` rollups — to one of
-   * `'idle' | 'pending' | 'error' | 'success'`.
-   *
-   * Resolution order (per-form wins):
-   *
-   *   useForm({ getDisplayState })  >  AttaformDefaults  >  library default
-   *
-   * The library default opens one timing gate, then resolves by
-   * precedence: gate closed → `'idle'`; a run in flight → a delayed
-   * `'pending'` (held briefly to smooth fast validations, then held a
-   * minimum so it never flashes); an own-path error → `'error'`;
-   * otherwise earned `valid` → `'success'`, else `'idle'`. The gate opens
-   * after the first submit attempt OR once the field is edited and left:
-   *
-   * ```ts
-   * (prev, ctx) => {
-   *   const gateOpen =
-   *     ctx.formMeta.submissionAttempts > 0 ||
-   *     ctx.field.blurredAfterInteraction === true
-   *   if (!gateOpen) return { display: 'idle' }
-   *   // ...timed 'pending' while validating; own-path error → 'error';
-   *   //    earned valid → 'success'; else 'idle'
-   * }
-   * ```
-   *
-   * Compose with the library default via the public `defaultDisplayState`
-   * export, or retune its timing via `makeDefaultDisplayState`. The
-   * reducer runs on every field-state read, so it owns the
-   * idle / pending / error / success decision outright.
-   *
-   * The reducer's `ctx.field` / `ctx.formMeta` are `Omit`'d of the
-   * derived `displayState` / `show*` / `firstError` keys (see
-   * `FieldStateDerivedKey`) to prevent a self-referential reducer.
-   */
-  getDisplayState?: GetDisplayState
-  /**
-   * Default for `useForm({ maxRecursionDepth })`. Recursion ceiling
-   * for schema walks that descend through recursive schemas (Zod's
-   * `z.lazy(...)` today, equivalent constructs in any future adapter).
-   * Library default: `64`.
-   *
-   * Resolution order (per-form wins):
-   *
-   *   useForm({ maxRecursionDepth })  >  AttaformDefaults  >  library default (64)
-   *
-   * Read at every step of a schema walk that crosses a recursive
-   * boundary — default-value derivation at construction, slim-primitive
-   * type gates on each write, path-by-path schema resolution. Walks
-   * track their descent depth and switch to a permissive fallback once
-   * `depth > maxRecursionDepth`.
-   *
-   * "Permissive fallback" means storage and reads keep working at any
-   * depth; only the per-write type gate stops checking past the cap.
-   * Full schema validation (`parse`, `handleSubmit`) still runs
-   * against the real schema, so refinement errors at any depth still
-   * surface — the cap only affects the *write-time gate*.
-   *
-   * Forms with no recursive schemas ignore this entirely — the cap is
-   * read only at the descent step through a recursive wrapper. Setting
-   * it app-wide is the right move when you have multiple recursive
-   * forms that should share one ceiling:
-   *
-   * ```ts
-   * createAttaform({
-   *   defaults: { maxRecursionDepth: 128 },
-   * })
-   * ```
-   *
-   * Per-form override stays available for the one tree-shaped form
-   * whose depth is unusual:
-   *
-   * ```ts
-   * useForm({ schema: deepCategoryTreeSchema, maxRecursionDepth: 256 })
-   * ```
-   *
-   * Setting this app-wide costs nothing for non-recursive forms — the
-   * walks that read the cap never run for them.
-   *
-   * Pass `Infinity` to disable the cap entirely. Walks will then
-   * descend through recursive boundaries until they terminate
-   * structurally; a schema with no structural terminator will exhaust
-   * the JS call stack. Reserve for schemas whose authors are
-   * confident the recursion is bounded by the actual data shape.
-   */
-  maxRecursionDepth?: number
-  /**
-   * App-wide default for `useForm({ autoAria })`. Library default is
-   * `true`: `v-register` keeps `aria-invalid` / `aria-busy` /
-   * `aria-required` / `aria-describedby` in sync with each field's
-   * display state out of the box.
-   *
-   * **Resolution order (per-form wins):**
-   *
-   *   useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
-   *
-   * Set `false` once at the plugin level to make every form manage its
-   * own aria markup. Authored aria attributes are always preserved
-   * regardless of this setting.
-   */
-  autoAria?: boolean
 }
 
 export type FormStore<TData extends GenericForm> = Map<FormKey, TData>
@@ -2008,10 +1845,9 @@ export type RegisterOptions = {
    * to re-enable management on one binding even when the form set
    * `useForm({ autoAria: false })`.
    *
-   * Overrides `useForm({ autoAria })` and
-   * `createAttaform({ defaults: { autoAria } })`. Writing an aria
-   * attribute yourself also locks the directive out of that one
-   * attribute, regardless of this flag.
+   * Overrides `useForm({ autoAria })`. Writing an aria attribute
+   * yourself also locks the directive out of that one attribute,
+   * regardless of this flag.
    */
   autoAria?: boolean
 }
@@ -3007,10 +2843,9 @@ export type FieldState<Value = unknown> = {
    * ```
    *
    * Resolved by the `getDisplayState` heuristic:
-   * `useForm({ getDisplayState })` →
-   * `createAttaform({ defaults: { getDisplayState } })` → library
-   * default (`defaultDisplayState`). Override per form, app-wide, or
-   * compose with `defaultDisplayState` for a layered predicate.
+   * `useForm({ getDisplayState })` → library default
+   * (`defaultDisplayState`). Override per form, or compose with
+   * `defaultDisplayState` for a layered predicate.
    *
    * Available on container paths too: `form.fields.users[0].displayState`
    * rolls up over the row's descendants.

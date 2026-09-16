@@ -14,7 +14,6 @@ import { createAttaform } from '../core/plugin'
 import { getRegistryFromApp, kAttaformWizardActiveStepResolver } from '../core/registry'
 import { hydrateAttaformState, renderAttaformState } from '../core/serialize'
 import type { SerializedAttaformState } from '../core/serialize'
-import type { AttaformDefaults } from '../types/types-api'
 
 export default defineNuxtPlugin({
   // `enforce: 'pre'` makes the "we run before any component's setup" claim
@@ -26,15 +25,16 @@ export default defineNuxtPlugin({
   setup(nuxtApp) {
     const isServer = import.meta.server
 
-    // Read app-level defaults from the Nuxt module's runtime-config slot
-    // (populated in src/nuxt.ts). The module ships in the same package
-    // as this plugin, so the slot is always present and well-typed.
+    // Read the library version from the Nuxt module's runtime-config
+    // slot (populated in src/nuxt.ts). The module ships in the same
+    // package as this plugin, so the slot is always present and
+    // well-typed.
     const config = useRuntimeConfig().public as {
-      attaform: { defaults: AttaformDefaults; version: string }
+      attaform: { version: string }
     }
-    const { defaults, version } = config.attaform
+    const { version } = config.attaform
 
-    nuxtApp.vueApp.use(createAttaform({ ssr: isServer, defaults }))
+    nuxtApp.vueApp.use(createAttaform({ ssr: isServer }))
 
     // Bridge `useWizard`'s active-step resolution to the Nuxt route so
     // deep-links hydrate without flicker. On the server, `useRoute()`

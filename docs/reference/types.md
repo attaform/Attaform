@@ -26,8 +26,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | ----------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `UseFormConfiguration<Form>`        | runtime/types/types-api    | The options bag passed to `useForm`.                                                                     |
 | `UseFormReturnType<Form, GetValue>` | runtime/types/types-api    | The whole reactive return: values, fields, errors, meta, methods.                                        |
-| `AttaformPluginOptions`             | runtime/core/plugin        | Options for `createAttaform({ defaults, devtools })`.                                                    |
-| `AttaformDefaults`                  | runtime/types/types-api    | The fields settable via `createAttaform({ defaults })`.                                                  |
+| `AttaformPluginOptions`             | runtime/core/plugin        | Options for `createAttaform({ devtools, ssr })`.                                                         |
 | `FormKey`                           | runtime/types/types-api    | The `useForm({ key })` identifier: distant lookup, error labelling, DevTools naming.                     |
 | `AttaformRegistry`                  | runtime/core/registry      | The per-Vue-app container every form registers into. Reached explicitly only for SSR or a custom plugin. |
 | `HistoryPlugin`                     | runtime/types/types-api    | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`.               |

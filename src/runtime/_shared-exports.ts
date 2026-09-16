@@ -166,7 +166,6 @@ export type { DisplayTimings } from './core/display-state'
 // Schema-agnostic public types. `AbstractSchema` and `FieldMetaPayload`
 // are deliberately NOT here — see the per-entry note in the docblock.
 export type {
-  AttaformDefaults,
   CoercionEntry,
   CoercionRegistry,
   CoercionResult,

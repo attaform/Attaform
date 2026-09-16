@@ -845,9 +845,9 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly modules: Map<string, unknown>
 
   /**
-   * Resolved schema-coercion index — the merged config from
-   * `createAttaform({ defaults: { coerce } })` ∪ `useForm({ coerce })`,
-   * keyed by `${input}->${output}` for O(1) per-keystroke dispatch.
+   * Resolved schema-coercion index — `useForm({ coerce })` compiled
+   * into a lookup keyed by `${input}->${output}` for O(1)
+   * per-keystroke dispatch.
    * Empty Map when coercion is disabled. Read at `register()` time
    * by `buildCoerceFn` to bake the per-path coerce closure on
    * `RegisterValue.coerce`.
@@ -947,9 +947,7 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * Configurable predicate driving `field.displayState`, the `show*`
    * booleans, and their `form.meta` rollups. Function | undefined;
    * resolved once at construction via `resolveGetDisplayState`. See
-   * `UseFormConfiguration.getDisplayState` and
-   * `AttaformDefaults.getDisplayState` for the full contract and
-   * three-tier resolution rules.
+   * `UseFormConfiguration.getDisplayState` for the full contract.
    */
   readonly getDisplayState?: GetDisplayState | undefined
   /**

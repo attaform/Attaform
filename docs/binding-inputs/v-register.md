@@ -167,11 +167,10 @@ The check happens per attribute and per binding, so reaching for one escape hatc
 
 ### Turning it off
 
-One knob, `autoAria`, at three tiers; the narrower tier wins:
+One knob, `autoAria`, at two tiers; the narrower tier wins:
 
 - Per binding: `form.register('email', { autoAria: false })`.
 - Per form: `useForm({ schema, autoAria: false })`.
-- App-wide: `createAttaform({ defaults: { autoAria: false } })`.
 
 A narrower tier overrides the wider one in either direction, so a single binding can re-enable management with `{ autoAria: true }` even when the form opted out. Any tier set to `false` hands every aria attribute back to your markup; an authored attribute is always preserved regardless.
 

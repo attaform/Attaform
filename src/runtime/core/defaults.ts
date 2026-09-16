@@ -6,9 +6,7 @@
  * in lockstep, and gives reviewers a single file to scan when tuning
  * timing/policy defaults.
  *
- * Per-form `useForm({ ... })` options always win over these. App-level
- * `createAttaform({ defaults: ... })` options sit between the
- * two: per-form > app-level > library default.
+ * Per-form `useForm({ ... })` options always win over these.
  */
 
 import { __DEV__ } from './dev'
@@ -106,10 +104,9 @@ export const ANONYMOUS_WIZARD_KEY_PREFIX = `${RESERVED_KEY_PREFIX}anon-wizard:`
  * refinement stripping — track their descent depth and bail with a
  * permissive fallback once `depth > maxRecursionDepth`.
  *
- * Default `64`. Tunable per-form via `useForm({ maxRecursionDepth })`
- * and app-wide via `createAttaform({ defaults: { maxRecursionDepth } })`;
- * per-form > app-level > this library default. `Infinity` disables
- * the cap entirely — see `AttaformDefaults.maxRecursionDepth`.
+ * Default `64`. Tunable per-form via `useForm({ maxRecursionDepth })`,
+ * which wins over this library default. `Infinity` disables the cap
+ * entirely.
  *
  * "Permissive fallback" means the gate stops type-checking past the
  * cap (storage accepts the consumer's value; runtime validation

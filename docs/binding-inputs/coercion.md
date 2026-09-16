@@ -90,29 +90,24 @@ useForm({
 
 Now `<input type="text" v-register="form.register('publishedAt')" />` against a `z.date()` leaf works without modifiers.
 
-## App-wide defaults
+## Sharing one rule set across forms
 
-Set coercion at the plugin level so every form picks up the same custom rule without per-form opt-in:
+A coercion registry is a plain array, so hoist it once and pass the same value to every form that needs it:
 
 ```ts
-import { createAttaform } from 'attaform'
 import { defaultCoercionRules, defineCoercion } from 'attaform'
 
-createAttaform({
-  defaults: {
-    coerce: [
-      ...defaultCoercionRules,
-      defineCoercion({
-        input: 'string',
-        output: 'date',
-        transform: (s) => {
-          const d = new Date(s)
-          return Number.isFinite(d.getTime()) ? { coerced: true, value: d } : { coerced: false }
-        },
-      }),
-    ],
-  },
-})
+export const appCoercion = [
+  ...defaultCoercionRules,
+  defineCoercion({
+    input: 'string',
+    output: 'date',
+    transform: (s) => {
+      const d = new Date(s)
+      return Number.isFinite(d.getTime()) ? { coerced: true, value: d } : { coerced: false }
+    },
+  }),
+]
 ```
 
 Per-form `useForm({ coerce })` overrides the plugin default. The plugin default overrides Attaform's built-in default (`defaultCoercionRules`). Three layers, deterministic resolution.

@@ -1,6 +1,6 @@
 import type { App, InjectionKey } from 'vue'
 import { getCurrentInstance, inject, shallowReactive } from 'vue'
-import type { AttaformDefaults, FormKey } from '../types/types-api'
+import type { FormKey } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { UseWizardReturnType } from '../types/types-wizard'
 import type { FormStore } from './create-form-store'
@@ -86,8 +86,6 @@ export type AttaformRegistry = {
   readonly pendingHydration: PendingHydration
   /** `true` while running on the server during SSR; `false` on the client. */
   readonly ssr: boolean
-  /** App-level defaults applied to every `useForm` call. */
-  readonly defaults: AttaformDefaults
   /**
    * Track a consumer of `key`. Returns a dispose function — call it
    * when the consumer unmounts. The form is evicted automatically
@@ -217,13 +215,7 @@ declare module 'vue' {
 }
 
 /** Options for `createRegistry`. */
-export type CreateRegistryOptions = SSRDetectOptions & {
-  /**
-   * App-level defaults applied to every `useForm` call. Per-form
-   * options always win. Omitted is equivalent to `{}`.
-   */
-  defaults?: AttaformDefaults
-}
+export type CreateRegistryOptions = SSRDetectOptions
 
 /**
  * Create a fresh `AttaformRegistry`. `createAttaform()` calls
@@ -234,12 +226,6 @@ export type CreateRegistryOptions = SSRDetectOptions & {
  */
 export function createRegistry(options: CreateRegistryOptions = {}): AttaformRegistry {
   const ssr = detectSSR(options)
-  // Frozen so accidental writes downstream throw in dev. Public surface
-  // (`createAttaform({ defaults })`) treats this as data, not as
-  // a mutation point — there's no public API to update defaults after
-  // install, and adding one would invite race conditions with already-
-  // mounted forms.
-  const defaults: AttaformDefaults = Object.freeze({ ...(options.defaults ?? {}) })
   // The outer object is plain (it holds references we never rebind); inner
   // Maps are reactive via Vue's collection handlers so per-key reads track
   // per-key. `shallowReactive` avoids Vue's deep Ref-unwrapping, which would
@@ -375,7 +361,6 @@ export function createRegistry(options: CreateRegistryOptions = {}): AttaformReg
     wizards,
     pendingHydration,
     ssr,
-    defaults,
     trackConsumer,
     trackWizardConsumer,
     enqueuePrefetch,

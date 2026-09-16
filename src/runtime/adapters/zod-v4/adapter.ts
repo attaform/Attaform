@@ -269,8 +269,8 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
  *
  * The returned factory accepts per-form `SchemaFactoryOptions` (notably
  * `maxRecursionDepth`); the adapter closure bakes them into every
- * downstream walk so a per-form override can lift the cap without
- * touching the app-level default.
+ * downstream walk so a per-form override can lift the cap for that
+ * form alone.
  *
  * Throws if the schema isn't Zod v4, or if its root is not a shape
  * that can hold keys. No kind is refused anywhere BELOW the root: a

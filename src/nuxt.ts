@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { addImports, addPlugin, addVitePlugin, createResolver, defineNuxtModule } from '@nuxt/kit'
 import { attaformAutoImports } from './runtime/auto-imports'
-import type { AttaformDefaults } from './runtime/types/types-api'
 import { attaform as attaformVitePlugin } from './vite'
 
 // Read the published version from the package's own package.json so the
@@ -24,18 +23,12 @@ const pkgVersion = (createRequire(import.meta.url)('../package.json') as { versi
  * export default defineNuxtConfig({
  *   modules: ['attaform/nuxt'],
  *   attaform: {
- *     defaults: { debounceMs: 100 },
+ *     autoImports: false,
  *   },
  * })
  * ```
  */
 export interface AttaformModuleOptions {
-  /**
-   * App-level defaults applied to every `useForm` call. Per-form
-   * options always win. See `AttaformDefaults` for the
-   * supported option set and merge rules.
-   */
-  defaults?: AttaformDefaults
   /**
    * Forwarded to `attaform/vite`'s `resolveZodAlias` option.
    * Default `true` — `attaform` and `attaform/zod` imports are rewritten
@@ -62,10 +55,9 @@ export interface AttaformModuleOptions {
 /**
  * Shape of the Nuxt public runtime-config slot the module populates.
  * Reach it via `useRuntimeConfig().public.attaform` if you need to
- * read the configured defaults outside the form library itself.
+ * read the library version outside the form library itself.
  */
 export type AttaformRuntimeConfig = {
-  defaults: AttaformDefaults
   /**
    * Library version, read from the package's own `package.json` at
    * module setup. Surfaced to the runtime plugin so the DevTools
@@ -137,13 +129,10 @@ export default defineNuxtModule<AttaformModuleOptions>({
     // consumer.
     addVitePlugin(attaformVitePlugin({ resolveZodAlias: _options.resolveZodAlias !== false }))
 
-    // Publish module options to public runtime config so the plugin can
-    // read them at install time on both server and client. Frozen-empty
-    // by default — the plugin's merge code reads this slot directly
-    // without a `?? {}` guard at every call site.
+    // Publish the module's version to public runtime config so the
+    // plugin can read it at install time on both server and client.
     const runtimePublic = nuxt.options.runtimeConfig.public as Record<string, unknown>
     runtimePublic['attaform'] = {
-      defaults: _options.defaults ?? {},
       version: pkgVersion,
     } satisfies AttaformRuntimeConfig
 

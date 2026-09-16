@@ -151,11 +151,9 @@ export function useForm(configuration: any): any {
 
   // Spread the full configuration so opt-in options (`onInvalidSubmit`,
   // `validateOn`, `debounceMs`, `history`, `rememberVariants`, `key`,
-  // `strict`) reach useAbstractForm. Writing `strict: configuration.strict ?? true`
-  // here would short-circuit the registry's app-level defaults
-  // (`createAttaform({ defaults: { strict: false } })`). The
-  // library-level fallback to `true` lives downstream in
-  // `createFormStore`, where it can apply *after* the registry merge.
+  // `strict`) reach useAbstractForm. The library-level fallback for
+  // `strict` lives downstream in `createFormStore`, which owns every
+  // option's default in one place.
   return useAbstractForm({
     ...configuration,
     schema: abstractSchema,

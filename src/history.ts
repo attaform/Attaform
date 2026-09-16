@@ -11,10 +11,9 @@
  * const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
  * ```
  *
- * Or once for the whole app via
- * `createAttaform({ defaults: { history: historyPlugin() } })` — one
- * plugin instance is a reusable configuration, and every form still
- * gets its own independent chain.
+ * One plugin instance is a reusable configuration: hand the same
+ * instance to as many forms as you like and each still gets its own
+ * independent chain.
  *
  * The consolidated `form.history` namespace (`undo`, `redo`, `clear`,
  * `canUndo`, `canRedo`, `size`) is always present on the form return;

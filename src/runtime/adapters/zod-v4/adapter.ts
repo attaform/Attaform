@@ -40,7 +40,6 @@ import {
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
-import { stripAsyncChecks } from './strip'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
@@ -392,13 +391,31 @@ function runStrictGetDefaultsV4<Form>(
     return { data, errors: undefined, success: true, formKey }
   }
 
-  if (containsAsyncTransform(rootSchema)) {
+  // A schema carrying async work of any kind skips the construction
+  // parse. An async TRANSFORM always did: its output shape is
+  // load-bearing for the inner schema's input, so there is nothing sound
+  // to parse against. An async REFINE used to be handled by rebuilding
+  // the whole schema with the async predicates stripped out, purely so
+  // the SYNC checks beside them could still seed at construction.
+  //
+  // That walker was 206 lines and a second, parallel understanding of
+  // every Zod kind — a shape this codebase has been retiring wherever it
+  // appears, because the copy drifts from the original and nothing
+  // notices. It bought one thing: a schema with an async refine seeded
+  // its sync violations at first paint, exactly as an async-free twin
+  // did. Without it, those seeds arrive one async pass later instead of
+  // at construction, which on SSR means a submit button bound to
+  // `meta.valid` renders enabled and then disables.
+  //
+  // The post-mount async pass remains the source of truth for every
+  // verdict either way; what changed is only how early the sync half of
+  // them appears, and only for schemas that mix the two.
+  if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) {
     return { data, errors: undefined, success: true, formKey }
   }
 
-  const parseTarget = containsAsyncRefine(rootSchema) ? stripAsyncChecks(rootSchema) : rootSchema
   try {
-    const strictResult = parseTarget.safeParse(data) as z.ZodSafeParseResult<Form>
+    const strictResult = rootSchema.safeParse(data) as z.ZodSafeParseResult<Form>
     if (strictResult.success) {
       // Storage holds the pre-transform `z.input` view, so we return
       // the original `data` (already filled by

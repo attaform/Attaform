@@ -91,12 +91,14 @@ describe('zod v4 adapter', () => {
       expect(result.data).toEqual({ email: 'seeded@x', count: 0 })
     })
 
-    describe('sync-error seeding when async siblings throw the strict parse', () => {
-      it('seeds sync-refinement errors at construction when an async sibling exists', () => {
-        // Mixed schema: word's sync refine fails on '', email's async
-        // refine causes the original safeParse to throw. Pre-fix the
-        // catch swallowed both. Now the sync-only retry surfaces
-        // word's error.
+    describe('an async sibling defers the whole construction verdict', () => {
+      it('seeds nothing when an async refine exists, sync violations included', () => {
+        // Mixed schema: word's sync refine fails on ''. It used to seed
+        // anyway, because the adapter rebuilt the schema without its
+        // async predicates and parsed the copy. That walker is gone, so
+        // both verdicts now arrive together on the post-mount pass.
+        // Mirrored in `zod-v3/async-contract-parity.test.ts`, which is
+        // the point: one answer per schema, not one per major.
         const schema = z.object({
           word: z.string().refine((v) => v.length > 0, 'word required'),
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
@@ -107,18 +109,13 @@ describe('zod v4 adapter', () => {
           constraints: { word: '', email: 'a@b.com' },
           strict: true,
         })
-        expect(result.success).toBe(false)
-        const messages = result.errors?.map((e) => e.message) ?? []
-        expect(messages).toContain('word required')
-        // Async refine error must NOT appear at construction —
-        // deferred to the post-mount async pass.
-        expect(messages).not.toContain('taken')
+        expect(result.success).toBe(true)
+        expect(result.errors).toBeUndefined()
       })
 
       it('returns success when the sync portion is clean but async refines exist', () => {
-        // Sync refine satisfied; async would throw the original
-        // parse. Sync-only retry succeeds → lax success, deferring
-        // the async verdict to the post-mount pass.
+        // The same answer from the other direction: nothing to report
+        // either way while async work is outstanding.
         const schema = z.object({
           word: z.string().refine((v) => v.length > 0, 'word required'),
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),

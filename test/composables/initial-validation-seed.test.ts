@@ -325,20 +325,22 @@ describe('initial validation seed — async-refine schema', () => {
     expect(api.errors.email?.[0]?.message).toBe('taken')
   })
 
-  it('mixed sync+async refines: sync error seeds synchronously, async lands on next microtask', async () => {
+  it('mixed sync+async refines: neither seeds, and both land on the async pass', async () => {
     // Regression: when a schema mixes sync and async refines and the
-    // SYNC refine fails on the supplied default, the sync error must
-    // seed at construction. Pre-fix, the construction-time
-    // `safeParse` threw on the async sibling and the catch swallowed
-    // both classes of error — sync verdicts only landed after the
-    // post-mount async pass. UI bound to construction-time errors
-    // ("fix N errors" badges, demo REPL wizard) missed the count
-    // for one frame.
+    // A schema mixing a failing SYNC refine with an async sibling seeds
+    // neither at construction: both verdicts arrive together on the
+    // post-mount pass.
     //
-    // Fix: when sync `safeParse` throws on async refines, the adapter
-    // retries against a sync-only variant of the schema
-    // (`stripAsyncChecks`) so sync verdicts seed synchronously.
-    // Async-only verdicts stay deferred to the post-mount pass.
+    // It used to seed the sync half, by rebuilding the schema without
+    // its async predicates and parsing that copy. The walker doing it
+    // was a second parallel understanding of every Zod kind, and its v3
+    // counterpart answered differently for the same schema, so the two
+    // adapters disagreed. Both are gone.
+    //
+    // What a consumer loses is one frame: UI bound to construction-time
+    // errors ("fix N errors" badges) shows zero until the pass lands.
+    // `meta.valid` does NOT flicker, because a schema declaring async
+    // work is already clamped invalid until `firstValidationDone`.
     const mixedSchema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z
@@ -365,15 +367,14 @@ describe('initial validation seed — async-refine schema', () => {
     const api = handle.api
     if (api === undefined) throw new Error('unreachable')
 
-    // Frame 1, no `await`: sync refine seeded directly. Async sibling's
-    // verdict is still in flight.
-    expect(api.errors.word?.[0]?.message).toBe('word required')
+    // Frame 1, no `await`: nothing seeded, but the form already reports
+    // itself invalid off the async gate, so a submit button bound to
+    // `meta.valid` renders disabled from the first paint either way.
+    expect(api.errors.word).toEqual([])
     expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(false)
-    expect(api.meta.errors.length).toBeGreaterThan(0)
 
-    // After microtasks settle: async refine error lands too. Sync
-    // error stays put.
+    // After the pass settles: both verdicts land, and they land together.
     const emailMessage = await waitFor(() => api.errors.email?.[0]?.message ?? null)
     expect(emailMessage).toBe('That email is already registered.')
     expect(api.errors.word?.[0]?.message).toBe('word required')
@@ -381,11 +382,9 @@ describe('initial validation seed — async-refine schema', () => {
   })
 
   it('mixed sync+async refines: clean sync default does not seed, async still deferred', async () => {
-    // Symmetry with the failing-sync case: when the sync sibling's
-    // default is clean, no error seeds synchronously. The async
-    // sibling's verdict still lands on the post-mount pass — the
-    // sync-only retry just succeeded, so the catch path returns lax
-    // success (matching today's behaviour for pure-async schemas).
+    // Symmetry with the failing-sync case: a clean sync default seeds
+    // nothing either, and the async sibling's verdict still lands on the
+    // post-mount pass.
     const mixedSchema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z

@@ -488,7 +488,18 @@ export async function measureEager(define = PROD_DEFINE) {
 // bound table -29 against a -505 ablation ceiling. gzip had already
 // collected the rent on all three. Only unique deletions paid. Budget
 // 34_050 -> 33_900 (~0.31 kB headroom).
-const BUDGET_GZ = 33_900
+// E5b RATCHET (2026-09-16): 33,587 -> 33,133 measured (-454). Both
+// adapters' async-strip walkers are gone. Each rebuilt the entire schema
+// with its async predicates removed so the sync checks beside them could
+// still seed at construction, and each was a second parallel
+// understanding of its own Zod major — which is why they gave DIFFERENT
+// answers for the same schema (v4 seeded sync refines, v3 only container
+// checks). Deleting both converges them: a schema declaring async work
+// anywhere seeds nothing and defers every verdict to the post-mount
+// pass. The first-paint cost is one frame of an error COUNT;
+// `meta.valid` does not move, because the async gate already clamps it.
+// Budget 33_900 -> 33_450 (~0.32 kB headroom).
+const BUDGET_GZ = 33_450
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

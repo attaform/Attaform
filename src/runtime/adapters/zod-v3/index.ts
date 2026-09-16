@@ -64,7 +64,7 @@ import {
   unwrapPipeIn,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
-import { stripAsyncChecks, wrapAsyncSafeRefinements } from './strip-async'
+import { wrapAsyncSafeRefinements } from './strip-async'
 import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
@@ -875,46 +875,19 @@ function runStrictGetDefaultsV3<Form>(
         success: false,
         formKey,
       }
-    } catch (err) {
-      // Distinguish the v3 async-detect throw from a generic
-      // user-validator throw at construction. The async-detect throw
-      // is a standard `Error` with message `"Async refinement
-      // encountered during synchronous parse..."`. On that path strip
-      // every `ZodEffects` (sync + async — v3 can't tell apart at the
-      // predicate level, see `strip-async.ts` docblock) and re-parse
-      // to surface container + leaf-check seeds.
-      const isAsyncDetect =
-        err instanceof Error && err.message.includes('Async refinement encountered')
-      if (isAsyncDetect) {
-        try {
-          const strippedResult = syncSafe(stripAsyncChecks(rootSchema)).safeParse(rawDefaultValues)
-          if (strippedResult.success) {
-            return {
-              data: rawDefaultValues as Form,
-              errors: undefined,
-              success: true,
-              formKey,
-            }
-          }
-          return {
-            data: rawDefaultValues as Form,
-            errors: zodIssuesToValidationErrors(strippedResult.error.issues),
-            success: false,
-            formKey,
-          }
-        } catch {
-          // Defensive floor: the stripped schema also threw (e.g. a
-          // sync refine that itself throws). Mount cleanly; the
-          // post-mount async pass is the source of truth for any
-          // verdict this code path can't surface.
-          return {
-            data: rawDefaultValues as Form,
-            errors: undefined,
-            success: true,
-            formKey,
-          }
-        }
-      }
+    } catch {
+      // A throw here is either v3's async-detect (a standard `Error`
+      // reading "Async refinement encountered during synchronous
+      // parse") or a consumer validator throwing outright. Both mount
+      // clean and leave the verdict to the post-mount async pass, which
+      // was always the source of truth for either case.
+      //
+      // The async-detect arm used to strip every `ZodEffects` off the
+      // schema and re-parse the copy, so the sync checks beside an async
+      // refine could still seed at construction. That walker is gone —
+      // v4's equivalent was deleted first and this is what keeps the two
+      // adapters saying the same thing about the same schema, which is
+      // the rule that matters more than the seed did.
       // Non-async throw at construction (user validator threw a raw
       // exception): defensive floor, matches v4's catch.
       return {

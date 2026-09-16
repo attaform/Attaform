@@ -72,16 +72,96 @@ const DERIVED_DISPLAY_KEYS = new Set([
   'firstError',
   'firstOwnError',
 ])
-/** FieldState props `form.meta` computes itself rather than mirroring. */
-const META_SPECIAL_KEYS = new Set(['errors', 'validating', 'valid', 'transforming', 'busy'])
-/** getFormMetaBase mirrors: the FieldStateBase key set. */
-const BASE_MIRROR_KEYS = [...FIELD_STATE_KEYS].filter((k) => !DERIVED_DISPLAY_KEYS.has(k))
-/** form.meta mirrors: every FieldState prop the meta bundle doesn't own. */
-const META_MIRROR_KEYS = [...FIELD_STATE_KEYS].filter((k) => !META_SPECIAL_KEYS.has(k))
+/** `form.meta`'s enumerable key set: every FieldState prop, plus lifecycle. */
+const META_KEYS = [
+  ...FIELD_STATE_KEYS,
+  'submitting',
+  'submissionAttempts',
+  'departAttempts',
+  'submitError',
+  'submitted',
+  'instanceId',
+  'errorCount',
+]
+/**
+ * `getFormMetaBase()`'s enumerable key set (`FormMetaBase`): the same,
+ * minus the derived display props the predicate may not see.
+ */
+const BASE_META_KEYS = META_KEYS.filter((k) => !DERIVED_DISPLAY_KEYS.has(k))
 
-/** Enumerable-configurable getter, the shape a literal `get x()` produces. */
-function defineGetter(target: object, key: string, get: () => unknown): void {
-  Object.defineProperty(target, key, { get, enumerable: true, configurable: true })
+/**
+ * The `form.history` namespace for a form that never configured
+ * history. Every answer is a constant, so one instance serves every
+ * such form in the app.
+ *
+ * `readonly()` rather than `Object.freeze()`: a stray consumer write
+ * has always warned and no-opped here, and freezing would turn that
+ * into a `TypeError` thrown from strict-mode consumer code. Built on
+ * first use so a module-scope side effect cannot pin it into a bundle
+ * that never reads it.
+ */
+let INERT_HISTORY: FormHistoryNamespace | undefined
+function inertHistory(): FormHistoryNamespace {
+  INERT_HISTORY ??= readonly({
+    undo: () => false,
+    redo: () => false,
+    clear: () => {},
+    canUndo: false,
+    canRedo: false,
+    size: 0,
+  }) as FormHistoryNamespace
+  return INERT_HISTORY
+}
+
+/**
+ * One Proxy in place of a forest of `Object.defineProperty` getters.
+ *
+ * Both meta surfaces mirror a key set off a computed. Spelling that as
+ * one accessor per key mints an AccessorPair plus a closure plus a
+ * closure context PER KEY PER FORM, and a bag of 30-odd accessors goes
+ * to V8 dictionary mode on top. Measured at 78 AccessorPairs and
+ * 7,810 B for every `useForm()` callsite, which is 11% of a form's
+ * whole heap spent on property plumbing.
+ *
+ * A Proxy answers the same questions with one object and one closure,
+ * and `callable-tree.ts`'s field views already prove the shape out one
+ * file over. `read` resolves a live value per hit, so nothing is
+ * captured and the reactive dependency lands exactly where the getter
+ * put it.
+ *
+ * `get` falls through to the target for anything outside `keys`, which
+ * keeps `Object.prototype` reachable: `meta.hasOwnProperty(...)` and
+ * `JSON.stringify(meta)`'s `toJSON` probe both read through the
+ * prototype chain rather than off the key set.
+ */
+const denyWrite = (): boolean => false
+
+function buildMetaProxy(
+  keys: readonly string[],
+  read: (key: string) => unknown
+): Record<string, unknown> {
+  const target: Record<string, unknown> = {}
+  const owns = new Set(keys)
+  return new Proxy(target, {
+    get: (_, key: string | symbol): unknown =>
+      owns.has(key as string) ? read(key as string) : Reflect.get(target, key),
+    has: (_, key: string | symbol): boolean => owns.has(key as string) || Reflect.has(target, key),
+    // Safe to hand back the same array every time: the spec copies a
+    // trap's key list before using it.
+    ownKeys: () => keys,
+    getOwnPropertyDescriptor(_, key: string | symbol): PropertyDescriptor | undefined {
+      if (!owns.has(key as string)) return Reflect.getOwnPropertyDescriptor(target, key)
+      // Configurable because a Proxy may not report a non-configurable
+      // property the target does not actually have; enumerable because
+      // the two meta key sets are pinned as enumerable.
+      return { configurable: true, enumerable: true, value: read(key as string), writable: false }
+    },
+    // A getter with no setter throws on assignment under strict mode,
+    // which every module here is. `false` keeps that.
+    set: denyWrite,
+    deleteProperty: denyWrite,
+    defineProperty: denyWrite,
+  })
 }
 
 export type BuildFormApiOptions = {
@@ -189,32 +269,28 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const rootBaseComputed = computed<FieldStateBase>(
     () => buildContainerFieldStateBase(state, ROOT_PATH, ROOT_PATH_KEY, formInstanceId).base
   )
-  const metaBase: Record<string, unknown> = {
-    instanceId: formInstanceId,
-    get submitting() {
-      return state.submitting.value
-    },
-    get submissionAttempts() {
-      return state.submissionAttempts.value
-    },
-    get departAttempts() {
-      return state.departAttempts.value
-    },
-    get submitError() {
-      return state.submitError.value
-    },
-    get submitted() {
-      return state.submitted.value
-    },
-  }
-  for (const k of BASE_MIRROR_KEYS) {
-    defineGetter(
-      metaBase,
-      k,
-      () => (rootBaseComputed.value as unknown as Record<string, unknown>)[k]
-    )
-  }
-  defineGetter(metaBase, 'errorCount', () => rootBaseComputed.value.errors.length)
+  // The lifecycle scalars read their ref on demand; everything else
+  // mirrors the root rollup. One Proxy, not 36 accessors.
+  const metaBase = buildMetaProxy(BASE_META_KEYS, (key) => {
+    switch (key) {
+      case 'instanceId':
+        return formInstanceId
+      case 'errorCount':
+        return rootBaseComputed.value.errors.length
+      case 'submitting':
+        return state.submitting.value
+      case 'submissionAttempts':
+        return state.submissionAttempts.value
+      case 'departAttempts':
+        return state.departAttempts.value
+      case 'submitError':
+        return state.submitError.value
+      case 'submitted':
+        return state.submitted.value
+      default:
+        return (rootBaseComputed.value as unknown as Record<string, unknown>)[key]
+    }
+  })
   const getFormMetaBase = (): FormMetaBase => {
     // Form-level scalars — EAGERLY tracked on every field-state eval.
     // They are O(1) refs that never change on a keystroke, so tracking
@@ -603,17 +679,27 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // stubs so the `form.history.*` namespace shape stays consistent
   // whether or not the feature is enabled. Templates can read
   // `form.history.canUndo` etc. unconditionally.
+  //
+  // When it IS unconfigured the namespace is a module-level singleton,
+  // because none of its answers can ever differ: three inert methods
+  // and three constants. The per-form spelling cost 3 computeds, a
+  // reactive proxy, a readonly proxy and 3 closures for every
+  // `useForm()` callsite in the app, 1,079 B a form, to represent
+  // `false`.
   const history = options.history
-  const formHistory = readonly(
-    reactive({
-      undo: history?.undo ?? (() => false),
-      redo: history?.redo ?? (() => false),
-      clear: history?.clear ?? (() => {}),
-      canUndo: history?.canUndo ?? computed(() => false),
-      canRedo: history?.canRedo ?? computed(() => false),
-      size: history?.historySize ?? computed(() => 0),
-    })
-  ) as FormHistoryNamespace
+  const formHistory =
+    history === undefined
+      ? inertHistory()
+      : (readonly(
+          reactive({
+            undo: history.undo,
+            redo: history.redo,
+            clear: history.clear,
+            canUndo: history.canUndo,
+            canRedo: history.canRedo,
+            size: history.historySize,
+          })
+        ) as FormHistoryNamespace)
 
   // --- Form-level meta aggregate ---
   // `metaErrors` flattens the three reactive error stores into a single
@@ -673,7 +759,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // dep-tracking lands on the underlying computed exactly as before.
   // `watch(() => form.meta.dirty, …)` collects the same dependency
   // graph either way.
-  const metaTarget: Record<string, unknown> = {
+  const metaOwn: Record<string, unknown> = {
     // Whole-form work signals compose the LIFECYCLE counters with the
     // per-leaf rollup: a submit-time validate shows up as
     // activeValidations, per-field debounced validators as
@@ -707,21 +793,25 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     instanceId: formInstanceId,
   }
   // Every remaining FieldState prop mirrors the root field-state
-  // computed through an enumerable getter, so `form.meta.dirty`,
-  // `form.fields().dirty`, and `form.fields([]).dirty` read identical
-  // aggregated state and `form.meta.displayState` matches
-  // `form.fields().displayState` exactly (the predicate runs once at
-  // the root and the result is shared).
-  for (const k of META_MIRROR_KEYS) {
-    defineGetter(
-      metaTarget,
-      k,
-      () => (rootFieldState.value as unknown as Record<string, unknown>)[k]
-    )
-  }
-  // Scalar mirror over the aggregate — meta is a single sticky surface
-  // for both templates and `useWizard`'s `FormStatus`.
-  defineGetter(metaTarget, 'errorCount', () => metaErrors.value.length)
+  // computed, so `form.meta.dirty`, `form.fields().dirty`, and
+  // `form.fields([]).dirty` read identical aggregated state and
+  // `form.meta.displayState` matches `form.fields().displayState`
+  // exactly (the predicate runs once at the root and the result is
+  // shared). `errorCount` is a scalar mirror over the aggregate — meta
+  // is a single sticky surface for both templates and `useWizard`'s
+  // `FormStatus`.
+  //
+  // `reactive()` still wraps the Proxy: the own entries above are refs,
+  // and reactive's get trap is what unwraps them on property access.
+  // Vue only auto-unwraps refs that are top-level on a setup return,
+  // never refs nested in a returned object, so without it every one of
+  // them would render as its (always truthy) wrapper and silently break
+  // bindings like `:disabled`. `readonly()` layers the write guard.
+  const metaTarget = buildMetaProxy(META_KEYS, (key) => {
+    if (key === 'errorCount') return metaErrors.value.length
+    if (Object.hasOwn(metaOwn, key)) return metaOwn[key]
+    return (rootFieldState.value as unknown as Record<string, unknown>)[key]
+  })
   const formMeta = readonly(reactive(metaTarget)) as FormMeta<Form>
 
   // --- Reset ---

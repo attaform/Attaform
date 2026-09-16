@@ -821,19 +821,27 @@ function runStrictGetDefaultsV3<Form>(
   // Nothing parses in the walk, so user refines and transforms still do
   // not fire at construction and the strict pass below remains the only
   // thing that enforces them.
-  const rawDefaultValues = fixStructuralDefaults<Form, z.ZodTypeAny>(
-    rootSchema as z.ZodTypeAny,
-    mergeDeep(defaultValuesWithoutConstraints, config.constraints),
-    config.useDefaultSchemaValues,
-    maxRecursionDepth,
-    {
-      intro: V3_INTROSPECTOR,
-      slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
-      deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
-        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault),
-      unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
-    }
-  ).data
+  //
+  // Skipped entirely when there are no constraints: the walk repairs
+  // what the constraints broke, and the derivation above is already a
+  // fixed point of it. Same branch as v4's, pinned by the same corpus
+  // in `test/adapters/structural-walk-is-constraint-repair.test.ts`.
+  const rawDefaultValues =
+    config.constraints === undefined
+      ? defaultValuesWithoutConstraints
+      : fixStructuralDefaults<Form, z.ZodTypeAny>(
+          rootSchema as z.ZodTypeAny,
+          mergeDeep(defaultValuesWithoutConstraints, config.constraints),
+          config.useDefaultSchemaValues,
+          maxRecursionDepth,
+          {
+            intro: V3_INTROSPECTOR,
+            slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
+            deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
+              getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault),
+            unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
+          }
+        ).data
 
   // Strict-mode path: parse against the REAL schema so refines and
   // container / leaf checks (`.min(n)` / `.max(n)` / `.email()` etc.)

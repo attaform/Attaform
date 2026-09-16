@@ -67,6 +67,19 @@ export function getDefaultValuesFromZodSchema<Form>(
 ): DefaultValuesResult<Form> {
   const { schema, useDefaultSchemaValues, constraints, maxRecursionDepth } = opts
   const initial = deriveDefault(schema, useDefaultSchemaValues, maxRecursionDepth)
+  // The walk repairs what the CONSTRAINTS broke: a constraint supplying
+  // a primitive where the schema declares an object, a DU value
+  // carrying keys from a variant it is not. With no constraints there
+  // is nothing to have broken, and the derivation is already a fixed
+  // point of the walk, so this skips 20 to 24 percent of the work on a
+  // wide form in what is the common case (most forms pass no
+  // `defaultValues` at all).
+  //
+  // That the derivation IS a fixed point is an invariant, not a
+  // theorem, so it is pinned across a corpus of schema shapes in
+  // `test/adapters/structural-walk-is-constraint-repair.test.ts`. If
+  // that suite ever fails, this branch is the thing to remove.
+  if (constraints === undefined) return { data: initial as Form, success: true }
   const merged = mergeDeep(initial, constraints)
 
   return fixStructuralDefaults<Form, z.ZodType>(

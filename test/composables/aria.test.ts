@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp, defineComponent, h, ref, withDirectives, type App } from 'vue'
+import { createApp, defineComponent, h, ref, withDirectives, type App, type Ref } from 'vue'
 import { z } from 'zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { GetDisplayState } from '../../src/runtime/types/types-api'
+import type { DisplayState, RegisterValue } from '../../src/runtime/types/types-api'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { waitUntil } from '../utils/form-harness'
@@ -13,33 +13,36 @@ import { waitUntil } from '../utils/form-harness'
 const schema = z.object({ email: z.string().min(1), note: z.string().optional() })
 type Api = UseFormReturn<typeof schema>
 
-type Mounted = { app: App; api: Api; input: HTMLInputElement }
+type Mounted = { app: App; api: Api; input: HTMLInputElement; forced: Ref<DisplayState> }
 
 function uniqueKey(): string {
   return `aria-${Math.random().toString(36).slice(2)}`
 }
 
+/**
+ * Bind a register value whose `ariaDisplayState` is a ref the test
+ * drives directly. The display heuristic decides WHEN a verdict lands
+ * (`display-state.test.ts` owns that); these cases are about what the
+ * directive writes to the DOM once a verdict exists, so forcing the
+ * verdict keeps them isolated from the timing gate and the clock.
+ */
+function withForcedVerdict(rv: RegisterValue, forced: Ref<DisplayState>): RegisterValue {
+  return { ...rv, ariaDisplayState: forced }
+}
+
 async function mountField(opts?: {
-  autoAria?: boolean
-  registerAutoAria?: boolean
-  getDisplayState?: GetDisplayState
+  display?: DisplayState
   authored?: Record<string, unknown>
   path?: 'email' | 'note'
 }): Promise<Mounted> {
   const handle: { api?: Api } = {}
+  const forced = ref<DisplayState>(opts?.display ?? 'idle')
   const Parent = defineComponent({
     setup() {
-      const api = useForm({
-        schema,
-        key: uniqueKey(),
-        ...(opts?.autoAria === false ? { autoAria: false } : {}),
-        ...(opts?.getDisplayState ? { getDisplayState: opts.getDisplayState } : {}),
-      })
+      const api = useForm({ schema, key: uniqueKey() })
       handle.api = api
-      const rv = api.register(
-        opts?.path ?? 'email',
-        opts?.registerAutoAria === false ? { autoAria: false } : undefined
-      )
+      const real = api.register(opts?.path ?? 'email')
+      const rv = opts?.display !== undefined ? withForcedVerdict(real, forced) : real
       return () =>
         withDirectives(h('input', { type: 'text', ...(opts?.authored ?? {}) }), [[vRegister, rv]])
     },
@@ -50,16 +53,12 @@ async function mountField(opts?: {
   app.mount(root)
   await waitUntil(() => (handle.api !== undefined && root.firstElementChild !== null ? true : null))
   if (handle.api === undefined) throw new Error('mountField: api never set')
-  return { app, api: handle.api, input: root.firstElementChild as HTMLInputElement }
+  return { app, api: handle.api, input: root.firstElementChild as HTMLInputElement, forced }
 }
 
 afterEach(() => {
   document.body.innerHTML = ''
 })
-
-const forceState =
-  (state: 'idle' | 'pending' | 'error' | 'success'): GetDisplayState =>
-  () => ({ display: state })
 
 describe('auto-aria attribute mapping', () => {
   let mounted: Mounted | undefined
@@ -69,7 +68,7 @@ describe('auto-aria attribute mapping', () => {
   })
 
   it('maps error to aria-invalid + aria-describedby (and not aria-busy)', async () => {
-    mounted = await mountField({ getDisplayState: forceState('error') })
+    mounted = await mountField({ display: 'error' })
     expect(mounted.input.getAttribute('aria-invalid')).toBe('true')
     expect(mounted.input.getAttribute('aria-describedby')).toBe(
       mounted.api.fields.email.aria.errorId
@@ -78,7 +77,7 @@ describe('auto-aria attribute mapping', () => {
   })
 
   it('maps pending to aria-busy (and not aria-invalid / describedby)', async () => {
-    mounted = await mountField({ getDisplayState: forceState('pending') })
+    mounted = await mountField({ display: 'pending' })
     expect(mounted.input.getAttribute('aria-busy')).toBe('true')
     expect(mounted.input.hasAttribute('aria-invalid')).toBe(false)
     expect(mounted.input.hasAttribute('aria-describedby')).toBe(false)
@@ -86,7 +85,7 @@ describe('auto-aria attribute mapping', () => {
 
   it('sets no status attribute for success or idle', async () => {
     for (const state of ['success', 'idle'] as const) {
-      const m = await mountField({ getDisplayState: forceState(state) })
+      const m = await mountField({ display: state })
       expect(m.input.hasAttribute('aria-invalid')).toBe(false)
       expect(m.input.hasAttribute('aria-busy')).toBe(false)
       expect(m.input.hasAttribute('aria-describedby')).toBe(false)
@@ -95,10 +94,10 @@ describe('auto-aria attribute mapping', () => {
   })
 
   it('reflects the schema required flag independent of display state', async () => {
-    mounted = await mountField({ getDisplayState: forceState('idle') })
+    mounted = await mountField({ display: 'idle' })
     expect(mounted.input.getAttribute('aria-required')).toBe('true')
     // The optional `note` field is not required.
-    const optional = await mountField({ path: 'note', getDisplayState: forceState('idle') })
+    const optional = await mountField({ path: 'note', display: 'idle' })
     expect(optional.input.hasAttribute('aria-required')).toBe(false)
     optional.app.unmount()
   })
@@ -141,7 +140,7 @@ describe('auto-aria respects authored markup', () => {
 
   it('never overwrites an authored aria attribute, even when state would change it', async () => {
     mounted = await mountField({
-      getDisplayState: forceState('error'),
+      display: 'error',
       authored: { 'aria-invalid': 'false', 'aria-describedby': 'my-help' },
     })
     // Authored values survive; the directive manages neither.
@@ -152,23 +151,37 @@ describe('auto-aria respects authored markup', () => {
   })
 })
 
-describe('auto-aria opt-out tiers', () => {
+describe('auto-aria needs a display-state channel', () => {
   let mounted: Mounted | undefined
   afterEach(() => {
     mounted?.app.unmount()
     mounted = undefined
   })
 
-  it('manages nothing when the form disables autoAria', async () => {
-    mounted = await mountField({ autoAria: false, getDisplayState: forceState('error') })
-    expect(mounted.input.hasAttribute('aria-invalid')).toBe(false)
-    expect(mounted.input.hasAttribute('aria-required')).toBe(false)
-  })
-
-  it('manages nothing when the binding passes autoAria: false', async () => {
-    mounted = await mountField({ registerAutoAria: false, getDisplayState: forceState('error') })
-    expect(mounted.input.hasAttribute('aria-invalid')).toBe(false)
-    expect(mounted.input.hasAttribute('aria-required')).toBe(false)
+  it('manages nothing for a binding carrying no ariaDisplayState', async () => {
+    // A hand-rolled register factory has no field-state accessor to
+    // close over, so `buildRegister` omits `ariaDisplayState`. That is
+    // the one remaining "aria off" path — there is no opt-out flag.
+    const handle: { api?: Api } = {}
+    const Parent = defineComponent({
+      setup() {
+        const api = useForm({ schema, key: uniqueKey() })
+        handle.api = api
+        const { ariaDisplayState: _dropped, ...withoutChannel } = api.register('email')
+        const rv = withoutChannel as RegisterValue
+        return () => withDirectives(h('input', { type: 'text' }), [[vRegister, rv]])
+      },
+    })
+    const app = createApp(Parent).use(createAttaform())
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app.mount(root)
+    await waitUntil(() => (root.firstElementChild !== null ? true : null))
+    const input = root.firstElementChild as HTMLInputElement
+    await handle.api?.handleSubmit(() => undefined)()
+    expect(input.hasAttribute('aria-invalid')).toBe(false)
+    expect(input.hasAttribute('aria-required')).toBe(false)
+    app.unmount()
   })
 })
 
@@ -178,10 +191,13 @@ describe('auto-aria re-derives on a path swap', () => {
     const path = ref<'email' | 'note'>('email')
     const Parent = defineComponent({
       setup() {
-        const api = useForm({ schema, key: uniqueKey(), getDisplayState: forceState('error') })
+        const api = useForm({ schema, key: uniqueKey() })
         handle.api = api
+        const forced = ref<DisplayState>('error')
         return () =>
-          withDirectives(h('input', { type: 'text' }), [[vRegister, api.register(path.value)]])
+          withDirectives(h('input', { type: 'text' }), [
+            [vRegister, withForcedVerdict(api.register(path.value), forced)],
+          ])
       },
     })
     const app = createApp(Parent).use(createAttaform())
@@ -205,7 +221,7 @@ describe('auto-aria re-derives on a path swap', () => {
 
 describe('auto-aria teardown on unmount', () => {
   it('clears the attributes it set when the binding unmounts', async () => {
-    const mounted = await mountField({ getDisplayState: forceState('error') })
+    const mounted = await mountField({ display: 'error' })
     const { input } = mounted
     expect(input.getAttribute('aria-invalid')).toBe('true')
     mounted.app.unmount()

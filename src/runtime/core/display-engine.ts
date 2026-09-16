@@ -4,8 +4,8 @@ import { __DEV__ } from './dev'
 import type { PathKey } from './paths'
 
 /**
- * Per-form display engine: owns the clock and the timers that the pure
- * `getDisplayState` reducer policy needs, so the reducer itself stays a
+ * Per-form display engine: owns the clock and the timers the display
+ * reducer's timing policy needs, so the reducer itself stays a
  * deterministic `(prev, ctx) => next` function.
  *
  * It keeps a `Map` of the machines that are still *active* (a spinner is
@@ -24,15 +24,15 @@ import type { PathKey } from './paths'
  * retained set is bounded by the rendered non-idle fields; none of them
  * arm a timer, so retention costs memory, never CPU.
  *
- * Untrusted reducer: `getDisplayState` is consumer-overridable, so the
- * engine treats the returned `reviewAt` as untrusted. A non-finite deadline
- * (NaN / ±Infinity from a custom predicate's bad arithmetic) is ignored
- * rather than handed to `setTimeout`, where it coerces to 0 and spins; an
- * over-large finite deadline is clamped below the 32-bit `setTimeout`
- * overflow; and the timer refuses to re-arm for the exact deadline it just
- * fired, so a predicate re-emitting a fixed or past `reviewAt` can't drive an
- * infinite fire loop. None of these arise from the library default, which
- * always advances its deadline or drops it.
+ * `setTimeout` invariants on the returned `reviewAt`, enforced here rather
+ * than trusted from the reducer. A non-finite deadline is ignored rather
+ * than handed to `setTimeout`, where it coerces to 0 and spins; an over-large
+ * finite deadline is clamped below the 32-bit `setTimeout` overflow; and the
+ * timer refuses to re-arm for a deadline it just fired that has also already
+ * passed. The last of those is not belt-and-braces: the library reducer's own
+ * min-visible hold re-emits ONE fixed instant for the length of the window,
+ * which is exactly the shape that stranded a field on `'pending'` forever (see
+ * `rearm`).
  *
  * Background tabs: `setTimeout` is throttled to >= 1s while a tab is hidden,
  * so a min-visible hold can overshoot. A `visibilitychange` listener bumps
@@ -93,13 +93,11 @@ export const PENDING_LIVENESS_MS = 250
  * settling) or via its own deadline (the min-visible hold), both of
  * which arrive first. The floor only matters when neither does.
  *
- * It is structural rather than a patch on one branch because the
- * failure mode is not specific to one: `getDisplayState` is a
- * consumer-overridable extension point that this engine already treats
- * as untrusted for NaN, Infinity, and fixed-or-past deadlines. A custom
- * reducer returning `'pending'` with no `reviewAt` is the same hazard
- * with none of those tells, and the library's own reducer does exactly
- * that on its in-flight branch. Neither can strand a field now.
+ * It is structural rather than a patch on one branch because the engine
+ * owns every `setTimeout` invariant already (NaN, Infinity, and
+ * fixed-or-past deadlines). A `'pending'` machine with no `reviewAt` is
+ * the same hazard with none of those tells, and the library's own reducer
+ * emits exactly that on its in-flight branch. It cannot strand a field now.
  */
 function withLiveness(machine: DisplayMachine, now: number): DisplayMachine {
   if (machine.display !== 'pending') return machine
@@ -128,8 +126,8 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
   function nearestReviewAt(): number | null {
     let min: number | null = null
     for (const m of machines.values()) {
-      // Ignore an absent or non-finite deadline: a custom reducer may return
-      // `reviewAt: NaN` / `Infinity`, which must never reach `setTimeout`.
+      // Ignore an absent or non-finite deadline: `NaN` / `Infinity` must
+      // never reach `setTimeout`, where they coerce to 0 and spin.
       if (m.reviewAt === undefined || !Number.isFinite(m.reviewAt)) continue
       if (min === null || m.reviewAt < min) min = m.reviewAt
     }
@@ -147,14 +145,15 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     if (timer !== null && timerTarget === target) return
     // Forward-progress guard: never re-arm for a deadline we just fired
     // that has ALSO already passed. That pair is the busy-loop shape this
-    // guards against, where a misbehaving reducer pins `reviewAt` to a
-    // fixed or past instant and every fire immediately re-emits it.
+    // guards against, where the reducer pins `reviewAt` to a fixed or past
+    // instant and every fire immediately re-emits it.
     //
     // The `target <= now` half is load-bearing, not belt-and-braces. An
     // earlier version refused on the deadline alone, on the premise that
     // legitimate timing always advances a deadline or drops it. The
-    // min-visible hold breaks that premise: while a spinner is inside its
-    // window the reducer re-emits `pendingShownAt + minVisible`, which is
+    // library reducer's own min-visible hold breaks that premise: while
+    // a spinner is inside its window the reducer re-emits
+    // `pendingShownAt + minVisible`, which is
     // by design the SAME instant on every pass. A timer that fired a
     // fraction early (or landed on a `Date.now()` that had not yet ticked
     // past the deadline) left the reducer re-emitting that deadline while

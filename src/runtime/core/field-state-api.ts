@@ -6,14 +6,13 @@ import type {
   FieldState,
   FieldStateDerivedKey,
   FormMeta,
-  GetDisplayState,
   ValidationError,
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import type { DynamicPathSweep } from './dynamic-path-sweep'
 import { __DEV__ } from './dev'
-import { defaultDisplayState, isDefaultDisplayState } from './display-state'
+import { defaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
 import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
 import { windowUnder } from './error-path-index'
@@ -22,18 +21,6 @@ import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import { canonicalizePath, isPathPrefix, keyForSegments, type Path, type PathKey } from './paths'
-
-/**
- * Dedup set for the dev-only "consumer predicate threw" warn. Keyed by
- * the predicate function itself so a stable consumer reference earns
- * one warn for its lifetime — a single bad predicate doesn't flood the
- * console on every field read. New predicate references (each new
- * `useForm({ getDisplayState })` call producing a fresh closure) warn
- * once each, so a regression on a different form still surfaces.
- *
- * WeakSet so the registry never pins a consumer predicate against GC.
- */
-const warnedDisplayStatePredicates = new WeakSet<GetDisplayState>()
 
 function isUnderStubAncestor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -80,9 +67,9 @@ export type { FieldState }
 
 /**
  * Internal shape of a field's reactive state minus the derived
- * predicate-fed properties (`displayState`, the `show*` booleans, and
- * `firstError` — see `FieldStateDerivedKey`). The predicate
- * `state.getDisplayState(field, formMeta)` is invoked with this exact
+ * reducer-fed properties (`displayState`, the `show*` booleans, and
+ * `firstError` — see `FieldStateDerivedKey`). The reducer
+ * `defaultDisplayState(prev, { field, formMeta, ... })` is invoked with this exact
  * shape on the field side: the keys literally are not present, so a
  * vanilla-JS adopter (or `as`-cast caller) cannot read `field.displayState`
  * from inside their predicate and form a cycle. Pair with `FormMetaBase`
@@ -115,14 +102,12 @@ export function buildFieldStateAccessor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
-  sweep: DynamicPathSweep,
-  options?: { readonly getDisplayState?: GetDisplayState }
+  sweep: DynamicPathSweep
 ) {
   // Per-path memoisation so `getFieldStateAt(p)` returns the same
   // `ComputedRef` reference on repeated reads with the same canonical
   // path.
   const cache = new Map<PathKey, ComputedRef<FieldState<unknown>>>()
-  const predicate = options?.getDisplayState
 
   // A cached entry holds its path's `value` and its `original`, so this
   // cache pins form data rather than bookkeeping alone. Nothing evicted
@@ -149,8 +134,8 @@ export function buildFieldStateAccessor<F extends GenericForm>(
     if (cached !== undefined) return cached
     const c = computed<FieldState<unknown>>(() =>
       state.schema.isLeafAtPath(segments)
-        ? buildLeafFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
-        : buildContainerFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
+        ? buildLeafFieldState(state, segments, key, formInstanceId, getFormMetaBase)
+        : buildContainerFieldState(state, segments, key, formInstanceId, getFormMetaBase)
     )
     cache.set(key, c)
     sweep.track(segments, key)
@@ -285,19 +270,17 @@ function buildLeafFieldStateBase<F extends GenericForm>(
 
 /**
  * Per-leaf full computation: builds the base, then layers on
- * `displayState` / the `show*` booleans / `firstError` via
- * `state.getDisplayState`. The base object passed to the predicate has
- * none of those keys at runtime (it's the literal `FieldStateBase` we
- * just constructed) — recursion is impossible regardless of TS vs
- * vanilla-JS.
+ * `displayState` / the `show*` booleans / `firstError` via the display
+ * reducer. The base object handed to the reducer has none of those keys
+ * at runtime (it's the literal `FieldStateBase` we just constructed) —
+ * recursion is impossible regardless of TS vs vanilla-JS.
  */
 function buildLeafFieldState<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
   key: PathKey,
   formInstanceId: string,
-  getFormMetaBase: FormMetaBaseGetter,
-  getDisplayState?: GetDisplayState
+  getFormMetaBase: FormMetaBaseGetter
 ): FieldState<unknown> {
   const base = buildLeafFieldStateBase(state, segments, key, formInstanceId)
   const validatingSince = state.fieldValidatingSince.get(key) ?? null
@@ -310,8 +293,7 @@ function buildLeafFieldState<F extends GenericForm>(
     validatingSince,
     transformingSince,
     false, // revealedDescendantError: leaves have no descendants
-    false, // isRoot: a leaf is never the form root
-    getDisplayState
+    false // isRoot: a leaf is never the form root
   )
 }
 
@@ -669,8 +651,7 @@ function buildContainerFieldState<F extends GenericForm>(
   segments: Path,
   key: PathKey,
   formInstanceId: string,
-  getFormMetaBase: FormMetaBaseGetter,
-  getDisplayState?: GetDisplayState
+  getFormMetaBase: FormMetaBaseGetter
 ): FieldState<unknown> {
   const { base, validatingSince, transformingSince, revealedDescendantError } =
     buildContainerFieldStateBase(state, segments, key, formInstanceId)
@@ -682,8 +663,7 @@ function buildContainerFieldState<F extends GenericForm>(
     validatingSince,
     transformingSince,
     revealedDescendantError,
-    segments.length === 0,
-    getDisplayState
+    segments.length === 0
   )
 }
 
@@ -703,13 +683,6 @@ function buildContainerFieldState<F extends GenericForm>(
  * not just error visibility, so it must see the no-error states too. The
  * four `show*` booleans are pure projections of the single
  * `machine.display`, so they can never disagree with it.
- *
- * A misbehaving custom reducer must not take down the reactive surface:
- * its throw is caught, warned once per reference in dev, and the read is
- * retried through the engine with `defaultDisplayState` so the fallback
- * still participates in machine state. The reducer call happens before
- * any engine mutation, so a throw leaves the machine map untouched and
- * the retry sees the same `prev`.
  */
 function decorateWithDerivedProps<F extends GenericForm>(
   base: FieldStateBase,
@@ -719,14 +692,12 @@ function decorateWithDerivedProps<F extends GenericForm>(
   validatingSince: number | null,
   transformingSince: number | null,
   revealedDescendantError: boolean,
-  isRoot: boolean,
-  getDisplayState?: GetDisplayState
+  isRoot: boolean
 ): FieldState<unknown> {
   const firstError = base.errors[0]
   // Exact-path counterpart to `firstError`: the first error in this node's
   // OWN bucket. At a leaf `base.ownErrors === base.errors`, so the two agree.
   const firstOwnError = base.ownErrors[0]
-  const predicate = getDisplayState ?? state.getDisplayState
   const formMeta = getFormMetaBase()
   const ctx: DisplayCtx = {
     field: base,
@@ -737,50 +708,31 @@ function decorateWithDerivedProps<F extends GenericForm>(
     // flight) so the reducer returns the plain verdict and hydration matches.
     now: state.ssr ? 0 : Date.now(),
   }
-  let machine: DisplayMachine
-  // The rollup is a library-default behavior; a fully custom reducer owns
-  // container verdicts. A throw falls back to the default, which restores it.
-  let rollupApplies = isDefaultDisplayState(predicate)
-  try {
-    machine = state.displayEngine.resolve(key, ctx, predicate)
-  } catch (err) {
-    if (__DEV__ && !warnedDisplayStatePredicates.has(predicate)) {
-      warnedDisplayStatePredicates.add(predicate)
-      console.warn(
-        '[attaform] custom getDisplayState threw — falling back to defaultDisplayState. ' +
-          'Subsequent throws from the same predicate will not warn again.',
-        err
-      )
-    }
-    machine = state.displayEngine.resolve(key, ctx, defaultDisplayState)
-    rollupApplies = true
-  }
+  const machine: DisplayMachine = state.displayEngine.resolve(key, ctx, defaultDisplayState)
   // Container rollup: surface a descendant's gated error (or a nested
   // cross-field error) at the container, unless a validation is in flight
-  // (pending wins) or a custom reducer owns the verdict. The reducer already
-  // resolves the field's own-path error and the anti-flash timing; this only
-  // adds the descendant dimension it cannot see from the aggregate base. The
-  // four `show*` booleans below project from this single value, so the
-  // exactly-one-true invariant holds by construction.
+  // (pending wins). The reducer already resolves the field's own-path error
+  // and the anti-flash timing; this only adds the descendant dimension it
+  // cannot see from the aggregate base. The four `show*` booleans below
+  // project from this single value, so the exactly-one-true invariant holds
+  // by construction.
   // form.meta (the root) also reads as pending while a submit runs its own
   // validation pass. The submit clears the per-field anchors, so the rollup
   // cannot see that window; gating on a live submit keeps everyday per-field
   // validation on the anti-flashed rollup path, and the handler phase
   // (submitting with no active validation) is never pending, since show*
   // tracks validation, not submission.
-  const submitValidating =
-    rollupApplies && isRoot && state.submitting.value && state.activeValidations.value > 0
+  const submitValidating = isRoot && state.submitting.value && state.activeValidations.value > 0
   const resolvedDisplayState: DisplayState =
     machine.display === 'pending' || submitValidating
       ? 'pending'
-      : rollupApplies && revealedDescendantError
+      : revealedDescendantError
         ? 'error'
         : machine.display
   // A disabled form shows no field verdict: value writes no-op and the
   // field is inert, so error / pending / success all stand down to
-  // `'idle'` regardless of the (possibly custom) reducer's output. The
-  // engine still ran above, so its per-path machine state stays coherent
-  // for when the form is re-enabled.
+  // `'idle'`. The engine still ran above, so its per-path machine state
+  // stays coherent for when the form is re-enabled.
   const displayState: DisplayState = base.disabled === true ? 'idle' : resolvedDisplayState
   return {
     ...base,

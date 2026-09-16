@@ -166,4 +166,4 @@ Every history position captures the `blankPaths` set at the time of the snapshot
 
 - [Defaults from the schema](/docs/schemas/defaults): auto-mark interacts with `defaultValues`; explicit values turn it off.
 - [`unset`](/docs/writing-and-mutating/unset): flag any path blank in `defaultValues`, `setValue`, or `reset`.
-- [Display state and showing errors](/docs/validation/showing-errors): `firstError` includes the `no-value-supplied` entry; `getDisplayState` decides when to render it.
+- [Display state and showing errors](/docs/validation/showing-errors): `firstError` includes the `no-value-supplied` entry; the display state decides when to render it.

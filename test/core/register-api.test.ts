@@ -312,35 +312,14 @@ describe('buildRegister', () => {
       expect(typeof register(['email']).isRequired).toBe('boolean')
     })
 
-    it('enables aria by default, and the verdict reuses getDisplayStateAt', () => {
+    it('the verdict reuses getDisplayStateAt', () => {
       const ds = ref<DisplayState>('idle')
       const { register } = makeAriaRegister({ getDisplayStateAt: () => ds.value })
       const rv = register(['email'])
-      expect(rv.ariaEnabled).toBe(true)
       expect(rv.ariaDisplayState?.value).toBe('idle')
       // Reactive: a verdict change flows through without re-registering.
       ds.value = 'error'
       expect(rv.ariaDisplayState?.value).toBe('error')
-    })
-
-    it('disables aria for the whole form when autoAria is false', () => {
-      const { register } = makeAriaRegister({ autoAria: false, getDisplayStateAt: () => 'idle' })
-      expect(register(['email']).ariaEnabled).toBe(false)
-    })
-
-    it('disables aria per-binding via the register autoAria option', () => {
-      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'idle' })
-      expect(register(['email'], { autoAria: false }).ariaEnabled).toBe(false)
-      // Sibling bindings on the same form keep aria on.
-      expect(register(['note']).ariaEnabled).toBe(true)
-    })
-
-    it('re-enables aria per-binding even when the form opted out', () => {
-      const { register } = makeAriaRegister({ autoAria: false, getDisplayStateAt: () => 'idle' })
-      // Per-binding autoAria overrides the form-level opt-out in both directions.
-      expect(register(['email'], { autoAria: true }).ariaEnabled).toBe(true)
-      // Bindings that don't override still inherit the form's opt-out.
-      expect(register(['note']).ariaEnabled).toBe(false)
     })
 
     it('omits ariaDisplayState when no accessor is wired (hand-rolled factory)', () => {

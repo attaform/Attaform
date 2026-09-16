@@ -63,11 +63,11 @@ The Nuxt module auto-imports the form composables you reach for inside `<script 
 </script>
 ```
 
-Everything else stays an explicit import from `attaform`: the plugin (`createAttaform`), the `unset` sentinel, and the `defaultDisplayState` reducer.
+Everything else stays an explicit import from `attaform`: the plugin (`createAttaform`), the `unset` sentinel, and the error classes.
 
 ```vue
 <script setup lang="ts">
-  import { defaultDisplayState, unset } from 'attaform'
+  import { AttaformError, unset } from 'attaform'
 </script>
 ```
 

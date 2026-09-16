@@ -39,12 +39,12 @@ export type FormKey = string
 
 /**
  * Per-form options threaded from `useForm` into the adapter factory.
- * Today carries the resolved `maxRecursionDepth` so adapter walks can
- * cap their descent through recursive schemas; future per-form runtime
- * knobs land here too.
+ * Today carries `maxRecursionDepth` so adapter walks can cap their
+ * descent through recursive schemas; future per-form runtime knobs
+ * land here too.
  */
 export interface SchemaFactoryOptions {
-  /** Resolved recursion ceiling (per-form > app-default > library default). */
+  /** Recursion ceiling for walks through recursive schemas. */
   maxRecursionDepth: number
 }
 
@@ -1145,11 +1145,9 @@ export type UseFormConfiguration<
    *
    * For schemas that depend on the form's identity or per-form
    * options, pass a factory `(key, options) => schema` instead — the
-   * library calls it once per form, after `mergeWithDefaults` has
-   * resolved the options bag (`maxRecursionDepth`, etc.). Most
-   * adapters ignore the options argument; the typed Zod entry points
-   * use it to thread the resolved recursion cap into the adapter
-   * closure.
+   * library calls it once per form. Most adapters ignore the options
+   * argument; the typed Zod entry points use it to thread the
+   * recursion cap into the adapter closure.
    */
   schema: Schema | ((key: FormKey, options: SchemaFactoryOptions) => Schema)
   /**
@@ -1312,76 +1310,16 @@ export type UseFormConfiguration<
    * Schema-driven coercion of user-typed DOM values at the v-register
    * directive layer.
    *
-   * - `true` / `undefined` — runs the built-in `defaultCoercionRules`.
-   * - `false` — disables coercion; the slim gate rejects mismatches.
-   * - `CoercionRegistry` — a custom array of entries (REPLACES, not
-   *   merges, the plugin defaults). Spread `defaultCoercionRules` to
-   *   extend.
+   * Two rules ship: string→number and string→boolean, each firing
+   * only when the schema declares that single type at the path.
+   * Defaults to on; `false` disables coercion form-wide and the slim
+   * gate rejects mismatches instead.
    *
    * Coercion applies ONLY to user-typed DOM values. Programmatic
    * writes (`form.setValue`, `setValueWithInternalPath`) are NEVER
    * coerced.
    */
-  coerce?: boolean | CoercionRegistry
-  /**
-   * Per-form override of the `getDisplayState` heuristic that drives
-   * `field.displayState` and the `show*` booleans (and their `form.meta`
-   * rollups). Falls back to the library default
-   * (`defaultDisplayState`).
-   *
-   * The library default opens one timing gate, then resolves by
-   * precedence: gate closed → `'idle'`; a run in flight → a delayed
-   * `'pending'`; an own-path error → `'error'`; otherwise earned
-   * `valid` → `'success'`, else `'idle'`. The gate opens after the
-   * first submit attempt OR once the field is edited and left.
-   * Compose with it via the public `defaultDisplayState` export, or
-   * retune its timing via `makeDefaultDisplayState`.
-   *
-   * The reducer's `ctx.field` / `ctx.formMeta` are `Omit`'d of the
-   * derived `displayState` / `show*` / `firstError` keys (see
-   * `FieldStateDerivedKey`) to prevent a self-referential reducer.
-   */
-  getDisplayState?: GetDisplayState
-  /**
-   * Recursion ceiling for schema walks that descend through recursive
-   * schemas (Zod's `z.lazy(...)` today). Default `64`.
-   *
-   * Schemas that don't include a recursive boundary ignore this knob
-   * entirely — it's read only at the descent step through a recursive
-   * wrapper. Set it on the specific form whose schema is recursive
-   * (a comment tree, a category tree, a nested-rule editor):
-   *
-   * ```ts
-   * useForm({ schema: commentTreeSchema, maxRecursionDepth: 128 })
-   * ```
-   *
-   * Past the cap, the slim-primitive type gate falls back to permissive
-   * (write-time type checks skip; full schema validation still runs).
-   * Storage and reads work at any depth; only the per-write type gate
-   * stops short of the cap. Raise the cap if you regularly edit nodes
-   * beyond the default depth.
-   *
-   * Pass `Infinity` to disable the cap entirely. Walks then descend
-   * through recursive boundaries until they terminate structurally; a
-   * schema with no structural terminator will exhaust the JS call
-   * stack. Reserve it for schemas whose authors are confident the
-   * recursion is bounded by the actual data shape.
-   */
-  maxRecursionDepth?: number
-  /**
-   * Whether `v-register` automatically manages aria attributes
-   * (`aria-invalid`, `aria-busy`, `aria-required`, `aria-describedby`)
-   * from the field's display state. **Defaults to `true`.**
-   *
-   * **Resolution order (per-register override > per-form > library):**
-   *
-   *   register(path, { autoAria })  >  useForm({ autoAria })  >  library default (`true`)
-   *
-   * Set `false` to leave all aria wiring to your own markup form-wide.
-   * Any aria attribute you author yourself is always left untouched,
-   * independent of this flag.
-   */
-  autoAria?: boolean
+  coerce?: boolean
   /**
    * @internal
    * SSR prefetch mark — set by the `attaform/vite` compile-time
@@ -1479,11 +1417,11 @@ export type DisplayMachine = {
 }
 
 /**
- * Inputs to a `getDisplayState` reducer. `field` and `formMeta` are the
- * same reactive snapshots a predicate has always received (still minus
- * the derived `displayState` / `show*` / `firstError` keys — see
- * `FieldStateDerivedKey` — so a reducer can never read its own output and
- * form a cycle), now joined by:
+ * Inputs to the display reducer. `field` and `formMeta` are the
+ * reactive snapshots it resolves against (minus the derived
+ * `displayState` / `show*` / `firstError` keys — see
+ * `FieldStateDerivedKey` — so the reducer can never read its own output
+ * and form a cycle), joined by:
  *
  * - `validatingSince` — `Date.now()` at which the field's current
  *   validation streak opened, or `null` when nothing is in flight. This,
@@ -1512,26 +1450,9 @@ export type DisplayCtx = {
  * returns the next machine; the engine owns the clock and the timers, the
  * reducer owns the timing policy. Runs on every field-state read (and
  * again whenever a `reviewAt` deadline fires), so the whole app's
- * validation-display behavior flows from this one function.
- *
- * The library default — `defaultDisplayState` — is publicly exported so a
- * layered reducer can compose with it, and `makeDefaultDisplayState`
- * builds a default with custom anti-flash timings:
- *
- * ```ts
- * import { defaultDisplayState } from 'attaform'
- *
- * useForm({
- *   schema,
- *   // Defer to the default everywhere, but never show a success check on `username`.
- *   getDisplayState: (prev, ctx) => {
- *     const next = defaultDisplayState(prev, ctx)
- *     return next.display === 'success' && ctx.field.path[0] === 'username'
- *       ? { display: 'idle' }
- *       : next
- *   },
- * })
- * ```
+ * validation-display behavior flows from this one function
+ * (`core/display-state.ts`).
+ * @internal
  */
 export type GetDisplayState = (prev: DisplayMachine, ctx: DisplayCtx) => DisplayMachine
 
@@ -1692,88 +1613,6 @@ export type RegisterFlatPath<Form> = Form extends unknown
 export type RegisterTransform = (value: unknown, ctx?: TransformContext) => unknown
 
 /**
- * Runtime type for a slim primitive kind. Used to narrow the
- * `transform` parameter and return value on a `CoercionEntry` so
- * authors writing rules don't have to cast `unknown`.
- *
- * Exhaustive over `SlimPrimitiveKind` — adding a new kind to that
- * union must add a corresponding branch here.
- */
-export type SlimRuntimeOf<K extends SlimPrimitiveKind> = K extends 'string'
-  ? string
-  : K extends 'number'
-    ? number
-    : K extends 'boolean'
-      ? boolean
-      : K extends 'bigint'
-        ? bigint
-        : K extends 'date'
-          ? Date
-          : K extends 'null'
-            ? null
-            : K extends 'undefined'
-              ? undefined
-              : K extends 'array'
-                ? readonly unknown[]
-                : K extends 'set'
-                  ? ReadonlySet<unknown>
-                  : K extends 'map'
-                    ? ReadonlyMap<unknown, unknown>
-                    : K extends 'object'
-                      ? Record<string, unknown>
-                      : K extends 'symbol'
-                        ? symbol
-                        : K extends 'function'
-                          ? (...args: never[]) => unknown
-                          : never
-
-/**
- * Outcome of a coercion attempt.
- *
- * - `coerced: true` — the rule produced `value`, which the directive
- *   forwards to the slim gate (the gate may still reject if the
- *   value doesn't satisfy the path's accept set).
- * - `coerced: false` — the rule decided it can't coerce this input.
- *   The directive passes the original value through; the slim gate
- *   decides downstream.
- *
- * Discriminated rather than `O | undefined` so rules with
- * `output: 'undefined'` or `output: 'null'` don't conflict with the
- * "skip" signal.
- */
-export type CoercionResult<O> = { coerced: true; value: O } | { coerced: false }
-
-/**
- * A single coercion rule. `input` and `output` are
- * `SlimPrimitiveKind` literals; `transform` receives a value already
- * narrowed to `SlimRuntimeOf<input>` and returns
- * `CoercionResult<SlimRuntimeOf<output>>`.
- *
- * Rules MUST be sync. They SHOULD NOT throw — wrap internal
- * try/catch when the conversion can fail (e.g. `BigInt(s)` throws
- * for non-numeric strings). The library wraps each invocation in
- * try/catch as defense in depth; throws are caught, logged once per
- * `(input, output)`, and the original value passes through.
- */
-export type CoercionEntry<
-  I extends SlimPrimitiveKind = SlimPrimitiveKind,
-  O extends SlimPrimitiveKind = SlimPrimitiveKind,
-> = {
-  readonly input: I
-  readonly output: O
-  readonly transform: (value: SlimRuntimeOf<I>) => CoercionResult<SlimRuntimeOf<O>>
-}
-
-/**
- * A registry is an ordered array of `CoercionEntry` records.
- * Consumers compose by spreading `defaultCoercionRules` and
- * appending their own entries. Order is observable only when two
- * entries share the same `(input, output)` pair — the library emits
- * a one-shot dev-warn and the LATER entry wins.
- */
-export type CoercionRegistry = readonly CoercionEntry[]
-
-/**
  * Options for `register(path, options)`. Per-field configuration
  * applied at the binding's own call site.
  */
@@ -1810,21 +1649,6 @@ export type RegisterOptions = {
    * instead — see the "Custom assigners" section in the API docs.
    */
   transforms?: ReadonlyArray<RegisterTransform>
-  /**
-   * Per-binding override for automatic aria management, the narrowest
-   * tier of the `autoAria` cascade. By default the directive keeps
-   * `aria-invalid` / `aria-busy` / `aria-required` / `aria-describedby`
-   * in sync with the field's display state. Pass `autoAria: false` to
-   * leave every aria attribute on this element to you (the directive
-   * still manages value binding and registration), or `autoAria: true`
-   * to re-enable management on one binding even when the form set
-   * `useForm({ autoAria: false })`.
-   *
-   * Overrides `useForm({ autoAria })`. Writing an aria attribute
-   * yourself also locks the directive out of that one attribute,
-   * regardless of this flag.
-   */
-  autoAria?: boolean
 }
 
 /**
@@ -2177,14 +2001,6 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   isRequired?: boolean
-  /**
-   * Whether the directive should auto-manage aria attributes for this
-   * binding. Resolves the per-register `autoAria` override against the
-   * form-level value: `options.autoAria ?? formAutoAria`. The directive
-   * treats an absent value as off.
-   * @internal
-   */
-  ariaEnabled?: boolean
   /**
    * The gated display-state verdict for this path, reusing the same
    * field-state identity as `form.fields`. The directive watches it to
@@ -2817,10 +2633,11 @@ export type FieldState<Value = unknown> = {
    * <FieldStatusIcon :state="form.fields.email.displayState" />
    * ```
    *
-   * Resolved by the `getDisplayState` heuristic:
-   * `useForm({ getDisplayState })` → library default
-   * (`defaultDisplayState`). Override per form, or compose with
-   * `defaultDisplayState` for a layered predicate.
+   * Resolved by the display heuristic: gate closed → `'idle'`; a run
+   * in flight → a delayed `'pending'`; an own-path error → `'error'`;
+   * otherwise earned `valid` → `'success'`, else `'idle'`. The gate
+   * opens after the first submit attempt OR once the field is edited
+   * and left.
    *
    * Available on container paths too: `form.fields.users[0].displayState`
    * rolls up over the row's descendants.
@@ -3482,9 +3299,8 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * the counter at its prior value.
    *
    * Pure introspection counter — useful for "this form has been
-   * visited and left" UX (analytics, prior-step badges, layered
-   * `getDisplayState` predicates) but does NOT drive the library's
-   * default `getDisplayState` heuristic. The reveal-on-submit story
+   * visited and left" UX (analytics, prior-step badges) but does NOT
+   * drive the display heuristic. The reveal-on-submit story
    * runs entirely through `submissionAttempts`, which
    * `wizard.handleSubmit` bumps on every form (it always validates the
    * whole step list).
@@ -4367,9 +4183,9 @@ export type UseFormReturnType<
    * heuristic.** `touched` also flips on a bare focus → blur with no
    * edit, so the library-default gate deliberately ignores it and
    * reads `blurredAfterInteraction` instead — the stricter bit that
-   * only a blur *following* an edit sets. Reach for `touch()` when a
-   * custom `getDisplayState` reducer or your analytics reads
-   * `touched`; reach for {@link UseFormReturnType.interact} to make
+   * only a blur *following* an edit sets. Reach for `touch()` when
+   * your own analytics reads `touched`; reach for
+   * {@link UseFormReturnType.interact} to make
    * seeded or imported values surface their errors.
    *
    * Pure flag write — does not mutate value, focused, blurred, or

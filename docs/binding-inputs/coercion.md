@@ -1,6 +1,6 @@
 ---
 title: Schema-driven coercion
-description: The default coercion registry turns DOM strings into numbers and booleans automatically. Compose your own entries to coerce any leaf type.
+description: Coercion turns DOM strings into numbers and booleans automatically, so a plain text input can back a z.number() or z.boolean() leaf.
 metaRows:
   - label: Category
     value: Directive layer
@@ -9,14 +9,11 @@ metaRows:
   - label: Option
     value: useForm({ coerce })
     kind: code
-  - label: Registry type
-    value: readonly CoercionEntry[]
-    kind: code
 ---
 
 # Schema-driven coercion
 
-> Two built-in rules handle 90 % of real forms: string → number and string → boolean. Compose more when your schema needs them.
+> Two rules, both on by default: string → number and string → boolean. They are what make a plain text input back a numeric or boolean leaf.
 
 ::docs-meta-table
 ::
@@ -26,17 +23,12 @@ Type a number into the `count` field and watch it land in storage as a `number` 
 ::docs-demo{slug="coercion" label="Coercion Demo"}
 ::
 
-## The default registry
+## The two rules
 
-```ts
-defaultCoercionRules = [
-  { input: 'string', output: 'number', transform: parseNumber },
-  { input: 'string', output: 'boolean', transform: parseTrueFalse },
-]
-```
+Each fires only when the schema declares that single type at the path. A path that accepts `string` as well (`z.union([z.string(), z.number()])`) is left alone, because the schema said either is fine and silent retyping would be a guess.
 
-- **string → number** trims whitespace, parses with `Number()`, returns `coerced: false` on `NaN` (the slim gate then rejects the unparseable value with a friendly message). Whitespace-only inputs skip the coercion so blank-paths machinery stays in charge.
-- **string → boolean** lowercases + trims, accepts `'true'` / `'false'` in any case (`'True'`, `'FALSE'`, `' true '`). Anything else skips so the gate can reject.
+- **string → number** trims whitespace, parses with `Number()`, and passes the original through on `NaN` (the slim gate then rejects the unparseable value with a friendly message). Whitespace-only inputs skip the coercion so blank-paths machinery stays in charge.
+- **string → boolean** lowercases + trims, accepts `'true'` / `'false'` in any case (`'True'`, `'FALSE'`, `' true '`). Anything else passes through so the gate can reject.
 
 The same two rules cover most native HTML input shapes: `<input type="number">` (number leaf), `<input type="checkbox" value="...">` (boolean leaf), `<select>` with numeric option values.
 
@@ -50,75 +42,41 @@ The coercion step sits between the directive's value extraction and the slim-typ
 DOM event → extract → modifier (.trim, .number) → transforms[] → coerce → slim gate → storage
 ```
 
-A value the registry can't coerce (`coerced: false`) passes through unchanged; the slim gate handles the rejection downstream with a typed diagnostic.
+A value neither rule can convert passes through unchanged; the slim gate handles the rejection downstream with a typed diagnostic.
 
-One modifier sits outside that line. [`.trim`](/docs/binding-inputs/modifiers) holds its strip until the user leaves the field, so on each keystroke the transforms and the registry both see the untrimmed string, and the trimmed one travels the same line again at blur. `.number` and `.lazy.trim` land exactly where the diagram puts them.
+One modifier sits outside that line. [`.trim`](/docs/binding-inputs/modifiers) holds its strip until the user leaves the field, so on each keystroke the transforms and the coercion step both see the untrimmed string, and the trimmed one travels the same line again at blur. `.number` and `.lazy.trim` land exactly where the diagram puts them.
 
 [`<input type="file">`](/docs/binding-inputs/file) inputs skip coercion entirely; `File` handles are objects, not strings, and land in storage as-is.
 
-## Extending the default registry
-
-`useForm({ coerce })` accepts three forms:
+## Turning it off
 
 ```ts
-useForm({ coerce: true }) //   defaults (string→number, string→boolean)
-useForm({ coerce: false }) //   no coercion; slim gate rejects mismatches as-is
-useForm({ coerce: [...defaultCoercionRules, defineCoercion({ ... })] })
+useForm({ coerce: true }) //   the default: string→number, string→boolean
+useForm({ coerce: false }) //   no coercion; the slim gate rejects mismatches as-is
 ```
 
-Spread `defaultCoercionRules` to extend; pass a bare array to **replace** entirely. Adding a string → Date rule for ISO timestamps:
+That is the whole option. Coercion is a narrow, schema-driven convenience, not an extension point, so there is no rule registry to compose.
+
+## Converting anything else
+
+Use a [register transform](/docs/binding-inputs/transforms). Transforms run on user input, immediately before coercion, and whatever they return is what the slim gate sees, so a leaf type Attaform does not coerce is one function away:
 
 ```ts
-import { useForm } from 'attaform'
-import { defaultCoercionRules, defineCoercion } from 'attaform'
-
-useForm({
-  schema,
-  coerce: [
-    ...defaultCoercionRules,
-    defineCoercion({
-      input: 'string',
-      output: 'date',
-      transform: (s) => {
-        const d = new Date(s)
-        return Number.isFinite(d.getTime()) ? { coerced: true, value: d } : { coerced: false }
-      },
-    }),
-  ],
-})
+const toDate = (value: unknown): unknown => {
+  const parsed = new Date(String(value))
+  return Number.isFinite(parsed.getTime()) ? parsed : value
+}
 ```
 
-Now `<input type="text" v-register="form.register('publishedAt')" />` against a `z.date()` leaf works without modifiers.
-
-## Sharing one rule set across forms
-
-A coercion registry is a plain array, so hoist it once and pass the same value to every form that needs it:
-
-```ts
-import { defaultCoercionRules, defineCoercion } from 'attaform'
-
-export const appCoercion = [
-  ...defaultCoercionRules,
-  defineCoercion({
-    input: 'string',
-    output: 'date',
-    transform: (s) => {
-      const d = new Date(s)
-      return Number.isFinite(d.getTime()) ? { coerced: true, value: d } : { coerced: false }
-    },
-  }),
-]
+```vue
+<input v-register="form.register('publishedAt', { transforms: [toDate] })" />
 ```
 
-Per-form `useForm({ coerce })` overrides the plugin default. The plugin default overrides Attaform's built-in default (`defaultCoercionRules`). Three layers, deterministic resolution.
-
-## Sync, no throws
-
-Coercion rules MUST be sync. They SHOULD NOT throw; wrap internal try / catch when the conversion can fail (e.g. `BigInt('not-a-number')` throws for non-numeric strings). Attaform wraps each invocation in try / catch as defense in depth; throws are caught, logged once per `(input, output)` pair, and the original value passes through to the slim gate.
+Now that binding writes a real `Date` into a `z.date()` leaf. The transform is a plain function, so hoist it into a module and share it across every form that needs the same conversion.
 
 ## Where to next
 
-- [Modifiers](/docs/binding-inputs/modifiers): `.number` for the `<input type="text">` + numeric-leaf combo without touching the registry.
+- [Modifiers](/docs/binding-inputs/modifiers): `.number` for the `<input type="text">` + numeric-leaf combo.
 - [Register transforms](/docs/binding-inputs/transforms): the per-field write pipeline that runs before coercion.
 - [`form.setValue`](/docs/writing-and-mutating/set-value): the programmatic-write surface that bypasses coercion entirely.
 - [The `v-register` directive](/docs/binding-inputs/v-register): the layer coercion plugs into.

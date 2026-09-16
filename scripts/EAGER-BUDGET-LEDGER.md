@@ -480,3 +480,59 @@ them all along, because `strict: true` was already the default.
    rejection would stand out.
 
 Budget 33_940 -> 33_870 (~0.29 kB headroom).
+
+## A3 Ratchet: the cheap options, 2026-09-16
+
+Four `useForm` options removed in one pass. 33,571 -> 33,092 B, **-479
+B**, against a -93 B joint ablation estimate. The estimate was low for
+the same reason A1's and A2's were: an ablation deletes a call shape,
+while removing an option also deletes everything that existed only to
+serve a caller who is now gone. Measured one at a time:
+
+- `maxRecursionDepth` **-64 B**. The option is gone; the cap is now the
+  fixed `DEFAULT_MAX_RECURSION_DEPTH` (64), still threaded through the
+  adapter SPI so a custom adapter can read it. Most of the delta is the
+  cascade: with no consumer-supplied depth there is nothing left that
+  wants `Infinity`, so `normalizeNumericOption` loses its
+  `allowInfinity` parameter, its pass-through branch, and the pair of
+  dev-warn strings that described the two accepted ranges.
+- `autoAria` **-39 B**. Both tiers (`useForm` and per-`register`) and
+  the resolved `RegisterValue.ariaEnabled` they produced. The feature is
+  untouched and now unconditional. The opt-out never earned its keep:
+  authoring an aria attribute already locks the directive out of that
+  one attribute, per attribute, so the flag only ever bought
+  less-accessible output. The four `rv.ariaEnabled !== true ||
+rv.ariaDisplayState === undefined` gates collapse to the second half,
+  which is the real seam (a hand-rolled register factory has no
+  field-state accessor to close over and so gets no aria wiring).
+- `coerce`'s custom-registry arm + `defineCoercion` **-180 B**, the
+  largest single item and none of it the rules themselves. What died is
+  the machinery that existed only because a consumer could supply a
+  rule: the `CoercionRegistry` -> index build, its duplicate-pair and
+  malformed-entry dev-warns, and in the per-keystroke path a try/catch,
+  a wrong-return-kind post-validate, a non-finite guard, three more
+  dev-warn strings, and the WeakMap + Set that deduped them. Every one
+  of those was defending against a caller's transform. With only the
+  two library rules left there is no caller, and the resolved config
+  collapses from a per-form `Map` to a boolean. `coerce: false` still
+  works; a leaf type Attaform does not coerce is now a `register`
+  transform, which runs immediately before coercion anyway.
+- `getDisplayState` **-196 B**. The reducer is library code now, so the
+  untrusted-reducer path goes with it: the per-reference throw dedupe
+  WeakSet and its warn, the catch-and-retry through the default, and
+  `isDefaultDisplayState` plus the `crossCopyState` WeakSet family that
+  existed so the container error rollup would still apply when a
+  consumer built their reducer in a second bundler graph (#577). The
+  rollup is now unconditional, which drops `rollupApplies` from two
+  ternaries. `makeDefaultDisplayState` collapses into the reducer it
+  built, since custom timings had nowhere left to be installed.
+  `DEFAULT_TIMINGS` stays as an internal export: the tests and the
+  demo-latency floor read it.
+
+The display engine keeps its non-finite / overflow / forward-progress
+guards. Those read as consumer-trust defenses in the old docblock, but
+the forward-progress one is not: it pins the `docs-demos-smoke`
+async-refinements flake, which the library's OWN min-visible hold
+caused. The docblock now says that rather than the other way round.
+
+Budget 33_870 -> 33_400 (~0.31 kB headroom).

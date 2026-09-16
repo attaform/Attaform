@@ -1,17 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, watchEffect } from 'vue'
-import { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from '../../src'
-import type { DisplayCtx, DisplayMachine, GetDisplayState, ValidationError } from '../../src'
+import type { ValidationError } from '../../src'
 import { createDisplayEngine, PENDING_LIVENESS_MS } from '../../src/runtime/core/display-engine'
-import { FOCUS_OUT_GRACE } from '../../src/runtime/core/display-state'
+import {
+  DEFAULT_TIMINGS,
+  defaultDisplayState,
+  FOCUS_OUT_GRACE,
+} from '../../src/runtime/core/display-state'
+import type { DisplayCtx, DisplayMachine, GetDisplayState } from '../../src/runtime/types/types-api'
 import type { PathKey } from '../../src/runtime/core/paths'
 
 /**
  * Pure-reducer lock for the anti-flash display timing.
  *
- * `makeDefaultDisplayState` returns a deterministic `(prev, ctx) => next`
- * reducer: the engine injects `now`, threads the previous `DisplayMachine`,
- * and supplies `validatingSince` (the streak anchor). Because every input
+ * `defaultDisplayState` is a deterministic `(prev, ctx) => next` reducer:
+ * the engine injects `now`, threads the previous `DisplayMachine`, and
+ * supplies `validatingSince` (the streak anchor). Because every input
  * is explicit, the show-delay / min-visible behaviour is testable without
  * a clock or a mounted form — that is the backbone these tests pin down.
  * Integration coverage (a real form, real timers) lives in
@@ -442,43 +446,6 @@ describe('default reducer — cross-episode continuity', () => {
     )
     expect(next.display).toBe('pending')
     expect(next.pendingShownAt).toBe(2000)
-  })
-})
-
-describe('makeDefaultDisplayState — custom timings', () => {
-  it('{ showDelay: 0, minVisible: 0 } reproduces immediate, un-held pending (regression bridge)', () => {
-    const immediate = makeDefaultDisplayState({ showDelay: 0, minVisible: 0 })
-    const opened = immediate(
-      { display: 'error' },
-      ctx({
-        field: field({ errors: [ownError], blurredAfterInteraction: true }),
-        validatingSince: 500,
-        now: 500,
-      })
-    )
-    expect(opened.display).toBe('pending')
-    // min-visible 0 → released the instant validation settles.
-    const released = immediate(
-      PENDING_AT(500),
-      ctx({
-        field: field({ errors: [ownError], blurredAfterInteraction: true }),
-        validatingSince: null,
-        now: 500,
-      })
-    )
-    expect(released.display).toBe('error')
-  })
-
-  it('honours a tighter window than the default', () => {
-    const tight = makeDefaultDisplayState({ showDelay: 30, minVisible: 90 })
-    const gated = field({ errors: [ownError], blurredAfterInteraction: true })
-    // Held just before 30ms, pending at 30ms.
-    expect(
-      tight({ display: 'error' }, ctx({ field: gated, validatingSince: 0, now: 29 })).display
-    ).toBe('error')
-    const shown = tight({ display: 'error' }, ctx({ field: gated, validatingSince: 0, now: 30 }))
-    expect(shown.display).toBe('pending')
-    expect(shown.reviewAt).toBe(30 + 90)
   })
 })
 

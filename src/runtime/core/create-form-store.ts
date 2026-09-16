@@ -16,17 +16,14 @@ import {
 import type {
   AbstractSchema,
   AttaformDomBinding,
-  CoercionRegistry,
   ErrorCell,
   FormKey,
   SchemaDefaultsResult,
-  GetDisplayState,
   TransformAbortHolder,
   ValidateOn,
   ValidationError,
   WriteMeta,
 } from '../types/types-api'
-import { resolveGetDisplayState } from './display-state'
 import { createDynamicPathSweep, type DynamicPathSweep } from './dynamic-path-sweep'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
 import {
@@ -76,7 +73,7 @@ import {
 } from './path-walker'
 import { isShadowedKey, safeAssign } from './safe-assign'
 import { __DEV__ } from './dev'
-import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
+import { resolveCoerceEnabled } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
 import { walkAuthoredFromConstraints, walkUnspecified } from './unset-walker'
 
@@ -279,18 +276,8 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly ssr: boolean
 
   /**
-   * Resolved `getDisplayState` predicate driving `field.displayState`,
-   * the `show*` booleans, and their `form.meta` rollups. Resolved once
-   * at construction via `resolveGetDisplayState(options.getDisplayState)`;
-   * `undefined` config falls through to `defaultDisplayState`. The
-   * field-state computeds read the resolved function directly on every
-   * read.
-   */
-  readonly getDisplayState: GetDisplayState
-
-  /**
    * Per-form display engine: owns the clock and the single timer the timed
-   * `getDisplayState` reducer policy needs, keeping the reducer itself a
+   * display-reducer policy needs, keeping the reducer itself a
    * pure `(prev, ctx) => next` function. The field-state computeds route
    * every `displayState` read through `displayEngine.resolve(...)`, which
    * threads the path's previous machine, persists or evicts the result, and
@@ -325,8 +312,8 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // Bumped by `useWizard` each time wizard navigation (`next`, `back`,
   // `goTo`) actually departs this form. Cleared by `reset()` alongside
   // the submission lifecycle. Feeds `submissionAttempts`-style reveal in
-  // layered `getDisplayState` predicates but does NOT drive the
-  // library default. Distinct from `submissionAttempts` (which counts
+  // layered consumer reveal logic but does NOT drive the display
+  // heuristic. Distinct from `submissionAttempts` (which counts
   // `handleSubmit` passes only) so submission accounting stays
   // unambiguous; distinct from `form.validate()`, which is a read-only
   // primitive that never bumps any counter.
@@ -842,14 +829,12 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly modules: Map<string, unknown>
 
   /**
-   * Resolved schema-coercion index — `useForm({ coerce })` compiled
-   * into a lookup keyed by `${input}->${output}` for O(1)
-   * per-keystroke dispatch.
-   * Empty Map when coercion is disabled. Read at `register()` time
-   * by `buildCoerceFn` to bake the per-path coerce closure on
-   * `RegisterValue.coerce`.
+   * Whether schema-driven coercion runs for this form — `false` only
+   * when the consumer passed `useForm({ coerce: false })`. Read at
+   * `register()` time by `buildCoerceFn` to bake the per-path coerce
+   * closure on `RegisterValue.coerce`.
    */
-  readonly coerceIndex: CoercionIndex
+  readonly coerceEnabled: boolean
 
   /**
    * Tear down non-reactive resources owned by this FormStore. Invoked
@@ -933,19 +918,11 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    */
   readonly disabled?: MaybeRefOrGetter<boolean | undefined> | undefined
   /**
-   * Schema-driven coercion config. See
-   * `UseFormConfiguration.coerce` for the full contract. Resolved
-   * once via `resolveCoercionIndex(options.coerce)` and cached on
-   * `FormStore.coerceIndex`.
+   * Schema-driven coercion switch. See `UseFormConfiguration.coerce`
+   * for the full contract. Resolved once at construction and cached
+   * on `FormStore.coerceEnabled`.
    */
-  readonly coerce?: boolean | CoercionRegistry | undefined
-  /**
-   * Configurable predicate driving `field.displayState`, the `show*`
-   * booleans, and their `form.meta` rollups. Function | undefined;
-   * resolved once at construction via `resolveGetDisplayState`. See
-   * `UseFormConfiguration.getDisplayState` for the full contract.
-   */
-  readonly getDisplayState?: GetDisplayState | undefined
+  readonly coerce?: boolean | undefined
   /**
    * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
    * on the client where the queue is never read.
@@ -3818,21 +3795,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const fieldValidationDebounceMs = normalizeNumericOption({
     value: options.debounceMs ?? DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
     source: 'useForm.debounceMs',
-    allowInfinity: false,
     min: 0,
     defaultValue: DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
   })
 
-  // Resolve the coercion config to a concrete index ONCE per form.
-  // The index is keyed by `${input}->${output}` for O(1) per-keystroke
-  // dispatch. `register()` reads it via `state.coerceIndex` to bake
-  // path-scoped coerce closures on each `RegisterValue`.
-  const coerceIndex: CoercionIndex = resolveCoercionIndex(options.coerce)
-
-  // Resolve `getDisplayState` once. `undefined` falls back to
-  // `defaultDisplayState`. The field-state computeds read the resolved
-  // function directly on every read.
-  const resolvedGetDisplayState: GetDisplayState = resolveGetDisplayState(options.getDisplayState)
+  // Resolve the coercion switch ONCE per form. `register()` reads it
+  // via `state.coerceEnabled` to bake path-scoped coerce closures on
+  // each `RegisterValue`.
+  const coerceEnabled = resolveCoerceEnabled(options.coerce)
 
   // State-scoped teardown hooks. History / any other per-state module
   // registers its disposer here so the cleanup is bound to the
@@ -3842,7 +3812,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const modules = new Map<string, unknown>()
 
   // Anti-flash display engine + its episode-timing companion. The engine
-  // owns the clock and the single timer the timed `getDisplayState` reducer
+  // owns the clock and the single timer the timed display-reducer
   // needs; `fieldValidatingSince` records when each path's latest validation
   // run started (re-stamped on every run, cleared on the → 0 edge, in
   // inc/decFieldValidation). Disposed with the store so a held spinner
@@ -4082,8 +4052,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const submitError = ref<Error | null>(null)
   // Counts wizard departures from this form. Bumped by `useWizard`
   // when `next` / `back` / `goTo` actually leaves this form; zeroed by
-  // `reset()`. Introspection only — the library-default
-  // `getDisplayState` reveals via `submissionAttempts`, not this.
+  // `reset()`. Introspection only — the display heuristic reveals via
+  // `submissionAttempts`, not this.
   const departAttempts = ref(0)
   // Data-freeze channel. `externalLock` is written by `useWizard` to
   // force a locked step's form frozen; the form's own config contributes
@@ -4277,7 +4247,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     pathSweep,
     schema,
     ssr,
-    getDisplayState: resolvedGetDisplayState,
     submitting,
     activeSubmissions,
     submissionAttempts,
@@ -4305,7 +4274,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     displayEngine,
     domBinding,
     modules,
-    coerceIndex,
+    coerceEnabled,
     blankPaths,
     originalBlankPaths,
 

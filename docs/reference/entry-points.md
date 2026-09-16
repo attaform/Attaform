@@ -129,8 +129,6 @@ import {
   vRegister,
   assignKey,
   isRegisterValue,
-  defaultCoercionRules,
-  defineCoercion,
   // SSR
   renderAttaformState,
   hydrateAttaformState,
@@ -148,10 +146,6 @@ import {
   SubmitErrorHandlerError,
   // Validation-error codes
   AttaformErrorCode,
-  // Display-state heuristic default, and the knobs to retune it
-  defaultDisplayState,
-  makeDefaultDisplayState,
-  DEFAULT_TIMINGS,
   // Path primitives (custom adapters only)
   canonicalizePath,
   parseDottedPath,

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
 import { useForm } from '../../../src/zod'
@@ -18,16 +18,15 @@ import { slimPrimitivesOf } from '../../../src/runtime/adapters/zod-v4/slim-prim
  * NOT incremented for plain structural recursion (object → object,
  * array element, wrapper stacks like `.optional().nullable()`,
  * union branches, intersection legs). These tests pin that
- * invariant against future drift: a setting as low as
- * `maxRecursionDepth: 0` must still produce correct results for
- * any schema that doesn't include a `z.lazy()`.
+ * invariant against future drift by driving the adapter walks
+ * directly at a cap of `0`: every schema without a `z.lazy()` must
+ * still resolve correctly there.
  *
- * Why this matters: if a walker accidentally bumps the counter on
- * non-lazy recursion (the original slim-primitives code did), a
- * consumer who sets `maxRecursionDepth: 1` to constrain a
- * recursive form would see unrelated non-recursive forms in the
- * same app break silently — the cap would gate writes/defaults
- * for any moderately-wrapped schema.
+ * Why this matters: the cap is a fixed library constant
+ * (`DEFAULT_MAX_RECURSION_DEPTH`, 64), so a walker that bumped the
+ * counter on non-lazy recursion (the original slim-primitives code
+ * did) would gate writes and defaults on any schema nested deeper
+ * than 64 — plain structural nesting, no recursion involved.
  */
 describe('maxRecursionDepth — counter bumps on lazy only', () => {
   describe('slimPrimitivesOf', () => {
@@ -218,40 +217,13 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
     })
   })
 
-  describe('integration — useForm with a non-recursive schema and a tight cap', () => {
+  describe('integration — useForm at the library cap', () => {
     const apps: App[] = []
     afterEach(() => {
       while (apps.length > 0) apps.pop()?.unmount()
     })
 
-    it('a 3-deep object schema mounts and seeds defaults at maxRecursionDepth=0', () => {
-      const schema = z.object({
-        address: z.object({
-          city: z.string(),
-          country: z.string(),
-        }),
-      })
-      type Api = UseFormReturn<typeof schema>
-      const handle: { api?: Api } = {}
-      const App = defineComponent({
-        setup() {
-          handle.api = useForm({
-            schema,
-            key: `recursion-depth-0-${Math.random().toString(36).slice(2)}`,
-            maxRecursionDepth: 0,
-          })
-          return () => h('div')
-        },
-      })
-      const app = createApp(App).use(createAttaform())
-      app.mount(document.createElement('div'))
-      apps.push(app)
-      const api = handle.api as Api
-      expect(api.values.address.city).toBe('')
-      expect(api.values.address.country).toBe('')
-    })
-
-    it('Infinity allows arbitrarily deep nesting', () => {
+    it('a deeply-nested non-recursive schema mounts and seeds every leaf', () => {
       const schema = z.object({
         a: z.object({ b: z.object({ c: z.object({ d: z.string() }) }) }),
       })
@@ -261,8 +233,7 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
         setup() {
           handle.api = useForm({
             schema,
-            key: `recursion-depth-infinity-${Math.random().toString(36).slice(2)}`,
-            maxRecursionDepth: Infinity,
+            key: `recursion-depth-nested-${Math.random().toString(36).slice(2)}`,
           })
           return () => h('div')
         },
@@ -273,80 +244,35 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
       const api = handle.api as Api
       expect(api.values.a.b.c.d).toBe('')
     })
-  })
-})
 
-describe('useForm — passes sanitised maxRecursionDepth into walks', () => {
-  const apps: App[] = []
-  afterEach(() => {
-    while (apps.length > 0) apps.pop()?.unmount()
-  })
-
-  it('NaN at the useForm callsite does not infinite-loop on a self-referencing lazy', () => {
-    // Without sanitisation, `NaN` would make `lazyDepth >= maxDepth`
-    // permanently false, infinite-recursing on a self-referencing
-    // lazy. The sanitiser maps it to the library default (64),
-    // bounding the walk.
-    type Node = { value: string; child: Node }
-    const Node: z.ZodType<Node> = z.lazy(() => z.object({ value: z.string(), child: Node }))
-    const schema = z.object({ root: Node })
-    type Api = UseFormReturn<typeof schema>
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const handle: { api?: Api } = {}
-    const App = defineComponent({
-      setup() {
-        handle.api = useForm({
-          schema,
-          key: `recursion-nan-${Math.random().toString(36).slice(2)}`,
-          // Defy the TS signature via the `as` cast — the runtime
-          // must still terminate.
-          maxRecursionDepth: NaN as unknown as number,
-          defaultValues: {
-            root: { value: 'top', child: { value: 'inner', child: undefined as never } },
-          },
-        })
-        return () => h('div')
-      },
-    })
-    try {
+    it('a self-referencing lazy terminates rather than exhausting the stack', () => {
+      // The cap is the only thing standing between a self-referencing
+      // `z.lazy()` and unbounded descent: nothing in the schema
+      // terminates structurally. `DEFAULT_MAX_RECURSION_DEPTH` bounds
+      // the walk, so construction completes.
+      type Node = { value: string; child: Node }
+      const Node: z.ZodType<Node> = z.lazy(() => z.object({ value: z.string(), child: Node }))
+      const schema = z.object({ root: Node })
+      type Api = UseFormReturn<typeof schema>
+      const handle: { api?: Api } = {}
+      const App = defineComponent({
+        setup() {
+          handle.api = useForm({
+            schema,
+            key: `recursion-lazy-${Math.random().toString(36).slice(2)}`,
+            defaultValues: {
+              root: { value: 'top', child: { value: 'inner', child: undefined as never } },
+            },
+          })
+          return () => h('div')
+        },
+      })
       const app = createApp(App).use(createAttaform())
       app.mount(document.createElement('div'))
       apps.push(app)
       const api = handle.api as Api
-      // Form mounted without exhausting the stack.
       const values = api.values as { root: { value: string } }
       expect(values.root.value).toBe('top')
-      // Dev-warn fired.
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('maxRecursionDepth must be a non-negative integer or Infinity')
-      )
-    } finally {
-      warnSpy.mockRestore()
-    }
-  })
-
-  it('a negative cap clamps to 0 (rejects any lazy crossing in the slim gate)', () => {
-    const schema = z.object({
-      name: z.string(),
     })
-    type Api = UseFormReturn<typeof schema>
-    const handle: { api?: Api } = {}
-    const App = defineComponent({
-      setup() {
-        handle.api = useForm({
-          schema,
-          key: `recursion-negative-${Math.random().toString(36).slice(2)}`,
-          maxRecursionDepth: -100,
-        })
-        return () => h('div')
-      },
-    })
-    const app = createApp(App).use(createAttaform())
-    app.mount(document.createElement('div'))
-    apps.push(app)
-    const api = handle.api as Api
-    // Form mounts with the sanitised cap (0). The non-recursive
-    // schema is unaffected — the cap is dormant.
-    expect(api.values.name).toBe('')
   })
 })

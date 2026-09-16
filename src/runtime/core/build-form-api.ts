@@ -1,13 +1,11 @@
 import { computed, reactive, readonly, type Ref } from 'vue'
 import type {
   BlankPathsView,
-  CoercionRegistry,
   DisplayState,
   ErrorInput,
   FormErrorsSurface,
   FormHistoryNamespace,
   FormMeta,
-  GetDisplayState,
   HistoryModule,
   OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
@@ -177,7 +175,7 @@ export type BuildFormApiOptions = {
   /**
    * Per-`useForm()`-instance config that the API layer threads through
    * writes / register / field-state so each callsite honors its own
-   * `validateOn` / `debounceMs` / `getDisplayState` / `coerce` /
+   * `validateOn` / `debounceMs` / `coerce` /
    * `rememberVariants` even when sharing a FormStore with sibling
    * instances (e.g., a modal and main form rendering the same logical
    * form). Anything omitted falls through to the store's
@@ -185,15 +183,8 @@ export type BuildFormApiOptions = {
    */
   validateOn?: ValidateOn
   debounceMs?: number
-  getDisplayState?: GetDisplayState
-  coerce?: boolean | CoercionRegistry
+  coerce?: boolean
   rememberVariants?: boolean
-  /**
-   * Per-`useForm()`-instance `autoAria` resolution. Threaded into
-   * register so each binding's `ariaEnabled` reflects this callsite's
-   * setting. Omitted (undefined) is the library default, `true`.
-   */
-  autoAria?: boolean
 }
 
 /**
@@ -308,8 +299,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return metaBase as unknown as FormMetaBase
   }
 
-  const fieldStateAccessorOptions =
-    options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
   // One liveness sweep shared by every per-path cache in this form. The
   // store owns it (its own per-path maps are the largest thing the sweep
   // evicts, and they exist whether or not a form API was built); the
@@ -321,8 +310,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     state,
     formInstanceId,
     getFormMetaBase,
-    pathSweep,
-    fieldStateAccessorOptions
+    pathSweep
   )
   // Gated `displayState` at any path, reusing the same memoised
   // field-state identity as `form.fields`. Threaded into register so a
@@ -333,7 +321,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     getRootFieldStateAt(segments).value.displayState
 
   const registerConfig = {
-    ...pickDefined({ instanceMeta, coerce: options.coerce, autoAria: options.autoAria }),
+    ...pickDefined({ instanceMeta, coerce: options.coerce }),
     getDisplayStateAt,
   }
   const register = buildRegister(state, formInstanceId, registerConfig) as (

@@ -79,4 +79,4 @@ Skip `onError` when the default behavior (focus the first invalid field) is enou
 
 - [`errors`](/docs/reading-the-form/errors): the per-path error reads.
 - [When validation runs](/docs/validation/when-validation-runs): the timing knob.
-- [Display state and showing errors](/docs/validation/showing-errors): the `getDisplayState` predicate.
+- [Display state and showing errors](/docs/validation/showing-errors): when a field reveals its verdict.

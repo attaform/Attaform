@@ -104,9 +104,9 @@ export const ANONYMOUS_WIZARD_KEY_PREFIX = `${RESERVED_KEY_PREFIX}anon-wizard:`
  * refinement stripping — track their descent depth and bail with a
  * permissive fallback once `depth > maxRecursionDepth`.
  *
- * Default `64`. Tunable per-form via `useForm({ maxRecursionDepth })`,
- * which wins over this library default. `Infinity` disables the cap
- * entirely.
+ * Fixed at `64`: deep enough that no realistic recursive form reaches
+ * it, shallow enough that a schema with no structural terminator hits
+ * the cap instead of the JS call stack.
  *
  * "Permissive fallback" means the gate stops type-checking past the
  * cap (storage accepts the consumer's value; runtime validation
@@ -138,12 +138,7 @@ export const DEFAULT_MAX_RECURSION_DEPTH = 64
  *
  * Sanitisation:
  *
- *   - `Infinity` passes through when `allowInfinity` is `true`
- *     (e.g. `maxRecursionDepth` disables the cap by design). When
- *     `allowInfinity` is `false` (e.g. `debounceMs`, where `Infinity`
- *     stalls the event loop), it falls back to the default with a
- *     dev-warn.
- *   - `NaN`, `-Infinity`, non-numbers → fall back to `defaultValue`
+ *   - `Infinity`, `NaN`, `-Infinity`, non-numbers → fall back to `defaultValue`
  *     with a dev-warn naming the source.
  *   - Negative finite numbers → clamped to `min`.
  *   - Non-integer positives → floored.
@@ -161,38 +156,21 @@ export interface NormalizeNumericOptionConfig {
    * tells the consumer which option carried the bad value.
    */
   source: string
-  /**
-   * Whether `Infinity` is a semantically valid input. `true` for
-   * options whose "no cap" sentinel is sensible (recursion depth);
-   * `false` for options where unbounded values cause real problems
-   * (debounce intervals, history caps, parse-error caps).
-   */
-  allowInfinity: boolean
   /** Lower bound applied via `Math.max(min, ...)` after `Math.floor`. */
   min: number
   /**
    * Library default returned when the input is invalid (`NaN`,
-   * `-Infinity`, non-number, or `Infinity` under `allowInfinity:
-   * false`).
+   * `±Infinity`, or a non-number).
    */
   defaultValue: number
 }
 
 export function normalizeNumericOption(config: NormalizeNumericOptionConfig): number {
-  const { value, source, allowInfinity, min, defaultValue } = config
-  if (allowInfinity && value === Infinity) return Infinity
-  if (
-    typeof value !== 'number' ||
-    Number.isNaN(value) ||
-    value === Infinity ||
-    value === -Infinity
-  ) {
+  const { value, source, min, defaultValue } = config
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     if (__DEV__) {
-      const acceptedDescription = allowInfinity
-        ? 'a non-negative integer or Infinity'
-        : 'a non-negative finite integer'
       console.warn(
-        `[attaform] ${source} must be ${acceptedDescription}; ` +
+        `[attaform] ${source} must be a non-negative finite integer; ` +
           `got ${String(value)}. Falling back to ${String(defaultValue)}.`
       )
     }

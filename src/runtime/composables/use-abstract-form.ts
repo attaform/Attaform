@@ -12,7 +12,6 @@ import { createFormStore, type FormStore } from '../core/create-form-store'
 import {
   ANONYMOUS_FORM_KEY_PREFIX,
   DEFAULT_MAX_RECURSION_DEPTH,
-  normalizeNumericOption,
   pickDefined,
   RESERVED_KEY_PREFIX,
 } from '../core/defaults'
@@ -155,21 +154,8 @@ export function useAbstractForm<
   // `state.schema.getSchemasAtPath(...)` return `AbstractSchema<_, Form>[]`
   // for consumers whose schema intentionally produces a different runtime
   // shape (e.g. an adapter that narrows via a transform). The factory
-  // receives the resolved per-form options (`maxRecursionDepth`) so the
-  // adapter can bake them into its walk closures.
-  //
-  // Sanitise the consumer-supplied value: `NaN` / `-Infinity` /
-  // non-numbers fall back to the library default with a dev-warn;
-  // negatives clamp to 0; non-integers floor; `Infinity` is allowed
-  // (disables the cap). The adapter's `>=` comparisons assume integer
-  // depth, so the normalisation prevents footguns at the boundary.
-  const maxRecursionDepth = normalizeNumericOption({
-    value: materialisedConfiguration.maxRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH,
-    source: 'useForm.maxRecursionDepth',
-    allowInfinity: true,
-    min: 0,
-    defaultValue: DEFAULT_MAX_RECURSION_DEPTH,
-  })
+  // receives the per-form options (`maxRecursionDepth`) so the adapter
+  // can bake them into its walk closures.
   const existing = registry.forms.get(key) as FormStore<Form, GetValueFormType> | undefined
   // A second `useForm({ key })` on a live store drops its own schema in
   // favour of the first caller's wiring, so resolving one is pure
@@ -178,7 +164,9 @@ export function useAbstractForm<
   // answer to compare against.
   const resolvedSchema =
     existing === undefined || __DEV__
-      ? getComputedSchema(key, configuration.schema, { maxRecursionDepth })
+      ? getComputedSchema(key, configuration.schema, {
+          maxRecursionDepth: DEFAULT_MAX_RECURSION_DEPTH,
+        })
       : existing.schema
   if (__DEV__ && existing !== undefined) {
     // Two `useForm({ key })` calls resolve to one FormStore by design;
@@ -335,7 +323,7 @@ export function useAbstractForm<
   }
 
   // Per-instance config lifts: each `useForm()` callsite carries its
-  // own `validateOn` / `debounceMs` / `getDisplayState` / `coerce` /
+  // own `validateOn` / `debounceMs` / `coerce` /
   // `rememberVariants`. These thread through `buildFormApi` into
   // register's coerce closure, the field-state predicate, and store
   // writes' WriteMeta — so two `useForm({ key })` calls (modal + main)
@@ -346,10 +334,8 @@ export function useAbstractForm<
     history: state.modules.get(HISTORY_MODULE_KEY) as HistoryModule | undefined,
     validateOn: materialisedConfiguration.validateOn,
     debounceMs: (materialisedConfiguration as { debounceMs?: number }).debounceMs,
-    getDisplayState: materialisedConfiguration.getDisplayState,
     coerce: materialisedConfiguration.coerce,
     rememberVariants: materialisedConfiguration.rememberVariants,
-    autoAria: materialisedConfiguration.autoAria,
   })
   // `buildFormApi` returns the schema-agnostic shape (`ReadForm = Form`);
   // adapter callers compute the richer `ReadForm` (zod-v4's
@@ -417,7 +403,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       rememberVariants: configuration.rememberVariants,
       disabled: configuration.disabled,
       coerce: configuration.coerce,
-      getDisplayState: configuration.getDisplayState,
       initialBlankPaths,
     }),
     // Server-only: bind the SSR prefetch coordination handles. `enqueue`

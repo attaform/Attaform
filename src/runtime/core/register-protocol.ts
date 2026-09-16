@@ -39,9 +39,9 @@ export const REGISTER_OWNER_MARKER: unique symbol = Symbol.for('attaform:registe
  * `v-register` that lands on a component host (or kebab custom element).
  * It is the compile-time -> runtime signal the directive's `getSSRProps`
  * reads under compiled SSR, where Vue passes a `null` vnode and the host
- * is otherwise indistinguishable from a native control. autoAria then
- * suppresses its attrs on the host root (the inner control the component
- * re-binds via useRegister carries them). Namespaced to avoid collision
+ * is otherwise indistinguishable from a native control. The managed aria
+ * attrs are then suppressed on the host root (the inner control the
+ * component re-binds via useRegister carries them). Namespaced to avoid collision
  * with any author-written modifier. (#404)
  */
 export const SSR_COMPONENT_HOST_MODIFIER = 'attaformComponentHost'

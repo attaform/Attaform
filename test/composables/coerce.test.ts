@@ -19,7 +19,6 @@ import type { UseFormConfigV4, UseFormReturnV4 } from '../../src/zod'
 import { vRegister, assignKey } from '../../src/runtime/core/directive'
 import { isRegisterValue } from '../../src/runtime/core/register-protocol'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { defineCoercion, defaultCoercionRules } from '../../src/runtime/core/schema-coerce'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 let app: App | undefined
@@ -680,54 +679,6 @@ describe('reference-equality preservation', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (api.values.note === 'x' ? true : null))
     expect(api.values.ids).toBe(before)
-  })
-})
-
-describe('consumer-extended registry — string->bigint', () => {
-  it('a custom bigint rule supplied via plugin coerces', async () => {
-    const schema = z.object({ amount: z.bigint() })
-    const customRules = [
-      ...defaultCoercionRules,
-      defineCoercion({
-        input: 'string',
-        output: 'bigint',
-        transform: (s) => {
-          try {
-            return { coerced: true, value: BigInt(s) }
-          } catch {
-            return { coerced: false }
-          }
-        },
-      }),
-    ]
-    const handle: { api?: UseFormReturnV4<typeof schema> } = {}
-    const Parent = defineComponent({
-      setup() {
-        const api = useForm({
-          schema,
-          defaultValues: { amount: 0n },
-          key: `bigint-coerce-${Math.random()}`,
-          coerce: customRules,
-        })
-        handle.api = api
-        const rv = api.register('amount')
-        return () =>
-          h('div', null, [
-            withDirectives(h('input', { type: 'text', 'data-field': 'amount' }), [[vRegister, rv]]),
-          ])
-      },
-    })
-    app = createApp(Parent).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    await waitUntil(() => (handle.api?.values.amount === 0n ? true : null))
-    if (handle.api === undefined) throw new Error('api never set')
-    const input = root.querySelector('[data-field="amount"]') as HTMLInputElement
-    input.value = '12345'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitUntil(() => (handle.api?.values.amount === 12345n ? true : null))
-    expect(handle.api.values.amount).toBe(12345n)
   })
 })
 

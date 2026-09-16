@@ -24,7 +24,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { DEFAULT_TIMINGS } from '../../src'
+import { DEFAULT_TIMINGS } from '../../src/runtime/core/display-state'
 
 function makeGate(): {
   transform: () => Promise<unknown>

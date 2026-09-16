@@ -1,5 +1,5 @@
 import type { Path, Segment } from './paths'
-import { consumerHas, consumerKeys, readConsumerIndex } from './consumer-code'
+import { consumerHas, consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
 import {
   copyConsumerArray,
   isShadowedKey,
@@ -126,6 +126,20 @@ function isRebuildableContainer(root: unknown, segment: Segment): boolean {
   return typeof segment === 'number' ? Array.isArray(root) : isPlainRecord(root)
 }
 
+/**
+ * One step of a read descent. Every read of `value` here is a read of a
+ * container the CONSUMER supplied, so each one goes through the guarded
+ * accessors: an index or key can be an accessor that throws, and a Proxy
+ * (which `reactive()` returns, so this is not hypothetical) traps `in`
+ * as readily as a property read. This function sits under `getAtPath`,
+ * which every FieldState rollup calls during render — an escape from
+ * here surfaces as the host component's render throwing, which is the
+ * one thing library code must never cause.
+ *
+ * The guards keep Vue's dependency tracking intact: they wrap the same
+ * `key in obj` / `obj[key]` expressions, so the traps still fire and
+ * still register the read.
+ */
 function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOUND {
   if (value === null || value === undefined) return NOT_FOUND
   if (typeof value !== 'object') return NOT_FOUND
@@ -140,8 +154,8 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
     // append / remove, turning an array op into O(N x element-leaves). An
     // out-of-range, negative, or hole index is absent, so `in` is false and we
     // return NOT_FOUND exactly as the bounds comparison did.
-    if (!(segment in value)) return NOT_FOUND
-    return value[segment]
+    if (!consumerHas(value, segment)) return NOT_FOUND
+    return readConsumerIndex(value, segment)
   }
   if (value instanceof Map) {
     // A map's entries are real sub-paths: one segment addresses one
@@ -174,8 +188,8 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
     if (!safeOwnHas(record, key)) return NOT_FOUND
     return safeOwnRead(record, key)
   }
-  if (!(key in record)) return NOT_FOUND
-  return record[key]
+  if (!consumerHas(record, key)) return NOT_FOUND
+  return readConsumerProp(record, key)
 }
 
 export function getAtPath(root: unknown, path: Path): unknown {
@@ -236,55 +250,30 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
   return proto === null || proto === Object.prototype
 }
 
-export function setAtPath(root: unknown, path: Path, value: unknown): unknown {
-  return setAtPathOffset(root, path, value, 0)
+const NO_SCHEMA_DEFAULTS: ReadonlySet<string> = new Set()
+
+/**
+ * The empty schema: every structural question answers "nothing declared
+ * at this path". It lets `setAtPath` run on the schema-aware writer's
+ * spine instead of keeping a second copy of it.
+ *
+ * Keeping two was the actual defect. The prototype-pollution hardening
+ * landed on `setAtPath`, and `setAtPath` then stopped being the writer
+ * the form uses — every `setValue` goes through
+ * `setAtPathWithSchemaFill`, which was still assigning through a raw
+ * `rec[head]`. The suite guarding the hardening kept passing because it
+ * pointed at the walker nobody calls. One spine cannot drift from
+ * itself.
+ */
+const NO_SCHEMA_FILL: SchemaForFill = {
+  getDefaultAtPath: () => undefined,
+  arrayShapeAtPath: () => null,
+  getSlimPrimitiveTypesAtPath: () => NO_SCHEMA_DEFAULTS,
+  entryKeyKindAtPath: () => undefined,
 }
 
-function setAtPathOffset(root: unknown, path: Path, value: unknown, offset: number): unknown {
-  if (offset >= path.length) return value
-
-  const head = path[offset] as Segment
-  const nextOffset = offset + 1
-
-  if (root instanceof Map) {
-    // Copy-on-write the map itself, same as the array / record
-    // branches: the write target gets a fresh reference and every
-    // untouched entry carries over by reference. No schema in hand
-    // here, so a brand-new key takes the segment's own spelling; the
-    // schema-aware walker below resolves it against the declared key
-    // type instead.
-    const next = new Map(root)
-    const key = mapKeyForSegment(root, head)
-    next.set(key, setAtPathOffset(root.get(key), path, value, nextOffset))
-    return next
-  }
-
-  if (!isRebuildableContainer(root, head)) return root
-
-  if (typeof head === 'number') {
-    const arr = Array.isArray(root) ? [...root] : []
-    // Extend sparse arrays with undefined slots up to the target index.
-    while (arr.length <= head) arr.push(undefined)
-    arr[head] = setAtPathOffset(arr[head], path, value, nextOffset)
-    return arr
-  }
-
-  // Object spread carries existing own properties through
-  // `CopyDataProperties` — the spec step uses `CreateDataProperty`,
-  // which bypasses the `__proto__` setter accessor inherited from
-  // `Object.prototype`. So a previously-set `__proto__` own data
-  // property survives a re-spread when intermediate copy-on-write
-  // occurs, and the spread doesn't reassign the prototype chain.
-  // For the imperative own-property write at the head segment we
-  // route through `safeAssign`: a literal `__proto__` segment becomes
-  // a defineProperty call (own data property), while every other key
-  // takes the plain bracket-assign branch. Schema fields literally
-  // named `__proto__` / `constructor` / `prototype` round-trip
-  // through `setValue` / history undo-redo alongside every other
-  // key, with no path to `Object.prototype`.
-  const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
-  safeAssign(rec, head, setAtPathOffset(safeOwnRead(rec, head), path, value, nextOffset))
-  return rec
+export function setAtPath(root: unknown, path: Path, value: unknown): unknown {
+  return setAtPathWithSchemaFill(root, NO_SCHEMA_FILL, path, value)
 }
 
 export type InPlaceWriteResult = { applied: true; old: unknown } | { applied: false }
@@ -763,16 +752,25 @@ function setAtPathWithSchemaFillImpl(
     return arr
   }
 
-  // Object key.
+  // Object key. Reads and writes at the head segment route through
+  // `safeOwnRead` / `safeAssign`, because the segment is a consumer
+  // schema's field name and may be spelled `__proto__`. A plain
+  // `rec[head] = value` there invokes the setter inherited from
+  // `Object.prototype`, which silently discards the write and leaves the
+  // field reading back as whatever the prototype chain says; the
+  // own-property write lands it as a real data property instead. The
+  // spread above is already safe on its own (the spec uses
+  // `CreateDataProperty`, which bypasses the accessor), so it needs no
+  // guard — only the imperative write does.
   const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
   if (isLeafStep) {
-    rec[head] = value
+    safeAssign(rec, head, value)
     return rec
   }
 
   // Intermediate: ensure the child exists, filling from the schema
   // default if missing or non-descendable.
-  const existing = rec[head]
+  const existing = safeOwnRead(rec, head)
   let childRoot: unknown
   if (existing === undefined || (existing !== null && typeof existing !== 'object')) {
     const intermPath: Segment[] = [...fullPath.slice(0, startIdx + 1)]
@@ -781,6 +779,10 @@ function setAtPathWithSchemaFillImpl(
   } else {
     childRoot = existing
   }
-  rec[head] = setAtPathWithSchemaFillImpl(childRoot, schema, fullPath, value, startIdx + 1)
+  safeAssign(
+    rec,
+    head,
+    setAtPathWithSchemaFillImpl(childRoot, schema, fullPath, value, startIdx + 1)
+  )
   return rec
 }

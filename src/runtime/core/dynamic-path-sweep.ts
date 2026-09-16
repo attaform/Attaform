@@ -40,9 +40,20 @@
  */
 import { toRaw } from 'vue'
 import type { GenericForm } from '../types/types-core'
-import type { FormStore } from './create-form-store'
 import { hasAtPath } from './path-walker'
 import { segmentsForPathKey, type Path, type PathKey } from './paths'
+
+/**
+ * What the sweep needs from the store, named rather than taken whole.
+ * The store builds the sweep during its own construction, before the
+ * store object exists to be passed.
+ */
+export type DynamicPathSweepDeps = {
+  /** Subscribe to every value mutation. The sweep advances one slice per call. */
+  readonly onFormChange: (listener: (next: GenericForm) => void) => void
+  /** `AbstractSchema.isFixedObjectAtPath`, the bound half of the dynamic-path test. */
+  readonly isFixedObjectAtPath: (path: Path) => boolean
+}
 
 /**
  * How many tracked paths one write checks for liveness. The sweep
@@ -72,9 +83,7 @@ export type DynamicPathSweep = {
   readonly onEvict: (evict: (key: PathKey) => void) => void
 }
 
-export function createDynamicPathSweep<F extends GenericForm>(
-  state: FormStore<F, GenericForm>
-): DynamicPathSweep {
+export function createDynamicPathSweep(deps: DynamicPathSweepDeps): DynamicPathSweep {
   const dynamicKeys = new Set<PathKey>()
   const evictors: ((key: PathKey) => void)[] = []
 
@@ -89,7 +98,7 @@ export function createDynamicPathSweep<F extends GenericForm>(
   const isDynamicPath = (segments: Path): boolean => {
     for (let i = 0; i < segments.length; i++) {
       if (typeof segments[i] === 'number') return true
-      if (!state.schema.isFixedObjectAtPath(segments.slice(0, i))) return true
+      if (!deps.isFixedObjectAtPath(segments.slice(0, i))) return true
     }
     return false
   }
@@ -101,7 +110,7 @@ export function createDynamicPathSweep<F extends GenericForm>(
   // `onFormChange` hands the listener the next value, and `toRaw`
   // strips its reactive wrapper, so a write made from inside an effect
   // cannot subscribe that effect to every path this touches.
-  state.onFormChange((next) => {
+  deps.onFormChange((next) => {
     if (dynamicKeys.size === 0) return
     const raw = toRaw(next)
     for (let i = 0; i < SWEEP_SLICE; i++) {

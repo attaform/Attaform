@@ -325,6 +325,24 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     })
   })
 
+  it.each([
+    ['has', () => new Proxy({ a: 1 }, { has: BOOM })],
+    ['get', () => new Proxy({ a: 1 }, { get: BOOM })],
+  ])('a Proxy whose %s trap throws survives a read BY PATH through it', async (_l, makeProxy) => {
+    // The distinct hazard from the block below: there the proxy is read
+    // whole by a walker, here a path descends INTO it. `form.values(path)`
+    // and `form.fields(path).value` are the two surfaces a template binds,
+    // so a throw on this route comes out of the component's render.
+    await expectContained(async () => {
+      const { api } = makeMounter(useForm, adapter.nestedAndOpen(), {})()
+      muted(() => api.setValue('open', makeProxy()))
+      await drain()
+      muted(() => api.values('open.a'))
+      muted(() => api.values('open'))
+      void api.meta.dirty
+    })
+  })
+
   it('a throwing getter survives an array append', async () => {
     await expectContained(async () => {
       const { api } = makeMounter(useForm, adapter.list(), { defaultValues: { xs: [] } })()
@@ -337,6 +355,12 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     ['ownKeys', () => new Proxy({ a: 1 }, { ownKeys: BOOM })],
     ['getOwnPropertyDescriptor', () => new Proxy({ a: 1 }, { getOwnPropertyDescriptor: BOOM })],
     ['get', () => new Proxy({ a: 1 }, { get: BOOM })],
+    // `has` is the trap a read DESCENT hits: `descendStep` presence-tests
+    // each segment with `key in container` before reading it, deliberately
+    // (on a reactive array that tracks one index instead of `.length`).
+    // An existence check is no safer than a read, and this one runs under
+    // every FieldState rollup — that is, during the host's render.
+    ['has', () => new Proxy({ a: 1 }, { has: BOOM })],
   ])('a Proxy whose %s trap throws', async (_label, makeProxy) => {
     // Enumeration is not a safe read. `Object.keys` invokes `ownKeys`
     // and `getOwnPropertyDescriptor`, so a Proxy can throw before a

@@ -151,6 +151,30 @@ export function consumerKeys(obj: object): string[] {
 }
 
 /**
+ * Own enumerable string entries of a consumer-supplied object.
+ *
+ * The pairing of `consumerKeys` with a per-key read, done in one step.
+ * Worth its own helper because the value comes back from the same
+ * enumeration that produced the key, so it is definitionally the OWN
+ * value: no second lookup, and no chance of resolving an inherited
+ * member for a prototype-shadowed name like `__proto__`.
+ *
+ * Fast path first, matching `spreadConsumerRecord`: `Object.entries`
+ * invokes every getter, so one that throws takes the whole call down,
+ * and the guarded per-key fallback runs only after that has happened.
+ * That keeps the common case at enumeration speed and pays the slow
+ * path only for the object that actually misbehaved.
+ */
+export function consumerEntries(obj: object): [string, unknown][] {
+  try {
+    return Object.entries(obj)
+  } catch {
+    const record = obj as Record<string, unknown>
+    return consumerKeys(obj).map((key) => [key, readConsumerProp(record, key)])
+  }
+}
+
+/**
  * Read index `i` off a consumer-supplied array, returning `undefined`
  * if the read throws.
  *

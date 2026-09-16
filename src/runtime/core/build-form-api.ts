@@ -32,7 +32,6 @@ import {
   buildValuesSurface,
 } from './callable-tree'
 import { buildFieldArrayApi } from './array-engine'
-import { createDynamicPathSweep } from './dynamic-path-sweep'
 import {
   aggregateErrorsAt,
   buildContainerFieldStateBase,
@@ -235,12 +234,13 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   const fieldStateAccessorOptions =
     options.getDisplayState !== undefined ? { getDisplayState: options.getDisplayState } : undefined
-  // One liveness sweep shared by every per-path cache this form builds.
-  // Created here because each surface registers its own eviction into
-  // it, and one registry means one subscription and one liveness walk
-  // per candidate rather than one set per cache. See
-  // `dynamic-path-sweep.ts`.
-  const pathSweep = createDynamicPathSweep(state)
+  // One liveness sweep shared by every per-path cache in this form. The
+  // store owns it (its own per-path maps are the largest thing the sweep
+  // evicts, and they exist whether or not a form API was built); the
+  // surfaces below register their evictions into the same registry, so
+  // there is still one subscription and one liveness walk per candidate
+  // rather than one set per cache. See `dynamic-path-sweep.ts`.
+  const pathSweep = state.pathSweep
   const getRootFieldStateAt = buildFieldStateAccessor(
     state,
     formInstanceId,

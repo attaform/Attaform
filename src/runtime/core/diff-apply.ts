@@ -268,6 +268,14 @@ function diffArraysLockstep(
  * Diff two plain objects in lockstep: recurse on every key present in
  * either side (old keys first, then new-only keys) so additions and
  * removals both surface. A `seen` set dedupes the two passes.
+ *
+ * Reads stay plain. A prototype-shadowed key (`__proto__`, `toString`, …)
+ * present on only one side does resolve the inherited member on the
+ * other, so it surfaces as a change rather than as an appearance — but
+ * the own-property reader costs ~8% of a 500-leaf write when named
+ * anywhere in this function, and the consequence is absorbed for free by
+ * `commitWritePatches`, which seeds an absence baseline for any patched
+ * path it has no baseline for rather than for `added` patches alone.
  */
 function diffObjectsLockstep(
   oldRec: Record<string, unknown>,

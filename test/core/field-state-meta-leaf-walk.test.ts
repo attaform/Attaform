@@ -15,7 +15,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
-import { createDynamicPathSweep } from '../../src/runtime/core/dynamic-path-sweep'
 import * as paths from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
 
@@ -34,7 +33,7 @@ function makeWideForm(leafCount: number) {
       state,
       'wide-instance',
       getFormMetaBase,
-      createDynamicPathSweep(state)
+      state.pathSweep
     ),
   }
 }

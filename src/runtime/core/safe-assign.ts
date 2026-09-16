@@ -48,12 +48,22 @@ export function safeAssign<T>(target: Record<string, T>, key: string, value: T):
  * datum.) The own-property-safe read / existence primitives branch on
  * exactly this predicate.
  *
- * `key in Object.prototype` is a membership test against a single
- * constant object: `true` for every inherited member name, `false` for
- * every ordinary data key — so the common path pays nothing.
+ * Answered from a Set built once from `Object.prototype`'s own property
+ * names, which is exactly the set `key in Object.prototype` tests:
+ * `Object.prototype`'s own prototype is `null`, so it inherits nothing
+ * and its own names ARE the whole inherited surface. Derived from the
+ * runtime rather than written out, so it cannot drift from the engine
+ * the way a hand-kept list would.
+ *
+ * The Set rather than the `in` test because this sits in the diff's
+ * per-key loop, which runs over every key of every object on every
+ * write. `in` against a prototype is a megamorphic lookup there and
+ * measured ~20% of a 500-leaf keystroke; a hash lookup does not.
  */
+const SHADOWED_KEYS: ReadonlySet<string> = new Set(Object.getOwnPropertyNames(Object.prototype))
+
 export function isShadowedKey(key: string): boolean {
-  return key in Object.prototype
+  return SHADOWED_KEYS.has(key)
 }
 
 /**

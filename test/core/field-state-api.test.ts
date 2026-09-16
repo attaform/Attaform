@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
-import { createDynamicPathSweep } from '../../src/runtime/core/dynamic-path-sweep'
 import { createDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
@@ -33,7 +32,7 @@ function makeAccessor() {
       state,
       'test-instance',
       getFormMetaBase,
-      createDynamicPathSweep(state)
+      state.pathSweep
     ),
   }
 }
@@ -330,7 +329,7 @@ describe('buildFieldStateAccessor — container aggregation', () => {
         state,
         'test-instance',
         getFormMetaBase,
-        createDynamicPathSweep(state)
+        state.pathSweep
       ),
     }
   }

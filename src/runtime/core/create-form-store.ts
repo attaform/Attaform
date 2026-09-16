@@ -26,6 +26,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { resolveGetDisplayState } from './display-state'
+import { createDynamicPathSweep, type DynamicPathSweep } from './dynamic-path-sweep'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
 import {
   cloneVariantSnapshot,
@@ -168,6 +169,17 @@ function warnMalformedHydration(formKey: FormKey, kind: string, rawKey: string):
 }
 
 export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
+  /**
+   * The form's single liveness sweep over every per-path cache. Owned by
+   * the store rather than by `buildFormApi` because the store's own
+   * per-path maps (`fields`, `originals`, `authoredPaths`,
+   * `fieldValidationState`) are the largest thing it evicts, and they
+   * exist whether or not a form API was ever built around them. Read
+   * surfaces register their own evictions into it, so one subscription
+   * and one liveness walk serve all of them. See
+   * `dynamic-path-sweep.ts`.
+   */
+  readonly pathSweep: DynamicPathSweep
   readonly formKey: FormKey
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
@@ -1737,10 +1749,42 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
   const now = new Date().toISOString()
   for (const patch of patches) {
     const { key } = canonicalizePath(patch.path)
-    if (patch.kind === 'added' && !st.originals.has(key)) {
+    if (!st.originals.has(key)) {
+      // No baseline at a path a write just touched means the path was not
+      // there at construction, whatever KIND the diff called the patch —
+      // so absence is its baseline and its first appearance is a change.
+      //
+      // Keyed on the missing baseline rather than on `kind === 'added'`
+      // because the two disagree for a key named after an
+      // `Object.prototype` member: `Object.keys` never lists an inherited
+      // member, but a plain read of one resolves it, so the first write of
+      // a `__proto__` entry diffs as a change FROM `Object.prototype`
+      // rather than as an appearance. That left the field reading
+      // `dirty: false` immediately after being written. Reading the other
+      // side own-property-wise would fix it at the source, and costs ~8%
+      // of a 500-leaf write; this test was already here.
       st.originals.set(key, { segments: patch.path, value: undefined })
     }
     touchFieldRecord(st, key, patch.path, { updatedAt: now })
+    // Offer the path to the liveness sweep. This is the single tail every
+    // value mutation passes through, so it is where a runtime-added path
+    // becomes known to the store — and therefore the only place that can
+    // make the store's own maps sweepable. The sweep ignores a path the
+    // schema shape bounds, and its pass runs in the listener flush below,
+    // after this loop, so a path written on this very write is live when
+    // it is checked.
+    st.pathSweep.track(patch.path, key)
+    // …and the containers on the way to it. A diff yields LEAF patches, so
+    // a container path (`rows.0`) is never a patch of its own and would
+    // otherwise stay tracked by nothing — which is what left `authoredPaths`
+    // holding an entry per row after the rows were gone. Ancestors a fixed
+    // object shape bounds are rejected by `track` itself, so only the
+    // genuinely unbounded ones (through an array index or a record key)
+    // cost anything, and re-offering a tracked path is a Set lookup.
+    for (let i = 1; i < patch.path.length; i++) {
+      const ancestor = patch.path.slice(0, i)
+      st.pathSweep.track(ancestor, canonicalizePath(ancestor).key)
+    }
   }
   for (const listener of st.formChangeListeners) {
     try {
@@ -4217,6 +4261,33 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // vacated indices. Owns no state of its own — every dep is a
   // reference into the surrounding store, so the bookkeeping's
   // lifecycle exactly matches the host.
+  // The form's single liveness sweep, built here so the store's own
+  // per-path maps are swept alongside the read surfaces'. They were the
+  // omission: the sweep landed with the caches that read a path and
+  // never reached the maps that RECORD one, so a form that grew a
+  // container and shrank it again kept a `fields` record and an
+  // originals entry per path it had ever held. Emptying a 200-row array
+  // released nothing.
+  const pathSweep = createDynamicPathSweep({
+    onFormChange: (listener) => {
+      formChangeListeners.add(listener as (next: F, meta?: WriteMeta) => void)
+    },
+    isFixedObjectAtPath: (path) => schema.isFixedObjectAtPath(path),
+  })
+  pathSweep.onEvict((key) => {
+    fields.delete(key)
+    fieldValidationState.delete(key)
+    authoredPaths.delete(key)
+    // Originals are the form's memory of what it STARTED as, so an entry
+    // recording a real value outlives the path going away — a removed row
+    // restored by undo has to compare against the value it had, not
+    // against absence. An entry holding `undefined` is the absence
+    // baseline `commitWritePatches` seeds the first time a runtime-added
+    // path appears, and it re-seeds identically on re-appearance, so
+    // dropping it costs nothing and is the half that grows without bound.
+    if (originals.get(key)?.value === undefined) originals.delete(key)
+  })
+
   const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
     form,
     fields,
@@ -4243,6 +4314,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     errorCells,
     derivedBlankErrors,
     originals,
+    pathSweep,
     schema,
     ssr,
     getDisplayState: resolvedGetDisplayState,

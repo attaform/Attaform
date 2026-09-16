@@ -499,7 +499,33 @@ export async function measureEager(define = PROD_DEFINE) {
 // pass. The first-paint cost is one frame of an error COUNT;
 // `meta.valid` does not move, because the async gate already clamps it.
 // Budget 33_900 -> 33_450 (~0.32 kB headroom).
-const BUDGET_GZ = 33_450
+// E4 SPENDS BYTES (heap + hot paths, 2026-09-16): 33,150 -> 33,758
+// measured (+608), and it is the first phase of this program to raise
+// the budget rather than lower it. What it buys, all measured rather
+// than argued:
+//
+//   per form, prod build, keepNames:false, forced GC
+//     signup untouched        59,043 B -> 45,976 B   -22%
+//     signup read-swept      113,419 B -> 89,061 B   -21%
+//     100 leaves read-swept  1,039 kB  -> 663 kB     -36%
+//   400-row table, 800 errors
+//     first form.list() read     332 ms -> 18.7 ms   18x
+//     the same read per keystroke 278 ms -> 7.4 ms   38x
+//   interleaved A/B vs main, 3 rounds
+//     500-item array remove+append churn            +94%
+//     reset() full baseline rebuild                 +35%
+//     nothing slower beyond the run's noise floor
+//
+// The bytes went on four things that are each a structure rather than a
+// branch: one Proxy per meta forest in place of 62 accessors, the
+// weak per-schema store that lets one `AbstractSchema` serve every form
+// on a schema, the sorted prefix index over the error stores, and the
+// bound on the per-path memos that sharing made load-bearing.
+//
+// Against `main` the branch is still -750 B eager. A budget exists to
+// catch drift nobody chose, not to forbid a trade somebody priced.
+// Budget 33_450 -> 34_050 (~0.29 kB headroom).
+const BUDGET_GZ = 34_050
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

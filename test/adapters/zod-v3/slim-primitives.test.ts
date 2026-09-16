@@ -12,7 +12,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * carried since shipping; pre-fix v3 was tested only transitively
  * through the path-walker suites.
  */
-function probe(rootSchema: z.ZodSchema, path: (string | number)[]): Set<string> {
+function probe(rootSchema: z.ZodSchema, path: (string | number)[]): ReadonlySet<string> {
   const adapter = zodAdapter(rootSchema)('f', { maxRecursionDepth: 64 })
   return adapter.getSlimPrimitiveTypesAtPath(path)
 }

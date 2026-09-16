@@ -1192,7 +1192,17 @@ export default [
     // reserved member segment plus its coercion lookup.
     // Adapter-free, so this entry measures the shared-core half alone.
     // Measured at 39.2 KB.
-    limit: '39.5 KB',
+    //
+    // Raised 39.5 -> 40.25 KB on the E4 heap-and-hot-paths phase
+    // (2026-09-16). Adapter-free, so this entry carries the shared-core
+    // half of that phase in full: the per-schema `AbstractSchema` store
+    // and the bound on its memos, the sorted prefix index over the error
+    // stores, and one Proxy per meta forest. Priced against -22% per-form
+    // heap untouched, -36% read-swept at 100 leaves, and a 400-row
+    // `form.list()` going 278 ms to 7.4 ms per keystroke; see the E4
+    // paragraph in `scripts/check-eager-size.mjs`.
+    // Measured at 39.74 KB.
+    limit: '40.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1868,7 +1878,17 @@ export default [
     // reserved member segment plus its coercion lookup. Adapter-free,
     // so this entry measures the shared-core half alone.
     // Measured at 26.43 KB.
-    limit: '26.75 KB',
+    //
+    // Raised 26.75 -> 27.5 KB on the E4 heap-and-hot-paths phase
+    // (2026-09-16). Adapter-free, so this entry carries the shared-core
+    // half of that phase in full: the per-schema `AbstractSchema` store
+    // and the bound on its memos, the sorted prefix index over the error
+    // stores, and one Proxy per meta forest. Priced against -22% per-form
+    // heap untouched, -36% read-swept at 100 leaves, and a 400-row
+    // `form.list()` going 278 ms to 7.4 ms per keystroke; see the E4
+    // paragraph in `scripts/check-eager-size.mjs`.
+    // Measured at 26.93 KB.
+    limit: '27.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

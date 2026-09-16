@@ -49,6 +49,9 @@ describe('the store collections still track what their readers depend on', () =>
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
+  const codesOf = (errs: unknown): (string | undefined)[] =>
+    (errs as { code?: string }[] | undefined)?.map((e) => e.code) ?? []
+
   function form() {
     const mounted = mount()
     apps.push(mounted.app)
@@ -128,9 +131,9 @@ describe('the store collections still track what their readers depend on', () =>
     await nextTick()
     // The three surfaces that read the cell: the per-path errors view,
     // the aggregate, and the field-state rollup.
-    expect(api.errors('second')?.map((e) => e.code)).toContain('user:server')
-    expect(api.meta.errors.map((e) => e.code)).toContain('user:server')
-    expect(api.fields.second.errors.map((e) => e.code)).toContain('user:server')
+    expect(codesOf(api.errors('second'))).toContain('user:server')
+    expect(codesOf(api.meta.errors)).toContain('user:server')
+    expect(codesOf(api.fields.second.errors)).toContain('user:server')
   })
 
   it('errorCells: clearing a cell removes it from the aggregate', async () => {
@@ -140,7 +143,7 @@ describe('the store collections still track what their readers depend on', () =>
     expect(api.meta.errorCount).toBeGreaterThan(0)
     api.clearErrors('second')
     await nextTick()
-    expect(api.meta.errors.map((e) => e.code)).not.toContain('user:temp')
+    expect(codesOf(api.meta.errors)).not.toContain('user:temp')
   })
 
   it('errorCells: an error at one path leaves a sibling field valid', async () => {

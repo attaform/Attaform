@@ -1,8 +1,8 @@
 import type { Path } from '../../src/runtime/core/paths'
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
-  ValidationResponse,
+  SchemaDefaultsResult,
+  SchemaParseResult,
 } from '../../src/runtime/types/types-api'
 import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-core'
 
@@ -23,7 +23,7 @@ import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-cor
  * - `getSchemasAtPath` returns `[]` (no path-specific subschemas).
  *
  * For tests that need validation failure cases, pass a custom `validator`.
- * The validator can return either a synchronous `ValidationResponse<F>` or
+ * The validator can return either a synchronous `SchemaParseResult<F>` or
  * a `Promise` — the schema's `validateAtPath` is always Promise-returning,
  * matching the Phase 5.6 `AbstractSchema` contract.
  */
@@ -32,16 +32,15 @@ export function fakeSchema<F extends GenericForm>(
   validator?: (
     data: unknown,
     path: Path | undefined
-  ) => ValidationResponse<F> | Promise<ValidationResponse<F>>
+  ) => SchemaParseResult<F> | Promise<SchemaParseResult<F>>
 ): AbstractSchema<F, F> {
   const schema: AbstractSchema<F, F> = {
-    getDefaultValues(config): DefaultValuesResponse<F> {
+    getDefaultValues(config): SchemaDefaultsResult<F> {
       const merged = mergeDeepPartial(defaults, config.constraints as DeepPartial<F>) as F
       return {
         data: merged,
         errors: undefined,
         success: true,
-        formKey: '',
       }
     },
     isPreprocessOrCoerceLeaf(path) {
@@ -202,11 +201,10 @@ export function fakeSchema<F extends GenericForm>(
       // a sync overload separately, which they don't, so opt-in sync
       // simply isn't supported here).
       if (validator) return validator(data, path)
-      const response: ValidationResponse<F> = {
+      const response: SchemaParseResult<F> = {
         data: data as F,
         errors: undefined,
         success: true,
-        formKey: '',
       }
       return options?.sync === true ? response : Promise.resolve(response)
     },

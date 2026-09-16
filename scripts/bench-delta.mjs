@@ -193,16 +193,21 @@ const lines = [
   `Base \`${base.slice(0, 8)}\` → this PR. ${ROUNDS} interleaved round(s), medians.`,
   `${results.length} scenarios; ${moved.length} moved by ${REPORT_THRESHOLD_PCT}% or more.`,
   '',
+  // The numbers are hz, so a bigger one is better and a `+` is good news.
+  // Spelling that out per row rather than leaving a bare `+94%` next to a
+  // scenario name, which reads like damage at a glance.
+  '`hz` is operations per second: **higher is better**, so `+` is faster.',
+  '',
 ]
 if (moved.length === 0) {
   lines.push(`**No scenario moved by ${REPORT_THRESHOLD_PCT}% or more.**`, '')
 } else {
-  lines.push('| scenario | base | PR | delta | |', '| --- | ---: | ---: | ---: | --- |')
+  lines.push('| scenario | base | PR | change | |', '| --- | ---: | ---: | ---: | --- |')
   for (const r of moved) {
-    const sign = r.pct > 0 ? '+' : ''
+    const direction = r.pct > 0 ? 'faster' : 'slower'
     const note = r.noisy ? "noisy — within this scenario's own run-to-run spread" : ''
     lines.push(
-      `| ${r.name} | ${fmt(r.base)} hz | ${fmt(r.head)} hz | **${sign}${r.pct.toFixed(1)}%** | ${note} |`
+      `| ${r.name} | ${fmt(r.base)} hz | ${fmt(r.head)} hz | **${Math.abs(r.pct).toFixed(1)}% ${direction}** | ${note} |`
     )
   }
   lines.push(

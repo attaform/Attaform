@@ -633,3 +633,65 @@ parameter/return types a public signature needs exported for the
 bundled `.d.mts` to compile. Chasing that list would trade zero bytes
 for `check:bundled-types` breakage. Orphan MODULES came back with
 eleven, every one a package entry point or the Nuxt runtime plugin.
+
+## Pass 2 close: the feature audit, 2026-09-16
+
+Phase B carries no bytes (it is the bench-arena's bundle table, not the
+library), so the pass closes at **33,009 B** with the budget at
+`33_320`.
+
+Whole branch against `main` (`cd4d4f7c`, v0.29.0), measured by
+`scripts/eager-delta.mjs` with THIS checkout's harness on both sides:
+
+|          |     main |   branch |                 delta |
+| -------- | -------: | -------: | --------------------: |
+| eager gz | 34,509 B | 33,009 B | **-1,500 B (-4.35%)** |
+| async gz |  1,377 B |      0 B |              -1,377 B |
+
+The async column going to zero is pass 1's `9c51335d`, which deleted
+the adapter fingerprint SPI and with it the only chunk boundary the
+prod build had left. The dev key-collision warning that needed it now
+sketches the schema inside the dev-only module it already lived in, so
+a production build folds the whole thing away instead of deferring it.
+
+Split by pass: pass 1 (E0-E6) 34,509 -> 33,764, **-745 B**; pass 2
+(A1-A5) 33,764 -> 33,009, **-755 B**. Pass 2 moved slightly more than
+pass 1 while touching a fraction of the code, and the reason is the one
+correction this program has to carry forward.
+
+**Pass 1's law: a fold never pays.** An ablation delta measures how
+compressible a call SHAPE is, not how much logic sits behind it, so
+merging two code paths that both still have callers recovers 5-20% of
+its ablation ceiling.
+
+**Pass 2's converse: a deleted OPTION always pays, usually several
+times its estimate.** Every A phase beat its ablation number, A3 by 5x.
+An option's cost is not the feature behind it. It is the guards, warns,
+try/catches and dedupe tables that exist solely because a caller could
+supply something, and those die with the caller. `coerce`'s registry
+arm was the cleanest case: -180 B, and not one byte of it was the two
+coercion rules.
+
+The corollary is a scoping rule for any future pass. Ablation-estimate
+an option by deleting the option AND everything downstream that only
+its callers reach, not by deleting the feature's happy path.
+
+### Runtime A/B, 7 interleaved rounds
+
+`BENCH_ROUNDS=7 node scripts/bench-delta.mjs` against `cd4d4f7c`, 23
+scenarios. **Nothing slower beyond the run's noise floor.** Six moved
+by 5% or more, all faster:
+
+- field-array remove+append rotation on a 500-item array **+106.8%**
+- `reset()` full baseline rebuild **+47.9%**
+- raw-walk `getAtPath` **+12.6%** at L=1, **+15.8%** at L=4
+- the same walk behind a computed **+5.4%** at L=1, **+8.9%** at L=4
+
+The four read-path rows were checked against the harness's own
+control-arm rule rather than reported at face value: they would be this
+harness's noise floor if they ran identical code on both sides, but
+`core/path-walker.ts` changed on this branch, so they are measuring a
+real change. Re-running that suite alone at 7 rounds reproduced all of
+them in the same direction (+13.2% / +17.9% / +11.2%), which noise does
+not do. The `untracked proxy` arms did not move: the per-level trap
+cost dominates there and swamps the walk.

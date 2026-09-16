@@ -143,6 +143,28 @@ const form = makeForm({
     expect(output).toMatch(/makeForm\(\s*\{[\s\S]*?__ssrAccessed:\s*true/)
   })
 
+  it('injects when the import comes from an adapter subpath, not the bare barrel', () => {
+    // All four attaform-family specifiers are tracked, and the pre-pass
+    // rejects a file before parsing it by looking for the package name
+    // in the raw source. A tightening of that check to the bare
+    // `'attaform'` spelling would drop the three subpaths silently, so
+    // one of them is pinned here.
+    const sfc = `<script setup lang="ts">
+import { useForm } from 'attaform/zod-v4'
+import { z } from 'zod'
+const form = useForm({
+  schema: z.object({ email: z.string() }),
+  defaultValues: async () => ({ email: '' }),
+})
+</script>
+<template>
+  <div>{{ form.values.email }}</div>
+</template>
+`
+    const output = transformedCode(sfc)
+    expect(output).toContain('__ssrAccessed: true')
+  })
+
   it('upgrades injectForm("key") string-shortcut to the options form when marking', () => {
     const sfc = `<script setup lang="ts">
 import { injectForm } from 'attaform'
@@ -264,6 +286,49 @@ const someKey = 'values'
     // narrower coverage cases (`form[k].activate()` patterns). MVP
     // is conservative-positive: any identifier reference enqueues.
     expect(output).toContain('__ssrAccessed: true')
+  })
+
+  it('leaves a file that only mentions attaform in prose alone', () => {
+    // The pre-pass rejects a file whose raw source lacks either the
+    // package name or a tracked function name. Neither half of that
+    // test may be the whole test: a file can name the package in a
+    // comment while importing its form primitive from somewhere else.
+    const sfc = `<script setup lang="ts">
+// Migrating this screen to attaform is tracked separately.
+import { useForm } from 'some-other-form-lib'
+const form = useForm({ schema: {} })
+</script>
+<template>
+  <div>{{ form.values }}</div>
+</template>
+`
+    const output = transformedCode(sfc)
+    expect(output).not.toContain('__ssrAccessed')
+  })
+
+  it('does not see an imported name spelled with a unicode escape', () => {
+    // A documented coverage boundary, not an accident. The pre-pass
+    // decides whether to parse a file at all by looking for `useForm`
+    // or `injectForm` in the raw source, so an escaped spelling of the
+    // imported name reads as absent even though Babel would decode it.
+    //
+    // This joins the shapes the transform already declines to cover
+    // (destructured returns, spread arguments, computed callees) and
+    // carries the same remedy: the consumer calls `form.activate()`.
+    // Nothing in the Vue or Vite toolchain emits escaped ASCII
+    // identifiers, and no author writes them, which is what makes the
+    // trade worth roughly a third of the pre-pass.
+    const escapedUseForm = String.raw`\u0075seForm`
+    const sfc = `<script setup lang="ts">
+import { ${escapedUseForm} as makeForm } from 'attaform'
+const form = makeForm({ schema: {} })
+</script>
+<template>
+  <div>{{ form.values }}</div>
+</template>
+`
+    const output = transformedCode(sfc)
+    expect(output).not.toContain('__ssrAccessed')
   })
 
   it('passes through non-.vue files unchanged', () => {

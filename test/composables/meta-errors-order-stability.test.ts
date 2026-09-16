@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
-import { useForm } from '../../src/zod'
+import { unset, useForm } from '../../src/zod'
 import type { UseFormConfigV4 } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
@@ -280,6 +280,44 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
       'password:zod:too_small',
       'password:user:reused',
     ])
+  })
+
+  it('keeps schema then blank then user order when one path carries all three', async () => {
+    // The aggregate used to make three passes over the stores, one per
+    // source, which produced this order as a side effect of the pass
+    // order. It now makes ONE pass and gathers a path's three lists
+    // together, which is the same answer only because ordinals are
+    // injective over paths. This is the case that says so.
+    const threeWay = z.object({
+      first: z.string().min(1, 'first required'),
+      n: z.number().min(5, 'too small'),
+    })
+    const { app, api } = mountForm(threeWay, { first: '', n: 0 })
+    apps.push(app)
+
+    // `unset` marks `n` blank while storage keeps the slim default 0,
+    // which also fails `.min(5)`: one path, a schema error and a blank
+    // error at once.
+    api.setValue('n', unset)
+    const handler = api.handleSubmit(
+      async () => {},
+      async () => {}
+    )
+    await handler()
+    await waitUntil(() =>
+      api.meta.errors.some((e) => e.code === 'atta:no-value-supplied') ? true : null
+    )
+    api.setErrors((prev) => [
+      ...prev,
+      { path: ['n'], message: 'reused', formKey: api.key, code: 'user:reused' },
+    ])
+    await waitUntil(() => (api.meta.errors.some((e) => e.code === 'user:reused') ? true : null))
+
+    const atN = api.meta.errors.filter((e) => e.path.join('.') === 'n').map((e) => e.code)
+    expect(atN).toEqual(['zod:too_small', 'atta:no-value-supplied', 'user:reused'])
+    // And the path ordinal still puts `first` ahead of `n`.
+    const paths = api.meta.errors.map((e) => e.path.join('.'))
+    expect(paths.indexOf('first')).toBeLessThan(paths.indexOf('n'))
   })
 
   it('lazy-assigned paths get ordinals after construction-time leaves', async () => {

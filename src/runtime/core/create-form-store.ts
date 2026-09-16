@@ -2,6 +2,7 @@ import {
   computed,
   reactive,
   ref,
+  shallowReactive,
   shallowRef,
   toRaw,
   toValue,
@@ -44,6 +45,7 @@ import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
+import { buildErrorPathIndex, type ErrorPathEntry } from './error-path-index'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
   consumerKeys,
@@ -217,6 +219,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * sentinel — see `docs/validation/blank.md`.
    */
   readonly derivedBlankErrors: ComputedRef<ReadonlyMap<PathKey, ValidationError[]>>
+  /**
+   * Every path carrying an error, sorted by key, rebuilt when any of
+   * the three error stores changes. `aggregateErrorsAt` binary-searches
+   * this for its prefix window instead of re-scanning all three stores
+   * per call, which is what turns a table of N rows from O(N x errors)
+   * back into O(errors). See `error-path-index.ts`.
+   */
+  readonly errorPathIndex: ComputedRef<readonly ErrorPathEntry[]>
   readonly originals: Map<PathKey, OriginalsRecord>
   /**
    * Reactive set of paths whose displayed state should be EMPTY even
@@ -3933,10 +3943,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return Array.isArray(v) ? v.length : 0
   })
 
-  // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
-  // reads of specific keys track those keys only, so a change to one field
-  // doesn't invalidate computeds watching another.
-  const fields = reactive(new Map<PathKey, FieldRecord>()) as Map<PathKey, FieldRecord>
+  // Per-path state. Vue's collection handlers make reads of specific
+  // keys track those keys only, so a change to one field doesn't
+  // invalidate computeds watching another.
+  //
+  // `shallowReactive`, not `reactive`: the deep variant additionally
+  // wraps every value a read HANDS BACK, minting a proxy per record per
+  // pass over the map. A `FieldRecord` is `readonly` in every field and
+  // every writer REPLACES it through `.set()`, so nothing was ever
+  // observing a mutation inside one. On a 200-field read-swept form
+  // that wrapping was a third of the form's heap. See
+  // `test/core/store-collection-reactivity.test.ts` for the tracking
+  // this keeps.
+  const fields = shallowReactive(new Map<PathKey, FieldRecord>()) as Map<PathKey, FieldRecord>
 
   // The DOM slice (element registry, no-latch host anchors, DOM-order
   // sort cache, focus listeners, first-error focus resolution) lives in
@@ -3953,7 +3972,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // side, the `setErrors` / `clearErrors` API owns `user`. Reads merge via
   // `getErrorsForPath` and the top-level `errors` drillable Proxy in
   // build-form-api, schema -> blank -> user.
-  const errorCells = reactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
+  //
+  // `shallowReactive`, not `reactive`, and the difference is not small.
+  // Deep `reactive` wraps every value a collection read HANDS BACK, so
+  // iterating this map minted a fresh reactive proxy per cell per pass:
+  // a 400-row table reading `form.list()` after a keystroke spent most
+  // of its time in `createReactiveObject`, for cells nothing can mutate.
+  // An `ErrorCell` is `readonly` on both sides and every writer REPLACES
+  // it through `.set()`, so key-level tracking, which `shallowReactive`
+  // keeps in full, is the whole of what the readers need.
+  const errorCells = shallowReactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
 
   // Originals are captured at init and on first appearance of a path; never
   // re-assigned. Reactive: the dirty computed iterates this map AND accesses
@@ -3967,7 +3995,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Map's iteration / set / delete fire Vue's collection deps,
   // picking up exactly the change that prompted the originals
   // mutation.
-  const originals = reactive(new Map<PathKey, OriginalsRecord>()) as Map<PathKey, OriginalsRecord>
+  //
+  // `shallowReactive` for the same reason as `fields`: an
+  // `OriginalsRecord` is `readonly` in both fields and is replaced, never
+  // mutated, so the deep variant's per-read proxy bought nothing. The
+  // collection-level tracking this paragraph is about is exactly the
+  // half `shallowReactive` keeps.
+  const originals = shallowReactive(new Map<PathKey, OriginalsRecord>()) as Map<
+    PathKey,
+    OriginalsRecord
+  >
 
   // Paths where a baseline-present container (object or array) was replaced
   // wholesale by a non-container — `setValue('profile', undefined)` and the
@@ -4048,6 +4085,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     }
     return result
   })
+
+  // Rebuilt whenever a cell is added, replaced or removed, or a blank
+  // path joins or leaves. Vue's collection tracking makes that exact:
+  // a keystroke that rewrites one path's errors invalidates this once,
+  // not once per reader.
+  const errorPathIndex = computed<readonly ErrorPathEntry[]>(() =>
+    buildErrorPathIndex(errorCells, derivedBlankErrors.value)
+  )
 
   // Submission lifecycle refs. Initial values encode "no submission has
   // happened yet": not in flight, zero attempts, no captured error.
@@ -4251,6 +4296,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     fields,
     errorCells,
     derivedBlankErrors,
+    errorPathIndex,
     originals,
     pathSweep,
     schema,

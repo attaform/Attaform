@@ -16,19 +16,12 @@ import { __DEV__ } from './dev'
 import { defaultDisplayState, isDefaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
 import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
-import { cellEntriesFor } from './errors'
+import { windowUnder } from './error-path-index'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
-import {
-  canonicalizePath,
-  isPathPrefix,
-  keyForSegments,
-  segmentsForPathKey,
-  type Path,
-  type PathKey,
-} from './paths'
+import { canonicalizePath, isPathPrefix, keyForSegments, type Path, type PathKey } from './paths'
 
 /**
  * Dedup set for the dev-only "consumer predicate threw" warn. Keyed by
@@ -815,39 +808,46 @@ export function aggregateErrorsAt<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   prefix: Path
 ): ValidationError[] {
+  const candidates = windowUnder(state.errorPathIndex.value, prefix)
+  if (candidates.length === 0) return []
   const formValue = state.form.value
+  const cells = state.errorCells
+  const blank = state.derivedBlankErrors.value
   const buckets = new Map<number, ValidationError[]>()
-  const collect = (errs: Iterable<readonly [PathKey, readonly ValidationError[]]>): void => {
-    for (const [pathKey, list] of errs) {
-      if (list.length === 0) continue
-      // Resolve the path's segments via the canonical PathKey ↔
-      // Segment[] inverse cache (`segmentsForPathKey`). Covers
-      // every shape the error stores can hold — leaf paths,
-      // container paths (cross-field refines), and the form-level
-      // `[]` key — without depending on `originals` (which only
-      // tracks leaves).
-      const segs = segmentsForPathKey(pathKey)
-      if (segs === null) continue
-      if (!isPathPrefix(prefix, segs)) continue
-      // Skip inactive variants (e.g. the inactive arm of a discriminated
-      // union after a switch). The root bucket `[]` (global / root
-      // `.refine()` errors, `setErrors`) has `segs.length === 0` and
-      // is never variant-bound, so the `segs.length > 0` guard always
-      // retains it. Container-level errors (cross-field refines on a
-      // container path) are filtered when their container path is
-      // unreachable; the refine pinned the error at the container, not at
-      // any particular leaf.
-      if (segs.length > 0 && !hasAtPath(formValue, segs)) continue
-      const ordinal = state.ensurePathOrdinal(pathKey)
-      const existing = buckets.get(ordinal)
-      if (existing === undefined) buckets.set(ordinal, [...list])
-      else existing.push(...list)
+  for (const { key, segments } of candidates) {
+    // The index window is a superset (it is a key-range, not a prefix
+    // test), so membership is still decided here.
+    if (!isPathPrefix(prefix, segments)) continue
+    // Skip inactive variants (e.g. the inactive arm of a discriminated
+    // union after a switch). The root bucket `[]` (global / root
+    // `.refine()` errors, `setErrors`) has `segments.length === 0` and
+    // is never variant-bound, so the `segments.length > 0` guard always
+    // retains it. Container-level errors (cross-field refines on a
+    // container path) are filtered when their container path is
+    // unreachable; the refine pinned the error at the container, not at
+    // any particular leaf.
+    if (segments.length > 0 && !hasAtPath(formValue, segments)) continue
+    // One bucket per path, filled schema -> blank -> user. Ordinals are
+    // injective over paths, so gathering a path's three lists together
+    // here is the same order the three separate store passes produced.
+    const cell = cells.get(key)
+    const blankList = blank.get(key)
+    const schemaList = cell?.schema
+    const userList = cell?.user
+    const total = (schemaList?.length ?? 0) + (blankList?.length ?? 0) + (userList?.length ?? 0)
+    if (total === 0) continue
+    const ordinal = state.ensurePathOrdinal(key)
+    let bucket = buckets.get(ordinal)
+    if (bucket === undefined) {
+      bucket = []
+      buckets.set(ordinal, bucket)
     }
+    if (schemaList !== undefined) bucket.push(...schemaList)
+    if (blankList !== undefined) bucket.push(...blankList)
+    if (userList !== undefined) bucket.push(...userList)
   }
-  collect(cellEntriesFor(state.errorCells, 'schema'))
-  collect(state.derivedBlankErrors.value)
-  collect(cellEntriesFor(state.errorCells, 'user'))
   if (buckets.size === 0) return []
+  if (buckets.size === 1) return [...buckets.values()][0] as ValidationError[]
   return [...buckets.entries()].sort(([a], [b]) => a - b).flatMap(([, errs]) => errs)
 }
 

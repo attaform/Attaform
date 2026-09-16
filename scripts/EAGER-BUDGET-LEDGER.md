@@ -583,3 +583,53 @@ to run the move yourself, so gating `focusFirstError()` on it would take
 away the thing the flag is for.
 
 Budget 33_400 -> 33_320 (~0.31 kB headroom).
+
+## A5: orphan sweep, 2026-09-16
+
+**33,008 -> 33,009 B (+1 B).** Byte-neutral by construction: nothing
+deleted here was in the eager closure, and the +1 B is gzip layout
+noise. The return is source mass and legibility, which is what the
+phase was scoped for. Budget unchanged at 33_320.
+
+Deleted outright, referenced from nowhere in `src`, `test`, `docs`,
+`skills` or `apps`:
+
+- `consumerEntries` (`core/consumer-code.ts`), the entries-shaped
+  sibling of `consumerKeys` / `readConsumerProp`. Every caller it was
+  written for takes keys and reads per key.
+- `PERSISTENCE_KEY_PREFIX` and `DEFAULT_PERSISTENCE_DEBOUNCE_MS`
+  (`core/defaults.ts`), both leftovers of the persist rip-out. The
+  debounce constant was kept alive only by the defaults-snapshot
+  assertion in `test/core/normalize-numeric-option.test.ts`, which is
+  a circular reason to exist; that line goes with it.
+
+The phase list also named `warnOnSchemaFingerprintMismatch`
+(`core/dev-key-collision-warnings.ts`) as an E0 leftover. **It is
+live.** `use-abstract-form.ts` calls it behind a `__DEV__` gate through
+a dynamic `import()`, which is why a direct-import grep misses it, and
+`test/composables/schema-mismatch-warning.test.ts` covers it. It stays.
+The dynamic import is the whole point of the module: the gate folds
+away in a production build and the warning code never ships.
+
+Re-running the orphan scan properly (every `export` of a value in
+`src/**`, matched against every reference in `src`, `test`, `docs`,
+`skills` and `apps`) found six more. These are not dead, only
+over-exported: each is used inside its own module and nowhere else, so
+the `export` advertised a contract no one had taken. The keyword is
+dropped, the symbol stays.
+
+- `isDate` (`core/vue-shared-shim.ts`)
+- `segmentsToDotted` (`core/paths.ts`)
+- `NO_EMBEDDED_DEFAULT` (`core/walk-derive-default.ts`)
+- `walkSchemaTree` (`adapters/zod-v4/introspect.ts`)
+- `renderAsStatic`, `getSummarizedPropValue`
+  (`lib/core/transforms/_shared-props.ts`)
+
+Two scans were run and deliberately produced no edits. Orphan TYPE
+exports came back with 52 hits, nearly all of them either public
+plugin-entry types (`src/vite.ts`, `src/webpack.ts`, and friends are
+entry points, so their options types ARE the API) or the named
+parameter/return types a public signature needs exported for the
+bundled `.d.mts` to compile. Chasing that list would trade zero bytes
+for `check:bundled-types` breakage. Orphan MODULES came back with
+eleven, every one a package entry point or the Nuxt runtime plugin.

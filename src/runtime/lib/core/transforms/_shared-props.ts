@@ -72,7 +72,7 @@ export function getSummarizedProps(node: RootNode | TemplateChildNode): Summariz
  * JS string literal. Pass `isStatic: false` to return the raw text
  * unchanged (already a dynamic-expression source string).
  */
-export function renderAsStatic(val: string, isStatic: boolean): string {
+function renderAsStatic(val: string, isStatic: boolean): string {
   return isStatic ? `"${val}"` : val
 }
 
@@ -81,7 +81,7 @@ export function renderAsStatic(val: string, isStatic: boolean): string {
  * either a quoted static literal (for simple static expressions) or
  * the raw children array (for compound / interpolated expressions).
  */
-export function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
+function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
   if (exp.type === NodeTypes.SIMPLE_EXPRESSION) {
     return renderAsStatic(exp.content, exp.isStatic)
   }

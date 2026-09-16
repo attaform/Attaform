@@ -3,7 +3,6 @@ import {
   DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
   DEFAULT_HISTORY_MAX_SNAPSHOTS,
   DEFAULT_MAX_RECURSION_DEPTH,
-  DEFAULT_PERSISTENCE_DEBOUNCE_MS,
   normalizeNumericOption,
 } from '../../src/runtime/core/defaults'
 
@@ -119,7 +118,6 @@ describe('normalizeNumericOption', () => {
     it('exposes the per-option defaults at well-known constants', () => {
       expect(DEFAULT_MAX_RECURSION_DEPTH).toBe(64)
       expect(DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS).toBe(0)
-      expect(DEFAULT_PERSISTENCE_DEBOUNCE_MS).toBe(300)
       expect(DEFAULT_HISTORY_MAX_SNAPSHOTS).toBe(128)
     })
   })

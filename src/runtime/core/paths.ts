@@ -277,7 +277,7 @@ export function keyForSegments(input: Path): {
  * surfaced to consumers (the `form.blankPaths` view, the persisted
  * payload, the SSR snapshot).
  */
-export function segmentsToDotted(segments: Path): string {
+function segmentsToDotted(segments: Path): string {
   return segments.join('.')
 }
 

@@ -471,7 +471,7 @@ const DESCEND_SINGLE = [
 const DESCEND_RECORD = ['shape', 'entries'] as const
 const DESCEND_LIST = ['options', 'items'] as const
 
-export function walkSchemaTree(
+function walkSchemaTree(
   schema: z.ZodType,
   visit: (node: z.ZodType) => boolean,
   seen?: WeakSet<object>

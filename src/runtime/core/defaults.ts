@@ -38,15 +38,6 @@ import { __DEV__ } from './dev'
 export const DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS = 0
 
 /**
- * Persistence write debounce (`persist.debounceMs`). 300 ms is
- * generous on purpose — the goal is "draft survives accidental
- * navigation," not "every keystroke hits storage." Lower if your
- * storage adapter is in-memory; raise for slow IndexedDB or remote
- * adapters.
- */
-export const DEFAULT_PERSISTENCE_DEBOUNCE_MS = 300
-
-/**
  * Undo/redo stack ceiling (`history.max`). 128 covers an extended
  * editing session — long-form text inputs, multi-page wizard flows,
  * heavy iteration on a complex form — without unbounded memory
@@ -57,15 +48,6 @@ export const DEFAULT_PERSISTENCE_DEBOUNCE_MS = 300
  * The cap exists more for predictability than memory pressure.
  */
 export const DEFAULT_HISTORY_MAX_SNAPSHOTS = 128
-
-/**
- * Storage-key namespace for persistence. Resolved once at
- * `resolveStorageKeyBase` to `${PERSISTENCE_KEY_PREFIX}${formKey}`
- * unless the consumer passes an explicit `persist.key`. Kept as a
- * separate constant so multi-tenant deployments can audit or reserve
- * their own prefix without grepping for the literal.
- */
-export const PERSISTENCE_KEY_PREFIX = 'attaform:'
 
 /**
  * Reserved namespace for the library's internal synthetic keys

@@ -59,7 +59,7 @@ import { safeAssign } from './safe-assign'
  * `undefined`, which IS a legal returned default value (e.g.
  * `z.string().default(undefined)`).
  */
-export const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
+const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
 
 /**
  * Peel transparent wrappers looking for an embedded `ZodDefault` (or

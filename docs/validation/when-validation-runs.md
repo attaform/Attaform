@@ -39,6 +39,8 @@ The directive's commit cadence and the validation trigger are independent. With 
 
 The same schema runs in every mode: the only thing that changes is _when_ a refinement gets evaluated.
 
+That is separate from when a person sees the result. An error is a property of the schema, not of the interaction, so [`field.firstError`](/docs/reading-the-form/errors) answers as soon as the mode validates. [`field.showErrors`](/docs/validation/showing-errors) is the display decision layered on top, and it waits for a submit attempt or a blur after interaction whatever `validateOn` says. Each panel below reports both.
+
 ::docs-demo{slug="validate-on-modes" label="validateOn modes"}
 ::
 

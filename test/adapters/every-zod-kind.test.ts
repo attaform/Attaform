@@ -236,7 +236,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
   })
 
   it('validates a Map leaf against its key and value schemas', async () => {
-    const { api } = makeMounter(adapter.useForm, adapter.mapScalar(), { strict: true })()
+    const { api } = makeMounter(adapter.useForm, adapter.mapScalar())()
 
     api.setValue('index', new Map([['a', 1]]))
     expect((await settle(api.validate())).success).toBe(true)
@@ -285,7 +285,7 @@ describe('every Zod kind — zod v4 only', () => {
 
   it('accepts a conforming string and rejects a non-conforming one', async () => {
     const schema = zV4.object({ greeting: zV4.templateLiteral(['hello ', zV4.string()]) })
-    const { api } = makeMounter(useFormV4, schema, { strict: true })()
+    const { api } = makeMounter(useFormV4, schema)()
 
     api.setValue('greeting', 'hello world')
     expect((await settle(api.validate())).success).toBe(true)

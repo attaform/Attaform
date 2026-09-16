@@ -129,7 +129,6 @@ describe.each(adapters)('async file transforms — $name', ({ useForm, z }) => {
         const api = useForm({
           schema: opts.schema,
           key: `axff-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           ...(opts.defaultValues ? { defaultValues: opts.defaultValues } : {}),
         })
         handle.api = api
@@ -440,7 +439,6 @@ describe.each(adapters)('async file transform — gated display ($name)', ({ use
         const api = useForm({
           schema: z.object({ field: z.array(z.string()) }),
           key: `axff-disp-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: { field: [] },
         })
         handle.api = api

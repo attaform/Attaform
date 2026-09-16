@@ -75,9 +75,9 @@ export const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
  * runaway guard for pathological wrapper stacks / self-referential
  * lazy loops resolved before their inner is constructed.
  *
- * Exported so the v3 strict-mode fix-up loop in `zod-v3/index.ts`
- * (the `runStrictGetDefaultsV3` validate-then-fix path) can reuse
- * it for the issue-driven default-resolution step.
+ * Exported so the v3 fix-up loop in `zod-v3/index.ts` (the
+ * `runGetDefaultsV3` validate-then-fix path) can reuse it for the
+ * issue-driven default-resolution step.
  */
 export function peelEmbeddedDefault<Schema>(
   schema: Schema,

@@ -145,7 +145,10 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
       it('errors present, untouched, submissionAttempts=0 → idle (gate closed)', () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
-        expect(form.fields('email').errors.length).toBe(1)
+        // Two: the construction seed (`''` fails the schema's `.min(1)`)
+        // plus the one just injected. The count is the precondition; the
+        // subject is that the closed gate shows neither.
+        expect(form.fields('email').errors.length).toBe(2)
         expect(form.fields('email').displayState).toBe('idle')
         expectProjections(form.fields('email'))
       })
@@ -383,7 +386,6 @@ describeAdapter('displayState — zod-v3 adapter', () =>
       useFormV3({
         schema: v3Schema,
         key: `display-state-v3-${Math.random()}`,
-        strict: false,
         defaultValues: v3Defaults,
       })
     )
@@ -396,7 +398,6 @@ describeOverrideTier('getDisplayState override resolution — zod-v3', (perForm)
       useFormV3({
         schema: v3Schema,
         key: `display-state-override-v3-${Math.random()}`,
-        strict: false,
         defaultValues: v3Defaults,
         ...(perForm === undefined ? {} : { getDisplayState: perForm }),
       })
@@ -425,7 +426,6 @@ describeAdapter('displayState — zod-v4 adapter', () =>
       useFormV4({
         schema: v4Schema,
         key: `display-state-v4-${Math.random()}`,
-        strict: false,
         defaultValues: v4Defaults,
       })
     )
@@ -438,7 +438,6 @@ describeOverrideTier('getDisplayState override resolution — zod-v4', (perForm)
       useFormV4({
         schema: v4Schema,
         key: `display-state-override-v4-${Math.random()}`,
-        strict: false,
         defaultValues: v4Defaults,
         ...(perForm === undefined ? {} : { getDisplayState: perForm }),
       })
@@ -469,7 +468,6 @@ describe('getDisplayState — cross-cutting', () => {
         useFormV4({
           schema: v4Schema,
           key: `omit-runtime-${Math.random()}`,
-          strict: false,
           defaultValues: v4Defaults,
           getDisplayState: (_prev, { field, formMeta }) => {
             for (const k of derivedKeys) {
@@ -504,7 +502,6 @@ describe('getDisplayState — cross-cutting', () => {
         useFormV4({
           schema: v4Schema,
           key: `composed-${Math.random()}`,
-          strict: false,
           defaultValues: v4Defaults,
           getDisplayState: layered,
         })
@@ -549,7 +546,6 @@ describe('getDisplayState — cross-cutting', () => {
         useFormV4({
           schema: v4Schema,
           key: `throw-pred-${Math.random()}`,
-          strict: false,
           defaultValues: v4Defaults,
           getDisplayState: exploding,
         })
@@ -606,7 +602,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `pending-timing-${Math.random()}`,
-          strict: false,
           defaultValues: { email: '' },
         } as never)
       )
@@ -704,7 +699,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `client-compute-${Math.random()}`,
-          strict: false,
           defaultValues: { email: '' },
         } as never)
       )
@@ -882,7 +876,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `custom-timing-${Math.random()}`,
-          strict: false,
           defaultValues: { email: '' },
           // Tighter than the default: spinner after 30ms, held for 90ms.
           getDisplayState: makeDefaultDisplayState({ showDelay: 30, minVisible: 90 }),
@@ -973,7 +966,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `container-spinner-${Math.random()}`,
-          strict: false,
           defaultValues: { profile: { a: '', b: '' } },
         } as never)
       )
@@ -1022,7 +1014,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `perf-${Math.random()}`,
-          strict: false,
           defaultValues: defaults,
         } as never)
       )
@@ -1181,20 +1172,19 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
       const f = useFormV4({
         schema,
         key: `wiz-timing-${Math.random()}`,
-        strict: false,
         defaultValues: { email: '' },
       } as never)
       const w = useWizard({ steps: [f], restore: false, persist: false })
       return { form: asForm(f), wizard: w }
     })
 
-    // Clean first wizard submit opens the gate. The wizard validates via
-    // parse(), which does not write per-field errors to the store, so the
-    // empty field reads idle (gate open, nothing surfaced yet) rather than
-    // error — that is fine; we only need the gate open to drive a spinner.
+    // First wizard submit opens the gate. The refine rejects the empty
+    // string synchronously, so construction already seeded the verdict
+    // and the open gate surfaces it. We only need the gate open here;
+    // the spinner is driven below.
     await wizard.handleSubmit(() => {})()
     await nextTick()
-    expect(form.fields('email').displayState).toBe('idle')
+    expect(form.fields('email').displayState).toBe('error')
 
     // Drive a spinner into its min-visible hold (change validation DOES write
     // the error, so the field carries a verdict under the spinner).
@@ -1246,7 +1236,6 @@ describe('resetField — in-flight validation teardown', () => {
           useFormV4({
             schema,
             key: `resetfield-teardown-${Math.random()}`,
-            strict: false,
             validateOn: 'blur',
             defaultValues: { email: '' },
           } as never)
@@ -1324,7 +1313,6 @@ describe('getDisplayState — focus-out collapses the show-delay', () => {
           useFormV4({
             schema,
             key: `focusout-grace-${Math.random()}`,
-            strict: false,
             validateOn: 'blur',
             defaultValues: { email: '' },
           } as never)
@@ -1382,7 +1370,6 @@ describe('getDisplayState — success is earned (dirty + non-blank)', () => {
         useFormV4({
           schema,
           key: `earned-success-${Math.random()}`,
-          strict: false,
           defaultValues: { handle: 'ada', bio: '' },
         } as never)
       )
@@ -1424,7 +1411,6 @@ describe('getDisplayState — reward early, punish late (DOM gate)', () => {
         const api = useFormV4({
           schema: gateSchema,
           key: `gate-${Math.random()}`,
-          strict: false,
           validateOn: 'blur',
         } as never) as unknown as FormLike & { register: (p: string) => unknown }
         handle.api = api
@@ -1519,7 +1505,6 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
         const api = useFormV4({
           schema,
           key: `rollup-dom-${Math.random()}`,
-          strict: false,
           ...formOpts,
         } as never) as unknown as FormLike & { register: (p: string) => unknown }
         handle.api = api
@@ -1622,7 +1607,6 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
         useFormV4({
           schema,
           key: `rollup-custom-${Math.random()}`,
-          strict: false,
           defaultValues: { profile: { name: '' } },
           getDisplayState: neverError,
         } as never)
@@ -1655,7 +1639,6 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
           useFormV4({
             schema,
             key: `rollup-pending-${Math.random()}`,
-            strict: false,
             defaultValues: { a: '', b: '' },
           } as never)
         )

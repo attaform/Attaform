@@ -52,7 +52,7 @@ function asLegacyShape<T>(du: T): T {
 
 /** The slice of the adapter these cases read, named so no call site casts. */
 type DefaultsProbe = {
-  getDefaultValues(config: { useDefaultSchemaValues: boolean; strict: boolean }): {
+  getDefaultValues(config: { useDefaultSchemaValues: boolean }): {
     data: unknown
   }
   getSlimPrimitiveTypesAtPath(path: readonly (string | number)[]): ReadonlySet<string>
@@ -65,8 +65,8 @@ function probeFor(root: z.ZodTypeAny): DefaultsProbe {
   return build(root)('legacy', { maxRecursionDepth: 64 })
 }
 
-function defaultsOf(root: z.ZodTypeAny, strict: boolean): unknown {
-  return probeFor(root).getDefaultValues({ useDefaultSchemaValues: true, strict }).data
+function defaultsOf(root: z.ZodTypeAny): unknown {
+  return probeFor(root).getDefaultValues({ useDefaultSchemaValues: true }).data
 }
 
 describe('a discriminated union whose options are a Map (zod v3 before 3.20.0)', () => {
@@ -79,7 +79,7 @@ describe('a discriminated union whose options are a Map (zod v3 before 3.20.0)',
     )
     // The regression: the walk read the Map as an array, found nothing,
     // and returned a branch with no fields at all.
-    expect(defaultsOf(z.object({ payment: legacy }), false)).toEqual({
+    expect(defaultsOf(z.object({ payment: legacy }))).toEqual({
       payment: { kind: 'card', cardNumber: '4242' },
     })
   })
@@ -87,8 +87,12 @@ describe('a discriminated union whose options are a Map (zod v3 before 3.20.0)',
   it('agrees with the array shape the current zod uses', () => {
     // The parity assertion is the point: the same schema must produce the
     // same defaults whichever container this zod happened to keep its
-    // branches in.
-    const modern = defaultsOf(wrapped, false)
+    // branches in. Construction parses the rebuilt union, so this also
+    // covers the other half of the fix: a rebuild has to write the
+    // branches back into the container this zod's own `_parse` reads,
+    // and handing an array to a zod that expects a Map produces a union
+    // that matches nothing.
+    const modern = defaultsOf(wrapped)
     const legacy = defaultsOf(
       z.object({
         payment: asLegacyShape(
@@ -97,29 +101,9 @@ describe('a discriminated union whose options are a Map (zod v3 before 3.20.0)',
             z.object({ kind: z.literal('bank'), iban: z.string().default('DE00') }),
           ])
         ),
-      }),
-      false
+      })
     )
     expect(legacy).toEqual(modern)
-  })
-
-  it('agrees in strict mode too, where the rebuilt union has to parse', () => {
-    // A rebuild has to write the branches back into the container this
-    // zod's own `_parse` reads. Handing an array to a zod that expects a
-    // Map produces a union that matches nothing, so strict mode is where
-    // that half of the fix is observable.
-    const legacy = defaultsOf(
-      z.object({
-        payment: asLegacyShape(
-          z.discriminatedUnion('kind', [
-            z.object({ kind: z.literal('card'), cardNumber: z.string().default('4242') }),
-            z.object({ kind: z.literal('bank'), iban: z.string().default('DE00') }),
-          ])
-        ),
-      }),
-      true
-    )
-    expect(legacy).toEqual(defaultsOf(wrapped, true))
   })
 
   it('keeps the rebuilt union parseable', () => {

@@ -11,19 +11,19 @@
     schema,
     key: 'docs-demo-validate-on-change',
     validateOn: 'change',
-    strict: false,
+    defaultValues: { handle: 'ada' },
   })
   const blurForm = useForm({
     schema,
     key: 'docs-demo-validate-on-blur',
     validateOn: 'blur',
-    strict: false,
+    defaultValues: { handle: 'ada' },
   })
   const submitForm = useForm({
     schema,
     key: 'docs-demo-validate-on-submit',
     validateOn: 'submit',
-    strict: false,
+    defaultValues: { handle: 'ada' },
   })
 
   const modes = [
@@ -57,8 +57,9 @@
 <template>
   <div class="demo layout">
     <p class="lede">
-      The same schema runs in all three. What changes is <em>when</em>. Type one or two characters
-      into each, then tab away or submit, and watch when the message lands.
+      The same schema runs in all three. What changes is <em>when</em>. Each starts with a valid
+      handle: shorten one to a character or two, then tab away or submit, and watch when the message
+      lands.
     </p>
 
     <div class="layout split3">

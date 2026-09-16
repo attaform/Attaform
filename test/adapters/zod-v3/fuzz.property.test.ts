@@ -33,7 +33,6 @@ describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
       })
       const result = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
-        strict: false,
       })
       expect(result.success).toBe(true)
       // After `success === true`, the result type narrows so `.data` is

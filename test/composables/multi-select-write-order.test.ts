@@ -113,7 +113,6 @@ describe.each(adapters)('$name: <select multiple> write order', ({ useFormFn, li
           const form = useFormFn({
             schema: container.leaf === 'set' ? set : list,
             key: `mso-${_label}-${Math.random().toString(36).slice(2)}`,
-            strict: false,
             defaultValues: { picks: container.empty() },
           })
           formOut.form = form

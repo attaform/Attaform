@@ -72,7 +72,7 @@ describe('<input type="file" v-register> — single file', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-single', strict: false })
+        const form = useForm({ schema, key: 'file-single' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', class: 'avatar' }), [
@@ -108,7 +108,7 @@ describe('<input type="file" v-register> — single file', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-clear', strict: false })
+        const form = useForm({ schema, key: 'file-clear' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', class: 'avatar' }), [
@@ -154,7 +154,7 @@ describe('<input type="file" multiple v-register>', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-multi', strict: false })
+        const form = useForm({ schema, key: 'file-multi' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', multiple: true, class: 'docs' }), [
@@ -194,7 +194,7 @@ describe('<input type="file" multiple v-register>', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-multi-clear', strict: false })
+        const form = useForm({ schema, key: 'file-multi-clear' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', multiple: true, class: 'docs' }), [
@@ -243,7 +243,7 @@ describe('<input type="file" v-register> — required-file error', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-required', strict: false })
+        const form = useForm({ schema, key: 'file-required' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', class: 'id' }), [
@@ -279,7 +279,7 @@ describe('<input type="file" v-register> — programmatic clear', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-prog-clear', strict: false })
+        const form = useForm({ schema, key: 'file-prog-clear' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', class: 'avatar' }), [
@@ -325,7 +325,7 @@ describe('<input type="file" v-register> — listener cleanup', () => {
 
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'file-cleanup', strict: false })
+        const form = useForm({ schema, key: 'file-cleanup' })
         captured.api = form
         return () =>
           withDirectives(h('input', { type: 'file', class: 'avatar' }), [

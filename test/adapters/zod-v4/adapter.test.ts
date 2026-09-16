@@ -107,7 +107,6 @@ describe('zod v4 adapter', () => {
         const result = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { word: '', email: 'a@b.com' },
-          strict: true,
         })
         expect(result.success).toBe(true)
         expect(result.errors).toBeUndefined()
@@ -124,15 +123,15 @@ describe('zod v4 adapter', () => {
         const result = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { word: 'hello', email: 'a@b.com' },
-          strict: true,
         })
         expect(result.success).toBe(true)
         expect(result.errors).toBeUndefined()
       })
 
-      it('strict: false bypasses the sync-only retry path entirely', () => {
-        // Lax mode is a global opt-out; even an obviously failing
-        // sync default returns success without the retry running.
+      it('a FAILING sync sibling is not seeded when an async refine is present', () => {
+        // The async gate is whole-schema: an obviously failing sync
+        // default still returns success, because the construction
+        // parse never ran.
         const schema = z.object({
           word: z.string().refine((v) => v.length > 0, 'word required'),
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
@@ -141,7 +140,6 @@ describe('zod v4 adapter', () => {
         const result = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { word: '', email: 'a@b.com' },
-          strict: false,
         })
         expect(result.success).toBe(true)
         expect(result.errors).toBeUndefined()
@@ -159,7 +157,6 @@ describe('zod v4 adapter', () => {
         const result = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { email: 'a@b.com' },
-          strict: true,
         })
         expect(result.success).toBe(true)
       })

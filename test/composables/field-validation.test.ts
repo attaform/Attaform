@@ -34,12 +34,11 @@ function mountWith(options: { validateOn?: 'change' | 'blur' | 'submit'; debounc
       handle.api = useForm({
         schema: baseSchema,
         key: 'field-validation',
-        // Pin lax: tests here exercise debounced field validation, not
-        // the construction-time strict-mode seed. The schema is two
-        // strings — neither auto-marks blank (only numeric primitives
-        // do), so `derivedBlankErrors` stays empty and each test can
-        // observe the debounced run without confounding entries.
-        strict: false,
+        // Start valid: these tests exercise debounced field validation,
+        // and construction validates unconditionally, so defaults that
+        // fail the schema would seed the very errors each test is
+        // waiting to observe arrive.
+        defaultValues: { email: 'seed@example.com', password: 'longenough' },
         ...(options.validateOn !== undefined ? { validateOn: options.validateOn } : {}),
         ...(options.debounceMs !== undefined ? { debounceMs: options.debounceMs } : {}),
       } as UseFormConfig<typeof baseSchema>)
@@ -109,6 +108,9 @@ describe('validateOn: "change", debounceMs > 0', () => {
     const { app, api } = mountWith({ validateOn: 'change', debounceMs: 500 })
     apps.push(app)
 
+    // Break password too, so submit's whole-form pass has a second
+    // failing field to report; the fixture's defaults start valid.
+    api.setValue('password', 'short')
     // Queue a field validation but don't let it fire yet.
     api.setValue('email', 'invalid')
     // Submit fires before the debounce elapses.

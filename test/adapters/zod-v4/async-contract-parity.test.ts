@@ -31,7 +31,6 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
-      strict: true,
     })
 
     expect(result.success).toBe(true)
@@ -45,7 +44,6 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '' },
-      strict: true,
     })
 
     expect(result.success).toBe(false)
@@ -61,14 +59,13 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: 'hello', email: 'a@b.com' },
-      strict: true,
     })
 
     expect(result.success).toBe(true)
     expect(result.errors).toBeUndefined()
   })
 
-  it('strict: false seeds nothing either', () => {
+  it('a FAILING sync sibling is not seeded either, when an async refine is present', () => {
     const schema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
@@ -77,7 +74,6 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
-      strict: false,
     })
 
     expect(result.success).toBe(true)
@@ -92,7 +88,6 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { email: 'a@b.com' },
-      strict: true,
     })
 
     expect(result.success).toBe(true)

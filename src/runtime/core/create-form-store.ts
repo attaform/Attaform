@@ -464,9 +464,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * run yet — so without the gate, frame 1 paints the form as
    * "valid" before the real verdict arrives a tick later.
    *
-   * Initialized to `!strict`: non-strict consumers opt out of the
-   * validation pipeline by design, so locking them on
-   * `firstValidationDone === false` would defeat the opt-out.
    * Reset is left untouched — the post-reset validation flips it
    * back true on completion, same as the construction-time path.
    */
@@ -897,7 +894,6 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
   readonly formKey: FormKey
   readonly schema: AbstractSchema<F, G>
   readonly defaultValues?: DeepPartial<WriteShape<F>> | undefined
-  readonly strict?: boolean | undefined
   readonly hydration?: FormStoreHydration | undefined
   /**
    * When per-field validation runs. Default `'change'`. See `ValidateOn`.
@@ -1208,7 +1204,6 @@ type TransformRun = { token: number; holder: TransformAbortHolder; released: boo
 export type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, G> & {
   // --- resolved configuration (fixed at construction, except
   // `defaultValues`, which the form re-seats as it learns them) ---
-  readonly strict: boolean
   /**
    * The form's CURRENT defaults, and the single source both baselines
    * read. Seeded from `useForm({ defaultValues })`, then re-seated by
@@ -1277,7 +1272,6 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
  */
 function computeBaselineResponse<F extends GenericForm, G extends GenericForm = F>(
   schema: AbstractSchema<F, G>,
-  strict: boolean,
   source: DeepPartial<WriteShape<F>> | undefined
 ): SchemaDefaultsResult<F> {
   const completed =
@@ -1287,7 +1281,6 @@ function computeBaselineResponse<F extends GenericForm, G extends GenericForm = 
   return schema.getDefaultValues({
     useDefaultSchemaValues: true,
     constraints: completed,
-    strict,
   })
 }
 
@@ -1295,14 +1288,13 @@ function computeBaselineResponse<F extends GenericForm, G extends GenericForm = 
  * Initial value of the `firstValidationDone` gate — shared by the ref's
  * construction seed and `reset()`'s restore, so the post-reset window
  * gates container `.valid` exactly like the post-mount window does. Only
- * async-validating strict schemas need the gate; see the
+ * async-validating schemas need the gate; see the
  * `FormStore.firstValidationDone` JSDoc.
  */
 function initialFirstValidationGate<F extends GenericForm, G extends GenericForm = F>(
-  schema: AbstractSchema<F, G>,
-  strict: boolean
+  schema: AbstractSchema<F, G>
 ): boolean {
-  return !strict || schema.needsAsyncValidation?.() !== true
+  return schema.needsAsyncValidation?.() !== true
 }
 
 /**
@@ -1336,8 +1328,8 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
  * `renderToString` serialises, so firing would only stamp a misleading
  * `validating: true` into the SSR HTML that the client's hydration pass
  * wouldn't reproduce), and `queueMicrotask` so the increment lands AFTER
- * Vue's synchronous hydration / first render. Gated to strict mode AND to
- * schemas that actually need async work — sync-only schemas would
+ * Vue's synchronous hydration / first render. Gated to schemas that
+ * actually need async work — sync-only schemas would
  * otherwise pay a redundant microtask + briefly flash
  * `meta.validating: true`, misrepresenting "validation is running" when
  * nothing is.
@@ -1345,7 +1337,7 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
 function queueInitialAsyncValidation<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>
 ): void {
-  if (!st.ssr && st.strict && st.schema.needsAsyncValidation?.() === true) {
+  if (!st.ssr && st.schema.needsAsyncValidation?.() === true) {
     queueMicrotask(() => scheduleFieldValidation(st, [], true /* immediate */))
   }
 }
@@ -3385,11 +3377,7 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
       st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
     )
   ) as DeepPartial<WriteShape<F>>
-  seedOriginalsFromBaseline(
-    st,
-    computeBaselineResponse(st.schema, st.strict, st.defaultValues).data,
-    false
-  )
+  seedOriginalsFromBaseline(st, computeBaselineResponse(st.schema, st.defaultValues).data, false)
 }
 
 // --- Reset ---
@@ -3435,7 +3423,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // to an array or nested object after a reset would mutate the very
   // baseline the next `reset()` restores from.
   st.defaultValues = structuralSnapshot(resetSource)
-  const resetResponse = computeBaselineResponse(st.schema, st.strict, resetSource)
+  const resetResponse = computeBaselineResponse(st.schema, resetSource)
   const next = resetResponse.data
   // Rebuild authoredPaths against the post-reset baseline. Reset is
   // "fresh start" semantics, so the prior authoring set is wiped and
@@ -3484,19 +3472,15 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // errors are not preserved across a reset (different from submit-success,
   // which preserves them).
   st.errorCells.clear()
-  // Re-derive schemaErrors from the post-reset state under strict mode,
-  // mirroring the construction-time seed. Without this,
+  // Re-derive schemaErrors from the post-reset state, mirroring the
+  // construction-time seed. Without this,
   // reset clears the error store but never re-runs validation — so a
   // form mounted with invalid defaults (e.g. empty required strings)
   // would surface as `valid: true` immediately after reset even though
   // the values it landed back on are the same INVALID defaults it
   // mounted with. `field.valid` aggregates over schemaErrors and would
   // otherwise come up empty, flipping every leaf green.
-  //
-  // Gated on `strict` to honor the same opt-out construction uses:
-  // a non-strict form opted out of construction-time validation
-  // explicitly, and post-reset behaviour follows suit.
-  if (st.strict && !resetResponse.success) {
+  if (!resetResponse.success) {
     replaceErrorChannel(st, 'schema', resetResponse.errors)
   }
   // `getDefaultValues` strips refinements before parsing (see
@@ -3514,11 +3498,9 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // invisible: the form mounts before the user is looking, errors
   // land within a microtask, and the UI never has time to render
   // the empty-errors state.
-  if (st.strict) {
-    const syncResult = st.schema.validateAtPath(st.form.value, undefined, { sync: true })
-    if (!(syncResult instanceof Promise) && !syncResult.success) {
-      applySchemaErrorsForSubtree(st, [], syncResult.errors)
-    }
+  const syncResult = st.schema.validateAtPath(st.form.value, undefined, { sync: true })
+  if (!(syncResult instanceof Promise) && !syncResult.success) {
+    applySchemaErrorsForSubtree(st, [], syncResult.errors)
   }
   // Restore the `firstValidationDone` gate to its construction-time
   // value (`initialFirstValidationGate`, the same primitive that seeds
@@ -3535,7 +3517,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // `valid: true` for every container — the docs-site wizard
   // demo's step titles turn green for ~600ms-1.5s. Restoring the
   // gate keeps containers `valid: false` throughout that window.
-  st.firstValidationDone.value = initialFirstValidationGate(st.schema, st.strict)
+  st.firstValidationDone.value = initialFirstValidationGate(st.schema)
   // Re-queue the async validation pass through the same primitive
   // construction uses (`queueInitialAsyncValidation`). Picks up
   // async-only verdicts the sync pass above can't reach
@@ -3823,7 +3805,7 @@ function getFieldRecord<F extends GenericForm, G extends GenericForm = F>(
 export function createFormStore<F extends GenericForm, G extends GenericForm = F>(
   options: CreateFormStoreOptions<F, G>
 ): FormStore<F, G> {
-  const { formKey, schema, defaultValues, strict = true, hydration } = options
+  const { formKey, schema, defaultValues, hydration } = options
   const ssr = options.ssr === true
   const ssrPrefetch = options.ssrPrefetch
   const rememberVariants: boolean = options.rememberVariants !== false
@@ -3879,11 +3861,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Schema is ALWAYS consulted: we need the schema-derived originals even
   // when hydrating, so pristine/dirty computation survives SSR round-trip.
   // The form's actual starting value, though, prefers hydration data.
-  const schemaResponse: SchemaDefaultsResult<F> = computeBaselineResponse(
-    schema,
-    strict,
-    defaultValues
-  )
+  const schemaResponse: SchemaDefaultsResult<F> = computeBaselineResponse(schema, defaultValues)
   const schemaInitialData = schemaResponse.data
 
   // Paths the consumer or schema-author explicitly authored a starting
@@ -4178,11 +4156,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const activated = ref(false)
   const activationPromise = ref<Promise<void> | undefined>(undefined)
   // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc and
-  // `initialFirstValidationGate` for why only async-validating strict
+  // `initialFirstValidationGate` for why only async-validating
   // schemas start gated. The watch flips the gate when
   // `activeValidations` returns to 0 from a positive value (i.e. the
   // construction-time queued validation completes).
-  const firstValidationDone = ref(initialFirstValidationGate(schema, strict))
+  const firstValidationDone = ref(initialFirstValidationGate(schema))
   // `watch(source, cb)` only fires when the source CHANGES (no immediate
   // first-invocation), so `prev` is always the pre-transition value, typed
   // as `number`, never `undefined`.
@@ -4332,7 +4310,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     originalBlankPaths,
 
     // --- kernel-internal state ---
-    strict,
     // Defensive copy, not a fix for an observed alias: today
     // `getDefaultValues` happens to build a fresh tree, so form storage
     // does not currently share structure with the consumer's object.
@@ -4493,11 +4470,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     })
     // No hydration — seed schemaErrors from the construction-time
     // validation result IF the schema rejected the defaults AND the
-    // form was constructed in strict mode. Non-strict mode treats
-    // default values as "best-effort," so populating errors there
-    // would surprise consumers who explicitly opted out via
-    // `strict: false`.
-    if (strict && !schemaResponse.success) {
+    // validation result if the schema rejected the defaults.
+    if (!schemaResponse.success) {
       replaceErrorChannel(st, 'schema', schemaResponse.errors)
     }
   }
@@ -4507,7 +4481,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // adapter degrades to success when the schema's sync parse can't
   // resolve them. Queue the one-shot full-form validation pass so the
   // errors land on a later microtask instead of waiting for a user
-  // mutation; see `queueInitialAsyncValidation` for the SSR and strict
+  // mutation; see `queueInitialAsyncValidation` for the SSR and async
   // gates.
   queueInitialAsyncValidation(st)
 

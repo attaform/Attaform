@@ -503,8 +503,8 @@ export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
  * the post-mount async pass.
  *
  * Drives the adapter's `needsAsyncValidation` together with
- * `containsAsyncTransform`. The strict-mode `getDefaultValues` path
- * pairs this conservative flag with a try-parse fallback inside
+ * `containsAsyncTransform`. The `getDefaultValues` path pairs this
+ * conservative flag with a try-parse fallback inside
  * `stripAsyncChecks`: when the sync parse throws the "Async
  * refinement encountered" error, the stripped tree drops every
  * `ZodEffects` (no static sync/async split possible) and the parse
@@ -553,10 +553,10 @@ export function containsDiscriminatedUnion(schema: z.ZodTypeAny, seen?: WeakSet<
  * directly at `_def.effect.transform`, and `isAsyncEffect` reads its
  * `constructor.name` exactly like v4's `isAsyncCheck`.
  *
- * Gates the strict `getDefaultValues` path independently of
+ * Gates the `getDefaultValues` path independently of
  * `containsAsyncRefine`: async transforms cannot be stripped because
  * the transform's output shape is load-bearing for the inner schema's
- * input, so the strict pass skips entirely and defers to the
+ * input, so the construction parse skips entirely and defers to the
  * post-mount `safeParseAsync` pass.
  *
  * Mirrors `zod-v4/introspect.ts:612 containsAsyncTransform`.

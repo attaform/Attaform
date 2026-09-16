@@ -130,7 +130,6 @@ describe.each(flatAdapters)(
           api = (useForm as any)({
             schema,
             key: 'per-keystroke-flat',
-            strict: false,
             validateOn: 'change',
             debounceMs: 0,
             defaultValues: { refined: 'r', sibling: '' },
@@ -169,7 +168,6 @@ describe.each(flatAdapters)(
           api = (useForm as any)({
             schema,
             key: 'per-keystroke-flat-self',
-            strict: false,
             validateOn: 'change',
             debounceMs: 0,
             defaultValues: { refined: 'r', sibling: '' },
@@ -212,7 +210,6 @@ describe.each(refineAdapters)(
           api = (useForm as any)({
             schema,
             key: 'per-keystroke-container',
-            strict: false,
             validateOn: 'change',
             debounceMs: 0,
             defaultValues: { refined: 'r', sibling: '' },

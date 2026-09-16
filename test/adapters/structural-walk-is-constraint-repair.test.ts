@@ -34,11 +34,9 @@ import { zodAdapter as zodV4Adapter } from '../../src/runtime/adapters/zod-v4'
 import { zodAdapter as zodV3Adapter } from '../../src/runtime/adapters/zod-v3'
 
 type Defaults = {
-  getDefaultValues(config: {
-    useDefaultSchemaValues: boolean
-    constraints?: unknown
-    strict?: boolean
-  }): { data: unknown }
+  getDefaultValues(config: { useDefaultSchemaValues: boolean; constraints?: unknown }): {
+    data: unknown
+  }
 }
 
 function probe(build: (s: never) => unknown, schema: unknown): Defaults {
@@ -172,21 +170,17 @@ describe.each(ADAPTERS)(
   '$name: deriving is already a fixed point of the walk',
   ({ build, cases }) => {
     describe.each([true, false])('useDefaultSchemaValues=%s', (useDefaultSchemaValues) => {
-      describe.each([true, false])('strict=%s', (strict) => {
-        it.each(cases)('%s', (_label, schema) => {
-          const derived = probe(build, schema).getDefaultValues({
-            useDefaultSchemaValues,
-            strict,
-          }).data
-          // Handing the derivation back as constraints takes the walking
-          // path. Equal results mean the walk had nothing to repair.
-          const rewalked = probe(build, schema).getDefaultValues({
-            useDefaultSchemaValues,
-            strict,
-            constraints: derived,
-          }).data
-          expect(snapshot(rewalked)).toEqual(snapshot(derived))
-        })
+      it.each(cases)('%s', (_label, schema) => {
+        const derived = probe(build, schema).getDefaultValues({
+          useDefaultSchemaValues,
+        }).data
+        // Handing the derivation back as constraints takes the walking
+        // path. Equal results mean the walk had nothing to repair.
+        const rewalked = probe(build, schema).getDefaultValues({
+          useDefaultSchemaValues,
+          constraints: derived,
+        }).data
+        expect(snapshot(rewalked)).toEqual(snapshot(derived))
       })
     })
   }
@@ -205,7 +199,6 @@ describe.each(ADAPTERS)(
           : zV3.object({ profile: zV3.object({ city: zV3.string(), zip: zV3.string() }) })
       const walked = probe(build, schema).getDefaultValues({
         useDefaultSchemaValues: true,
-        strict: false,
         constraints: { profile: 'not-an-object' },
       }).data
       expect(walked).toEqual({ profile: { city: '', zip: '' } })
@@ -228,7 +221,6 @@ describe.each(ADAPTERS)(
             })
       const walked = probe(build, schema).getDefaultValues({
         useDefaultSchemaValues: true,
-        strict: false,
         constraints: { payment: { kind: 'bank', iban: 'DE00', cardNumber: '4242' } },
       }).data
       expect(walked).toEqual({ payment: { kind: 'bank', iban: 'DE00' } })

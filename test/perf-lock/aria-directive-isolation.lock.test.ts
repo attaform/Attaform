@@ -101,7 +101,6 @@ describe.each(ADAPTERS)(
             }),
             key: `aria-${adapter.name}-${keySeq}`,
             defaultValues: { a: '', b: '', c: '', d: '', e: '' },
-            strict: false,
             validateOn: 'change',
             debounceMs: 0,
             autoAria: true,

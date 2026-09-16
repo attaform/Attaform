@@ -130,7 +130,6 @@ const ADAPTERS: ReadonlyArray<{ name: string; makeForm: MakeForm }> = [
           useFormV3({
             schema,
             key: `interact-v3-${Math.random()}`,
-            strict: false,
             defaultValues: SEED,
           })
         )
@@ -151,7 +150,6 @@ const ADAPTERS: ReadonlyArray<{ name: string; makeForm: MakeForm }> = [
           useFormV4({
             schema,
             key: `interact-v4-${Math.random()}`,
-            strict: false,
             defaultValues: SEED,
           })
         )
@@ -313,7 +311,6 @@ describe('form.interact — a valid subtree earns its success check', () => {
         useFormV4({
           schema,
           key: `interact-success-${Math.random()}`,
-          strict: false,
           defaultValues: {
             team: '',
             members: [{ name: 'Ada', email: 'ada@team.dev' }],
@@ -353,7 +350,6 @@ describe('form.interact — a valid subtree earns its success check', () => {
         useFormV4({
           schema: okSchema,
           key: `interact-flood-${Math.random()}`,
-          strict: false,
           defaultValues: { a: 'seeded', b: 'seeded' },
         } as never)
       )
@@ -376,7 +372,6 @@ describe('earned success — a real user who edits and reverts', () => {
         const api = useFormV4({
           schema,
           key: `interact-revert-${Math.random()}`,
-          strict: false,
           validateOn: 'blur',
           defaultValues: { email: 'ada@team.dev' },
         } as never) as unknown as FormWithInteract & { register: (p: string) => unknown }
@@ -426,7 +421,6 @@ describe('form.interact — disabled form', () => {
         useFormV4({
           schema,
           key: `interact-disabled-${Math.random()}`,
-          strict: false,
           disabled: true,
           defaultValues: { email: 'not-an-email' },
         } as never)
@@ -444,7 +438,6 @@ describe('form.interact — disabled form', () => {
         useFormV4({
           schema,
           key: `interact-disabled-quiet-${Math.random()}`,
-          strict: false,
           disabled: true,
           defaultValues: { email: 'not-an-email' },
         } as never)
@@ -471,7 +464,6 @@ describe('form.interact — survives unmount', () => {
         const api = useFormV4({
           schema,
           key: `interact-remount-${Math.random()}`,
-          strict: false,
           defaultValues: { email: 'not-an-email' },
         } as never) as unknown as FormWithInteract & { register: (p: string) => unknown }
         handle.api = api
@@ -519,7 +511,6 @@ describe('form.interact — survives unmount', () => {
         const api = useFormV4({
           schema,
           key: `interact-blur-${Math.random()}`,
-          strict: false,
           validateOn: 'blur',
           defaultValues: { email: 'not-an-email' },
         } as never) as unknown as FormWithInteract & { register: (p: string) => unknown }
@@ -562,7 +553,6 @@ describe('form.interact — survives unmount', () => {
       const f = useFormV4({
         schema,
         key: `interact-wizard-${Math.random()}`,
-        strict: false,
         defaultValues: { email: 'not-an-email' },
       } as never)
       return { wizard: useWizard({ steps: [f], restore: false, persist: false }) }
@@ -581,7 +571,6 @@ describe('form.interact — survives unmount', () => {
         useFormV4({
           schema,
           key: `interact-unmounted-${Math.random()}`,
-          strict: false,
           defaultValues: { email: 'not-an-email' },
         })
       )

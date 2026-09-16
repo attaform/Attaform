@@ -92,7 +92,6 @@ describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
       useFormV3({
         schema,
         key: `bug1-v3-${Math.random()}`,
-        strict: false,
         defaultValues: { items: [] },
       })
     )
@@ -123,7 +122,6 @@ describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
       useFormV4({
         schema,
         key: `bug1-v4-${Math.random()}`,
-        strict: false,
         defaultValues: { items: [] },
       })
     )
@@ -170,7 +168,6 @@ describe('Bug 2 — parent .refine does not break per-field revalidation', () =>
           toCountry: zV3.ZodString
         }>,
         key: `bug2-v3-${Math.random()}`,
-        strict: false,
         defaultValues: { fromCountry: '', toCountry: '' },
       })
     )
@@ -206,7 +203,6 @@ describe('Bug 2 — parent .refine does not break per-field revalidation', () =>
       useFormV4({
         schema,
         key: `bug2-v4-${Math.random()}`,
-        strict: false,
         defaultValues: { fromCountry: '', toCountry: '' },
       })
     )

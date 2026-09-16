@@ -135,7 +135,7 @@ const sharedV3Schemas = createSharedSchemaStore()
  * Build the v3 `AbstractSchemaServices` instance. Services are stateless
  * — every method receives the schema it acts on plus the factory-supplied
  * `formKey` / `maxRecursionDepth`. Generic in `Form` / `GetValueFormType`
- * so the typed methods (`runStrictGetDefaults` / `makeSubSchema`)
+ * so the typed methods (`runGetDefaults` / `makeSubSchema`)
  * propagate the form shape correctly.
  */
 /**
@@ -206,8 +206,8 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     slimPrimitivesOf: (schema, _maxRecursionDepth) => slimPrimitivesV3(schema),
     deriveDefault: (schema, useDefault) =>
       getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault),
-    runStrictGetDefaults: (schema, config, maxRecursionDepth) =>
-      runStrictGetDefaultsV3<Form>(schema as z.ZodSchema, config, maxRecursionDepth),
+    runGetDefaults: (schema, config, maxRecursionDepth) =>
+      runGetDefaultsV3<Form>(schema as z.ZodSchema, config, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralLeafV3(schema),
     unwrapToDiscriminatedUnion: (schema) =>
       unwrapToDiscriminatedUnion(schema) as z.ZodTypeAny | undefined,
@@ -772,27 +772,19 @@ function resolveFieldMetaAtPathV3(
 /**
  * v3's construction-time `getDefaultValues` flow. Builds the derived
  * default seed via `getDefaultValuesFromZodSchema`, merges
- * constraints, then runs:
+ * constraints, runs the shared DU-aware structural fix walk
+ * (`core/walk-fix-structural.ts`) over the result, then parses against
+ * the REAL schema so refines and container / leaf checks surface at
+ * construction. A sync parse that throws because of an async refine
+ * mounts clean and leaves the verdict to the post-mount async pass
+ * (v3 cannot tell sync from async refines without invoking the
+ * wrapper); a user refine that throws raw does the same.
  *
- *   - Strict mode (default): parse against the REAL schema so refines
- *     and container / leaf checks surface at construction. If a sync
- *     parse throws because of an async refine, strip every ZodEffects
- *     and re-parse (v3 cannot tell sync from async refines without
- *     invoking the wrapper). If a user refine throws raw, fall back
- *     to mount-clean success.
- *
- *   - Lax mode: the shared DU-aware structural fix walk
- *     (`core/walk-fix-structural.ts`, sign-off 7) — primitive /
- *     structural mismatches get patched with the node's derived
- *     default; refinement-level state is invisible to the walk so the
- *     user's defaultValues are preserved verbatim and no user fn runs
- *     at construction.
- *
- * Both arms compose with the shared core `mergeDeep` (NOT lodash merge)
- * so arrays replace wholesale and explicit `null` / `undefined`
- * overrides survive. v3 and v4 now call the same helper.
+ * Composes with the shared core `mergeDeep` (NOT lodash merge) so
+ * arrays replace wholesale and explicit `null` / `undefined`
+ * overrides survive. v3 and v4 call the same helper.
  */
-function runStrictGetDefaultsV3<Form>(
+function runGetDefaultsV3<Form>(
   rootSchema: z.ZodSchema,
   config: GetDefaultValuesConfig<Form>,
   maxRecursionDepth: number
@@ -809,18 +801,16 @@ function runStrictGetDefaultsV3<Form>(
   // also covers the old slim-validated primitive-root branch — the
   // structural fix walk below patches any mismatch the replacement
   // introduces.
-  // Structural completeness BEFORE the mode split, matching v4, which
-  // applies the same walk inside `getDefaultValuesFromZodSchema` and so
-  // covers both modes. v3 applied it only in the lax tail, which meant
-  // STRICT mode — the default — never ran it: a constraint supplying a
-  // primitive where the schema declares an object stayed a primitive,
-  // and the strict parse below then reported an error about a shape the
-  // adapter was supposed to have repaired. The parity suites missed it
-  // because 19 of their 27 cases set `strict: false`.
+  // Structural completeness BEFORE the parse, matching v4, which
+  // applies the same walk inside `getDefaultValuesFromZodSchema`. v3
+  // once ran it only on a lax branch that the default path never took:
+  // a constraint supplying a primitive where the schema declares an
+  // object stayed a primitive, and the parse below then reported an
+  // error about a shape the adapter was supposed to have repaired.
   //
   // Nothing parses in the walk, so user refines and transforms still do
-  // not fire at construction and the strict pass below remains the only
-  // thing that enforces them.
+  // not fire at construction and the parse below remains the only thing
+  // that enforces them.
   //
   // Skipped entirely when there are no constraints: the walk repairs
   // what the constraints broke, and the derivation above is already a
@@ -843,79 +833,65 @@ function runStrictGetDefaultsV3<Form>(
           }
         ).data
 
-  // Strict-mode path: parse against the REAL schema so refines and
-  // container / leaf checks (`.min(n)` / `.max(n)` / `.email()` etc.)
-  // seed at construction. Mirrors v4 (`zod-v4/adapter.ts`'s strict
-  // arm). The lax-mode validate-then-fix loop below stays untouched
-  // — it's the right shape for "seed a permissive partial state at
-  // mount."
-  if ((config.strict ?? true) !== false) {
-    // Async transforms can't be stripped: the transform's output shape
-    // is load-bearing for the inner schema's input. Skip the strict
-    // pass entirely; the post-mount async pass picks up verdicts via
-    // `safeParseAsync`.
-    if (containsAsyncTransform(rootSchema)) {
-      return {
-        data: rawDefaultValues as Form,
-        errors: undefined,
-        success: true,
-      }
-    }
+  // Parse against the REAL schema so refines and container / leaf
+  // checks (`.min(n)` / `.max(n)` / `.email()` etc.) seed at
+  // construction. Mirrors v4 (`zod-v4/adapter.ts`'s equivalent arm).
 
-    try {
-      // Through `syncSafe`: this is the parse that discovers an async
-      // refinement by running it, so it is the one that would leak the
-      // predicate's rejection into the host app.
-      const strictResult = syncSafe(rootSchema).safeParse(rawDefaultValues)
-      if (strictResult.success) {
-        // Storage holds the pre-transform `z.input` view, so we return
-        // the raw defaults (already filled by
-        // `getDefaultValuesFromZodSchema`) rather than
-        // `strictResult.data` (the post-transform `z.output`). For
-        // schemas without `.transform()` the two coincide; for schemas
-        // with one the storage stays the honest input view that
-        // `form.values` reflects.
-        return {
-          data: rawDefaultValues as Form,
-          errors: undefined,
-          success: true,
-        }
-      }
-      return {
-        data: rawDefaultValues as Form,
-        errors: zodIssuesToValidationErrors(strictResult.error.issues),
-        success: false,
-      }
-    } catch {
-      // A throw here is either v3's async-detect (a standard `Error`
-      // reading "Async refinement encountered during synchronous
-      // parse") or a consumer validator throwing outright. Both mount
-      // clean and leave the verdict to the post-mount async pass, which
-      // was always the source of truth for either case.
-      //
-      // The async-detect arm used to strip every `ZodEffects` off the
-      // schema and re-parse the copy, so the sync checks beside an async
-      // refine could still seed at construction. That walker is gone —
-      // v4's equivalent was deleted first and this is what keeps the two
-      // adapters saying the same thing about the same schema, which is
-      // the rule that matters more than the seed did.
-      // Non-async throw at construction (user validator threw a raw
-      // exception): defensive floor, matches v4's catch.
-      return {
-        data: rawDefaultValues as Form,
-        errors: undefined,
-        success: true,
-      }
+  // Async transforms can't be stripped: the transform's output shape
+  // is load-bearing for the inner schema's input. Skip the
+  // construction parse entirely; the post-mount async pass picks up
+  // verdicts via `safeParseAsync`.
+  if (containsAsyncTransform(rootSchema)) {
+    return {
+      data: rawDefaultValues as Form,
+      errors: undefined,
+      success: true,
     }
   }
 
-  // Lax mode: the structural fix already ran above, so there is nothing
-  // left to do but hand back the completed shape. Nothing parsed, so
-  // user refines and transforms did not fire at construction, which is
-  // the whole point of the lax arm.
-  return {
-    data: rawDefaultValues as Form,
-    errors: undefined,
-    success: true,
+  try {
+    // Through `syncSafe`: this is the parse that discovers an async
+    // refinement by running it, so it is the one that would leak the
+    // predicate's rejection into the host app.
+    const parseResult = syncSafe(rootSchema).safeParse(rawDefaultValues)
+    if (parseResult.success) {
+      // Storage holds the pre-transform `z.input` view, so we return
+      // the raw defaults (already filled by
+      // `getDefaultValuesFromZodSchema`) rather than
+      // `parseResult.data` (the post-transform `z.output`). For
+      // schemas without `.transform()` the two coincide; for schemas
+      // with one the storage stays the honest input view that
+      // `form.values` reflects.
+      return {
+        data: rawDefaultValues as Form,
+        errors: undefined,
+        success: true,
+      }
+    }
+    return {
+      data: rawDefaultValues as Form,
+      errors: zodIssuesToValidationErrors(parseResult.error.issues),
+      success: false,
+    }
+  } catch {
+    // A throw here is either v3's async-detect (a standard `Error`
+    // reading "Async refinement encountered during synchronous
+    // parse") or a consumer validator throwing outright. Both mount
+    // clean and leave the verdict to the post-mount async pass, which
+    // was always the source of truth for either case.
+    //
+    // The async-detect arm used to strip every `ZodEffects` off the
+    // schema and re-parse the copy, so the sync checks beside an async
+    // refine could still seed at construction. That walker is gone —
+    // v4's equivalent was deleted first and this is what keeps the two
+    // adapters saying the same thing about the same schema, which is
+    // the rule that matters more than the seed did.
+    // Non-async throw at construction (user validator threw a raw
+    // exception): defensive floor, matches v4's catch.
+    return {
+      data: rawDefaultValues as Form,
+      errors: undefined,
+      success: true,
+    }
   }
 }

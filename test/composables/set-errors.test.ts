@@ -236,7 +236,6 @@ describe('setErrors / clearErrors — zod-v3 adapter', () => {
         useFormV3({
           schema,
           key: `set-errors-v3-${Math.random()}`,
-          strict: false,
           defaultValues: { email: 'a@b.co', name: 'Ada' },
         }) as unknown as TestForm
     )
@@ -255,7 +254,6 @@ describe('setErrors / clearErrors — zod-v4 adapter', () => {
         useFormV4({
           schema,
           key: `set-errors-v4-${Math.random()}`,
-          strict: false,
           defaultValues: { email: 'a@b.co', name: 'Ada' },
         }) as unknown as TestForm
     )

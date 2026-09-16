@@ -3383,7 +3383,6 @@ describe('chaos — two useForm calls with the same key in one app', () => {
           key: 'shared-validateOn',
           validateOn: 'submit',
           defaultValues: { email: 'seed@example.com' },
-          strict: false,
         })
         handle.b = useForm({
           schema,

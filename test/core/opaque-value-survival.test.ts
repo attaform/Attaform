@@ -160,7 +160,6 @@ describe.each(ADAPTERS)('class instances survive every write path — $name', (a
     const doc = mkFile('submitted.txt')
     const { api } = makeMounter(adapter.useForm, adapter.list(), {
       defaultValues: { docs: [] },
-      strict: true,
     })()
     api.append('docs', doc)
 

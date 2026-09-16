@@ -138,9 +138,25 @@ const ADAPTERS = [
   },
 ] as const
 
+/**
+ * Defaults that fill the kitchen sink's `z.promise` leaf.
+ *
+ * Construction validates unconditionally, and an UNFILLED
+ * `z.promise(z.string())` is the one leaf here that reports differently
+ * per major: on v3 the parse succeeds and hands back a derived promise
+ * that rejects, which nothing awaits (see the pins at the bottom of
+ * this file). Attaform deliberately does not silence that, so a fixture
+ * that leaves the leaf empty scatters unhandled rejections through the
+ * run and would mask a real one. Every mount below fills it; the
+ * asymmetry itself stays pinned, separately, where it can be read.
+ */
+const filledPromise = (): Record<string, unknown> => ({ pending: Promise.resolve('seed') })
+
 describe.each(ADAPTERS)('referential values keep the form upright — $name', (adapter) => {
   it('mounts a schema holding nine unserializable things at once', () => {
-    expect(() => makeMounter(adapter.useForm, adapter.kitchenSink(), {})()).not.toThrow()
+    expect(() =>
+      makeMounter(adapter.useForm, adapter.kitchenSink(), { defaultValues: filledPromise() })()
+    ).not.toThrow()
   })
 
   it('survives the full lifecycle without noise', async () => {
@@ -154,7 +170,9 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
     const pending = Promise.resolve('later')
     const session = new Session('secret')
 
-    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), { strict: true })()
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {
+      defaultValues: filledPromise(),
+    })()
 
     const noise = await quietly(async () => {
       api.setValue('label', 'hello')
@@ -188,7 +206,9 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
     // instance, and a method reading `#private` state throws through the
     // proxy. Attaform must not make that worse, and must not silently
     // swap the instance for something else.
-    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {
+      defaultValues: filledPromise(),
+    })()
     const session = new Session('secret')
     api.setValue('session', session)
     const read = api.values.session as Session
@@ -207,7 +227,9 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
     // The other half. If this ever stopped working the schema contract
     // page would be handing readers a remedy that does nothing, and
     // nothing else in the suite would notice.
-    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {
+      defaultValues: filledPromise(),
+    })()
     api.setValue('session', markRaw(new Session('secret')))
     const read = api.values.session as Session
 
@@ -279,7 +301,9 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
   })
 
   it('resets and clears without mangling anything', async () => {
-    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {
+      defaultValues: filledPromise(),
+    })()
     const tag = Symbol('tag')
 
     const noise = await quietly(async () => {
@@ -335,7 +359,9 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
   })
 
   it('settles validation for a resolving Promise field', async () => {
-    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {
+      defaultValues: filledPromise(),
+    })()
     api.setValue('pending', Promise.resolve('done'))
     await nextTick()
     expect(await settle(() => api.validate())).not.toBeNull()
@@ -345,7 +371,9 @@ describe.each(ADAPTERS)('referential values keep the form upright — $name', (a
     // Nothing in Attaform should be calling a stored callback, but if
     // some walker ever did, a throwing one would surface it here rather
     // than in a consumer's app.
-    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {})()
+    const { api } = makeMounter(adapter.useForm, adapter.kitchenSink(), {
+      defaultValues: filledPromise(),
+    })()
     const boom = () => {
       throw new Error('should never be called by Attaform')
     }

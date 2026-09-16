@@ -412,7 +412,6 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     hydration: pending,
     ssr: registry.ssr,
     ...pickDefined({
-      strict: configuration.strict,
       validateOn: configuration.validateOn,
       debounceMs: (configuration as { debounceMs?: number }).debounceMs,
       rememberVariants: configuration.rememberVariants,

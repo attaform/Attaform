@@ -34,14 +34,11 @@
   const directForm = useForm({
     schema: directErrorSchema,
     key: 'errors-direct',
-    // Pin lax: this fixture proves user-injected errors render across
-    // the SSR boundary. Strict-mode default would also seed schema
-    // errors from the empty defaults, displacing the user-injected
-    // entries at errors[0] (schema-first ordering). The schema is two
-    // strings — neither auto-marks blank, so `derivedBlankErrors`
-    // stays empty and the user-injected entries are the only thing
-    // appearing at errors[0].
-    strict: false,
+    // Defaults that parse. This fixture proves user-injected errors
+    // render across the SSR boundary, and construction validates, so
+    // failing defaults would seed schema errors that take errors[0]
+    // ahead of them under schema-first ordering.
+    defaultValues: { email: 'seed@example.com', password: 'longenough' },
   })
   directForm.setErrors([
     {

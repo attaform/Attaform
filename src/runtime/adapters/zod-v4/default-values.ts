@@ -59,7 +59,7 @@ export type DefaultValuesResult<Form> = {
  * declare are preserved (except foreign-variant keys at DU values,
  * which the walk removes for the variant-memory machinery), and
  * async refines / transforms need no special casing — refinement
- * enforcement stays with the adapter's strict-mode pass and the
+ * enforcement stays with the adapter's construction parse and the
  * post-mount async pass.
  */
 export function getDefaultValuesFromZodSchema<Form>(

@@ -15,7 +15,6 @@ describe('zod v4: constraint-merge parity', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
       constraints: { tags: ['a'] },
     })
     expect(result.data).toEqual({ tags: ['a'] })
@@ -28,7 +27,6 @@ describe('zod v4: constraint-merge parity', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
       constraints: { label: null },
     })
     expect(result.data).toEqual({ label: null })
@@ -44,7 +42,6 @@ describe('zod v4: constraint-merge parity', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
       constraints: { profile: { name: 'Ozzy' } },
     })
     expect(result.data).toEqual({ profile: { name: 'Ozzy', bio: 'Hello' } })
@@ -61,7 +58,6 @@ describe('zod v4: constraint-merge parity', () => {
     )
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: true,
       constraints,
     })
     expect((result.data as Record<string, unknown>)['name']).toBe('override')

@@ -76,9 +76,11 @@ describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSche
         api = (useForm as any)({
           schema,
           key: 'aborted-snapshot',
-          strict: false,
           validateOn: 'blur',
-          defaultValues: { a: '', b: '' },
+          // Start valid. Construction validates unconditionally and
+          // both leaves carry an async refine, so invalid defaults
+          // would seed 'a-invalid' before step 1 ever runs.
+          defaultValues: { a: 'good-a', b: 'good-b' },
         })
         return () =>
           h('div', [

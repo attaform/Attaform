@@ -59,7 +59,6 @@ function mountCounted(opts: { lazy?: boolean; defaultValue?: string } = {}): {
       const api = useFormV4({
         schema,
         key: `blur-dedup-${Math.random()}`,
-        strict: false,
         validateOn: 'blur',
         ...(opts.defaultValue !== undefined ? { defaultValues: { email: opts.defaultValue } } : {}),
       } as never) as unknown as FormLike & { register: (p: string) => unknown }

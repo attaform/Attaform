@@ -66,7 +66,6 @@ describe.each(adapters)('async transform — gated display ($name)', ({ useForm,
         const api = useForm({
           schema: z.object({ field: z.string() }),
           key: `gated-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: { field: '' },
         })
         handle.api = api

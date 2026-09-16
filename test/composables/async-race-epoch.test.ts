@@ -116,7 +116,6 @@ describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
         api = (useForm as any)({
           schema,
           key: 'async-race-epoch',
-          strict: false,
           defaultValues: { a: '', b: '' },
           validateOn: 'change',
           debounceMs: 0,

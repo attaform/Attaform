@@ -64,7 +64,7 @@ Fourteen required methods. Four optional hooks. The runtime fills in sensible fa
 
 ### `getDefaultValues(config): SchemaDefaultsResult<Form>`
 
-Returns `{ data, errors, success }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues`, `constraints`, and `strict` flags.
+Returns `{ data, errors, success }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues` and `constraints`.
 
 ### `getDefaultAtPath(path: Path): unknown`
 

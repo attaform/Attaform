@@ -61,7 +61,6 @@ describe.each(ADAPTERS)('an unset <select> survives hydration ($name)', (adapter
       const form = adapter.useForm({
         schema: adapter.z.object({ country: adapter.z.string().optional() }),
         key: `select-unset-hydration-${adapter.name}`,
-        strict: false,
         defaultValues,
       })
       return { form }

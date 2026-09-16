@@ -26,7 +26,6 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
     const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
     })
     expect(result.success).toBe(true)
     // After `success === true`, the result type narrows so `.data` is
@@ -46,7 +45,6 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
       const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
       const initial = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
-        strict: false,
       })
       expect(initial.success).toBe(true)
       const validation = await adapter.validateAtPath(initial.data, undefined)
@@ -62,7 +60,7 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
       // about the answer. The owning store stamps its own `formKey` on
       // the way out; the schema never sees one.
       const built = zodAdapter(schema as z.ZodObject)
-      const config = { useDefaultSchemaValues: true, strict: true } as const
+      const config = { useDefaultSchemaValues: true } as const
       const mine = built(formKey, { maxRecursionDepth: 64 }).getDefaultValues(config)
       const theirs = built('some-other-form', { maxRecursionDepth: 64 }).getDefaultValues(config)
       expect(mine.success).toBe(theirs.success)

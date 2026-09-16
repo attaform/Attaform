@@ -48,7 +48,6 @@ describe('<input type="radio" v-register> — single-group selection', () => {
           // into 'pro' as the construction-time selection so the test
           // exercises a real user choice rather than the implicit default.
           defaultValues: { tier: 'pro' },
-          strict: false,
         })
         captured.api = form
         return () =>
@@ -112,7 +111,6 @@ describe('<input type="radio" v-register> — single-group selection', () => {
           schema,
           key: 'radio-mount',
           defaultValues: { tier: 'enterprise' },
-          strict: false,
         })
         captured.api = form
         return () =>
@@ -160,7 +158,6 @@ describe('<input type="radio" v-register> — single-group selection', () => {
           schema,
           key: 'radio-setvalue',
           defaultValues: { tier: 'free' },
-          strict: false,
         })
         captured.api = form
         const tierRef = form.toRef('tier')
@@ -213,7 +210,6 @@ describe('<input type="radio" v-register> — single-group selection', () => {
           key: 'radio-no-match',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           defaultValues: { tier: 'unknown' as any },
-          strict: false,
         })
         captured.api = form
         return () =>
@@ -263,7 +259,6 @@ describe('<input type="radio" v-register> — hydration with static value attrib
           schema,
           key: 'radio-static-value',
           defaultValues: { tier: 'pro' },
-          strict: false,
         })
         captured.api = form
         // Read the form value so a setValue() triggers a parent
@@ -333,7 +328,6 @@ describe('<input type="radio" v-register> — slim-gate interactions', () => {
           schema,
           key: 'radio-gate',
           defaultValues: { tier: 'free' },
-          strict: false,
         })
         return () => h('div')
       },
@@ -363,7 +357,6 @@ describe('<input type="radio" v-register> — slim-gate interactions', () => {
           schema,
           key: 'radio-out-of-enum',
           defaultValues: { tier: 'free' },
-          strict: false,
         })
         return () => h('div')
       },

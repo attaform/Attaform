@@ -234,7 +234,6 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
   it('an onError that throws', async () => {
     await expectContained(async () => {
       const { api } = makeMounter(useForm, adapter.tooShort(), {
-        strict: true,
         defaultValues: { a: '' },
       })()
       await api.handleSubmit(() => {}, BOOM)()
@@ -279,7 +278,7 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     ['a z.preprocess that throws', 'throwingPreprocess'],
   ] as const)('%s', async (_label, key) => {
     await expectContained(async () => {
-      const { api } = muted(() => makeMounter(useForm, adapter[key](), { strict: true })())
+      const { api } = muted(() => makeMounter(useForm, adapter[key]())())
       muted(() => api.setValue('a', 'x'))
       const scope = effectScope()
       scope.run(() => api.validate())
@@ -465,7 +464,7 @@ describe('an async .refine that throws', () => {
           throw new Error('consumer boom')
         }),
       })
-      const { api } = muted(() => makeMounter(useFormV4, schema, { strict: true })())
+      const { api } = muted(() => makeMounter(useFormV4, schema)())
       muted(() => api.setValue('a', 'x'))
       const scope = effectScope()
       scope.run(() => api.validate())
@@ -504,7 +503,7 @@ describe('an async .refine that throws', () => {
           throw new Error('consumer boom')
         }),
       })
-      const { api } = muted(() => makeMounter(useFormV3, schema, { strict: true })())
+      const { api } = muted(() => makeMounter(useFormV3, schema)())
       await act(api)
       await new Promise((resolve) => setTimeout(resolve, 0))
     } finally {
@@ -534,7 +533,6 @@ describe('an async .refine that throws', () => {
       })
       const { api } = muted(() =>
         makeMounter(useFormV3, schema, {
-          strict: true,
           validateOn: 'change',
           defaultValues: { src: { k: 'a' } },
         })()
@@ -556,7 +554,7 @@ describe('an async .refine that throws', () => {
     // Pre-stripping every schema with a refinement would have closed
     // the leak and broken this.
     const schema = zV3.object({ a: zV3.string().refine((v) => v.length > 3, 'too short') })
-    const { api } = makeMounter(useFormV3, schema, { strict: true, defaultValues: { a: 'x' } })()
+    const { api } = makeMounter(useFormV3, schema, { defaultValues: { a: 'x' } })()
     await drain()
     expect(api.errors('a')[0]?.message).toBe('too short')
   })
@@ -570,7 +568,7 @@ describe('an async .refine that throws', () => {
         return v.length > 3
       }, 'too short'),
     })
-    const { api } = makeMounter(useFormV3, schema, { strict: true, defaultValues: { a: 'x' } })()
+    const { api } = makeMounter(useFormV3, schema, { defaultValues: { a: 'x' } })()
     await drain()
     let submitted = false
     await api.handleSubmit(() => {

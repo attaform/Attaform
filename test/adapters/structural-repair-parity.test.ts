@@ -1,6 +1,5 @@
 /**
- * Structural-completeness parity between the adapters, at BOTH `strict`
- * settings.
+ * Structural-completeness parity between the adapters.
  *
  * Every write is supposed to leave the form satisfying the slim schema,
  * and construction is the first such write: a `defaultValues` that
@@ -8,17 +7,14 @@
  * repaired before the form mounts, or the runtime walks a shape its own
  * schema does not describe.
  *
- * v4 runs that repair inside `getDefaultValuesFromZodSchema`, so it
- * covers both modes. v3 ran it only in the lax tail, so STRICT mode —
- * which is the DEFAULT — skipped it entirely: `{ user: 'not-an-object' }`
- * stayed a string, and the strict parse then reported an error about a
- * shape the adapter was supposed to have fixed.
+ * v4 runs that repair inside `getDefaultValuesFromZodSchema`. v3 once
+ * ran it only on a branch the default path never took, so
+ * `{ user: 'not-an-object' }` stayed a string and the construction
+ * parse then reported an error about a shape the adapter was supposed
+ * to have fixed.
  *
- * The existing v3/v4 parity suites did not catch it because 19 of their
- * 27 cases pass `strict: false`, which is precisely the arm that
- * worked. So this file exists to cross the mode axis explicitly: every
- * case runs through both adapters at both settings and all four cells
- * must agree. A divergence is the finding, whichever side moved.
+ * Every case here runs through both adapters and both cells must
+ * agree. A divergence is the finding, whichever side moved.
  */
 import { describe, expect, it } from 'vitest'
 import { z as z3 } from 'zod-v3'
@@ -29,17 +25,11 @@ import { zodV4Adapter } from '../../src/runtime/adapters/zod-v4/adapter'
 type DefaultsResult = { data: unknown; success: boolean }
 type Buildable = { getDefaultValues: (config: unknown) => DefaultsResult }
 
-function defaultsFor(
-  adapter: unknown,
-  schema: unknown,
-  constraints: unknown,
-  strict: boolean
-): DefaultsResult {
+function defaultsFor(adapter: unknown, schema: unknown, constraints: unknown): DefaultsResult {
   const factory = adapter as (s: unknown) => (k: string, o: unknown) => Buildable
   return factory(schema)('parity', { maxRecursionDepth: 64 }).getDefaultValues({
     useDefaultSchemaValues: true,
     constraints,
-    strict,
   })
 }
 
@@ -109,14 +99,12 @@ const CASES: {
   },
 ]
 
-describe('construction repairs the same shapes in both adapters and both modes', () => {
+describe('construction repairs the same shapes in both adapters', () => {
   for (const { name, v3, v4, constraints, expected } of CASES) {
     it(name, () => {
       const cells = {
-        'v3 strict': defaultsFor(v3Adapter, v3, constraints, true),
-        'v3 lax': defaultsFor(v3Adapter, v3, constraints, false),
-        'v4 strict': defaultsFor(zodV4Adapter, v4, constraints, true),
-        'v4 lax': defaultsFor(zodV4Adapter, v4, constraints, false),
+        v3: defaultsFor(v3Adapter, v3, constraints),
+        v4: defaultsFor(zodV4Adapter, v4, constraints),
       }
       for (const [cell, result] of Object.entries(cells)) {
         expect(result.data, `${cell} produced the wrong shape`).toEqual(expected)
@@ -124,14 +112,14 @@ describe('construction repairs the same shapes in both adapters and both modes',
     })
   }
 
-  it('a repaired shape parses cleanly in strict mode, rather than reporting itself', () => {
+  it('a repaired shape parses cleanly, rather than reporting itself', () => {
     // The user-visible half. A form whose defaults were repaired must not
     // ALSO mount holding an error about the shape it just repaired.
     const constraints = { user: 'not-an-object' }
     expect(
-      defaultsFor(v3Adapter, CASES[0]?.v3, constraints, true).success,
-      'v3 strict reported an error about a shape it had repaired'
+      defaultsFor(v3Adapter, CASES[0]?.v3, constraints).success,
+      'v3 reported an error about a shape it had repaired'
     ).toBe(true)
-    expect(defaultsFor(zodV4Adapter, CASES[0]?.v4, constraints, true).success).toBe(true)
+    expect(defaultsFor(zodV4Adapter, CASES[0]?.v4, constraints).success).toBe(true)
   })
 })

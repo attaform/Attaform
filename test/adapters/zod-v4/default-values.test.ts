@@ -104,9 +104,9 @@ describe('getDefaultValuesFromZodSchema — refinement-heavy schemas', () => {
   })
 })
 
-describe('zodAdapter.getDefaultValues — strict-mode refinement enforcement', () => {
-  it('strict mode surfaces refinement errors via the outer rootSchema pass', () => {
-    // Strict mode's contract: the *adapter's* getDefaultValues runs the
+describe('zodAdapter.getDefaultValues — refinement enforcement', () => {
+  it('surfaces refinement errors via the outer rootSchema pass', () => {
+    // The contract: the *adapter's* getDefaultValues runs the
     // FULL schema (refinements intact) over the derived data. When
     // defaults fail, errors flow back so `createFormStore` can seed
     // `schemaErrors` at construction.
@@ -114,14 +114,13 @@ describe('zodAdapter.getDefaultValues — strict-mode refinement enforcement', (
     const adapter = zodAdapter(schema)('test-form', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: true,
       constraints: undefined,
     })
     expect(result.success).toBe(false)
     expect(result.errors?.[0]?.path).toEqual(['email'])
   })
 
-  it('strict mode + async refine degrades gracefully (no construction-time errors)', () => {
+  it('an async refine degrades gracefully (no construction-time errors)', () => {
     // Async refines can't be surfaced synchronously — `safeParse` throws
     // on them. The adapter catches the throw and returns success so the
     // form still mounts. Async refines fire on first user mutation via
@@ -133,7 +132,6 @@ describe('zodAdapter.getDefaultValues — strict-mode refinement enforcement', (
     const adapter = zodAdapter(schema)('test-form', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: true,
       constraints: undefined,
     })
     expect(result.success).toBe(true)

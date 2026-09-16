@@ -21,19 +21,19 @@
  * SSR the submit button renders enabled and then disables.
  *
  * Nothing else moved. An async-free schema still seeds at construction,
- * the display gate still hides seeds from the field UI, lax mode still
- * seeds nothing, and the post-mount async pass was already the source of
- * truth for every verdict in every case.
+ * the display gate still hides seeds from the field UI, and the
+ * post-mount async pass was already the source of truth for every
+ * verdict in every case.
  *
  * The suite pins four facts:
- *  1. strict mode (the default) seeds sync-check violations found on
- *     the starting data, and the seed is meta-visible at first paint;
+ *  1. construction seeds sync-check violations found on the starting
+ *     data, and the seed is meta-visible at first paint;
  *  2. a schema that ALSO carries an async refine defers its whole
  *     verdict to the async pass rather than seeding — the trade above,
  *     pinned so it stays a decision;
  *  3. it converges on the same verdict once that pass lands;
  *  4. the per-field display gate still hides the seed from the field
- *     UI, and lax mode (`strict: false`) produces no seed at all.
+ *     UI.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
@@ -61,14 +61,13 @@ afterEach(() => {
   while (apps.length > 0) apps.pop()?.unmount()
 })
 
-function mount(schema: z.ZodType, key: string, strict?: boolean): Surface {
+function mount(schema: z.ZodType, key: string): Surface {
   const handle: { api?: unknown } = {}
   const App = defineComponent({
     setup() {
       handle.api = useForm({
         schema: schema as never,
         key,
-        ...(strict === undefined ? {} : { strict }),
       })
       return () => h('div')
     },
@@ -92,8 +91,8 @@ const asyncFreeTwin = () =>
   })
 
 describe('construction-time sync-check seeds — first-paint visibility', () => {
-  it('strict mode seeds the sync violation and the seed is meta-visible', () => {
-    const api = mount(asyncFreeTwin(), 'seed-strict-sync')
+  it('seeds the sync violation and the seed is meta-visible', () => {
+    const api = mount(asyncFreeTwin(), 'seed-sync')
     expect(api.meta.valid).toBe(false)
     expect(api.meta.errorCount).toBe(1)
     expect(api.meta.errors.map((e) => e.path)).toEqual([['name']])
@@ -143,12 +142,5 @@ describe('construction-time sync-check seeds — first-paint visibility', () => 
     // The same seed is simultaneously visible on the meta surface —
     // that split is exactly why the seeds count as user-visible.
     expect(api.meta.valid).toBe(false)
-  })
-
-  it('lax mode produces no seed at all', () => {
-    const api = mount(withAsyncRefine(), 'seed-lax', false)
-    expect(api.meta.valid).toBe(true)
-    expect(api.meta.errorCount).toBe(0)
-    expect(api.errors('name')).toEqual([])
   })
 })

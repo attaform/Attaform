@@ -206,8 +206,8 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     expect(api.meta.errors.map((e) => e.path.join('.'))).toEqual(['email', 'password'])
   })
 
-  it('reset preserves ordinals across re-derive (strict mode re-runs validation)', async () => {
-    // Under `strict: true` (the default), construction validates the
+  it('reset preserves ordinals across re-derive (reset re-runs validation)', async () => {
+    // Construction validates the
     // mounted defaults and seeds schemaErrors accordingly — and reset
     // mirrors that by re-deriving against the post-reset state. A
     // form mounted with invalid defaults stays in an invalid surface

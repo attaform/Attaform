@@ -242,7 +242,6 @@ describe('zod v3 adapter — getDefaultValues', () => {
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { email: 'a@b.com' },
-      strict: true,
     })
     expect(result.success).toBe(true)
     expect(result.errors).toBeUndefined()
@@ -418,20 +417,31 @@ describe('zod v3 adapter — discriminated union routing', () => {
 // stripRefinements descended into objects, arrays, and effects pre-fix
 // but skipped Set / Tuple / Record / Union / DiscriminatedUnion /
 // Intersection / Lazy. Refinements nested inside those containers
-// survived into the slim schema, so `strict: false` defaults that
-// passed primitive shape (e.g. `''` for an email-refined tuple element)
-// still failed the slim parse and got fixed up downstream — which
-// "worked" but produced a different second-parse path than v4. The
-// fix gives v3 the same correctness floor as v4.
-describe('zod v3 adapter — stripRefinements (lax mode)', () => {
+// survived into the slim schema, so defaults that passed primitive
+// shape (e.g. `''` for an email-refined tuple element) still failed
+// the slim parse and got fixed up downstream — which "worked" but
+// produced a different second-parse path than v4. The fix gives v3 the
+// same correctness floor as v4.
+//
+// What each case asserts is the SHAPE the walk produced. Several of
+// these derived defaults cannot satisfy the leaf refinement they sit
+// under (`''` is not an email, `0` is not `>= 10`), and construction
+// parses the real schema, so the verdict is an honest failure at that
+// leaf. The walk descending and the refinement failing are the two
+// separate facts; both are pinned.
+describe('zod v3 adapter — stripRefinements', () => {
   it('descends into z.tuple element refinements', () => {
     const schema = z.object({
       pair: z.tuple([z.string().email(), z.number().min(10)]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
-    expect(result.success).toBe(true)
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     expect(result.data).toEqual({ pair: ['', 0] })
+    expect(result.success).toBe(false)
+    expect(result.errors?.map((e) => e.path)).toEqual([
+      ['pair', 0],
+      ['pair', 1],
+    ])
   })
 
   it('descends into z.set element refinements', () => {
@@ -439,7 +449,7 @@ describe('zod v3 adapter — stripRefinements (lax mode)', () => {
       tags: z.set(z.string().min(3)),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     expect(result.success).toBe(true)
     expect((result.data as { tags: unknown }).tags).toBeInstanceOf(Set)
   })
@@ -449,7 +459,7 @@ describe('zod v3 adapter — stripRefinements (lax mode)', () => {
       counts: z.record(z.number().min(1)),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     expect(result.success).toBe(true)
     expect(result.data).toEqual({ counts: {} })
   })
@@ -459,8 +469,11 @@ describe('zod v3 adapter — stripRefinements (lax mode)', () => {
       val: z.union([z.string().email(), z.number().int()]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
-    expect(result.success).toBe(true)
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    // First member wins the derivation; its `''` then fails `.email()`.
+    expect(result.data).toEqual({ val: '' })
+    expect(result.success).toBe(false)
+    expect(result.errors?.map((e) => e.path)).toEqual([['val']])
   })
 
   it('descends into z.intersection sides', () => {
@@ -471,9 +484,13 @@ describe('zod v3 adapter — stripRefinements (lax mode)', () => {
       ),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
-    expect(result.success).toBe(true)
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     expect(result.data).toEqual({ combo: { a: '', b: 0 } })
+    expect(result.success).toBe(false)
+    expect(result.errors?.map((e) => e.path)).toEqual([
+      ['combo', 'a'],
+      ['combo', 'b'],
+    ])
   })
 
   it('descends into z.discriminatedUnion option refinements', () => {
@@ -484,18 +501,20 @@ describe('zod v3 adapter — stripRefinements (lax mode)', () => {
       ]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
-    expect(result.success).toBe(true)
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     expect(result.data).toEqual({ event: { kind: 'a', msg: '' } })
+    expect(result.success).toBe(false)
+    expect(result.errors?.map((e) => e.path)).toEqual([['event', 'msg']])
   })
 
   it('descends into z.lazy() target refinements', () => {
     const inner = z.object({ name: z.string().email() })
     const schema = z.object({ wrapped: z.lazy(() => inner) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
-    expect(result.success).toBe(true)
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     expect(result.data).toEqual({ wrapped: { name: '' } })
+    expect(result.success).toBe(false)
+    expect(result.errors?.map((e) => e.path)).toEqual([['wrapped', 'name']])
   })
 })
 

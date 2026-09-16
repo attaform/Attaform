@@ -304,7 +304,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
   it('schema-validation errors do not flash across atomic remount', async () => {
     // Mirror of the user-reported "random email error" on HMR template
     // edits. With the microtask-grace eviction, the FormStore is
-    // reused across atomic remount, so the strict-mode validation
+    // reused across atomic remount, so the construction-time validation
     // never re-runs against slim defaults and `errors.email` stays
     // empty for the whole transition.
     const factory = async (): Promise<{ email: string; name: string }> => {
@@ -317,7 +317,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     const harness = sharedAppHarness(emailSchema, factory, 'remount-no-error-flash')
 
     const first = await harness.mount()
-    // Wait for the initial strict-mode seed to clear (validation
+    // Wait for the initial construction seed to clear (validation
     // reruns after the factory resolves). Once empty, the FormStore
     // has settled with valid values and no errors.
     await waitUntil(() => (first.errors.email.length === 0 ? true : null))

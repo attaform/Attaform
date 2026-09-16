@@ -534,7 +534,7 @@ export function walkSchemaTree(
  *
  * Used by the adapter's `needsAsyncValidation()` to drive the
  * runtime's construction-time async-validation seed (see
- * create-form-store's strict-mode block). False negatives just delay
+ * create-form-store's `queueInitialAsyncValidation`). False negatives just delay
  * async refines until first mutation — matches the pre-detection
  * behavior. False positives are unlikely (the AsyncFunction check is
  * precise) and cost only one extra microtask of validation work.
@@ -623,10 +623,10 @@ export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<objec
  * `def.checks[].def.fn` (refinement predicates). This walks
  * `def.transform` (the transform's payload). The two flags are OR'd
  * by the adapter to drive `needsAsyncValidation()`, but the
- * construction-time strict-mode pass treats them differently:
- * async refines can be stripped and the parse retried; async
- * transforms cannot, so the strict pass skips entirely and defers
- * to the post-mount `safeParseAsync` pass.
+ * construction-time parse treats them differently: async refines can
+ * be stripped and the parse retried; async transforms cannot, so the
+ * construction parse skips entirely and defers to the post-mount
+ * `safeParseAsync` pass.
  */
 export function containsAsyncTransform(schema: z.ZodType, seen?: WeakSet<object>): boolean {
   return walkSchemaTree(

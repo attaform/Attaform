@@ -95,7 +95,6 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
     it(`raw blank baseline equals the slim-parsed baseline — ${name}`, () => {
       const slimPassBaseline = built.getDefaultValues({
         useDefaultSchemaValues: false,
-        strict: true,
       }).data
       const rawBaseline = built.getEmptyValueAtPath([])
       expect(rawBaseline).toStrictEqual(slimPassBaseline)
@@ -105,11 +104,9 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
       const withDefaults = built.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: undefined,
-        strict: true,
       }).data
       const slimPassBaseline = built.getDefaultValues({
         useDefaultSchemaValues: false,
-        strict: true,
       }).data
       const rawBaseline = built.getEmptyValueAtPath([])
 

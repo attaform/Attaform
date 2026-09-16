@@ -272,21 +272,13 @@ export type ValidateOptions = {
 /**
  * Configuration passed to `AbstractSchema.getDefaultValues`. Adapters
  * receive `useDefaultSchemaValues` (honor `.default(x)` wrappers vs.
- * empty/falsy fallbacks), an optional `strict` mode (refinement
- * preservation), and an optional `constraints` overlay merged into the
- * derived defaults so the runtime can stamp user-supplied defaults at
- * construction. Exported so adapter authors can co-implement the
- * service contract.
+ * empty/falsy fallbacks) and an optional `constraints` overlay merged
+ * into the derived defaults so the runtime can stamp user-supplied
+ * defaults at construction. Exported so adapter authors can
+ * co-implement the service contract.
  */
 export type GetDefaultValuesConfig<Form> = {
   useDefaultSchemaValues: boolean
-  /**
-   * Whether to keep schema refinements when deriving slim defaults.
-   * `true` (default) — preserve refinements; `false` — strip them so
-   * placeholder data lands without immediate construction-time
-   * errors. Mirrors `useForm({ strict })`.
-   */
-  strict?: boolean
   constraints?: DeepPartial<WriteShape<Form>> | undefined
 }
 
@@ -1214,23 +1206,6 @@ export type UseFormConfiguration<
    * Call `form.rehydrate()` to re-fire the factory.
    */
   defaultValues?: DefaultValues | (() => DefaultValues) | (() => Promise<DefaultValues>)
-  /**
-   * Whether to validate default values at construction. Default
-   * `true`.
-   *
-   * - `true` (default): the schema is run against the derived
-   *   defaults immediately; any failures populate `form.errors` from
-   *   the first frame. The UI decides when to *show* errors — gate
-   *   on `form.fields.<path>.touched`, `form.meta.submissionAttempts`, etc.
-   * - `false`: refinements are stripped during defaults derivation
-   *   and construction-time validation is skipped. Useful for
-   *   multi-step wizards, field arrays seeded with placeholder
-   *   rows, or any form intentionally mounting with incomplete data.
-   *
-   * Runtime validation (per-field on edit, full-form on submit) is
-   * identical regardless of this flag.
-   */
-  strict?: boolean
   /**
    * Automatic UI nudge on submit-validation failure. Fires after
    * errors are populated and before your `onError` callback runs.

@@ -91,7 +91,6 @@ describe.each(adapters)('reset clears snapshot map — $name', ({ useForm, build
         api = (useForm as any)({
           schema,
           key: 'reset-clears-snapshot',
-          strict: false,
           validateOn: 'blur',
           defaultValues: { a: '' },
         })

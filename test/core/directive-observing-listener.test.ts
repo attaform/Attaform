@@ -174,7 +174,6 @@ describe.each(adapters)('$name: a listener beside v-register', ({ useFormFn, tex
           const form = useFormFn({
             schema: testCase.leaf === 'bool' ? bool : text,
             key: `obs-570-${_label}-${Math.random().toString(36).slice(2)}`,
-            strict: false,
             defaultValues: { choice: testCase.defaultValue },
           })
           return {

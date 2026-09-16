@@ -86,7 +86,7 @@ describe('zod-v3 adapter under version skew (hoisted zod v4 alongside v3)', () =
     // without an empty accept-set swallowing the branch leaf.
     expect(adapter.getSlimPrimitiveTypesAtPath(['payment', 'number']).size).toBeGreaterThan(0)
     expect(() =>
-      adapter.getDefaultValues({ useDefaultSchemaValues: true, constraints: {}, strict: false })
+      adapter.getDefaultValues({ useDefaultSchemaValues: true, constraints: {} })
     ).not.toThrow()
   })
 

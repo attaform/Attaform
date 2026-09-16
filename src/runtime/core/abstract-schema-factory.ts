@@ -15,7 +15,7 @@
  *     adapter-specific delegates the factory calls for everything that
  *     genuinely diverges per Zod version: path-walking
  *     (the path walker itself has v3 / v4 quirks), default-value
- *     derivation, the strict-mode `getDefaultValues` flow,
+ *     derivation, the `getDefaultValues` flow,
  *     wrapper-peeling that's tied to the per-version wrapper set,
  *     field-meta resolution, and the per-version `safeParse`
  *     boundary.
@@ -347,12 +347,11 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
   deriveDefault(schema: Schema, useDefault: boolean, maxRecursionDepth: number): unknown
   /**
    * Adapter-owned construction-time default-values flow. v3 runs a
-   * validate-then-fix loop against a slim schema with strict-mode
-   * refine seeding; v4 runs a strict-pass-or-lax-success against the
-   * derived data. Both honour `config.strict ?? true` and
-   * `config.constraints`.
+   * validate-then-fix loop against a slim schema, then parses the real
+   * one; v4 parses the real schema against the derived data. Both
+   * honour `config.constraints`.
    */
-  runStrictGetDefaults(
+  runGetDefaults(
     schema: Schema,
     config: GetDefaultValuesConfig<Form>,
     maxRecursionDepth: number
@@ -646,7 +645,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form> {
-      return services.runStrictGetDefaults(rootSchema, config, maxRecursionDepth)
+      return services.runGetDefaults(rootSchema, config, maxRecursionDepth)
     },
 
     getDefaultAtPath(path) {

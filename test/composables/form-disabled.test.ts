@@ -170,7 +170,6 @@ describe.each(adapters)('useForm({ disabled }) — $name', ({ useForm, schema })
           schema,
           key: `disabled-dom-${Math.random().toString(36).slice(2)}`,
           disabled: frozen,
-          strict: false,
           defaultValues: { email: 'seed@x.com' },
         })
         return () =>

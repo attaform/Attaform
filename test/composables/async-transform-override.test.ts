@@ -55,7 +55,6 @@ describe.each(adapters)('async transform — consumer override ($name)', ({ useF
         const api = useForm({
           schema: z.object({ age: z.number() }),
           key: `override-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: { age: 0 },
         })
         handle.api = api

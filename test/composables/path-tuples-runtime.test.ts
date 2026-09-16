@@ -37,7 +37,6 @@ function mount(): { app: App; api: Api } {
       handle.api = useForm({
         schema,
         key: 'path-tuples',
-        strict: false,
         defaultValues: {
           email: 'a@b.c',
           profile: { name: 'Ada' },

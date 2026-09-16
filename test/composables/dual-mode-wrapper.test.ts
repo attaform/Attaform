@@ -212,7 +212,6 @@ describe('the same wrapper used WITH a form', () => {
         const form = useForm({
           schema: z.object({ choice: z.string() }),
           key: `dual-mode-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: { choice: defaultValue },
         })
         return { form }
@@ -286,7 +285,6 @@ describe('a parent that binds after the first render', () => {
         const form = useForm({
           schema: z.object({ choice: z.string() }),
           key: 'dual-mode-late',
-          strict: false,
           defaultValues: { choice: 'alpha' },
         })
         return { form, ready }

@@ -435,3 +435,48 @@ the program's byte law running the friendly way for once: this was a
 unique deletion, not a fold.
 
 Budget 34_050 -> 33_940 (~0.30 kB headroom).
+
+## A2 Ratchet: always strict, 2026-09-16
+
+A2 RATCHET (2026-09-16): 33,637 -> 33,571 measured (-66), against a -20
+estimate. `useForm({ strict })` is gone; construction validates, always.
+
+The bytes were never the point, and the phase paid for itself twice
+over in what it uncovered. `strict` already defaulted to `true`, so the
+only thing deleted was the opt-out: v4's `if (config.strict === false)`
+early return, v3's `if ((config.strict ?? true) !== false)` wrapper and
+its lax tail, `GetDefaultValuesConfig.strict`, `FormState.strict`, and
+the `strict` parameter threaded through `computeBaselineResponse`,
+`initialFirstValidationGate` and `queueInitialAsyncValidation`.
+
+**The blind spot is the finding.** 180 `strict: false` call sites across
+75 test files, plus a `strict: false` DEFAULT baked into
+`test/utils/form-harness.ts`, meant a large share of the suite exercised
+an arm no consumer reaches. Moving them onto the real path turned 60
+tests red across 14 files. Every one was a fixture that mounted with
+defaults its own schema rejects and then asserted on a clean error
+store. This is the same shape that hid defect D5, where 19 of 27 v3
+parity cases ran lax.
+
+Two behaviours surfaced that the lax fixtures had been hiding. BOTH
+were verified pre-existing by checking out A1, removing only the test
+harness's `strict: false` default, and re-running with the library
+untouched: both reproduce exactly. A real consumer has been reaching
+them all along, because `strict: true` was already the default.
+
+1. A container whose subtree holds construction-seeded errors gets a
+   NEW aggregated-errors array identity on the form's FIRST write, even
+   when its contents and `displayState` do not change, costing one
+   extra render per unrelated container. Bounded and one-shot: writes
+   2..n hold the isolation the perf lock pins. Now pinned explicitly in
+   `test/perf-lock/render-isolation.lock.test.ts`, so a regression to
+   per-keystroke fails a test rather than going unnoticed.
+2. An unfilled `z.promise(z.string())` leaf on v3 emits an unhandled
+   rejection at construction: v3 reports success and hands back a
+   derived promise carrying the real verdict, which nothing awaits.
+   Already documented and deliberate (Attaform does not silence it; a
+   blanket `.catch()` would also swallow a consumer's own promise). The
+   smoke fixtures now fill the leaf, so the run stays quiet and a real
+   rejection would stand out.
+
+Budget 33_940 -> 33_870 (~0.29 kB headroom).

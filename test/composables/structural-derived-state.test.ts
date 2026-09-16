@@ -120,7 +120,6 @@ runSuite(
         useFormV3({
           schema: zV3.object({ tags: zV3.array(zV3.string().min(3, 'min3')) }),
           key: `sds-drop-v3-${Math.random()}`,
-          strict: false,
           validateOn: 'change',
           debounceMs: 0,
           defaultValues: { tags: ['ab', 'abc'] },
@@ -132,7 +131,6 @@ runSuite(
         useFormV3({
           schema: zV3.object({ items: zV3.array(zV3.string().refine(asyncCheck, 'min3')) }),
           key: `sds-async-v3-${Math.random()}`,
-          strict: false,
           validateOn: 'change',
           debounceMs: 0,
           defaultValues: { items: ['aa', 'bbb'] },
@@ -148,7 +146,6 @@ runSuite(
         useFormV4({
           schema: zV4.object({ tags: zV4.array(zV4.string().min(3, 'min3')) }),
           key: `sds-drop-v4-${Math.random()}`,
-          strict: false,
           validateOn: 'change',
           debounceMs: 0,
           defaultValues: { tags: ['ab', 'abc'] },
@@ -160,7 +157,6 @@ runSuite(
         useFormV4({
           schema: zV4.object({ items: zV4.array(zV4.string().refine(asyncCheck, 'min3')) }),
           key: `sds-async-v4-${Math.random()}`,
-          strict: false,
           validateOn: 'change',
           debounceMs: 0,
           defaultValues: { items: ['aa', 'bbb'] },

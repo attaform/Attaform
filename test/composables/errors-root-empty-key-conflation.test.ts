@@ -203,7 +203,6 @@ describe('root [] vs literal "" conflation — zod-v3 adapter', () => {
         useFormV3({
           schema: schema as unknown as Cast,
           key: `conflate-v3-${Math.random()}`,
-          strict: false,
           defaultValues: defaults,
         }) as unknown as ConflationForm
     )
@@ -230,7 +229,6 @@ describe('root [] vs literal "" conflation — zod-v4 adapter', () => {
         useFormV4({
           schema,
           key: `conflate-v4-${Math.random()}`,
-          strict: false,
           defaultValues: defaults,
         }) as unknown as ConflationForm
     )

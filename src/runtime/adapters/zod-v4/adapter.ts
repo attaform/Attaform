@@ -51,9 +51,9 @@ import { V4_INTROSPECTOR } from './walker-introspector'
  * framework's AbstractSchema contract.
  *
  * Feature parity with the v3 adapter:
- * - getDefaultValues: validate-then-fix loop (delegated to default-values.ts)
- *   with refinement stripping in lax mode; discriminated-union-aware
- *   first-option fallback for invalid_type issues.
+ * - getDefaultValues: validate-then-fix loop (delegated to
+ *   default-values.ts); discriminated-union-aware first-option
+ *   fallback for invalid_type issues.
  * - getSchemasAtPath: discriminated-union-aware path walker.
  * - validateAtPath: per-union-branch parse with aggregated errors.
  */
@@ -311,7 +311,7 @@ const sharedV4Schemas = createSharedSchemaStore()
  * stateless — every method receives the schema it acts on plus the
  * factory-supplied `formKey` / `maxRecursionDepth`. The function is
  * generic in `Form` / `GetValueFormType` so the typed methods
- * (`runStrictGetDefaults` / `makeSubSchema`) propagate the form
+ * (`runGetDefaults` / `makeSubSchema`) propagate the form
  * shape correctly.
  */
 function buildV4Services<
@@ -329,8 +329,8 @@ function buildV4Services<
     slimPrimitivesOf: (schema, maxRecursionDepth) => slimPrimitivesOf(schema, maxRecursionDepth),
     deriveDefault: (schema, useDefault, maxRecursionDepth) =>
       deriveDefault(schema, useDefault, maxRecursionDepth),
-    runStrictGetDefaults: (schema, config, maxRecursionDepth) =>
-      runStrictGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, maxRecursionDepth),
+    runGetDefaults: (schema, config, maxRecursionDepth) =>
+      runGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralWrappers(schema),
     unwrapToDiscriminatedUnion: (schema) => unwrapToDiscriminatedUnion(schema),
     peelAllWrappers: (schema) => peelAllWrappers(schema),
@@ -355,7 +355,7 @@ function buildV4Services<
   }
 }
 
-// `runStrictGetDefaultsV4` infers its target shape from a single schema
+// `runGetDefaultsV4` infers its target shape from a single schema
 // argument; this alias lets the service signature compose without the
 // adapter having to repeat the ZodObject constraint inline.
 type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
@@ -363,24 +363,20 @@ type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
 /**
  * v4's construction-time `getDefaultValues` flow. Wraps the slim
  * default-value derivation (`getDefaultValuesFromZodSchema`) with a
- * strict-mode parse that surfaces refinement errors at construction,
- * with two pre-flight gates:
+ * parse against the real schema that surfaces refinement errors at
+ * construction, with two pre-flight gates:
  *
  *   1. Async transforms (`z.preprocess(async fn, T)`) cannot be
  *      stripped — the transform's output shape is load-bearing for
- *      the inner schema's input. Skip the strict pass; the post-mount
- *      async pass picks up verdicts via `safeParseAsync`.
+ *      the inner schema's input. Skip the construction parse; the
+ *      post-mount async pass picks up verdicts via `safeParseAsync`.
  *
  *   2. Async refines CAN be stripped (the predicate is detachable
  *      from the schema's shape). Strip them up front so the sync
  *      parse runs cleanly; sync-refinement seeds on supplied defaults
  *      still surface.
- *
- * Lax mode short-circuits: the validate-then-fix loop inside the slim
- * derivation has done everything it can; partial-valid state ships
- * over a mount-time exception.
  */
-function runStrictGetDefaultsV4<Form>(
+function runGetDefaultsV4<Form>(
   rootSchema: z.ZodType & { _output: Form },
   config: GetDefaultValuesConfig<Form>,
   maxRecursionDepth: number
@@ -391,12 +387,6 @@ function runStrictGetDefaultsV4<Form>(
     constraints: config.constraints,
     maxRecursionDepth,
   })
-
-  if (config.strict === false) {
-    // Lax mode: see docblock — partial-valid initial state preferred
-    // to a mount-time exception.
-    return { data, errors: undefined, success: true }
-  }
 
   // A schema carrying async work of any kind skips the construction
   // parse. An async TRANSFORM always did: its output shape is
@@ -422,11 +412,11 @@ function runStrictGetDefaultsV4<Form>(
   }
 
   try {
-    const strictResult = rootSchema.safeParse(data) as z.ZodSafeParseResult<Form>
-    if (strictResult.success) {
+    const parseResult = rootSchema.safeParse(data) as z.ZodSafeParseResult<Form>
+    if (parseResult.success) {
       // Storage holds the pre-transform `z.input` view, so we return
       // the original `data` (already filled by
-      // `getDefaultValuesFromZodSchema`) rather than `strictResult.data`
+      // `getDefaultValuesFromZodSchema`) rather than `parseResult.data`
       // (the post-transform `z.output`). For schemas without
       // `.transform()` the two coincide; for schemas with one the
       // storage stays the honest input view that `form.values` reflects.
@@ -434,7 +424,7 @@ function runStrictGetDefaultsV4<Form>(
     }
     return {
       data,
-      errors: zodIssuesToValidationErrors(strictResult.error.issues),
+      errors: zodIssuesToValidationErrors(parseResult.error.issues),
       success: false,
     }
   } catch {

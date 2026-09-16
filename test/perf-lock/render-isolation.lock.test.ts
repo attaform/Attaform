@@ -112,6 +112,37 @@ const flatSiblings: ReadonlyArray<FieldSpec> = [
 ]
 const flatFields = (edit: FieldSpec): ReadonlyArray<FieldSpec> => [edit, ...flatSiblings]
 
+// NESTED — editing a leaf must leave the sibling subtree (contact.*) and the
+// sibling container untouched, while the OWN ancestor container stays live.
+// Hoisted because the one-shot pin at the bottom of the file re-runs it with
+// mount-seeded errors.
+const NESTED_FIELDS_DISPLAY: LockScenario = {
+  id: 'nested: fields-display',
+  style: 'fields-display',
+
+  makeSchema: (z: any): any =>
+    z.object({
+      profile: z.object({ first: z.string().min(2), last: z.string() }),
+      contact: z.object({ email: z.string().min(3), phone: z.string() }),
+    }),
+  // Defaults that PARSE. Construction validates unconditionally, and a form
+  // that mounts holding schema errors pays a one-shot aggregate rebuild on
+  // its first write (pinned separately below). This scenario measures
+  // steady-state isolation, so it starts clean.
+  defaultValues: { profile: { first: 'Ada', last: '' }, contact: { email: 'a@b.co', phone: '' } },
+  fields: [
+    { path: 'profile.first', label: 'profile.first', role: 'isolated' },
+    { path: 'profile.last', label: 'profile.last', role: 'isolated' },
+    { path: 'contact.email', label: 'contact.email', role: 'isolated' },
+    { path: 'contact.phone', label: 'contact.phone', role: 'isolated' },
+    { path: 'profile', label: 'profile(container)', role: 'ancestor' },
+    { path: 'contact', label: 'contact(container)', role: 'isolated' },
+  ],
+  edit: { label: 'profile.first', path: 'profile.first', value: 'Grace' },
+  validateOn: 'change',
+  note: 'ancestor container stays live; sibling subtree + sibling container hold 0',
+}
+
 const SCENARIOS: ReadonlyArray<LockScenario> = [
   // CONTROL — register-value is already granular. Green before AND after the
   // bust; proves the harness can SEE isolation (siblings genuinely hit 0).
@@ -169,29 +200,7 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
     validateOn: 'change',
     note: 'same keystroke through the value surface',
   },
-  // NESTED — editing a leaf must leave the sibling subtree (contact.*) and the
-  // sibling container untouched, while the OWN ancestor container stays live.
-  {
-    id: 'nested: fields-display',
-    style: 'fields-display',
-    makeSchema: (z: any): any =>
-      z.object({
-        profile: z.object({ first: z.string().min(2), last: z.string() }),
-        contact: z.object({ email: z.string().min(3), phone: z.string() }),
-      }),
-    defaultValues: { profile: { first: '', last: '' }, contact: { email: '', phone: '' } },
-    fields: [
-      { path: 'profile.first', label: 'profile.first', role: 'isolated' },
-      { path: 'profile.last', label: 'profile.last', role: 'isolated' },
-      { path: 'contact.email', label: 'contact.email', role: 'isolated' },
-      { path: 'contact.phone', label: 'contact.phone', role: 'isolated' },
-      { path: 'profile', label: 'profile(container)', role: 'ancestor' },
-      { path: 'contact', label: 'contact(container)', role: 'isolated' },
-    ],
-    edit: { label: 'profile.first', path: 'profile.first', value: 'Grace' },
-    validateOn: 'change',
-    note: 'ancestor container stays live; sibling subtree + sibling container hold 0',
-  },
+  NESTED_FIELDS_DISPLAY,
   // ARRAY — editing one cell must leave the other cells (same row and other
   // rows) untouched.
   {
@@ -272,7 +281,6 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
           schema,
           key: `iso-${adapter.name}-${keySeq}`,
           defaultValues: scenario.defaultValues,
-          strict: false,
           validateOn: scenario.validateOn,
           debounceMs: 0,
         })
@@ -312,6 +320,41 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
     await settle()
     return Object.fromEntries(renders)
   }
+
+  /**
+   * The first write after mount rebuilds the aggregated-errors array of
+   * every container, including ones whose contents did not change, so a
+   * form that mounted holding schema errors pays ONE extra render per
+   * unrelated container. Construction validates unconditionally, so this
+   * is the common shape: most real forms mount with required-but-empty
+   * fields.
+   *
+   * Bounded and one-shot — the aggregate stabilises immediately after,
+   * and writes 2..n hold the isolation the scenarios above lock. This
+   * pins the bound: if the rebuild ever becomes per-keystroke, the
+   * second-write half of this test fails.
+   */
+  it('a mount-seeded error costs the sibling container one render, on the first write only', async () => {
+    const seeded: LockScenario = {
+      ...NESTED_FIELDS_DISPLAY,
+      id: 'nested: fields-display (mount-seeded)',
+      defaultValues: { profile: { first: '', last: '' }, contact: { email: '', phone: '' } },
+    }
+    const form = mount(seeded)
+    await settle()
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(1)
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace H')
+    await settle()
+    form.setValue('profile.first', 'Grace Hopper')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+  })
 
   it.each(SCENARIOS)('$id — $note', async (scenario) => {
     const counts = await drive(scenario)

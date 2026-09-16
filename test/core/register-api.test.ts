@@ -4,11 +4,11 @@ import { computed, isRef, ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { vRegister } from '../../src/runtime/core/directive'
 import { computeFieldIdentity } from '../../src/runtime/core/field-ids'
-import { canonicalizePath } from '../../src/runtime/core/paths'
 import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { buildRegister, type InstanceRegisterConfig } from '../../src/runtime/core/register-api'
 import type { DisplayState } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 
 type F = { email: string; note: string }
 
@@ -68,9 +68,12 @@ describe('buildRegister', () => {
     it('exposes the canonical PathKey string', () => {
       const { register } = makeRegister()
       const rv = register(['email'])
-      // PathKey is the JSON-encoded segment array — opaque, stable for
-      // Map/Set keys, equality, and log strings.
-      expect(rv.path).toBe('["email"]')
+      // PathKey is opaque by contract — stable for Map/Set keys,
+      // equality and log strings, and nothing may parse it. Asserted
+      // against the canonicaliser rather than a literal, so the encoding
+      // stays free to change without this file being the thing that
+      // stops it.
+      expect(rv.path).toBe(canonicalizePath(['email']).key)
       expect(typeof rv.path).toBe('string')
       expect(isRef(rv.path)).toBe(false)
     })
@@ -125,7 +128,7 @@ describe('buildRegister', () => {
         // Vue's readonly proxies log a console.warn and silently drop
         // the write — the value is unchanged, no exception thrown.
         ;(rv as unknown as { path: string }).path = 'phone' as never
-        expect(rv.path).toBe('["email"]')
+        expect(rv.path).toBe(canonicalizePath(['email']).key)
         expect(warn).toHaveBeenCalled()
       } finally {
         warn.mockRestore()

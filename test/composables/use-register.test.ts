@@ -18,6 +18,7 @@ import { useRegister } from '../../src/runtime/composables/use-register'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 
 /**
  * Unit tests for the `useRegister()` composable. The composable's
@@ -306,23 +307,23 @@ describe('useRegister — inside child setup', () => {
     document.body.appendChild(root)
     app.mount(root)
     await waitUntil(() =>
-      captured.childRegister?.value?.path === JSON.stringify(['email']) ? true : null
+      captured.childRegister?.value?.path === canonicalizePath(['email']).key ? true : null
     )
 
     expect(captured.childRegister).toBeDefined()
     if (captured.childRegister === undefined) throw new Error('unreachable')
     const initial = captured.childRegister.value
     expect(initial).toBeDefined()
-    expect(initial?.path).toBe(JSON.stringify(['email']))
+    expect(initial?.path).toBe(canonicalizePath(['email']).key)
 
     fieldName.value = 'name'
     await waitUntil(() =>
-      captured.childRegister?.value?.path === JSON.stringify(['name']) ? true : null
+      captured.childRegister?.value?.path === canonicalizePath(['name']).key ? true : null
     )
 
     const rotated = captured.childRegister.value
     expect(rotated).toBeDefined()
-    expect(rotated?.path).toBe(JSON.stringify(['name']))
+    expect(rotated?.path).toBe(canonicalizePath(['name']).key)
     expect(rotated).not.toBe(initial)
   })
 
@@ -367,7 +368,7 @@ describe('useRegister — inside child setup', () => {
     expect(rv).toBeDefined()
     if (rv === undefined) throw new Error('unreachable')
 
-    expect(rv.path).toBe(JSON.stringify(['email']))
+    expect(rv.path).toBe(canonicalizePath(['email']).key)
     expect(rv.segments).toEqual(['email'])
     expect(rv.formKey).toBe('wrapper-derivation-test')
     expect(typeof rv.formInstanceId).toBe('string')
@@ -446,7 +447,7 @@ describe('useRegister — inside child setup', () => {
     document.body.appendChild(root)
     app.mount(root)
     await waitUntil(() =>
-      reads.path[reads.path.length - 1] === JSON.stringify(['email']) ? true : null
+      reads.path[reads.path.length - 1] === canonicalizePath(['email']).key ? true : null
     )
 
     // Initial reads: at least one `path` capture for `email`. The
@@ -456,15 +457,15 @@ describe('useRegister — inside child setup', () => {
     // matters for "what's the current path?") and that all reads so
     // far point at email.
     expect(reads.path.length).toBeGreaterThan(0)
-    expect(reads.path[reads.path.length - 1]).toBe(JSON.stringify(['email']))
+    expect(reads.path[reads.path.length - 1]).toBe(canonicalizePath(['email']).key)
     expect(reads.segments[reads.segments.length - 1]).toEqual(['email'])
     expect(reads.formKey[reads.formKey.length - 1]).toBe('rv-reactive-tracking-test')
-    for (const p of reads.path) expect(p).toBe(JSON.stringify(['email']))
+    for (const p of reads.path) expect(p).toBe(canonicalizePath(['email']).key)
     // Computed sampled at setup AND after the first flush: every entry
     // captured so far should be email (or undefined for the pre-bind
     // setup tick).
     for (const p of pathComputedSamples) {
-      if (p !== undefined) expect(p).toBe(JSON.stringify(['email']))
+      if (p !== undefined) expect(p).toBe(canonicalizePath(['email']).key)
     }
 
     // Capture lengths before rotation so we can assert the watchers
@@ -474,22 +475,22 @@ describe('useRegister — inside child setup', () => {
 
     fieldName.value = 'name'
     await waitUntil(() =>
-      reads.path[reads.path.length - 1] === JSON.stringify(['name']) ? true : null
+      reads.path[reads.path.length - 1] === canonicalizePath(['name']).key ? true : null
     )
 
     // The watchEffects must have re-fired with the new value, and the
     // computed must have re-sampled to `["name"]`.
     expect(reads.path.length).toBeGreaterThan(pathReadsBeforeRotation)
-    expect(reads.path[reads.path.length - 1]).toBe(JSON.stringify(['name']))
+    expect(reads.path[reads.path.length - 1]).toBe(canonicalizePath(['name']).key)
     expect(reads.segments[reads.segments.length - 1]).toEqual(['name'])
     // formKey is constant across the rotation (same form), but the
     // watchEffect still re-runs; assert the captured value.
     expect(reads.formKey[reads.formKey.length - 1]).toBe('rv-reactive-tracking-test')
 
     expect(pathComputedSamples.length).toBeGreaterThan(computedSamplesBeforeRotation)
-    expect(pathComputedSamples[pathComputedSamples.length - 1]).toBe(JSON.stringify(['name']))
+    expect(pathComputedSamples[pathComputedSamples.length - 1]).toBe(canonicalizePath(['name']).key)
 
-    expect(captured.childRegister?.value?.path).toBe(JSON.stringify(['name']))
+    expect(captured.childRegister?.value?.path).toBe(canonicalizePath(['name']).key)
   })
 
   it('wrapper-component pattern: rv.segments + rv.formKey rotate when the parent rebinds to a different path', async () => {

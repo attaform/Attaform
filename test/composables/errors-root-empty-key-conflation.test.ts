@@ -6,10 +6,17 @@ import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
+import { ROOT_PATH_KEY } from '../../src/runtime/core/paths'
 
 /**
  * HARD BOUNDARY: the literal `''` field key and the root `[]` global
  * bucket never conflate.
+ *
+ * The slot names below come from `ROOT_PATH_KEY` rather than a literal.
+ * `PathKey` is opaque by contract, and pinning its spelling here made
+ * this file the thing that had to change when the encoding did — while
+ * the boundary it actually guards is between two DIFFERENT keys, not
+ * between two particular strings.
  *
  * `''` is a plain field key. It carries the literal `['']` field's
  * errors and nothing else, ever. Root / global form context (a root
@@ -18,7 +25,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * separate slots in the materialised `JSON.stringify(form.errors)` dump:
  *
  *   - a literal `''` field error  ->  `tree['']`   +  `errors('')`
- *   - a global / root-level error ->  `tree['[]']`  +  `meta.ownErrors`
+ *   - a global / root-level error ->  `tree[ROOT_PATH_KEY]` + `meta.ownErrors`
  *
  * Neither ever leaks into the other's channel, in either direction.
  * These tests pin that boundary on both zod adapters, for both
@@ -114,13 +121,13 @@ function schemaConflationTests(makeInvalidForm: () => ConflationForm): void {
 
     // Distinct materialised slots.
     expect(slot(form, '')).toEqual(['empty-key required'])
-    expect(slot(form, '[]')).toEqual(['must differ'])
+    expect(slot(form, ROOT_PATH_KEY)).toEqual(['must differ'])
     expect(slot(form, 'name')).toEqual(['name required'])
 
     // The hard boundary, both directions: neither slot carries the
     // other's error.
     expect(slot(form, '')).not.toContain('must differ')
-    expect(slot(form, '[]')).not.toContain('empty-key required')
+    expect(slot(form, ROOT_PATH_KEY)).not.toContain('empty-key required')
 
     // Reads agree with the slots. errors('') reads the literal '' field;
     // the root [] bucket alone is meta.ownErrors; the hard boundary holds
@@ -134,7 +141,7 @@ function schemaConflationTests(makeInvalidForm: () => ConflationForm): void {
     // aggregate, no root carve-out.
     expect(read(form, []).sort()).toEqual(read(form).sort())
     // The whole-form dump still carries everything the flat aggregate
-    // does, global included, just under '[]' rather than ''.
+    // does, global included, just under the root key rather than ''.
     expect(read(form).sort()).toEqual(['empty-key required', 'must differ', 'name required'].sort())
   })
 }
@@ -153,10 +160,10 @@ function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
     await flush(form)
 
     expect(slot(form, '')).toEqual(['field boom'])
-    expect(slot(form, '[]')).toEqual(['global boom'])
+    expect(slot(form, ROOT_PATH_KEY)).toEqual(['global boom'])
 
     expect(slot(form, '')).not.toContain('global boom')
-    expect(slot(form, '[]')).not.toContain('field boom')
+    expect(slot(form, ROOT_PATH_KEY)).not.toContain('field boom')
 
     expect(read(form, '')).toEqual(['field boom'])
     expect(own(form)).toEqual(['global boom'])
@@ -171,7 +178,7 @@ function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
     form.setErrors([{ message: 'lonely global' }])
     await flush(form)
 
-    expect(slot(form, '[]')).toEqual(['lonely global'])
+    expect(slot(form, ROOT_PATH_KEY)).toEqual(['lonely global'])
     expect(treeKeys(form)).not.toContain('')
     expect(read(form, '')).toEqual([])
   })

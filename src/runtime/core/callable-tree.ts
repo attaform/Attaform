@@ -7,13 +7,14 @@ import { cellEntriesFor } from './errors'
 import { aggregateErrorsAt, type FieldState } from './field-state-api'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
-  ROOT_PATH_KEY,
-  canonicalizePath,
-  isPathPrefix,
-  segmentsForPathKey,
   type Path,
   type PathKey,
+  ROOT_PATH_KEY,
   type Segment,
+  canonicalizePath,
+  isPathPrefix,
+  keyForSegments,
+  segmentsForPathKey,
 } from './paths'
 import { isArrayPath, liveContainerHasKey, liveKeysAtPath } from './proxy-live-keys'
 import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
@@ -203,7 +204,7 @@ function buildTree(spec: TreeSpec): CallableSurface {
     // sweep evicts by. Spelling it that way rather than routing through
     // `canonicalizePath` keeps the descend gate, which runs on every
     // dot access, off a re-normalise it cannot need.
-    const cacheKey = JSON.stringify(segs) as PathKey
+    const cacheKey = keyForSegments(segs).key
     const cached = existsCache.get(cacheKey)
     if (cached !== undefined) return cached
     const result = spec.schema.getSlimPrimitiveTypesAtPath(segs).size > 0
@@ -227,7 +228,7 @@ function buildTree(spec: TreeSpec): CallableSurface {
     // `held.length` / `Object.keys(held)` / descent track reality;
     // only host-level checks (`Array.isArray`, `typeof`) stay pinned.
     const isArrayLike = spec.isArrayAt(segments)
-    const pathKey = JSON.stringify(segments) as PathKey
+    const pathKey = keyForSegments(segments).key
     const cacheKey = `${pathKey}+${isArrayLike ? 'A' : 'O'}`
     const existing = containerCache.get(cacheKey)
     if (existing !== undefined) return existing
@@ -392,7 +393,7 @@ export function buildErrorsSurface<F extends GenericForm>(
   // its own container (#617).
   sweep.onEvict((key) => treeCache.delete(key))
   const materialize = (segments: readonly Segment[]): unknown => {
-    const cacheKey = JSON.stringify(segments) as PathKey
+    const cacheKey = keyForSegments(segments).key
     let tree = treeCache.get(cacheKey)
     if (tree === undefined) {
       const frozen = [...segments]
@@ -689,7 +690,7 @@ export function buildFieldsSurface<F extends GenericForm>(
   // state per hit rather than capturing anything.
   sweep.onEvict((key) => viewCache.delete(key))
   function viewAt(segments: readonly Segment[]): CallableSurface {
-    const cacheKey = JSON.stringify(segments) as PathKey
+    const cacheKey = keyForSegments(segments).key
     const existing = viewCache.get(cacheKey)
     if (existing !== undefined) return existing
     const { toString, valueOf, toJSON, toPrimitive } = makeReadonlyCoercion(() =>

@@ -9,6 +9,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { useRegister } from '../../src/runtime/composables/use-register'
 import type { RegisterValue } from '../../src/runtime/types/types-api'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 
 /**
  * Runtime contract for `<MyComponent v-register="register(...)" />`.
@@ -250,7 +251,7 @@ describe('pattern 2: v-register on a non-form root WITH useRegister (recommended
     expect(captured.rv).toBeDefined()
     if (captured.rv === undefined) throw new Error('unreachable')
 
-    expect(captured.rv.path).toBe(JSON.stringify(['email']))
+    expect(captured.rv.path).toBe(canonicalizePath(['email']).key)
     expect(captured.rv.segments).toEqual(['email'])
     expect(captured.rv.formKey).toBe(mounted.api.key)
     expect(typeof captured.rv.formInstanceId).toBe('string')

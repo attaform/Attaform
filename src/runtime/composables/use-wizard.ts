@@ -1625,7 +1625,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   }
 
   // Move to the first failed step and run its invalid-submit focus
-  // policy. Shared by the validation-failure path and the post-callback
+  // nudge. Shared by the validation-failure path and the post-callback
   // error path (#438) so both honor `options.focusFirstError` the same
   // way, and runs BEFORE onError so the consumer can override the focus.
   async function focusFirstWizardError(errors: readonly WizardAggregateError[]): Promise<void> {

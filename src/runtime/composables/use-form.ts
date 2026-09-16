@@ -149,11 +149,9 @@ export function useForm(configuration: any): any {
   const { schema } = configuration
   const abstractSchema = isZodType(schema) ? zodAdapter(schema) : schema
 
-  // Spread the full configuration so opt-in options (`onInvalidSubmit`,
-  // `validateOn`, `debounceMs`, `history`, `rememberVariants`, `key`,
-  // `strict`) reach useAbstractForm. The library-level fallback for
-  // `strict` lives downstream in `createFormStore`, which owns every
-  // option's default in one place.
+  // Spread the full configuration so opt-in options
+  // (`focusOnInvalidSubmit`, `validateOn`, `debounceMs`, `history`,
+  // `rememberVariants`, `key`) reach useAbstractForm.
   return useAbstractForm({
     ...configuration,
     schema: abstractSchema,

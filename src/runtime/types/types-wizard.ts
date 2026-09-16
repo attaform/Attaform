@@ -414,8 +414,8 @@ export type WizardOptions = {
   /**
    * When `wizard.handleSubmit` finds errors, automatically focus the
    * first failing form: jump to its step and invoke its
-   * `applyInvalidSubmitPolicy()` (focus / scroll per the form's own
-   * `onInvalidSubmit` configuration). Default `true`; pass `false` to
+   * `applyInvalidSubmitPolicy()` (which honors that form's own
+   * `focusOnInvalidSubmit` choice). Default `true`; pass `false` to
    * keep the active step where the user left it and handle navigation
    * manually in the `onError` callback.
    */

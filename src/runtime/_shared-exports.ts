@@ -173,7 +173,6 @@ export type {
   Json,
   MetaTrackerValue,
   OnError,
-  OnInvalidSubmitPolicy,
   OnSubmit,
   PendingValidationStatus,
   ReactiveValidationStatus,

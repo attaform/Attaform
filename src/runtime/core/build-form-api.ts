@@ -7,7 +7,6 @@ import type {
   FormHistoryNamespace,
   FormMeta,
   HistoryModule,
-  OnInvalidSubmitPolicy,
   ReactiveValidationStatus,
   RegisterValue,
   UseFormReturnType,
@@ -46,7 +45,7 @@ import {
   type Path,
   type PathKey,
 } from './paths'
-import { applyInvalidSubmitPolicy, buildProcessForm } from './process-form'
+import { buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
 import { safeAssign } from './safe-assign'
 import { isUnset, unset } from './unset'
@@ -163,8 +162,8 @@ function buildMetaProxy(
 }
 
 export type BuildFormApiOptions = {
-  /** Forwarded to buildProcessForm. See `UseFormConfiguration.onInvalidSubmit`. */
-  onInvalidSubmit?: OnInvalidSubmitPolicy
+  /** See `UseFormConfiguration.focusOnInvalidSubmit`. Defaults to `true`. */
+  focusOnInvalidSubmit?: boolean
   /**
    * Pre-wired history module backing `form.history.{undo, redo, clear,
    * canUndo, canRedo, size}`. When omitted, the namespace's methods
@@ -327,14 +326,47 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const register = buildRegister(state, formInstanceId, registerConfig) as (
     path: string | Path
   ) => RegisterValue<unknown>
-  const processOptions = pickDefined({ onInvalidSubmit: options.onInvalidSubmit })
-  const defaultInvalidSubmitPolicy: OnInvalidSubmitPolicy =
-    options.onInvalidSubmit ?? 'focus-first-error'
+
+  // --- Focus / scroll to first error ---
+  // Both helpers scope to `formInstanceId` so two `useForm()` callsites
+  // sharing a `key` (e.g. sidebar + main mounting the same form) only
+  // focus / scroll within their own registered elements.
+  const focusFirstError = (options?: { preventScroll?: boolean }): boolean => {
+    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
+    if (target === null) return false
+    // `focusVisible: true` requests the focus ring even though the move
+    // is programmatic — so non-text controls (radio / checkbox / custom
+    // widgets) focused right after a pointer submit still show where
+    // focus landed. Honored where supported, ignored elsewhere; the
+    // caller's `options` (e.g. `preventScroll`) layer over it.
+    target.element.focus({ focusVisible: true, ...options })
+    return true
+  }
+
+  const scrollToFirstError = (options?: ScrollIntoViewOptions): boolean => {
+    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
+    if (target === null) return false
+    target.element.scrollIntoView(options)
+    return true
+  }
+
+  // The form's own invalid-submit nudge, in one place: `handleSubmit`
+  // runs it on a failed submit, and it is exposed as a method so the
+  // wizard's failed-path navigation can fire the failing form's
+  // configured behavior after a `goTo`. `focusFirstError` stays
+  // unconditional — opting out of the automatic nudge is not opting out
+  // of driving it yourself.
+  const applyInvalidSubmitPolicyPublic = (): void => {
+    if (options.focusOnInvalidSubmit !== false) focusFirstError()
+  }
+
   const {
     validate: validateBuilt,
     parse: parseBuilt,
     handleSubmit,
-  } = buildProcessForm<Form, GetValueFormType>(state, formInstanceId, processOptions)
+  } = buildProcessForm<Form, GetValueFormType>(state, {
+    applyInvalidSubmit: applyInvalidSubmitPolicyPublic,
+  })
 
   const validate = (pathInput?: string) =>
     validateBuilt(pathInput) as Ref<ReactiveValidationStatus<Form>>
@@ -908,38 +940,6 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // already set, so the gate is open either way — swallow rather
       // than reject into the consumer's app.
     }
-  }
-
-  // --- Focus / scroll to first error ---
-  // Both helpers scope to `formInstanceId` so two `useForm()` callsites
-  // sharing a `key` (e.g. sidebar + main mounting the same form) only
-  // focus / scroll within their own registered elements.
-  const focusFirstError = (options?: { preventScroll?: boolean }): boolean => {
-    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
-    if (target === null) return false
-    // `focusVisible: true` requests the focus ring even though the move
-    // is programmatic — so non-text controls (radio / checkbox / custom
-    // widgets) focused right after a pointer submit still show where
-    // focus landed. Honored where supported, ignored elsewhere; the
-    // caller's `options` (e.g. `preventScroll`) layer over it.
-    target.element.focus({ focusVisible: true, ...options })
-    return true
-  }
-
-  const scrollToFirstError = (options?: ScrollIntoViewOptions): boolean => {
-    const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
-    if (target === null) return false
-    target.element.scrollIntoView(options)
-    return true
-  }
-
-  // Drives the same focus/scroll policy that `handleSubmit` runs after a
-  // failed submit, but exposed as a method so the wizard's failed-path
-  // navigation can invoke the failing form's own configured policy after
-  // a `goTo`. Defaults to the form's `onInvalidSubmit` option so the
-  // caller doesn't have to repeat the configured choice.
-  const applyInvalidSubmitPolicyPublic = (policy?: OnInvalidSubmitPolicy): void => {
-    applyInvalidSubmitPolicy(state, formInstanceId, policy ?? defaultInvalidSubmitPolicy)
   }
 
   // --- Field arrays ---

@@ -146,7 +146,7 @@ For wizard-wide error summaries that persist between submissions, drive them off
 
 ## `focusFirstError`
 
-When a submission produces errors, the wizard jumps to the first failing form and invokes its `applyInvalidSubmitPolicy()` (focus / scroll per the form's own `onInvalidSubmit` configuration). The behavior is on by default; opt out by passing `focusFirstError: false` on the wizard:
+When a submission produces errors, the wizard jumps to the first failing form and invokes its `applyInvalidSubmitPolicy()`, which honors that form's own `focusOnInvalidSubmit` choice. The behavior is on by default; opt out by passing `focusFirstError: false` on the wizard:
 
 ```ts
 const wizard = useWizard({

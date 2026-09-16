@@ -53,7 +53,7 @@ The form handle returned by `useForm({ schema })`:
 - `form.validate(path?)`, `form.parse(path?, { commit? })` manual validation. `form.parse` is always async (no sync variant by design) and resolves the parsed Zod output; `{ commit: true }` writes the verdict to `form.errors` and cancels in-flight field runs.
 - `form.setErrors(errors)`, `form.setErrors(path, errors)`, `form.setErrors(updater)`, `form.clearErrors(path?)` set or clear the manual error layer. A path-less error is form-level at the root `[]`; each error accepts an optional `data` payload.
 - `form.history.{undo, redo, clear, canUndo, canRedo, size}` undo/redo namespace.
-- `form.applyInvalidSubmitPolicy(policy?)`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.
+- `form.applyInvalidSubmitPolicy()`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.
 - `form.touch(path?)`, `form.interact(path?)`, `form.toRef(path)`, `form.rehydrate()` introspection and lifecycle helpers. `touch` writes the descriptive `touched` flag; `interact` simulates a full focus/edit/blur so a seeded subtree reveals its errors under the default display heuristic.
 
 The wizard handle returned by `useWizard({ steps })`:

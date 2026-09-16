@@ -833,39 +833,6 @@ export type SettledValidationStatus<Form> = {
 export type ReactiveValidationStatus<Form> = PendingValidationStatus | SettledValidationStatus<Form>
 
 /**
- * What to do when a submit attempt fails validation. The library can
- * focus and/or scroll the first errored field into view without you
- * wiring an `onError` callback yourself. Defaults to
- * `'focus-first-error'` because moving keyboard / screen-reader focus
- * to the broken field on submit is an accessibility baseline; opt out
- * with `'none'` if you're managing focus elsewhere.
- *
- * - `'focus-first-error'` (default): focus the first errored field's
- *   first visible element. Modern browsers scroll the focused element
- *   into view by default; pair with `'both'` if you want an explicit
- *   scroll alongside.
- * - `'scroll-to-first-error'`: scroll that element into view without
- *   moving focus.
- * - `'both'`: scroll first, then focus (with `preventScroll: true` so
- *   the browser doesn't undo the explicit scroll).
- * - `'none'`: no automatic UI nudge; the dev handles focus / scroll
- *   manually via `form.focusFirstError()` or `form.scrollToFirstError()`
- *   from an `onError` callback.
- *
- * Both focusing policies request `focusVisible: true`, so the browser
- * paints a focus ring even though the move is programmatic. Where a UA
- * doesn't yet support that hint, non-text controls (radio, checkbox,
- * custom widgets) may end up focused without a visible ring after a
- * pointer-driven submit; if you target those browsers, pair the policy
- * with your own indicator (e.g. a `:focus-within` ring on the option
- * wrapper).
- *
- * If no errored field has a currently mounted, visible element, the
- * policy silently no-ops.
- */
-export type OnInvalidSubmitPolicy = 'none' | 'focus-first-error' | 'scroll-to-first-error' | 'both'
-
-/**
  * When per-field VALIDATION runs. Only validation timing varies per
  * mode; storage commit timing is the directive's concern (the
  * default `<input v-register>` commits per keystroke; `.lazy` defers
@@ -1205,23 +1172,29 @@ export type UseFormConfiguration<
    */
   defaultValues?: DefaultValues | (() => DefaultValues) | (() => Promise<DefaultValues>)
   /**
-   * Automatic UI nudge on submit-validation failure. Fires after
-   * errors are populated and before your `onError` callback runs.
-   * Default `'focus-first-error'`, which moves keyboard / screen-reader
-   * focus to the broken field as an accessibility baseline.
+   * Move keyboard / screen-reader focus to the first errored field when
+   * a submit attempt fails validation. Fires after errors are populated
+   * and before your `onError` callback runs.
    *
-   * - `'focus-first-error'` (default): focus the first errored field's
-   *   first visible element.
-   * - `'scroll-to-first-error'`: scroll it into view without focusing.
-   * - `'both'`: scroll, then focus.
-   * - `'none'`: opt out entirely; handle focus / scroll yourself in an
-   *   `onError` callback via `form.focusFirstError()` or
-   *   `form.scrollToFirstError()`.
+   * Default `true`: focusing the broken field on submit is an
+   * accessibility baseline, and modern browsers scroll the focused
+   * element into view as part of the move. Pass `false` when you drive
+   * the nudge yourself from an `onError` callback with
+   * `form.focusFirstError()` or `form.scrollToFirstError()`, both of
+   * which stay available either way.
    *
-   * If no errored field has a currently-mounted, visible element,
-   * the policy silently no-ops.
+   * The focus requests `focusVisible: true`, so the browser paints a
+   * focus ring even though the move is programmatic. Where a UA doesn't
+   * yet support that hint, non-text controls (radio, checkbox, custom
+   * widgets) may end up focused without a visible ring after a
+   * pointer-driven submit; if you target those browsers, pair this with
+   * your own indicator (e.g. a `:focus-within` ring on the option
+   * wrapper).
+   *
+   * If no errored field has a currently-mounted, visible element, the
+   * focus silently no-ops.
    */
-  onInvalidSubmit?: OnInvalidSubmitPolicy
+  focusOnInvalidSubmit?: boolean
   /**
    * Freeze the form's data. When this resolves truthy every value write
    * no-ops at the store's write chokepoint (programmatic `setValue`, the
@@ -1352,7 +1325,7 @@ export type OnSubmit<Form extends GenericForm> = (form: Form) => void | Promise<
  * the user-error layer (the `setErrors(...); return` server-rejection
  * pattern). Receives the full list of errors. Bind this when you want to
  * react to submit failures explicitly (alongside or instead of the
- * automatic `onInvalidSubmit` UI nudge).
+ * automatic `focusOnInvalidSubmit` nudge).
  */
 export type OnError = (error: ValidationError[]) => void | Promise<void>
 
@@ -4153,20 +4126,19 @@ export type UseFormReturnType<
   scrollToFirstError: (options?: ScrollIntoViewOptions) => boolean
 
   /**
-   * Drive the form's `onInvalidSubmit` policy imperatively. The same
-   * focus/scroll behavior `handleSubmit` runs after a failed submit,
-   * but available standalone. Defaults to the policy configured via
-   * `useForm({ onInvalidSubmit })` (or `'focus-first-error'` when
-   * omitted). Pass an explicit policy to override for one call.
+   * Run the form's own invalid-submit nudge imperatively: exactly what
+   * `handleSubmit` does after a failed submit, but available standalone
+   * and honoring this form's `useForm({ focusOnInvalidSubmit })` choice.
    *
    * Used by `useWizard` after navigating to the first failing form
    * during `wizard.handleSubmit`, so the failing form's own configured
-   * policy fires once its DOM is in view.
+   * behavior fires once its DOM is in view.
    *
-   * No-op when no errored field is currently registered or when the
-   * resolved policy is `'none'`.
+   * No-op when this form opted out, or when no errored field is
+   * currently registered. Use `focusFirstError()` to focus regardless
+   * of the configured choice.
    */
-  applyInvalidSubmitPolicy: (policy?: OnInvalidSubmitPolicy) => void
+  applyInvalidSubmitPolicy: () => void
 
   /**
    * Programmatically mark fields as `touched` — the descriptive

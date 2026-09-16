@@ -536,3 +536,50 @@ async-refinements flake, which the library's OWN min-visible hold
 caused. The docblock now says that rather than the other way round.
 
 Budget 33_870 -> 33_400 (~0.31 kB headroom).
+
+## A4 Ratchet: onInvalidSubmit becomes a boolean, 2026-09-16
+
+**33,092 -> 33,008 B (-84 B)** against a -20 B ablation estimate. The
+enum collapse alone is roughly what was estimated; the rest came from
+what the collapse made redundant.
+
+`useForm({ onInvalidSubmit: 'none' | 'focus-first-error' |
+'scroll-to-first-error' | 'both' })` is now
+`useForm({ focusOnInvalidSubmit?: boolean })`, default `true`.
+`'scroll-to-first-error'` moved the viewport without telling a screen
+reader anything, and `'both'` was redundant because focusing scrolls.
+The off-switch stays: cubic-housing drives `focusFirstError()` itself at
+13 call sites, so wanting the automatic pull out of the way is real.
+
+What the two dead arms took with them:
+
+- `applyInvalidSubmitPolicy` in `core/process-form.ts` is **deleted, not
+  shortened**. Stripped of scroll and both, its body was
+  `getFirstErrorElement` + `focus({ focusVisible: true })`, which is
+  exactly what `focusFirstError` in `core/build-form-api.ts` already
+  did. The focus/scroll helpers move above `buildProcessForm` and the
+  submit path is handed the same closure the public method calls, so
+  there is now one implementation instead of two that had already
+  drifted (only one of them spread the caller's options).
+- `buildProcessForm`'s `formInstanceId` parameter went with it. That
+  argument existed solely to scope the deleted helper's element lookup;
+  nothing else in the module read it.
+- `OnInvalidSubmitPolicy` leaves the public type surface entirely, along
+  with the `processOptions` `pickDefined` call and the resolved
+  `defaultInvalidSubmitPolicy` local.
+- `form.applyInvalidSubmitPolicy(policy?)` becomes zero-arg. With the
+  enum gone the parameter had no type to take, and the override it
+  offered is `focusFirstError()` / `scrollToFirstError()` verbatim.
+
+The method is kept rather than folded into `focusFirstError` because the
+two answer different questions: `focusFirstError()` focuses, full stop,
+and `applyInvalidSubmitPolicy()` does what THIS form was configured to
+do. `useWizard` needs the second after a failed-submit `goTo`, so a
+step whose form opted out is not overridden by the wizard.
+
+The opt-out deliberately does not reach the imperative helpers, and that
+is now pinned: the only reason to pass `focusOnInvalidSubmit: false` is
+to run the move yourself, so gating `focusFirstError()` on it would take
+away the thing the flag is for.
+
+Budget 33_400 -> 33_320 (~0.31 kB headroom).

@@ -30,7 +30,6 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | `FormKey`                           | runtime/types/types-api | The `useForm({ key })` identifier: distant lookup, error labelling, DevTools naming.                     |
 | `AttaformRegistry`                  | runtime/core/registry   | The per-Vue-app container every form registers into. Reached explicitly only for SSR or a custom plugin. |
 | `HistoryPlugin`                     | runtime/types/types-api | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`.               |
-| `OnInvalidSubmitPolicy`             | runtime/types/types-api | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.                              |
 | `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api | `validateOn` field and its discriminated config.                                                         |
 | `DisplayState`                      | runtime/types/types-api | The display-state verdict: `idle` \| `pending` \| `error` \| `success`.                                  |
 

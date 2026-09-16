@@ -10,7 +10,7 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * Regression pin: the zod v3 `useForm` wrapper used to hand-pick the
  * options it forwarded to `useAbstractForm`, silently dropping the
- * opt-in ones (`onInvalidSubmit`, `validateOn`, `debounceMs`,
+ * opt-in ones (`focusOnInvalidSubmit`, `validateOn`, `debounceMs`,
  * `history`). These tests prove each option now reaches the runtime.
  */
 

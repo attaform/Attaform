@@ -330,7 +330,7 @@ export function useAbstractForm<
   // can validate on different cadences and surface errors with
   // different visibility rules even though they share a FormStore.
   const apiOptions: Parameters<typeof buildFormApi<Form, GetValueFormType>>[2] = pickDefined({
-    onInvalidSubmit: materialisedConfiguration.onInvalidSubmit,
+    focusOnInvalidSubmit: materialisedConfiguration.focusOnInvalidSubmit,
     history: state.modules.get(HISTORY_MODULE_KEY) as HistoryModule | undefined,
     validateOn: materialisedConfiguration.validateOn,
     debounceMs: (materialisedConfiguration as { debounceMs?: number }).debounceMs,

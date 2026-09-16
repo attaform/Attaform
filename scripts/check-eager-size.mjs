@@ -215,7 +215,7 @@ export async function measureEager(define = PROD_DEFINE) {
 // form's heap, -36% on a read-swept 100-leaf form, and a 400-row
 // `form.list()` going from 278 ms per keystroke to 7.4 ms. Against `main`
 // the branch is still 750 B smaller. See the ledger for the full pricing.
-const BUDGET_GZ = 33_400
+const BUDGET_GZ = 33_320
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

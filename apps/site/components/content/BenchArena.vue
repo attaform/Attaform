@@ -98,6 +98,10 @@
     baseline: string
     capabilities: Capability[]
     bundle: BundleRow[]
+    // How much of a Zod row is not the form library: the shared schema plus the
+    // parse call every Zod adapter makes, weighed by the same build as the rows.
+    // Absent in results generated before the floor was measured.
+    sharedValidator?: { validator: string; gzBytes: number }
     runtime: Record<string, Record<string, DimBlock>>
   }
 
@@ -213,10 +217,101 @@
   }
 
   // --- bundle -------------------------------------------------------------
-  // Smallest first, so Attaform's heaviest-in-cohort figure reads honestly at
-  // the foot of the table rather than being buried.
-  const bundleRows = computed(() => [...results.bundle].sort((a, b) => a.gzBytes - b.gzBytes))
+  // A bundle row is one library; a capability row is one library IN ONE MODE.
+  // Regle is measured in both modes for the capability matrix but bundled once,
+  // in schema mode, for the Zod row (see the ENTRIES note in
+  // measure-bundles.mjs), so its bundle id needs pointing at the mode that was
+  // actually weighed. Every other id is shared between the two lists.
+  const BUNDLE_TO_CAPABILITY: Record<string, string> = { regle: 'regle-schema' }
+  const capabilityForBundle = (id: string): Capability => {
+    const capId = BUNDLE_TO_CAPABILITY[id] ?? id
+    const found = results.capabilities.find((c) => c.lib === capId)
+    // Same build-time invariant as the runtime views: a bundle row with no
+    // adapter behind it means the two halves of results.json disagree, which
+    // must fail the prerender rather than render an ungrouped row.
+    if (!found) {
+      throw new Error(
+        `[BenchArena] bundle row "${id}" has no capability row ("${capId}"). ` +
+          `results.json is internally inconsistent; re-run the arena.`
+      )
+    }
+    return found
+  }
+
+  // The fairness axis, ordered by how much of the job each layer takes on. That
+  // is also roughly ascending size, which is the point: the groups explain the
+  // chart instead of the chart implying a ranking across them.
+  const LAYER_ORDER = [
+    'headless-validation-only',
+    'headless-form-state',
+    'batteries-included',
+  ] as const
+  // Labels come from the capability matrix's `LAYER_LABEL` rather than a second
+  // copy: the two tables name the same three design points, so they must not be
+  // able to drift into different words for them. Only the sentence explaining
+  // each one is new here, because the bundle table is where a reader is most
+  // likely to mistake a layer difference for a quality difference.
+  const LAYER_BLURB: Record<string, string> = {
+    'headless-validation-only':
+      'Your components own the values; the library answers whether they are valid.',
+    'headless-form-state':
+      'The library owns values, errors and the wiring between them. You write the inputs.',
+    'batteries-included':
+      'The library ships the field components as well as the state behind them.',
+  }
+
+  // One line per row saying what that library is FOR, composed only from fields
+  // the arena's own adapters declare and the driver verifies (`layer`,
+  // `ownsInputs`, `schemaLib`). Never from a library's marketing, and never a
+  // judgement: each line is meant to be one that library's maintainer would
+  // sign off on. Because it is derived rather than authored, a library that
+  // changes design point cannot end up with a stale description.
+  const SCHEMA_SOURCE: Record<string, string> = {
+    zod3: 'from a Zod schema',
+    zod4: 'from a Zod schema',
+    valibot: 'from a Valibot schema',
+    native: 'from its own rule set',
+  }
+  const optimizedFor = (cap: Capability): string => {
+    const job = cap.ownsInputs
+      ? 'Rendering the fields as well as holding their state'
+      : cap.layer === 'headless-validation-only'
+        ? 'Validating state your components already own'
+        : 'Holding form state behind inputs you write yourself'
+    return `${job}, ${SCHEMA_SOURCE[cap.schemaLib] ?? 'from its own rule set'}.`
+  }
+
+  // Smallest first WITHIN a layer, so Attaform's heaviest-in-cohort figure reads
+  // honestly rather than being buried, while a validation-only row is never
+  // presented as a peer of a form-state one.
+  const bundleGroups = computed(() => {
+    const byLayer = new Map<string, { row: BundleRow; cap: Capability }[]>()
+    for (const row of results.bundle) {
+      const cap = capabilityForBundle(row.id)
+      const bucket = byLayer.get(cap.layer)
+      if (bucket) bucket.push({ row, cap })
+      else byLayer.set(cap.layer, [{ row, cap }])
+    }
+    // Ordering by a fixed list would SILENTLY DROP a row whose layer is not on
+    // it, so a library in a new design point would vanish from the chart with
+    // nothing to show for it. Check for that first and fail the prerender
+    // instead, the same contract the rest of this component holds itself to.
+    const unknown = [...byLayer.keys()].filter((layer) => !LAYER_ORDER.includes(layer as never))
+    if (unknown.length > 0) {
+      throw new Error(
+        `[BenchArena] bundle rows carry unknown layer(s): ${unknown.join(', ')}. ` +
+          `Add them to LAYER_ORDER and LAYER_BLURB, or they would be dropped from the table.`
+      )
+    }
+    return LAYER_ORDER.filter((layer) => byLayer.has(layer)).map((layer) => ({
+      layer,
+      label: LAYER_LABEL[layer] ?? layer,
+      blurb: LAYER_BLURB[layer] ?? '',
+      rows: (byLayer.get(layer) ?? []).sort((a, b) => a.row.gzBytes - b.row.gzBytes),
+    }))
+  })
   const bundleMax = computed(() => Math.max(...results.bundle.map((r) => r.gzBytes)))
+  const sharedValidator = computed(() => results.sharedValidator ?? null)
 
   // --- runtime tables -----------------------------------------------------
   // Resolve the selected scenario/dimension; throw with a helpful message if it
@@ -655,15 +750,26 @@
             <th class="px-3 py-2 font-semibold text-fg-subtle">Validator</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody v-for="group in bundleGroups" :key="group.layer">
+          <tr class="border-b border-border/60 bg-surface/20">
+            <td colspan="4" class="px-3 pt-3 pb-1.5">
+              <span class="text-xs font-semibold tracking-wide text-fg-subtle uppercase">{{
+                group.label
+              }}</span>
+              <span class="ml-2 text-xs text-fg-subtle">{{ group.blurb }}</span>
+            </td>
+          </tr>
           <tr
-            v-for="row in bundleRows"
+            v-for="{ row, cap } in group.rows"
             :key="row.id"
-            class="border-b border-border/60 last:border-0"
+            class="border-b border-border/60"
             :class="isBaseline(row.id) ? 'bg-accent/5' : ''"
           >
-            <td class="px-3 py-2 font-medium whitespace-nowrap text-fg">{{ row.lib }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">
+            <td class="px-3 py-2 align-top">
+              <div class="font-medium whitespace-nowrap text-fg">{{ row.lib }}</div>
+              <div class="mt-0.5 text-xs text-fg-subtle">{{ optimizedFor(cap) }}</div>
+            </td>
+            <td class="px-3 py-2 align-top whitespace-nowrap">
               <div class="flex items-center gap-2">
                 <span class="inline-block h-1.5 w-28 rounded-full bg-surface">
                   <span
@@ -681,8 +787,12 @@
                 </span>
               </div>
             </td>
-            <td class="px-3 py-2 font-mono text-xs text-fg-muted">{{ fmtRatio(row.ratio) }}</td>
-            <td class="px-3 py-2 text-xs whitespace-nowrap text-fg-muted">{{ row.validator }}</td>
+            <td class="px-3 py-2 align-top font-mono text-xs text-fg-muted">
+              {{ fmtRatio(row.ratio) }}
+            </td>
+            <td class="px-3 py-2 align-top text-xs whitespace-nowrap text-fg-muted">
+              {{ row.validator }}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -692,6 +802,18 @@
         external, since every app ships it once. Builds are code-split the way a real bundler ships
         them: each figure is the JavaScript that executes before the form is interactive, and code a
         library defers behind a dynamic import loads on demand instead of on first paint.
+      </p>
+      <p class="px-3 pb-2 text-xs text-fg-subtle">
+        Read this as a map, not a leaderboard. The groups are the fairness axis: a library that only
+        validates is not a cheaper version of one that owns form state, it is doing a different job,
+        and the row says which.
+        <template v-if="sharedValidator">
+          The Zod rows also share a floor. Building nothing but that two-field schema and the parse
+          every Zod adapter runs already costs
+          <span class="font-mono">{{ fmtKb(sharedValidator.gzBytes) }}</span> of
+          {{ sharedValidator.validator }}, so that much of each of those figures is the same bytes
+          in every one of them, before any form library.
+        </template>
       </p>
     </div>
 

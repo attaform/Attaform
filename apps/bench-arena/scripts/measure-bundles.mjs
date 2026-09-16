@@ -208,6 +208,26 @@ async function measureEntrySizes(file) {
 }
 
 /**
+ * The shared-validator floor, in the same units as a cohort row.
+ *
+ * Six of the seven rows validate through the same installed Zod, against the
+ * same two-field schema, so part of every one of those figures is not the form
+ * library at all. `_zod-floor.probe.ts` is that schema plus the `safeParse`
+ * their adapters call and nothing else, weighed with the identical build, so
+ * the number is produced by the same code that produces the rows rather than
+ * being asserted next to them.
+ *
+ * A floor, not an exact per-row subtraction: an adapter that reaches further
+ * into Zod (async parsing, issue introspection) pulls a little more than this,
+ * and none pulls less. Reported so the chart reads as a map of design points
+ * rather than a leaderboard.
+ */
+export async function measureSharedValidatorFloor() {
+  const { gzBytes } = await measureEntrySizes('_zod-floor.probe.ts')
+  return { validator: validatorLabel('zod'), gzBytes }
+}
+
+/**
  * Measure every entry and return one row per library: resolved version, the
  * validator weighed with it, gzipped bytes for the eager entry closure plus
  * the on-demand remainder, and the ratio to Attaform's row (the baseline).
@@ -233,14 +253,23 @@ export async function measureBundles() {
   return rows
 }
 
-const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
+// `argv[1]` is undefined when this module is imported from a `node -e` /
+// `--input-type=module` context, where `realpathSync` would throw instead of
+// simply reporting "not the entry point".
+const isMain =
+  argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {
-  const rows = await measureBundles()
   const kb = (b) => (b / 1024).toFixed(2)
-  for (const row of [...rows].sort((a, b) => a.gzBytes - b.gzBytes)) {
-    const size = `${kb(row.gzBytes)} kB gz`.padStart(13)
-    const ratio = `x${row.ratio.toFixed(2)}`.padStart(7)
-    const lazy = row.asyncGzBytes > 0 ? `  +${kb(row.asyncGzBytes)} kB lazy` : ''
-    console.log(`${row.lib.padEnd(20)} ${size} ${ratio}  (${row.validator})${lazy}`)
+  if (argv.includes('--floor')) {
+    const floor = await measureSharedValidatorFloor()
+    console.log(`shared validator floor  ${kb(floor.gzBytes)} kB gz  (${floor.validator})`)
+  } else {
+    const rows = await measureBundles()
+    for (const row of [...rows].sort((a, b) => a.gzBytes - b.gzBytes)) {
+      const size = `${kb(row.gzBytes)} kB gz`.padStart(13)
+      const ratio = `x${row.ratio.toFixed(2)}`.padStart(7)
+      const lazy = row.asyncGzBytes > 0 ? `  +${kb(row.asyncGzBytes)} kB lazy` : ''
+      console.log(`${row.lib.padEnd(20)} ${size} ${ratio}  (${row.validator})${lazy}`)
+    }
   }
 }

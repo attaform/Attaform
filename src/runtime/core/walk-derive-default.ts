@@ -245,6 +245,8 @@ export function deriveDefaultWalk<Schema>(
         ? undefined
         : deriveDefaultWalk(inner, useDefault, intro, maxDepth, ctx, lazyDepth)
     }
+    case 'nonoptional':
+    case 'success':
     case 'readonly':
     case 'branded': {
       // Readonly: v3 + v4 transparent wrapper.

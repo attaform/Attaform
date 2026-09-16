@@ -156,6 +156,17 @@ export function stripAsyncChecks(schema: z.ZodType): z.ZodType {
         const inner = unwrapInner(s)
         return inner === undefined ? s : (recurse(inner) as z.ZodType).readonly()
       }
+      case 'nonoptional': {
+        const inner = unwrapInner(s)
+        return inner === undefined ? s : (recurse(inner) as z.ZodType).nonoptional()
+      }
+      case 'success': {
+        // `z.success` reports whether its inner PARSED, so its own result
+        // is a boolean either way and carries no checks to strip. Only the
+        // inner needs walking.
+        const inner = unwrapInner(s)
+        return inner === undefined ? s : z.success(recurse(inner))
+      }
       case 'lazy': {
         const inner = unwrapLazy(s)
         if (inner === undefined) return s

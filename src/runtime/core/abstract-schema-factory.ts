@@ -102,6 +102,9 @@ export type SharedZodKind =
   | 'promise'
   | 'custom'
   | 'template-literal'
+  // v4-only. Both wrap an inner schema on `def.innerType`.
+  | 'nonoptional'
+  | 'success'
 
 /**
  * A kind that declares a value without describing its shape.

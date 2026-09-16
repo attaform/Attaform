@@ -817,7 +817,31 @@ function runStrictGetDefaultsV3<Form>(
   // also covers the old slim-validated primitive-root branch — the
   // structural fix walk below patches any mismatch the replacement
   // introduces.
-  const rawDefaultValues = mergeDeep(defaultValuesWithoutConstraints, config.constraints)
+  // Structural completeness BEFORE the mode split, matching v4, which
+  // applies the same walk inside `getDefaultValuesFromZodSchema` and so
+  // covers both modes. v3 applied it only in the lax tail, which meant
+  // STRICT mode — the default — never ran it: a constraint supplying a
+  // primitive where the schema declares an object stayed a primitive,
+  // and the strict parse below then reported an error about a shape the
+  // adapter was supposed to have repaired. The parity suites missed it
+  // because 19 of their 27 cases set `strict: false`.
+  //
+  // Nothing parses in the walk, so user refines and transforms still do
+  // not fire at construction and the strict pass below remains the only
+  // thing that enforces them.
+  const rawDefaultValues = fixStructuralDefaults<Form, z.ZodTypeAny>(
+    rootSchema as z.ZodTypeAny,
+    mergeDeep(defaultValuesWithoutConstraints, config.constraints),
+    config.useDefaultSchemaValues,
+    maxRecursionDepth,
+    {
+      intro: V3_INTROSPECTOR,
+      slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
+      deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
+        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault, formKey),
+      unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
+    }
+  ).data
 
   // Strict-mode path: parse against the REAL schema so refines and
   // container / leaf checks (`.min(n)` / `.max(n)` / `.email()` etc.)
@@ -916,29 +940,12 @@ function runStrictGetDefaultsV3<Form>(
     }
   }
 
-  // Lax mode: the shared DU-aware structural fix walk (sign-off 7,
-  // core/walk-fix-structural.ts) replaces the deleted slim-schema
-  // rebuild + issue-directed fix loop. Structural / primitive-type
-  // mismatches are patched with the node's derived default (DUs derive
-  // the variant the VALUE selects, foreign-variant keys are removed);
-  // refinement-level state is invisible to the walk, so the user's
-  // defaultValues are preserved verbatim and nothing parses — user
-  // refines and transforms never fire at construction.
-  const fixed = fixStructuralDefaults<Form, z.ZodTypeAny>(
-    rootSchema as z.ZodTypeAny,
-    rawDefaultValues,
-    config.useDefaultSchemaValues,
-    maxRecursionDepth,
-    {
-      intro: V3_INTROSPECTOR,
-      slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
-      deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
-        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault, formKey),
-      unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
-    }
-  )
+  // Lax mode: the structural fix already ran above, so there is nothing
+  // left to do but hand back the completed shape. Nothing parsed, so
+  // user refines and transforms did not fire at construction, which is
+  // the whole point of the lax arm.
   return {
-    data: fixed.data,
+    data: rawDefaultValues as Form,
     errors: undefined,
     success: true,
     formKey,

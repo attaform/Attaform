@@ -107,6 +107,8 @@ function fixNode<Schema>(
       return inner === undefined ? value : fixNode(inner, value, ctx, lazyDepth)
     }
     case 'default':
+    case 'nonoptional':
+    case 'success':
     case 'readonly':
     case 'catch': {
       const inner = intro.unwrapInner(schema)

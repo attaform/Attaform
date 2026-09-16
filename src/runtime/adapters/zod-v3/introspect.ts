@@ -87,7 +87,11 @@ interface ZodV3InternalShape {
     valueType?: unknown // ZodRecord value / ZodSet element
     keyType?: unknown // ZodRecord key
     items?: readonly unknown[] // ZodTuple
-    options?: readonly unknown[] // ZodUnion / ZodDiscriminatedUnion / ZodEnum
+    // ZodUnion / ZodDiscriminatedUnion / ZodEnum. A discriminated union
+    // carried its options as a `Map` before zod 3.20.0 and as an array
+    // from 3.20.0 on, so the accessors below normalise both rather than
+    // asserting one. See `readOptionList`.
+    options?: readonly unknown[] | Map<unknown, unknown>
     optionsMap?: Map<unknown, unknown> // ZodDiscriminatedUnion parse routing
     discriminator?: string // ZodDiscriminatedUnion
     left?: unknown // ZodIntersection
@@ -292,15 +296,34 @@ export function getTupleItems(schema: z.ZodTypeAny): readonly z.ZodTypeAny[] {
   return (def?.items as readonly z.ZodTypeAny[] | undefined) ?? []
 }
 
+/**
+ * Read `_def.options` as a list whatever container zod put it in.
+ *
+ * A discriminated union's options were a `Map` keyed by discriminator
+ * value until zod 3.20.0 and have been an array since. A cast to the
+ * array shape compiles against either, so on an older zod every consumer
+ * `.default()` inside a DU branch was silently dropped: the walk read a
+ * Map as an array, saw no entries, and derived defaults from nothing.
+ *
+ * Normalising both shapes here is what supports zod v3 at its own
+ * declared floor rather than at the version this repo happens to install.
+ * `peerDependencies.zod` says `>=3.0.0`; before this it meant `>=3.20.0`.
+ */
+function readOptionList(
+  options: readonly unknown[] | Map<unknown, unknown> | undefined
+): unknown[] {
+  if (options === undefined) return []
+  if (options instanceof Map) return [...options.values()]
+  return [...options]
+}
+
 export function getUnionOptions(schema: z.ZodTypeAny): readonly z.ZodTypeAny[] {
-  const def = readDef(schema)
-  return (def?.options as readonly z.ZodTypeAny[] | undefined) ?? []
+  return readOptionList(readDef(schema)?.options) as readonly z.ZodTypeAny[]
 }
 
 /** ZodDiscriminatedUnion options typed narrowly as ZodObject (v3's DU options are always objects). */
 export function getDiscriminatedOptions(schema: z.ZodTypeAny): readonly z.AnyZodObject[] {
-  const def = readDef(schema)
-  return (def?.options as readonly z.AnyZodObject[] | undefined) ?? []
+  return readOptionList(readDef(schema)?.options) as readonly z.AnyZodObject[]
 }
 
 /** ZodDiscriminatedUnion: the discriminator key (e.g. 'status'). */
@@ -318,8 +341,22 @@ export function getDiscriminator(schema: z.ZodTypeAny): string | undefined {
 export function getDiscriminatedOptionsMap(
   schema: z.ZodTypeAny
 ): Map<unknown, z.AnyZodObject> | undefined {
-  const map = readDef(schema)?.optionsMap
+  const def = readDef(schema)
+  // Before zod 3.20.0 there was no separate `_def.optionsMap`: the routing
+  // map WAS `_def.options`. Both spellings answer the same question.
+  const map = def?.optionsMap ?? def?.options
   return map instanceof Map ? (map as Map<unknown, z.AnyZodObject>) : undefined
+}
+
+/**
+ * Whether this zod keeps a discriminated union's branches in the `Map` at
+ * `_def.options` (before 3.20.0) rather than in an array beside a separate
+ * `_def.optionsMap` (3.20.0 on). A rebuild has to write the replacement
+ * back in the shape the installed zod's `_parse` reads, or the rebuilt
+ * schema rejects every value.
+ */
+export function discriminatedOptionsAreMapped(schema: z.ZodTypeAny): boolean {
+  return readDef(schema)?.options instanceof Map
 }
 
 export function getIntersectionLeft(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {

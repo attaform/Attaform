@@ -52,6 +52,11 @@ export type ZodKind =
   | 'template-literal'
   | 'transform'
   | 'file'
+  // Both carry their subject on `def.innerType`, so the walkers treat
+  // them as transparent wrappers. `nonoptional` additionally subtracts
+  // `undefined`, which is the whole point of it.
+  | 'nonoptional'
+  | 'success'
   // Enumerated so `assert-supported.ts` can reject them at construction
   // (none are form-representable — see the rationale on `UNSUPPORTED`).
   // Without explicit cases they would fall to `'unknown'` and the assert
@@ -148,6 +153,8 @@ const IDENTITY_KINDS = new Set<string>([
   'map',
   'symbol',
   'function',
+  'nonoptional',
+  'success',
 ])
 
 /**

@@ -215,11 +215,29 @@ export function slimPrimitivesWalk<Schema>(
     }
     case 'default':
     case 'readonly':
+    case 'success':
     case 'catch': {
+      // `success` reports whether its inner PARSED, so what a consumer
+      // writes is still the inner shape — the same reasoning `transform`
+      // and `effects` follow below.
       const inner = intro.unwrapInner(schema)
       return inner === undefined
         ? PERMISSIVE_SLIM_KINDS
         : slimPrimitivesWalk(inner, intro, maxDepth, lazyDepth)
+    }
+    case 'nonoptional': {
+      // The inverse of `optional`: walk the inner and take `undefined`
+      // back out, which is the entire meaning of the wrapper. Without a
+      // case here it fell through to `'unknown'`, which is an OPAQUE kind
+      // — so the write gate stopped gating and accepted a number into a
+      // string field.
+      const inner = intro.unwrapInner(schema)
+      if (inner === undefined) return PERMISSIVE_SLIM_KINDS
+      const innerSet = slimPrimitivesWalk(inner, intro, maxDepth, lazyDepth)
+      if (!innerSet.has('undefined')) return innerSet
+      const out = new Set<SlimPrimitiveKind>(innerSet)
+      out.delete('undefined')
+      return out
     }
     case 'branded': {
       // v3-only. Brand wrappers carry their inner on `_def.type`.

@@ -27,6 +27,22 @@
  * scenario whose own repeat runs disagree by as much as the delta
  * itself is marked `noisy` instead of being reported as a finding.
  *
+ * Three rounds is still not always enough, and the cheapest way to
+ * tell is to ask what the flagged scenario actually runs before
+ * theorising about why it moved. Several `old:` arms are baseline
+ * implementations written inline in the bench file and import nothing
+ * from `src/`, so they execute byte-identical code on both sides by
+ * construction. They are a free control: when one of those is reported
+ * slower, the number being read is this harness's own noise floor, and
+ * every other row at that magnitude should be read the same way.
+ * Observed on a build-time-only change, where three rounds called two
+ * scenarios slower beyond noise and seven rounds called nothing slower.
+ *
+ * The inverse also holds, from the other direction: several scenarios
+ * moving together in one direction is a finding even when each is
+ * individually marked `noisy`. Six proxy-read scenarios doing that
+ * caught a real cache deletion during the efficiency program.
+ *
  * Non-gating, like `eager-delta.mjs`. It makes the number visible on
  * the PR; a human decides whether a regression is bought or accidental.
  *

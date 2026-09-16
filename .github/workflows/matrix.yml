@@ -359,6 +359,21 @@ jobs:
       - name: Run benchmarks
         run: pnpm check:bench
 
+      # Non-gating attribution. `check:bench` above gates only the groups
+      # that pair an `old:` bench with a `new:` one — three of fifteen
+      # files — and compares each revision against a baseline in the same
+      # file rather than against the previous commit, so both arms move
+      # together and the ratio holds through a real regression. This
+      # measures HEAD against the merge base directly, interleaved, and
+      # writes the per-scenario delta to the run summary. Needs real
+      # history for the merge base.
+      - name: Benchmark attribution vs merge base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=0 origin "$GITHUB_BASE_REF" || true
+          BENCH_BASE_REF="origin/$GITHUB_BASE_REF" BENCH_ROUNDS=2 pnpm bench:delta
+
   build-site:
     name: Build docs site
     runs-on: ubuntu-latest

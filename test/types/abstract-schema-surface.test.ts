@@ -39,7 +39,7 @@ import type { AbstractSchema } from '../../src/runtime/types/types-api'
  * The published counts. Kept beside the type-level assertions below so a
  * member change fails `pnpm typecheck` there and the prose scan here.
  */
-const REQUIRED_COUNT = 15
+const REQUIRED_COUNT = 14
 const OPTIONAL_COUNT = 4
 
 /** Every member the contract declares, required and optional. */
@@ -56,9 +56,8 @@ type RequiredMembers = {
 }[Members]
 
 describe('the AbstractSchema surface the docs publish', () => {
-  it('declares exactly the 15 required methods the contract pages list', () => {
+  it('declares exactly the 14 required methods the contract pages list', () => {
     expectTypeOf<RequiredMembers>().toEqualTypeOf<
-      | 'fingerprint'
       | 'getDefaultValues'
       | 'getDefaultAtPath'
       | 'getEmptyValueAtPath'
@@ -83,16 +82,6 @@ describe('the AbstractSchema surface the docs publish', () => {
       | 'hasContainerOrRootRefine'
       | 'hasDiscriminatedUnions'
     >()
-  })
-
-  it('resolves the fingerprint asynchronously', () => {
-    // The pages' worked example used to return a bare string here,
-    // which only compiled because an undeclared example type made the
-    // receiver `any`. An adapter author reading it wrote an
-    // unassignable method.
-    expectTypeOf<
-      AbstractSchema<Record<string, unknown>, Record<string, unknown>>['fingerprint']
-    >().returns.toEqualTypeOf<Promise<string>>()
   })
 
   it('no page states a count the contract does not have', () => {

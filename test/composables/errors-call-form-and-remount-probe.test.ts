@@ -145,7 +145,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
-    // A remount triggers the adapter's async fingerprint mismatch check,
+    // A remount triggers the adapter's async schema-mismatch check,
     // which dynamically imports the adapter module. If that import is
     // still in flight when vitest tears the environment down it rejects
     // with EnvironmentTeardownError noise (the library catches it and

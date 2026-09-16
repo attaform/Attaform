@@ -307,22 +307,11 @@ export function zodV4Adapter<
  * (`runStrictGetDefaults` / `makeSubSchema`) propagate the form
  * shape correctly.
  */
-// Lazy fingerprint: the only consumers are the public
-// `AbstractSchema.fingerprint()` accessor and a dev-only mismatch
-// warning, so the structural walk + its `canonicalStringify` helper
-// load on demand off the eager `useForm` path instead of being
-// anchored eager by a static import.
-async function lazyFingerprint(schema: z.ZodType): Promise<string> {
-  const { fingerprintZodSchema } = await import('./fingerprint')
-  return fingerprintZodSchema(schema)
-}
-
 function buildV4Services<
   Form extends GenericForm,
   GetValueFormType extends GenericForm,
 >(): AbstractSchemaServices<z.ZodType, Form, GetValueFormType> {
   return {
-    fingerprint: (schema) => lazyFingerprint(schema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
     // v4 doesn't pre-strip for the slim-mode walk — its path walker
@@ -438,7 +427,7 @@ function runStrictGetDefaultsV4<Form>(
 /**
  * Build the 5-method sub-schema stub that v4 returns from
  * `getSchemasAtPath`. Mirrors the shape consumers expect
- * (`fingerprint`, `needsAsyncValidation`, `getDefaultValues`,
+ * (`needsAsyncValidation`, `getDefaultValues`,
  * `getSchemasAtPath: () => []`, `validateAtPath`) without re-walking
  * through the full factory — sub-schemas in the runtime are only
  * queried for `needsAsyncValidation`, so the stub is observationally
@@ -450,7 +439,6 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
   maxRecursionDepth: number
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
-    fingerprint: () => lazyFingerprint(schema),
     needsAsyncValidation: () => containsAsyncRefine(schema),
     getDefaultValues: () => ({
       data: deriveDefault(schema, true, maxRecursionDepth) as unknown,

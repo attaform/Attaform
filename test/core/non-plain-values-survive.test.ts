@@ -8,8 +8,10 @@
  * remembered, never over the values that exist, so a `File`, a `Blob`, a
  * `URL`, or any consumer class instance gets flattened into a plain
  * object with its prototype gone. #605 fixed two such walkers; this file
- * covers the two that were still enumerating, both reachable on kinds
- * Attaform already supported before this branch.
+ * covers the unset walker, which was still enumerating on kinds Attaform
+ * already supported. (The schema-fingerprint walkers were the other case;
+ * they were deleted along with `AbstractSchema.fingerprint()`, so the
+ * enumeration bug they carried went with them.)
  *
  * The fix in each case is the same shape: test whether the value is a
  * plain record, rather than asking whether it is one of the things we
@@ -17,10 +19,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { z as z3 } from 'zod-v3'
-import { canonicalStringify } from '../../src/runtime/core/canonical-stringify'
 import { canonicalizePath } from '../../src/runtime/core/paths'
-import { zodAdapter as zodV3Adapter } from '../../src/runtime/adapters/zod-v3'
 import { walkUnsetSentinels } from '../../src/runtime/core/unset-walker'
 import { zodV4Adapter } from '../../src/runtime/adapters/zod-v4/adapter'
 import type { AbstractSchema } from '../../src/runtime/types/types-api'
@@ -31,78 +30,6 @@ type WalkerSchema = AbstractSchema<GenericForm, GenericForm>
 
 const adapterFor = (schema: z.ZodObject): WalkerSchema =>
   zodV4Adapter(schema)('f', { maxRecursionDepth: 64 })
-const adapterForV3 = (schema: z3.ZodObject<z3.ZodRawShape>) =>
-  zodV3Adapter(schema)('f', { maxRecursionDepth: 64 })
-
-describe('canonicalStringify distinguishes Map and Set contents', () => {
-  it('does not collapse a Map, a Set and {} to the same string', () => {
-    // All three used to serialise as '{}': a Map and a Set keep their
-    // contents off the own-property list, so the key walk saw nothing.
-    const shapes = [
-      canonicalStringify(new Map([['a', 1]])),
-      canonicalStringify(new Set(['a'])),
-      canonicalStringify({}),
-    ]
-    expect(new Set(shapes).size).toBe(3)
-  })
-
-  it('separates two Maps with different entries and agrees on equal ones', () => {
-    expect(canonicalStringify(new Map([['a', 1]]))).not.toBe(
-      canonicalStringify(new Map([['b', 9]]))
-    )
-    expect(canonicalStringify(new Map([['a', 1]]))).toBe(canonicalStringify(new Map([['a', 1]])))
-  })
-
-  it('separates two Sets with different members and ignores insertion order', () => {
-    expect(canonicalStringify(new Set(['x']))).not.toBe(canonicalStringify(new Set(['y'])))
-    // Membership is unordered, so two Sets holding the same members are
-    // the same value however they were built.
-    expect(canonicalStringify(new Set(['x', 'y']))).toBe(canonicalStringify(new Set(['y', 'x'])))
-  })
-
-  it('serialises nested values inside a Map rather than stopping at the entry', () => {
-    expect(canonicalStringify(new Map([['a', { n: 1 }]]))).not.toBe(
-      canonicalStringify(new Map([['a', { n: 2 }]]))
-    )
-  })
-})
-
-describe('schema fingerprints see through Map and Set defaults', () => {
-  it('separates two v3 z.set schemas declaring different defaults', async () => {
-    // Live on main before this branch: `z.set()` has always been
-    // supported, and its declared default reached the fingerprint
-    // through `canonicalStringify`. Two structurally different schemas
-    // sharing a form key is the one thing the fingerprint exists to
-    // notice, so agreeing here defeated the whole diagnostic.
-    const a = adapterForV3(z3.object({ s: z3.set(z3.string()).default(new Set(['x'])) }))
-    const b = adapterForV3(z3.object({ s: z3.set(z3.string()).default(new Set(['y'])) }))
-    expect(await a.fingerprint()).not.toBe(await b.fingerprint())
-  })
-
-  it('still agrees on two v3 schemas declaring the same default', async () => {
-    // The counterweight: separating different values must not make
-    // equal values disagree, or every form would warn about itself.
-    const a = adapterForV3(z3.object({ s: z3.set(z3.string()).default(new Set(['x'])) }))
-    const b = adapterForV3(z3.object({ s: z3.set(z3.string()).default(new Set(['x'])) }))
-    expect(await a.fingerprint()).toBe(await b.fingerprint())
-  })
-
-  it('v4 collapses a rebuilt default to fn:* — a documented, deliberate limit', async () => {
-    // Zod v4 rebuilds a heap-allocated default on every read, so the
-    // fingerprint's stability guard cannot tell it from a factory that
-    // mints a fresh value per call and collapses both to 'fn:*'. That
-    // costs a warning it could have raised. Comparing the two reads
-    // structurally instead was tried: it leaks a timestamp from
-    // `.default(() => new Date())` into the fingerprint and makes the
-    // same schema disagree with itself a second later, which is the
-    // worse trade. Pinned so the limit stays a decision, not a
-    // surprise. See `stableValueRepr` in zod-v4/fingerprint.ts.
-    const a = adapterFor(z.object({ s: z.set(z.string()).default(new Set(['x'])) }))
-    const b = adapterFor(z.object({ s: z.set(z.string()).default(new Set(['y'])) }))
-    expect(await a.fingerprint()).toBe(await b.fingerprint())
-    expect(await a.fingerprint()).toContain('fn:*')
-  })
-})
 
 describe('the unset walker carries non-plain values through whole', () => {
   class Money {

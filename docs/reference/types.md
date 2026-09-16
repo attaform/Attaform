@@ -70,7 +70,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 | Type                             | Source                  | Purpose                                                          |
 | -------------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 15-method + 4-optional contract custom adapters implement.   |
+| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 14-method + 4-optional contract custom adapters implement.   |
 | `DefaultValuesResponse<Form>`    | runtime/types/types-api | What `getDefaultValues` returns.                                 |
 | `SlimPrimitiveKind`              | runtime/types/types-api | `'string'` \| `'number'` \| … (typeof-style kinds).              |
 | `SlimRuntimeOf<T>`               | runtime/types/types-api | Type-level helper to compute the slim primitive set for a type.  |

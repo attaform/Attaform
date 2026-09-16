@@ -10,7 +10,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  *
  * Closes V4-8 by locking v3 to the same 25-case unit suite v4 has
  * carried since shipping; pre-fix v3 was tested only transitively
- * through path-walker / fingerprint suites.
+ * through the path-walker suites.
  */
 function probe(rootSchema: z.ZodSchema, path: (string | number)[]): Set<string> {
   const adapter = zodAdapter(rootSchema)('f', { maxRecursionDepth: 64 })

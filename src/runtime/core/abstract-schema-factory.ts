@@ -13,7 +13,7 @@
  *
  *   - `AbstractSchemaServices<Schema, Form, GetValueFormType>` — the
  *     adapter-specific delegates the factory calls for everything that
- *     genuinely diverges per Zod version: fingerprinting, path-walking
+ *     genuinely diverges per Zod version: path-walking
  *     (the path walker itself has v3 / v4 quirks), default-value
  *     derivation, the strict-mode `getDefaultValues` flow,
  *     wrapper-peeling that's tied to the per-version wrapper set,
@@ -21,7 +21,7 @@
  *     boundary.
  *
  * The two-interface split keeps the introspector reusable by any other
- * walker (fingerprint, slim-primitives, default-values) without dragging
+ * walker (slim-primitives, default-values) without dragging
  * in the side-effectful services. Services consume the introspector as
  * they wish; the factory consumes both.
  *
@@ -315,7 +315,7 @@ export interface SchemaIntrospector<Schema> {
  * `makeSubSchema` is the per-adapter sub-schema constructor for
  * `getSchemasAtPath`. v3 recurses through the full adapter factory
  * (sub-schemas expose the entire `AbstractSchema` surface). v4 builds
- * a 5-method stub (fingerprint / needsAsyncValidation /
+ * a 4-method stub (needsAsyncValidation /
  * getDefaultValues / getSchemasAtPath / validateAtPath) because none
  * of its consumers reach for the wider surface and the stub keeps
  * sub-walker allocation cheap. The factory preserves each adapter's
@@ -323,12 +323,6 @@ export interface SchemaIntrospector<Schema> {
  * coding one strategy.
  */
 export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
-  /**
-   * Resolves the deterministic structural fingerprint of the schema.
-   * Async so adapters can dynamic-import the fingerprint walker, keeping
-   * it off the eager path (only opt-in async features consume it).
-   */
-  fingerprint(schema: Schema): Promise<string>
   /**
    * Returns every sub-schema reachable at the given path. Multiple
    * results indicate a union / discriminated-union split; empty
@@ -559,8 +553,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   }
 
   const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
-    fingerprint: () => services.fingerprint(rootSchema),
-
     needsAsyncValidation(): boolean {
       asyncValidationFlag ??=
         intro.containsAsyncRefine(rootSchema) || intro.containsAsyncTransform(rootSchema)

@@ -284,45 +284,6 @@ export type GetDefaultValuesConfig<Form> = {
  * adding support for a new schema library (Valibot, ArkType, custom).
  */
 export type AbstractSchema<Form, GetValueFormType> = {
-  /**
-   * Structural fingerprint of the schema. Same shape → same string;
-   * different shape → (best-effort) different string.
-   *
-   * Resolves a `Promise` so adapters can defer the structural walk (and
-   * its `canonicalStringify` helper) onto a dynamic import. The framework
-   * only ever needs the fingerprint for the dev-only shared-key schema
-   * mismatch warning, so none of those bytes belong on the eager
-   * `useForm` path.
-   *
-   * The library uses this to detect schema mismatches at a shared
-   * form key: two `useForm({ key: 'x', schema })` calls are allowed
-   * to land on the same `FormStore` (the "shared store" semantic),
-   * but only when their schemas agree. If the second call's
-   * fingerprint differs from the first's, the library emits a
-   * dev-mode warning — the first call's schema stays canonical and
-   * the second call's schema is silently ignored.
-   *
-   * Guarantees adapter authors should provide:
-   * - **Determinism:** equal shapes at different memory addresses
-   *   must produce the same fingerprint. Referential equality fails
-   *   99% of the time across files, so reference-identity is not a
-   *   substitute.
-   * - **Key-order-insensitivity** for record-like shapes (object,
-   *   struct) — two shapes with the same keys but different iteration
-   *   order must match.
-   * - **Order-insensitivity for unbounded unions** — `a | b` and
-   *   `b | a` must match (the set of members is what matters, not
-   *   their source order).
-   *
-   * Compromises adapter authors may accept:
-   * - Function-valued metadata (refinements, transforms, lazy
-   *   defaults) is not stably hashable. Represent it as an opaque
-   *   sentinel; two schemas differing only in refinement logic will
-   *   look identical. The warning is a footgun catcher, not a
-   *   soundness guarantee.
-   */
-  fingerprint(): Promise<string>
-
   getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form>
   /**
    * Return the schema-prescribed default value at the given path. The

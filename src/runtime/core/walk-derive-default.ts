@@ -439,8 +439,8 @@ export function deriveDefaultWalk<Schema>(
       // canonical empty member. There is no empty Promise, no empty
       // function, and `Symbol()` mints a fresh value on every call —
       // seeding one would make the derived blank non-deterministic and
-      // break both reference stability and fingerprint agreement
-      // between two structurally identical schemas. `undefined` leaves
+      // break reference stability between two structurally identical
+      // schemas. `undefined` leaves
       // the slot genuinely absent until the consumer supplies a value,
       // which is the truthful answer for all three.
       //

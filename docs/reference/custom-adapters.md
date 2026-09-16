@@ -1,6 +1,6 @@
 ---
 title: Custom schema adapters
-description: Implement the AbstractSchema contract (15 required methods plus 4 optional hooks) to wire any schema library into Attaform. Identity, defaults, shape introspection, validation.
+description: Implement the AbstractSchema contract (14 required methods plus 4 optional hooks) to wire any schema library into Attaform. Defaults, shape introspection, validation.
 metaRows:
   - label: Category
     value: Reference
@@ -26,9 +26,6 @@ This page is the contract reference. The Zod adapters under `attaform/zod` and `
 
 ```ts
 type AbstractSchema<Form, GetValueFormType = Form> = {
-  // Identity
-  fingerprint(): Promise<string>
-
   // Defaults
   getDefaultValues(config): DefaultValuesResponse<Form>
   getDefaultAtPath(path: Path): unknown
@@ -61,15 +58,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
 }
 ```
 
-Fifteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
-
-## Identity
-
-### `fingerprint()`
-
-Structural signature of the schema, resolved asynchronously. Two schemas with the same shape resolve to the same string; different shapes resolve to different ones. The promise is what lets an adapter keep its fingerprint walker off the eager path and import it on demand, which is exactly what both Zod adapters do. Mark the method `async` if yours is cheap enough to answer outright. Used to catch shared-key mismatches in dev: two `useForm({ key: 'x' })` calls with different schemas warn.
-
-Must NOT throw. If it does, Attaform catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback; opaque fingerprints make every schema look identical to the mismatch check (the key never changes), so prefer a real structural hash if your library exposes the metadata.
+Fourteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
 
 ## Defaults
 
@@ -213,10 +202,6 @@ const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
 
 export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): AbstractSchema<F, F> {
   return {
-    async fingerprint() {
-      return schema.signature?.() ?? 'my-lib:v1'
-    },
-
     getDefaultValues({ constraints }): DefaultValuesResponse<F> {
       const defaults = schema.defaultValues()
       const merged = mergeDeepPartial(defaults, constraints)

@@ -276,6 +276,26 @@ jobs:
       - name: Check bundle size
         run: pnpm check:size
 
+      # Non-gating attribution, not a gate: `check:eager` below is the
+      # gate. This writes the per-PR eager delta against the merge base
+      # to the run summary, because the budget alone only ever showed the
+      # cost in aggregate — the closure grew ~2 kB gz a month across PRs
+      # that each looked free. Needs real history for the merge base, so
+      # it re-fetches with depth 0; `continue-on-error` keeps a shallow
+      # or detached checkout from failing the job.
+      - name: Eager attribution vs merge base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=0 origin "$GITHUB_BASE_REF" || true
+          EAGER_BASE_REF="origin/$GITHUB_BASE_REF" node scripts/eager-delta.mjs
+
+      # The eager budget gate. Distinct from `check:size`: size-limit has
+      # no `splitting`, so it folds dynamic imports back into the entry
+      # and cannot see the eager/async split this ratchets.
+      - name: Check eager budget
+        run: pnpm check:eager
+
       # Verifies the published `.d.ts` shape compiles a representative
       # 4-form `useStepper` pattern under `tsc`. Acceptance test for
       # the type-system depth-efficiency refactor — if this fails,

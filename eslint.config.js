@@ -93,6 +93,12 @@ const lightParserOptions = {
   ecmaVersion: 2022,
   sourceType: 'module',
   extraFileExtensions: ['.vue'],
+  // Pin the root explicitly. Without it typescript-eslint infers the root
+  // by scanning for candidate tsconfigs and refuses to parse at all when it
+  // finds more than one, which any nested checkout under the repo triggers
+  // (a second worktree, a vendored copy). Paths here are already relative
+  // to this file; pinning only makes that resolution deterministic.
+  tsconfigRootDir: import.meta.dirname,
 }
 
 /**
@@ -444,6 +450,11 @@ export default [
       '**/.data/**',
       '**/dist/**',
       '**/coverage/**',
+      // Agent worktrees. Claude Code checks a second copy of the repo out
+      // under here, and a nested checkout carries its own tsconfig, which
+      // is enough to stall typescript-eslint's root inference across the
+      // whole run. Same gitignore-shaped trap as the bundles below.
+      '**/.claude/worktrees/**',
       // Size-teardown program reference material: preserved audit
       // evidence and measurement sketches, not project code.
       'plans/size-teardown/reference/**',

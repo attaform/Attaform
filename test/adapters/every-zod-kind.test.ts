@@ -128,7 +128,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
   ] as const)('leaves %s absent — no canonical empty member to seed', (key, path) => {
     // There is no empty Promise and no empty function, and `Symbol()`
     // mints a fresh value on every call: seeding one would make the
-    // derived blank non-deterministic and break fingerprint agreement
+    // derived blank non-deterministic and break reference stability
     // between two structurally identical schemas.
     const { api } = makeMounter(adapter.useForm, adapter[key](), {})()
     expect(api.values[path]).toBeUndefined()

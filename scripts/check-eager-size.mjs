@@ -36,9 +36,21 @@ import { gzipSync } from 'node:zlib'
 import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
-import { argv, exit } from 'node:process'
+import { argv, env, exit } from 'node:process'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+// Where `src/` is read from. Defaults to this checkout. `eager-delta.mjs`
+// points it at a worktree of the merge base so both revisions are measured
+// with ONE method — this script's. That is the comparison that attributes a
+// byte delta to the source change: measuring each revision with its own
+// harness would fold a harness edit into the number. Dependency resolution
+// (esbuild, and the externals list) always stays on ROOT.
+// realpath, because esbuild reports real paths on `onLoad`: a source root
+// under a symlinked directory (macOS `/tmp` -> `/private/tmp`) would fail
+// the `__DEV__` strip's prefix test, silently measure the DEV flavour, and
+// report a base ~2.5 kB heavier than it is.
+const SRC_ROOT = realpathSync(env.ATTAFORM_EAGER_SRC_ROOT ?? ROOT)
 
 // Resolve esbuild from the pnpm store. It is a transitive dep (not in
 // top-level node_modules), and several versions can coexist; pick the
@@ -61,7 +73,7 @@ function resolveEsbuild() {
 }
 const esbuild = (await import(resolveEsbuild())).default
 
-const V4 = join(ROOT, 'src', 'zod-v4.ts').replace(/\\/g, '/')
+const V4 = join(SRC_ROOT, 'src', 'zod-v4.ts').replace(/\\/g, '/')
 
 // Exercise the full minimal-useForm surface so tree-shaking keeps the
 // real eager set. A bare `import { useForm }` with no uses would shake
@@ -87,7 +99,7 @@ const devFlagStripPlugin = (flag) => ({
   setup(build) {
     build.onLoad({ filter: /\.ts$/ }, (args) => {
       const posixPath = args.path.replace(/\\/g, '/')
-      if (!posixPath.startsWith(ROOT.replace(/\\/g, '/') + '/src/')) return null
+      if (!posixPath.startsWith(SRC_ROOT.replace(/\\/g, '/') + '/src/')) return null
       const text = readFileSync(args.path, 'utf8')
       if (!/\b__DEV__\b/.test(text)) return null
       const out = text
@@ -451,7 +463,19 @@ export async function measureEager(define = PROD_DEFINE) {
 // not in this scenario, which measures zod-v4). The budget had ~0.23 kB
 // left before this. Budget 33_900 -> 34_850 (~0.44 kB headroom, the
 // conventional band).
-const BUDGET_GZ = 34_850
+// E0 RATCHET (efficiency program, 2026-09-15): 34,508 -> 33,722 measured
+// (-786). `AbstractSchema.fingerprint()` and both adapters' structural
+// walkers are gone. Almost none of that is the walkers themselves, which
+// were already lazy: v4's fingerprint chunk statically imported
+// `zod-v4/introspect`, which the entry also needs, so esbuild's splitting
+// hoisted introspect + consumer-code into a SECOND EAGER CHUNK that
+// gzipped alone at 1,506 B instead of ~750 B folded into the entry. The
+// deletion removed the chunk boundary, not the code; output went from
+// three chunks to one. The dev-only shared-key mismatch warning now
+// sketches both schemas over the public AbstractSchema surface, which
+// costs nothing eager because that module is __DEV__-gated and dropped.
+// Budget 34_850 -> 34_050 (~0.33 kB headroom).
+const BUDGET_GZ = 34_050
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

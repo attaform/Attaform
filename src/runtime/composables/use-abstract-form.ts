@@ -587,7 +587,7 @@ function resolveFormKey(key: FormKey | undefined): FormKey {
     // namespace. Without this, a consumer key like `__atta:anon:0`
     // could silently collide with the synthetic anonymous-key
     // allocation below — both would land on the same FormStore in
-    // the registry, and the dev-mode schema-fingerprint warning
+    // the registry, and the dev-mode schema-mismatch warning
     // only catches collisions when schemas differ. Throwing here
     // makes the collision impossible by construction.
     if (key.startsWith(RESERVED_KEY_PREFIX)) {

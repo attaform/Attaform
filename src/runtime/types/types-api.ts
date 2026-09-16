@@ -537,7 +537,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * - For nullable / optional wrappers: adds `'null'` / `'undefined'`
    *   to the inner's set.
    */
-  getSlimPrimitiveTypesAtPath(path: Path): Set<SlimPrimitiveKind>
+  getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<SlimPrimitiveKind>
   /**
    * Return `true` iff `path` resolves to a **leaf** in the schema: a
    * path the schema declares no sub-paths under. That is every path

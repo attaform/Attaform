@@ -436,6 +436,11 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
  */
 export const MEMO_CAP = 4096
 
+/** The root is always an object, and nothing else ever asks. */
+const ROOT_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>(['object'])
+/** A path the schema does not declare accepts nothing. */
+const NO_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>()
+
 /**
  * Record a memoised answer, dropping the whole memo once it outgrows
  * the cap.
@@ -528,6 +533,14 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   const opaqueLeafCache = new Map<PathKey, boolean>()
   const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
   const entryKeyKindCache = new Map<PathKey, 'string' | 'number' | undefined>()
+  // The accept-set at a path is a pure function of the schema, and it
+  // is asked for on the hot path: once per write by the slim-primitive
+  // gate, again per segment by the schema-filling writer, two or three
+  // more times by coercion. Each answer used to re-walk the schema from
+  // the root and allocate a fresh Set. Memoising it is what makes the
+  // set shared rather than copied, which is why the contract returns a
+  // `ReadonlySet`: the answer belongs to the schema, not to the caller.
+  const slimKindsCache = new Map<PathKey, ReadonlySet<SlimPrimitiveKind>>()
   // Memoised one-shot tree walks. `needsAsyncValidation` is queried at
   // construction by the store (drives the construction-time async seed);
   // `hasContainerOrRootRefine` is queried per keystroke (drives the
@@ -758,21 +771,24 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       return resolved.map((sub) => services.makeSubSchema(sub, maxRecursionDepth))
     },
 
-    getSlimPrimitiveTypesAtPath(path): Set<SlimPrimitiveKind> {
+    getSlimPrimitiveTypesAtPath(path): ReadonlySet<SlimPrimitiveKind> {
       // Empty path is the root form: always an object.
-      if (path.length === 0) return new Set<SlimPrimitiveKind>(['object'])
+      if (path.length === 0) return ROOT_KINDS
+      const cacheKey = canonicalizePath(path).key
+      const hit = slimKindsCache.get(cacheKey)
+      if (hit !== undefined) return hit
       const resolved = services.getNestedSchemasInSlimMode(rootSchema, path, maxRecursionDepth)
       // Path doesn't resolve in the schema → no kinds accepted. The
       // gate's membership check rejects every kind against an empty
       // set, blocking writes to typo / unknown paths.
-      if (resolved.length === 0) return new Set<SlimPrimitiveKind>()
+      if (resolved.length === 0) return memoPut(slimKindsCache, cacheKey, NO_KINDS)
       const out = new Set<SlimPrimitiveKind>()
       for (const candidate of resolved) {
         for (const k of services.slimPrimitivesOf(candidate, maxRecursionDepth)) {
           out.add(k)
         }
       }
-      return out
+      return memoPut(slimKindsCache, cacheKey, out)
     },
 
     isLeafAtPath(path): boolean {

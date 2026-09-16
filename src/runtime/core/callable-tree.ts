@@ -184,33 +184,24 @@ type TreeSpec = {
 
 function buildTree(spec: TreeSpec): CallableSurface {
   const containerCache = new Map<string, CallableSurface>()
-  // Per-path "schema has a field here" memo for the fixed-object gate.
-  const existsCache = new Map<PathKey, boolean>()
 
-  // Both grow one entry per path the surface has ever resolved, so both
-  // are swept for paths the form no longer has (#617). The container
-  // cache keys by path AND live shape, so an eviction drops both
-  // variants; a key it never held is a no-op delete.
+  // Grows one entry per path the surface has ever resolved, so it is
+  // swept for paths the form no longer has (#617). The cache keys by
+  // path AND live shape, so an eviction drops both variants; a key it
+  // never held is a no-op delete.
   spec.sweep.onEvict((key) => {
     containerCache.delete(`${key}+A`)
     containerCache.delete(`${key}+O`)
-    existsCache.delete(key)
   })
 
   function schemaHasPath(segs: readonly Segment[]): boolean {
-    // `keyToSegment` normalises an integer-looking key to a number
-    // exactly as `normalizeSegment` does, so these segments are already
-    // canonical and the bare stringify IS the canonical `PathKey` the
-    // sweep evicts by. Spelling it that way rather than routing through
-    // `canonicalizePath` keeps the descend gate, which runs on every
-    // dot access, off a re-normalise it cannot need.
-    const cacheKey = keyForSegments(segs).key
-    const cached = existsCache.get(cacheKey)
-    if (cached !== undefined) return cached
-    const result = spec.schema.getSlimPrimitiveTypesAtPath(segs).size > 0
-    existsCache.set(cacheKey, result)
-    spec.sweep.track(segs as Path, cacheKey)
-    return result
+    // No memo of its own. This used to keep a per-path boolean, one map
+    // per surface and so three per form, in front of a walk that
+    // re-derived the answer from the schema every time. The accept-set
+    // is memoised on the `AbstractSchema` now, which is both shared
+    // across every form on the schema and bounded, so a second cache in
+    // front of it would hold a copy of an answer already in hand.
+    return spec.schema.getSlimPrimitiveTypesAtPath(segs).size > 0
   }
 
   function descend(segs: readonly Segment[]): unknown {

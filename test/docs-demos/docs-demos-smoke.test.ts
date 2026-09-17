@@ -867,9 +867,12 @@ const entries: SmokeEntry[] = [
     },
   },
   {
-    // Three side-by-side forms (change / blur / submit). Type a too-short
-    // value into the FIRST column (validateOn: 'change'): it validates on
-    // the keystroke, so its raw readout surfaces the message with no blur.
+    // Three side-by-side forms (change / blur / submit), each reporting both
+    // `firstError` (the schema's verdict) and `showErrors` (the display
+    // decision). Type a too-short value into the FIRST column
+    // (validateOn: 'change') and never blur: that panel validates on the
+    // keystroke, so its verdict lands, while the display gate stays shut for
+    // every panel because the gate needs a blur or a submit.
     slug: 'validate-on-modes',
     gesture: async (root) => {
       const changeInput = root.querySelector<HTMLInputElement>('input')
@@ -880,7 +883,25 @@ const entries: SmokeEntry[] = [
       )
     },
     assert: async (root) => {
-      expect(root.textContent ?? '').toContain('At least 3 characters')
+      const cards = root.querySelectorAll('.card')
+      expect(cards.length).toBe(3)
+      const textOf = (i: number) => cards.item(i)?.textContent ?? ''
+
+      // validateOn: 'change' — the keystroke ran validation, so the verdict
+      // is readable immediately...
+      expect(textOf(0)).toContain('At least 3 characters')
+      // ...but nothing was blurred or submitted, so the field still shows
+      // nothing. This pair is the whole point of the demo: binding
+      // `showErrors` must not make the verdict unreadable, and reading the
+      // verdict must not reveal it to the user.
+      expect(textOf(0)).toContain('Nothing shown yet')
+
+      // The other two modes never validated, so neither channel moved.
+      for (const i of [1, 2]) {
+        expect(textOf(i)).not.toContain('At least 3 characters')
+        expect(textOf(i)).toContain('No error')
+        expect(textOf(i)).toContain('Nothing shown yet')
+      }
     },
   },
   {

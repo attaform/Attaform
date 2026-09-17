@@ -20,7 +20,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
-import { createDynamicPathSweep } from '../../src/runtime/core/dynamic-path-sweep'
 import * as paths from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
 
@@ -43,7 +42,7 @@ function rowsAccessor(rowCount: number) {
       state,
       'rows-instance',
       getFormMetaBase,
-      createDynamicPathSweep(state)
+      state.pathSweep
     ),
   }
 }
@@ -151,7 +150,7 @@ describe('container field-state aggregation — linear in array length', () => {
       state,
       'group-instance',
       getFormMetaBase,
-      createDynamicPathSweep(state)
+      state.pathSweep
     )
 
     // Write the optional leaf (enters `originals`), mark it interacted, then

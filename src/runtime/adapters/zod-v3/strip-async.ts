@@ -41,49 +41,6 @@ import {
 } from './rebuild-schema'
 
 /**
- * v3 analogue of v4's `strip.ts stripAsyncChecks` (`zod-v4/strip.ts:212`).
- * Walks the schema tree once, rebuilding containers + wrappers and
- * dropping every `ZodEffects` it encounters (refinement, transform, or
- * preprocess). Container-level constraints (`.min(n)` / `.max(n)` /
- * `.length(n)` / `.strict()` / `.passthrough()` / `.catchall(...)`) are
- * re-applied via the per-kind `carry*` helpers below so a rebuilt
- * `z.array(z.string()).min(1)` still rejects `[]`.
- *
- * Why drop sync refines too: v3 wraps `.refine(asyncFn, …)` predicates
- * inside a sync closure (see `introspect.ts isAsyncEffect`), so the
- * adapter cannot statically distinguish sync from async refinements.
- * The strip pass is the construction-time fallback for the case where
- * the original `safeParse` threw "Async refinement encountered during
- * synchronous parse" — at that moment all we know is *some* refine is
- * async, but not which. Dropping every `ZodEffects` is the safest
- * recovery: we lose sync refine seeding in mixed forms, but container
- * and leaf checks still surface.
- *
- * Adapter-divergence note (Phase 12 part 2 / ADAPT-D4 deferred):
- * this stays per-adapter rather than dedup-ing into a shared core
- * walker. v3's "drop every ZodEffects" policy is irreducibly
- * different from v4's "filter by isAsyncCheck per check site" — v4
- * knows which checks are async (`check.def.fn.constructor.name`)
- * and rebuilds the leaf with sync checks intact; v3 has no such
- * accessor and has to drop the wrapper wholesale. A unified walker
- * would need to either parameterise five separate behavior knobs
- * (yielding a walker bigger than the two it replaces) or special-
- * case v3's effects-dropping at the call site (defeating the dedup).
- * The cross-reference on v4's `strip.ts:stripAsyncChecks` records the
- * same rationale.
- *
- * Cycle-safe via a per-pass `WeakSet` so a pathological
- * `z.lazy(() => self)` schema terminates.
- *
- * Used by `getDefaultValues` strict mode in `index.ts`; the
- * post-mount async pass picks up the verdicts this strip path can't
- * surface (full sync + async refines via `safeParseAsync`).
- */
-export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
-  return walkEffects(schema, 'strip')
-}
-
-/**
  * Rebuild the tree keeping every `ZodEffects` in place, but wrapping
  * each refinement so a promise it returns gets a rejection handler
  * attached before anyone can drop it.
@@ -111,20 +68,8 @@ export function stripAsyncChecks(schema: z.ZodTypeAny): z.ZodTypeAny {
  * the async validation pass.
  */
 export function wrapAsyncSafeRefinements(schema: z.ZodTypeAny): z.ZodTypeAny {
-  return walkEffects(schema, 'wrap')
+  return walkEffects(schema)
 }
-
-/**
- * What to do at a `ZodEffects` node.
- *
- * - `strip` drops the wrapper entirely. The recovery pass: by the time
- *   it runs the sync parse has already thrown, and all we know is that
- *   SOME refine is async, not which.
- * - `wrap` keeps the wrapper and makes its refinement's promise
- *   observable. The prevention pass, run before the parse that would
- *   otherwise leak.
- */
-type EffectsPolicy = 'strip' | 'wrap'
 
 /** A refinement's return value, when it happens to be thenable. */
 function isThenable(value: unknown): value is Promise<unknown> {
@@ -135,7 +80,7 @@ function isThenable(value: unknown): value is Promise<unknown> {
   )
 }
 
-function walkEffects(schema: z.ZodTypeAny, policy: EffectsPolicy): z.ZodTypeAny {
+function walkEffects(schema: z.ZodTypeAny): z.ZodTypeAny {
   const seen = new WeakSet<object>()
 
   function recurse(s: z.ZodTypeAny): z.ZodTypeAny {
@@ -147,14 +92,16 @@ function walkEffects(schema: z.ZodTypeAny, policy: EffectsPolicy): z.ZodTypeAny 
     if (isZodSchemaType(s, 'ZodEffects')) {
       const inner = unwrapEffectsSource(s)
       if (inner === undefined) return s
-      // Strip: drop the wrapper. The source schema returned by
-      // `unwrapEffectsSource` is the pre-refine / pre-transform shape;
-      // recurse into it so nested effects deeper in the tree also drop.
-      if (policy === 'strip') return recurse(inner)
-      // Wrap: keep the wrapper, recurse the source, and make the
-      // refinement's returned promise observable. Transforms and
-      // preprocess steps are left exactly as they are — they do not
-      // return a promise Zod then discards.
+      // Keep the wrapper, recurse the source, and make the refinement's
+      // returned promise observable. Transforms and preprocess steps are
+      // left exactly as they are — they do not return a promise Zod then
+      // discards.
+      //
+      // This walk used to serve a second policy that DROPPED each
+      // wrapper, so the construction parse could retry against a schema
+      // with the async refines removed. That recovery is gone, along
+      // with v4's equivalent, so the only reason to rebuild a tree here
+      // is the rejection handler below.
       const effect = getEffect(s)
       const rebuiltInner = recurse(inner)
       const original = effect?.['refinement']

@@ -150,7 +150,7 @@ describe.each(adapters)('ValidationError.data through the form API — $name', (
     const handle: { api?: any } = {}
     const Host = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: `error-data-${keySeq++}`, strict: false, ...extra })
+        handle.api = useForm({ schema, key: `error-data-${keySeq++}`, ...extra })
         return () => h('div')
       },
     })

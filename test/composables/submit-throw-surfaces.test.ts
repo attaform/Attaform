@@ -58,7 +58,6 @@ describe.each(adapters)('handleSubmit throw surfacing — $name', ({ useForm, z 
         handle.api = useForm({
           schema,
           key: `submit-throw-${keySeq++}`,
-          strict: false,
           defaultValues,
         })
         return () => h('div')

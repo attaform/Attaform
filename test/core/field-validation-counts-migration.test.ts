@@ -62,7 +62,6 @@ describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         form = (useForm as any)({
           schema,
-          strict: false,
           defaultValues: defaults,
         })
         return () => h(Child)

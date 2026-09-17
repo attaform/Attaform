@@ -167,13 +167,7 @@ The check happens per attribute and per binding, so reaching for one escape hatc
 
 ### Turning it off
 
-One knob, `autoAria`, at three tiers; the narrower tier wins:
-
-- Per binding: `form.register('email', { autoAria: false })`.
-- Per form: `useForm({ schema, autoAria: false })`.
-- App-wide: `createAttaform({ defaults: { autoAria: false } })`.
-
-A narrower tier overrides the wider one in either direction, so a single binding can re-enable management with `{ autoAria: true }` even when the form opted out. Any tier set to `false` hands every aria attribute back to your markup; an authored attribute is always preserved regardless.
+Management is always on, and there is no flag to turn it off, because there is nothing an opt-out buys you: authoring an aria attribute yourself already takes that one attribute over, per attribute, on the element where you wrote it. Reach for the markup, not a switch.
 
 ## Where to next
 

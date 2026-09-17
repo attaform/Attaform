@@ -276,6 +276,26 @@ jobs:
       - name: Check bundle size
         run: pnpm check:size
 
+      # Non-gating attribution, not a gate: `check:eager` below is the
+      # gate. This writes the per-PR eager delta against the merge base
+      # to the run summary, because the budget alone only ever showed the
+      # cost in aggregate — the closure grew ~2 kB gz a month across PRs
+      # that each looked free. Needs real history for the merge base, so
+      # it re-fetches with depth 0; `continue-on-error` keeps a shallow
+      # or detached checkout from failing the job.
+      - name: Eager attribution vs merge base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=0 origin "$GITHUB_BASE_REF" || true
+          EAGER_BASE_REF="origin/$GITHUB_BASE_REF" node scripts/eager-delta.mjs
+
+      # The eager budget gate. Distinct from `check:size`: size-limit has
+      # no `splitting`, so it folds dynamic imports back into the entry
+      # and cannot see the eager/async split this ratchets.
+      - name: Check eager budget
+        run: pnpm check:eager
+
       # Verifies the published `.d.ts` shape compiles a representative
       # 4-form `useStepper` pattern under `tsc`. Acceptance test for
       # the type-system depth-efficiency refactor — if this fails,
@@ -338,6 +358,21 @@ jobs:
 
       - name: Run benchmarks
         run: pnpm check:bench
+
+      # Non-gating attribution. `check:bench` above gates only the groups
+      # that pair an `old:` bench with a `new:` one — three of fifteen
+      # files — and compares each revision against a baseline in the same
+      # file rather than against the previous commit, so both arms move
+      # together and the ratio holds through a real regression. This
+      # measures HEAD against the merge base directly, interleaved, and
+      # writes the per-scenario delta to the run summary. Needs real
+      # history for the merge base.
+      - name: Benchmark attribution vs merge base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=0 origin "$GITHUB_BASE_REF" || true
+          BENCH_BASE_REF="origin/$GITHUB_BASE_REF" BENCH_ROUNDS=2 pnpm bench:delta
 
   build-site:
     name: Build docs site

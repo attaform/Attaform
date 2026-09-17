@@ -1,15 +1,14 @@
 ---
 title: Display state and showing errors
-description: getDisplayState resolves every path to one verdict (idle, pending, error, success). It holds errors until a blurred edit or a submit, spins during async checks, and never repeats a descendant's error.
+description: Every path resolves to one display verdict (idle, pending, error, success). Attaform holds errors until a blurred edit or a submit, spins during async checks, and never repeats a descendant's error.
 metaRows:
   - label: Category
-    value: Option
-  - label: Option
-    value: getDisplayState
+    value: Reading the form
+  - label: Read
+    value: field.displayState
     kind: code
-  - label: Default
-    value: defaultDisplayState
-    kind: code
+  - label: Sugar
+    value: showErrors · showPending · showSuccess · showIdle
 ---
 
 # Display state and showing errors
@@ -26,7 +25,7 @@ Every path on a form carries a single display-state verdict, `field.displayState
 - `'error'`: a blocking error is ready to show.
 - `'success'`: the field has passed and earned its green check.
 
-`getDisplayState` is the one heuristic that resolves that verdict, and it runs for every field. Attaform's default holds back until the user has actually interacted with a field, so a fresh-page form does not open with every required field already complaining.
+One heuristic resolves that verdict, and it runs for every field. It holds back until the user has actually interacted with a field, so a fresh-page form does not open with every required field already complaining.
 
 ::docs-demo{slug="display-state" label="Display State Demo"}
 ::
@@ -147,78 +146,20 @@ The two are siblings, and picking the right one matters:
 | `form.touch(path)`    | `touched`                                          | No                     |
 | `form.interact(path)` | `touched`, `interacted`, `blurredAfterInteraction` | Yes                    |
 
-`touched` is the descriptive "this field was visited" flag, and it flips on a bare tab-through with no edit. That is exactly why the default gate reads the stricter `blurredAfterInteraction` instead, and why `form.touch()` on its own does not reveal anything under the default heuristic. Reach for `touch` when a custom reducer or your analytics reads `touched`; reach for `interact` when you want errors on screen.
+`touched` is the descriptive "this field was visited" flag, and it flips on a bare tab-through with no edit. That is exactly why the gate reads the stricter `blurredAfterInteraction` instead, and why `form.touch()` on its own does not reveal anything. Reach for `touch` when your own analytics reads `touched`; reach for `interact` when you want errors on screen.
 
-## Override per form
+## The anti-flash spinner
 
-```ts
-useForm({
-  schema,
-  getDisplayState: (prev, ctx) =>
-    ctx.field.errors.length > 0 && ctx.field.touched ? { display: 'error' } : { display: 'idle' },
-})
-```
+The spinner is anti-flash. A validation that settles quickly never shows `'pending'` at all, and once a spinner appears it stays up for a minimum so it cannot blink off the instant the check lands. Two timings shape this, both in milliseconds and both fixed:
 
-Pass a custom reducer to bend the rule, for example to reveal errors the moment a field is touched (ignoring focus and submit state). A reducer receives `(prev, ctx)` and returns the next machine: `{ display }` at minimum, optionally with a `reviewAt` timestamp telling Attaform when to look again.
+- `showDelay` (`120`): how long a validation may run before its spinner is allowed to show. Anything that settles inside this window stays on its prior verdict, so a synchronous or microtask-fast check never flashes a spinner on every keystroke.
+- `minVisible` (`120`): once shown, the minimum the spinner stays up, so a check that lands just past `showDelay` does not flash it on and immediately off.
 
-`prev` is the field's previous `DisplayMachine`. `ctx` is a `DisplayCtx`, and it has five members:
+One exception tightens the first: the instant the user leaves a field, `showDelay` collapses to a single frame. The full window exists to swallow the spinner during active typing, and once the user has moved on, a check still running deserves to say so.
 
-```ts
-import type { GetDisplayState } from 'attaform'
+The same clock covers an in-flight async [register transform](/docs/binding-inputs/transforms), so a field that validates and transforms at once shows a single continuous spinner rather than flickering between the two.
 
-const reducer: GetDisplayState = (prev, ctx) => {
-  const {
-    field, // this field's FieldState
-    formMeta, // the form's FormMeta
-    validatingSince, // ms stamp the validation streak opened, else null
-    transformingSince, // same, for an in-flight async register transform
-    now, // the engine's clock, injected so the reducer stays pure
-  } = ctx
-  return field.errors.length > 0 && field.touched ? { display: 'error' } : { display: 'idle' }
-}
-```
-
-`field` and `formMeta` arrive with the derived `displayState` / `show*` / `firstError` keys omitted, so a reducer cannot read its own output and form a cycle. The two `*Since` anchors are what timing is measured against, not the `validating` and `transforming` booleans: elapsed wait is `now - validatingSince`, and the anchor pins to the start of a streak so overlapping sub-runs never reset it. Reading only `validatingSince` is the easy miss, and it costs you the spinner on an in-flight async `register` transform, which the default folds into the same clock.
-
-## Compose with the default
-
-Adopter reducers can layer on top of `defaultDisplayState`. Defer to it for the common case and special-case only the paths you care about:
-
-```ts
-import { defaultDisplayState } from 'attaform'
-
-useForm({
-  schema,
-  // Defer everywhere, but never show a success check on `username`.
-  getDisplayState: (prev, ctx) => {
-    const next = defaultDisplayState(prev, ctx)
-    return next.display === 'success' && ctx.field.path[0] === 'username'
-      ? { display: 'idle' }
-      : next
-  },
-})
-```
-
-## Tune the timing
-
-The spinner is anti-flash by default. A validation that settles quickly never shows `'pending'` at all, and once a spinner appears it stays up for a minimum so it cannot blink off the instant the check lands. Two timings shape this, both in milliseconds:
-
-- `showDelay` (default `120`): how long a validation may run before its spinner is allowed to show. Anything that settles inside this window stays on its prior verdict, so a synchronous or microtask-fast check never flashes a spinner on every keystroke.
-- `minVisible` (default `120`): once shown, the minimum the spinner stays up, so a check that lands just past `showDelay` does not flash it on and immediately off.
-
-The shipped values live in `DEFAULT_TIMINGS`. To retune, build a default with `makeDefaultDisplayState`:
-
-```ts
-import { makeDefaultDisplayState } from 'attaform'
-
-useForm({
-  schema,
-  // Tighter: a spinner after 50ms, held for 200ms once shown.
-  getDisplayState: makeDefaultDisplayState({ showDelay: 50, minVisible: 200 }),
-})
-```
-
-This shapes only the display projection. `errors`, `valid`, `validating`, and the underlying validation all run exactly as before; only when the spinner appears and how long it lingers change. For total control, a from-scratch reducer owns its own timing by returning a `reviewAt` (an absolute `Date.now()` stamp) to tell Attaform when to re-evaluate the field.
+This shapes only the display projection. `errors`, `valid`, and `validating` are unaffected, and the underlying validation runs on its own schedule either way. When you need a verdict the heuristic will not give you, read the raw signals directly: `field.errors`, `field.valid`, `field.validating`, and `field.touched` are all live, and a computed over them is a few lines.
 
 ## Where to next
 

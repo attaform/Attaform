@@ -12,7 +12,7 @@ description: Common Attaform pitfalls and how to fix them. Fields that never val
 Three independent causes:
 
 - **The schema doesn't include the field.** A `z.string().optional()` wrapper without an inner refinement accepts everything. Verify the schema.
-- **You're in `strict: false` and watching `validate()`.** Lax mode strips refinements during default-values derivation so the form mounts with empty values without failing; refinements re-apply on submit. It also means construction-time validation never runs, so `form.meta.valid` reads `true` on a freshly mounted form holding values the schema would reject. Drop the `strict: false` opt-out if you want `validate()` to fire refinements immediately.
+- **The schema carries an async refinement.** A `.refine(async ...)` anywhere in the schema means construction cannot reach a verdict synchronously, so the whole schema defers to the post-mount pass and `form.meta.valid` stays gated until that lands. Nothing is lost; the verdict arrives a microtask later.
 - **The path doesn't match the schema.** `'items.0.name'` and `['items', 0, 'name']` canonicalize to the same path. But `['items', '0', 'name']` (string `'0'`) does NOT; emit numbers when the position is an array index.
 
 ## "`register('email')` returns a `never`-typed value"

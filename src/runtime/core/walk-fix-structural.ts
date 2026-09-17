@@ -23,8 +23,8 @@
  *
  * No schema is rebuilt and nothing parses, so user refinements and
  * transforms can never fire during construction, and refinement-level
- * violations are invisible by design — the strict-mode pass owns
- * surfacing those.
+ * violations are invisible by design — the adapter's construction
+ * parse owns surfacing those.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { slimKindOf } from './slim-primitive-gate'
@@ -107,6 +107,8 @@ function fixNode<Schema>(
       return inner === undefined ? value : fixNode(inner, value, ctx, lazyDepth)
     }
     case 'default':
+    case 'nonoptional':
+    case 'success':
     case 'readonly':
     case 'catch': {
       const inner = intro.unwrapInner(schema)

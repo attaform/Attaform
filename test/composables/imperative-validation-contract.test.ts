@@ -49,7 +49,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     let api: any
     const Root = defineComponent({
       setup() {
-        api = useForm({ key: `imperative-contract-${keySeq++}`, strict: false, ...options })
+        api = useForm({ key: `imperative-contract-${keySeq++}`, ...options })
         return () => h('div')
       },
     })
@@ -70,7 +70,13 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
   it('commits the verdict to the error store at the validated scope', async () => {
     // validateOn: 'blur' keeps setValue from scheduling its own run, so
     // the ONLY writer of refinement errors here is the imperative call.
-    const api = mount({ schema: schema(), validateOn: 'blur' })
+    const api = mount({
+      schema: schema(),
+      validateOn: 'blur',
+      // Construction validates, so the fixture starts schema-clean and
+      // every error the assertions see is one this test wrote.
+      defaultValues: { email: 'seed@example.com', password: 'longenough' },
+    })
     api.setValue('email', 'not-an-email')
 
     const failing = await api.parse('email', { commit: true })
@@ -158,7 +164,13 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
   })
 
   it('plain parse() stays a pure read: reports failure without committing', async () => {
-    const api = mount({ schema: schema(), validateOn: 'blur' })
+    const api = mount({
+      schema: schema(),
+      validateOn: 'blur',
+      // Construction validates, so the fixture starts schema-clean and
+      // every error the assertions see is one this test wrote.
+      defaultValues: { email: 'seed@example.com', password: 'longenough' },
+    })
     api.setValue('email', 'not-an-email')
 
     const result = await api.parse()

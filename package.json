@@ -55,6 +55,7 @@
     "check:eager": "node scripts/check-eager-size.mjs",
     "check:coverage": "node scripts/run-with-webstorage-flag.mjs vitest run --coverage",
     "check:bench": "node scripts/check-bench.mjs",
+    "bench:delta": "node scripts/bench-delta.mjs",
     "check:bundled-types": "node scripts/check-bundled-types.mjs",
     "check:doc-snippets": "node scripts/check-doc-snippets.mjs",
     "check:site": "pnpm dev:prepare && pnpm --filter attaform-site typecheck",
@@ -220,7 +221,7 @@
     "nuxt": ">=3.0.0",
     "vite": ">=5.0.0",
     "vue": ">=3.5.0",
-    "zod": ">=3.0.0"
+    "zod": ">=3.20.0"
   },
   "peerDependenciesMeta": {
     "@nuxt/devtools-kit": {

@@ -283,6 +283,10 @@
       "ratio": 0.1
     }
   ],
+  "sharedValidator": {
+    "validator": "zod 3.25.76",
+    "gzBytes": 14176
+  },
   "runtime": {
     "flat": {
       "keystroke": {

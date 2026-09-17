@@ -32,7 +32,7 @@ const defaults: Form = { email: '', password: '', nickname: '' }
 
 function mountWith(options: {
   errorsFor: (keyof Form)[]
-  onInvalidSubmit?: 'focus-first-error' | 'scroll-to-first-error' | 'both' | 'none'
+  focusOnInvalidSubmit?: boolean
   hideField?: keyof Form | null
   detachField?: keyof Form | null
   /**
@@ -66,7 +66,8 @@ function mountWith(options: {
         schema: fakeSchema<Form>(defaults, validator),
         key: 'focus-scroll-form',
       }
-      if (options.onInvalidSubmit !== undefined) useOpts.onInvalidSubmit = options.onInvalidSubmit
+      if (options.focusOnInvalidSubmit !== undefined)
+        useOpts.focusOnInvalidSubmit = options.focusOnInvalidSubmit
       handle.api = useForm<Form>(useOpts)
 
       return () => {
@@ -210,7 +211,7 @@ describe('focusFirstError / scrollToFirstError', () => {
   })
 })
 
-describe('onInvalidSubmit policy wiring', () => {
+describe('focusOnInvalidSubmit wiring', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -237,10 +238,10 @@ describe('onInvalidSubmit policy wiring', () => {
     scrollSpy.mockRestore()
   })
 
-  it('focus-first-error: submit failure focuses the first errored field', async () => {
+  it('explicit true: submit failure focuses the first errored field', async () => {
     const { api, app } = mountWith({
       errorsFor: ['email'],
-      onInvalidSubmit: 'focus-first-error',
+      focusOnInvalidSubmit: true,
     })
     await api.handleSubmit(async () => {})()
     expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
@@ -248,29 +249,7 @@ describe('onInvalidSubmit policy wiring', () => {
     app.unmount()
   })
 
-  it('scroll-to-first-error: submit failure scrolls, does not focus', async () => {
-    const { api, app } = mountWith({
-      errorsFor: ['email'],
-      onInvalidSubmit: 'scroll-to-first-error',
-    })
-    await api.handleSubmit(async () => {})()
-    expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).not.toHaveBeenCalled()
-    app.unmount()
-  })
-
-  it('both: scrolls first then focuses with preventScroll', async () => {
-    const { api, app } = mountWith({
-      errorsFor: ['email'],
-      onInvalidSubmit: 'both',
-    })
-    await api.handleSubmit(async () => {})()
-    expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true, focusVisible: true })
-    app.unmount()
-  })
-
-  it('default (focus-first-error): submit failure focuses the first errored field', async () => {
+  it('omitted: defaults to focusing the first errored field', async () => {
     const { api, app } = mountWith({ errorsFor: ['email'] })
     await api.handleSubmit(async () => {})()
     expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
@@ -278,11 +257,26 @@ describe('onInvalidSubmit policy wiring', () => {
     app.unmount()
   })
 
-  it('none: explicit opt-out skips focus and scroll', async () => {
-    const { api, app } = mountWith({ errorsFor: ['email'], onInvalidSubmit: 'none' })
+  it('false: explicit opt-out skips the automatic nudge entirely', async () => {
+    const { api, app } = mountWith({ errorsFor: ['email'], focusOnInvalidSubmit: false })
     await api.handleSubmit(async () => {})()
     expect(focusSpy).not.toHaveBeenCalled()
     expect(scrollSpy).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it('false leaves the imperative helpers working — opting out is not losing them', async () => {
+    // The off-switch exists so a consumer can drive the nudge from their
+    // own `onError`. Gating `focusFirstError` / `scrollToFirstError` on
+    // it would take away the very thing the opt-out is for.
+    const { api, app } = mountWith({ errorsFor: ['email'], focusOnInvalidSubmit: false })
+    await api.handleSubmit(async () => {})()
+    expect(focusSpy).not.toHaveBeenCalled()
+
+    expect(api.focusFirstError()).toBe(true)
+    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true })
+    expect(api.scrollToFirstError()).toBe(true)
+    expect(scrollSpy).toHaveBeenCalled()
     app.unmount()
   })
 })
@@ -355,7 +349,7 @@ describe('applyInvalidSubmitPolicy — public API', () => {
     scrollSpy.mockRestore()
   })
 
-  it("no-arg call reads the form's onInvalidSubmit option (default focus-first-error)", async () => {
+  it("reads the form's focusOnInvalidSubmit choice (default: focus)", async () => {
     const { api, app } = mountWith({ errorsFor: ['email'] })
     await api.handleSubmit(async () => {})()
     focusSpy.mockClear()
@@ -366,53 +360,20 @@ describe('applyInvalidSubmitPolicy — public API', () => {
     app.unmount()
   })
 
-  it('no-arg call honors a configured scroll-to-first-error option', async () => {
+  it('honors a configured opt-out: a form that said false stays put', async () => {
+    // This is the method's whole reason to exist next to
+    // `focusFirstError()` — the wizard calls it precisely so the failing
+    // form's own choice is respected after a `goTo`.
     const { api, app } = mountWith({
       errorsFor: ['email'],
-      onInvalidSubmit: 'scroll-to-first-error',
+      focusOnInvalidSubmit: false,
     })
     await api.handleSubmit(async () => {})()
     focusSpy.mockClear()
     scrollSpy.mockClear()
     api.applyInvalidSubmitPolicy()
-    expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).not.toHaveBeenCalled()
-    app.unmount()
-  })
-
-  it("explicit scroll-to-first-error overrides the form's configured policy", async () => {
-    const { api, app } = mountWith({
-      errorsFor: ['email'],
-      onInvalidSubmit: 'focus-first-error',
-    })
-    await api.handleSubmit(async () => {})()
-    focusSpy.mockClear()
-    scrollSpy.mockClear()
-    api.applyInvalidSubmitPolicy('scroll-to-first-error')
-    expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).not.toHaveBeenCalled()
-    app.unmount()
-  })
-
-  it('explicit none is a safe no-op', async () => {
-    const { api, app } = mountWith({ errorsFor: ['email'] })
-    await api.handleSubmit(async () => {})()
-    focusSpy.mockClear()
-    scrollSpy.mockClear()
-    api.applyInvalidSubmitPolicy('none')
     expect(focusSpy).not.toHaveBeenCalled()
     expect(scrollSpy).not.toHaveBeenCalled()
-    app.unmount()
-  })
-
-  it('explicit both scrolls then focuses with preventScroll', async () => {
-    const { api, app } = mountWith({ errorsFor: ['email'] })
-    await api.handleSubmit(async () => {})()
-    focusSpy.mockClear()
-    scrollSpy.mockClear()
-    api.applyInvalidSubmitPolicy('both')
-    expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true, focusVisible: true })
     app.unmount()
   })
 
@@ -936,7 +897,7 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
     scrollSpy.mockRestore()
   })
 
-  it('focus-first-error focuses a required field whose only error is blank', async () => {
+  it('submit focus targets a required field whose only error is blank', async () => {
     // `age: z.number()` auto-marks blank at mount (storage 0 vs empty DOM
     // string diverge) → a derived blank-required error, no schema error.
     const schema = z.object({ age: z.number() })
@@ -992,27 +953,6 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
     expect(handle.api!.scrollToFirstError()).toBe(true)
     const scrolled = scrollSpy.mock.instances.at(-1) as HTMLInputElement | undefined
     expect(scrolled?.getAttribute('data-field')).toBe('age')
-    app.unmount()
-  })
-
-  it("policy 'both' scrolls then focuses the blank field", async () => {
-    const schema = z.object({ age: z.number() })
-    const handle: { api?: UseFormReturn<typeof schema> } = {}
-    const App = defineComponent({
-      setup() {
-        handle.api = useZodForm({ schema, key: 'blank-both', onInvalidSubmit: 'both' })
-        return () => h('form', [registeredInput(handle.api?.register('age'), 'age')])
-      },
-    })
-    const { app } = mountApp(App)
-
-    await handle.api!.handleSubmit(async () => {})()
-    expect(scrollSpy).toHaveBeenCalled()
-    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true, focusVisible: true })
-    const scrolled = scrollSpy.mock.instances.at(-1) as HTMLInputElement | undefined
-    const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
-    expect(scrolled?.getAttribute('data-field')).toBe('age')
-    expect(focused?.getAttribute('data-field')).toBe('age')
     app.unmount()
   })
 
@@ -1188,7 +1128,7 @@ describe('focusFirstError — no-latch component host (#538)', () => {
     app.unmount()
   })
 
-  it('scroll-to-first-error scrolls the resolved host target', async () => {
+  it('scrollToFirstError scrolls the resolved host target', async () => {
     const { api, app } = mountHostForm({ errorsFor: ['nickname'] })
     await api.handleSubmit(async () => {})()
     scrollSpy.mockClear()

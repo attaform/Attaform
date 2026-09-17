@@ -234,7 +234,6 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
   it('an onError that throws', async () => {
     await expectContained(async () => {
       const { api } = makeMounter(useForm, adapter.tooShort(), {
-        strict: true,
         defaultValues: { a: '' },
       })()
       await api.handleSubmit(() => {}, BOOM)()
@@ -279,7 +278,7 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     ['a z.preprocess that throws', 'throwingPreprocess'],
   ] as const)('%s', async (_label, key) => {
     await expectContained(async () => {
-      const { api } = muted(() => makeMounter(useForm, adapter[key](), { strict: true })())
+      const { api } = muted(() => makeMounter(useForm, adapter[key]())())
       muted(() => api.setValue('a', 'x'))
       const scope = effectScope()
       scope.run(() => api.validate())
@@ -325,6 +324,24 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     })
   })
 
+  it.each([
+    ['has', () => new Proxy({ a: 1 }, { has: BOOM })],
+    ['get', () => new Proxy({ a: 1 }, { get: BOOM })],
+  ])('a Proxy whose %s trap throws survives a read BY PATH through it', async (_l, makeProxy) => {
+    // The distinct hazard from the block below: there the proxy is read
+    // whole by a walker, here a path descends INTO it. `form.values(path)`
+    // and `form.fields(path).value` are the two surfaces a template binds,
+    // so a throw on this route comes out of the component's render.
+    await expectContained(async () => {
+      const { api } = makeMounter(useForm, adapter.nestedAndOpen(), {})()
+      muted(() => api.setValue('open', makeProxy()))
+      await drain()
+      muted(() => api.values('open.a'))
+      muted(() => api.values('open'))
+      void api.meta.dirty
+    })
+  })
+
   it('a throwing getter survives an array append', async () => {
     await expectContained(async () => {
       const { api } = makeMounter(useForm, adapter.list(), { defaultValues: { xs: [] } })()
@@ -337,6 +354,12 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     ['ownKeys', () => new Proxy({ a: 1 }, { ownKeys: BOOM })],
     ['getOwnPropertyDescriptor', () => new Proxy({ a: 1 }, { getOwnPropertyDescriptor: BOOM })],
     ['get', () => new Proxy({ a: 1 }, { get: BOOM })],
+    // `has` is the trap a read DESCENT hits: `descendStep` presence-tests
+    // each segment with `key in container` before reading it, deliberately
+    // (on a reactive array that tracks one index instead of `.length`).
+    // An existence check is no safer than a read, and this one runs under
+    // every FieldState rollup — that is, during the host's render.
+    ['has', () => new Proxy({ a: 1 }, { has: BOOM })],
   ])('a Proxy whose %s trap throws', async (_label, makeProxy) => {
     // Enumeration is not a safe read. `Object.keys` invokes `ownKeys`
     // and `getOwnPropertyDescriptor`, so a Proxy can throw before a
@@ -441,7 +464,7 @@ describe('an async .refine that throws', () => {
           throw new Error('consumer boom')
         }),
       })
-      const { api } = muted(() => makeMounter(useFormV4, schema, { strict: true })())
+      const { api } = muted(() => makeMounter(useFormV4, schema)())
       muted(() => api.setValue('a', 'x'))
       const scope = effectScope()
       scope.run(() => api.validate())
@@ -480,7 +503,7 @@ describe('an async .refine that throws', () => {
           throw new Error('consumer boom')
         }),
       })
-      const { api } = muted(() => makeMounter(useFormV3, schema, { strict: true })())
+      const { api } = muted(() => makeMounter(useFormV3, schema)())
       await act(api)
       await new Promise((resolve) => setTimeout(resolve, 0))
     } finally {
@@ -510,7 +533,6 @@ describe('an async .refine that throws', () => {
       })
       const { api } = muted(() =>
         makeMounter(useFormV3, schema, {
-          strict: true,
           validateOn: 'change',
           defaultValues: { src: { k: 'a' } },
         })()
@@ -532,7 +554,7 @@ describe('an async .refine that throws', () => {
     // Pre-stripping every schema with a refinement would have closed
     // the leak and broken this.
     const schema = zV3.object({ a: zV3.string().refine((v) => v.length > 3, 'too short') })
-    const { api } = makeMounter(useFormV3, schema, { strict: true, defaultValues: { a: 'x' } })()
+    const { api } = makeMounter(useFormV3, schema, { defaultValues: { a: 'x' } })()
     await drain()
     expect(api.errors('a')[0]?.message).toBe('too short')
   })
@@ -546,7 +568,7 @@ describe('an async .refine that throws', () => {
         return v.length > 3
       }, 'too short'),
     })
-    const { api } = makeMounter(useFormV3, schema, { strict: true, defaultValues: { a: 'x' } })()
+    const { api } = makeMounter(useFormV3, schema, { defaultValues: { a: 'x' } })()
     await drain()
     let submitted = false
     await api.handleSubmit(() => {

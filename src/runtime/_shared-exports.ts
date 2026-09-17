@@ -121,7 +121,6 @@ export { escapeForInlineScript } from './core/serialize-script'
 // exported here for advanced consumers who install directives themselves).
 export { vRegister, assignKey } from './core/directive'
 export { isRegisterValue } from './core/register-protocol'
-export { defaultCoercionRules, defineCoercion } from './core/schema-coerce'
 
 // Path primitives — exposed for consumers writing custom adapters that
 // need to canonicalise user-provided paths.
@@ -155,25 +154,10 @@ export {
   SubmitErrorHandlerError,
 } from './core/errors'
 
-// Library-default reducer for `getDisplayState`. Public so adopter
-// reducers can compose with it (a layered reducer that defers to the
-// library default for the unhandled cases). `makeDefaultDisplayState`
-// rebuilds it with custom anti-flash timing; `DEFAULT_TIMINGS` is the
-// shipped `{ showDelay, minVisible }`.
-export { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from './core/display-state'
-export type { DisplayTimings } from './core/display-state'
-
 // Schema-agnostic public types. `AbstractSchema` and `FieldMetaPayload`
 // are deliberately NOT here — see the per-entry note in the docblock.
 export type {
-  AttaformDefaults,
-  CoercionEntry,
-  CoercionRegistry,
-  CoercionResult,
   CustomDirectiveRegisterAssignerFn,
-  DefaultValuesResponse,
-  DisplayCtx,
-  DisplayMachine,
   DisplayState,
   ErrorInput,
   ErrorsProxyShape,
@@ -184,13 +168,11 @@ export type {
   FormErrorsSurface,
   FormKey,
   FormMeta,
-  GetDisplayState,
   HandleSubmit,
   HistoryPlugin,
   Json,
   MetaTrackerValue,
   OnError,
-  OnInvalidSubmitPolicy,
   OnSubmit,
   PendingValidationStatus,
   ReactiveValidationStatus,
@@ -201,11 +183,15 @@ export type {
   RegisterTextModifier,
   RegisterTransform,
   RegisterValue,
+  SchemaDefaultsResult,
+  SchemaParseErrorWithData,
+  SchemaParseErrorWithoutData,
+  SchemaParseResult,
+  SchemaParseSuccess,
   SetValueCallback,
   SetValuePayload,
   SettledValidationStatus,
   SlimPrimitiveKind,
-  SlimRuntimeOf,
   SubmitHandler,
   ValidateOn,
   ValidateOnConfig,

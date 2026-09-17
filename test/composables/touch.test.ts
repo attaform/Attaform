@@ -89,7 +89,6 @@ describe('form.touch — zod-v3 adapter', () => {
       useFormV3({
         schema,
         key: `touch-v3-${Math.random()}`,
-        strict: false,
         defaultValues: { email: '', profile: { name: '', age: 0 } },
       })
     )
@@ -192,7 +191,6 @@ describe('form.touch — zod-v4 adapter', () => {
       useFormV4({
         schema,
         key: `touch-v4-${Math.random()}`,
-        strict: false,
         defaultValues: { email: '', profile: { name: '', age: 0 } },
       })
     )

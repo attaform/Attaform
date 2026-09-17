@@ -25,7 +25,6 @@ describe('zod v3: constraint-merge parity (D19)', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
       constraints: { tags: ['a'] },
     })
     // v4 semantic: the consumer's array fully replaces the schema's.
@@ -39,7 +38,6 @@ describe('zod v3: constraint-merge parity (D19)', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
       constraints: { label: null },
     })
     // v4 semantic: `null` is a leaf override and replaces the default.
@@ -56,7 +54,6 @@ describe('zod v3: constraint-merge parity (D19)', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
       constraints: { profile: { name: 'Ozzy' } },
     })
     // Both sides are plain records → recurse; `name` overridden, `bio`
@@ -82,7 +79,6 @@ describe('zod v3: constraint-merge parity (D19)', () => {
     )
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: true,
       constraints,
     })
     // The legitimate override still applies.

@@ -8,7 +8,7 @@
 import type { z } from 'zod-v3'
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
+  SchemaDefaultsResult,
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
@@ -17,6 +17,7 @@ import type {
 } from '../../types/types-api'
 import {
   createAbstractSchema,
+  createSharedSchemaStore,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
 import { mergeDeep } from '../../core/merge-deep'
@@ -64,7 +65,7 @@ import {
   unwrapPipeIn,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
-import { stripAsyncChecks, wrapAsyncSafeRefinements } from './strip-async'
+import { wrapAsyncSafeRefinements } from './strip-async'
 import { V3_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
@@ -113,33 +114,30 @@ export function zodAdapter<
   // `maxRecursionDepth + 1` lazy boundaries it returns `[]`, so writes
   // at recursive paths deeper than the cap fall back to a permissive
   // type gate. Matches the v4 adapter's path-walker contract.
-  return (formKey: FormKey, options: SchemaFactoryOptions) =>
-    createAbstractSchema<z.ZodTypeAny, Form, GetValueFormType>(
-      zodSchema,
-      V3_INTROSPECTOR,
-      buildV3Services<Form, GetValueFormType>(options.maxRecursionDepth),
-      formKey,
-      options
+  return (_formKey: FormKey, options: SchemaFactoryOptions) =>
+    sharedV3Schemas(zodSchema, options.maxRecursionDepth, () =>
+      createAbstractSchema<z.ZodTypeAny, Form, GetValueFormType>(
+        zodSchema,
+        V3_INTROSPECTOR,
+        buildV3Services<Form, GetValueFormType>(options.maxRecursionDepth),
+        options
+      )
     )
 }
+
+/**
+ * v3's store of shared `AbstractSchema` instances, keyed weakly on the
+ * root schema. See `createSharedSchemaStore`.
+ */
+const sharedV3Schemas = createSharedSchemaStore()
 
 /**
  * Build the v3 `AbstractSchemaServices` instance. Services are stateless
  * — every method receives the schema it acts on plus the factory-supplied
  * `formKey` / `maxRecursionDepth`. Generic in `Form` / `GetValueFormType`
- * so the typed methods (`runStrictGetDefaults` / `makeSubSchema`)
+ * so the typed methods (`runGetDefaults` / `makeSubSchema`)
  * propagate the form shape correctly.
  */
-// Lazy fingerprint: the only consumers are the public
-// `AbstractSchema.fingerprint()` accessor and a dev-only mismatch
-// warning, so the structural walk + its `canonicalStringify` helper
-// load on demand off the eager `useForm` path instead of being
-// anchored eager by a static import.
-async function lazyFingerprint(schema: z.ZodSchema): Promise<string> {
-  const { fingerprintZodSchema } = await import('./fingerprint')
-  return fingerprintZodSchema(schema)
-}
-
 /**
  * Cache of promise-safe schema variants, keyed by the node handed in.
  *
@@ -194,7 +192,6 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     return normalizeIssuePaths(issues, schema, data, maxRecursionDepth, peelAllV3Wrappers)
   }
   return {
-    fingerprint: (schema) => lazyFingerprint(schema as z.ZodSchema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodSchema, path, maxRecursionDepth),
     // v3 pre-strips refinements / defaults / wrappers off the root for
@@ -207,10 +204,10 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     getNestedSchemasInSlimMode: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodSchema, path, maxRecursionDepth),
     slimPrimitivesOf: (schema, _maxRecursionDepth) => slimPrimitivesV3(schema),
-    deriveDefault: (schema, useDefault, _maxRecursionDepth, formKey) =>
-      getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault, formKey),
-    runStrictGetDefaults: (schema, config, formKey, maxRecursionDepth) =>
-      runStrictGetDefaultsV3<Form>(schema as z.ZodSchema, config, formKey, maxRecursionDepth),
+    deriveDefault: (schema, useDefault) =>
+      getDefaultValuesFromZodSchema(schema as z.ZodSchema, useDefault),
+    runGetDefaults: (schema, config, maxRecursionDepth) =>
+      runGetDefaultsV3<Form>(schema as z.ZodSchema, config, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralLeafV3(schema),
     unwrapToDiscriminatedUnion: (schema) =>
       unwrapToDiscriminatedUnion(schema) as z.ZodTypeAny | undefined,
@@ -235,12 +232,11 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     // historical shape) — `getSchemasAtPath` consumers may probe any
     // method on the result. The factory call rebuilds the full surface
     // against the sub-schema with its own per-form caches.
-    makeSubSchema: (sub, formKey, maxRecursionDepth) =>
+    makeSubSchema: (sub, maxRecursionDepth) =>
       createAbstractSchema<z.ZodTypeAny, unknown, GetValueFormType>(
         sub,
         V3_INTROSPECTOR,
         buildV3Services<GenericForm, GetValueFormType>(maxRecursionDepth),
-        formKey,
         { maxRecursionDepth }
       ),
   }
@@ -707,7 +703,7 @@ function peelAllV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
 function getDefaultValuesFromZodSchema<
   FormSchema extends z.ZodSchema,
   Form extends z.infer<FormSchema>,
->(formSchema: FormSchema, useDefaultSchemaValues: boolean, formKey: FormKey): Form {
+>(formSchema: FormSchema, useDefaultSchemaValues: boolean): Form {
   // Thin wrapper around the shared `deriveDefaultWalk` core walker;
   // v3 and v4 dispatch through the same body via their respective
   // `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
@@ -718,20 +714,7 @@ function getDefaultValuesFromZodSchema<
   // adapter doesn't thread the consumer-supplied cap into this
   // call site — every existing v3 test passes against the embedded
   // 64-cap so the dedup preserves the prior behavior.
-  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64, {
-    unsupportedKindFallback: (schema) => {
-      const kindName =
-        (schema as { constructor?: { name?: string } }).constructor?.name ?? 'unknown'
-      console.warn(
-        __DEV__
-          ? `[attaform] zod-v3 adapter: unsupported schema kind '${kindName}' ` +
-              `on form '${formKey}'. Defaulting the field to null. ` +
-              `Use a supported zod kind (object/array/record/string/number/etc.) at this path.`
-          : `[attaform] AF13 attaform.dev/e/af13 '${kindName}' on '${formKey}'`
-      )
-      return null
-    },
-  }) as Form
+  return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64) as Form
 }
 
 function resolveFieldMetaAtPathV3(
@@ -789,36 +772,26 @@ function resolveFieldMetaAtPathV3(
 /**
  * v3's construction-time `getDefaultValues` flow. Builds the derived
  * default seed via `getDefaultValuesFromZodSchema`, merges
- * constraints, then runs:
+ * constraints, runs the shared DU-aware structural fix walk
+ * (`core/walk-fix-structural.ts`) over the result, then parses against
+ * the REAL schema so refines and container / leaf checks surface at
+ * construction. A sync parse that throws because of an async refine
+ * mounts clean and leaves the verdict to the post-mount async pass
+ * (v3 cannot tell sync from async refines without invoking the
+ * wrapper); a user refine that throws raw does the same.
  *
- *   - Strict mode (default): parse against the REAL schema so refines
- *     and container / leaf checks surface at construction. If a sync
- *     parse throws because of an async refine, strip every ZodEffects
- *     and re-parse (v3 cannot tell sync from async refines without
- *     invoking the wrapper). If a user refine throws raw, fall back
- *     to mount-clean success.
- *
- *   - Lax mode: the shared DU-aware structural fix walk
- *     (`core/walk-fix-structural.ts`, sign-off 7) — primitive /
- *     structural mismatches get patched with the node's derived
- *     default; refinement-level state is invisible to the walk so the
- *     user's defaultValues are preserved verbatim and no user fn runs
- *     at construction.
- *
- * Both arms compose with the shared core `mergeDeep` (NOT lodash merge)
- * so arrays replace wholesale and explicit `null` / `undefined`
- * overrides survive. v3 and v4 now call the same helper.
+ * Composes with the shared core `mergeDeep` (NOT lodash merge) so
+ * arrays replace wholesale and explicit `null` / `undefined`
+ * overrides survive. v3 and v4 call the same helper.
  */
-function runStrictGetDefaultsV3<Form>(
+function runGetDefaultsV3<Form>(
   rootSchema: z.ZodSchema,
   config: GetDefaultValuesConfig<Form>,
-  formKey: FormKey,
   maxRecursionDepth: number
-): DefaultValuesResponse<Form> {
+): SchemaDefaultsResult<Form> {
   const defaultValuesWithoutConstraints = getDefaultValuesFromZodSchema(
     rootSchema,
-    config.useDefaultSchemaValues,
-    formKey
+    config.useDefaultSchemaValues
   )
 
   // Shared core `mergeDeep` (NOT lodash `merge`) so arrays replace
@@ -828,130 +801,97 @@ function runStrictGetDefaultsV3<Form>(
   // also covers the old slim-validated primitive-root branch — the
   // structural fix walk below patches any mismatch the replacement
   // introduces.
-  const rawDefaultValues = mergeDeep(defaultValuesWithoutConstraints, config.constraints)
+  // Structural completeness BEFORE the parse, matching v4, which
+  // applies the same walk inside `getDefaultValuesFromZodSchema`. v3
+  // once ran it only on a lax branch that the default path never took:
+  // a constraint supplying a primitive where the schema declares an
+  // object stayed a primitive, and the parse below then reported an
+  // error about a shape the adapter was supposed to have repaired.
+  //
+  // Nothing parses in the walk, so user refines and transforms still do
+  // not fire at construction and the parse below remains the only thing
+  // that enforces them.
+  //
+  // Skipped entirely when there are no constraints: the walk repairs
+  // what the constraints broke, and the derivation above is already a
+  // fixed point of it. Same branch as v4's, pinned by the same corpus
+  // in `test/adapters/structural-walk-is-constraint-repair.test.ts`.
+  const rawDefaultValues =
+    config.constraints === undefined
+      ? defaultValuesWithoutConstraints
+      : fixStructuralDefaults<Form, z.ZodTypeAny>(
+          rootSchema as z.ZodTypeAny,
+          mergeDeep(defaultValuesWithoutConstraints, config.constraints),
+          config.useDefaultSchemaValues,
+          maxRecursionDepth,
+          {
+            intro: V3_INTROSPECTOR,
+            slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
+            deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
+              getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault),
+            unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
+          }
+        ).data
 
-  // Strict-mode path: parse against the REAL schema so refines and
-  // container / leaf checks (`.min(n)` / `.max(n)` / `.email()` etc.)
-  // seed at construction. Mirrors v4 (`zod-v4/adapter.ts`'s strict
-  // arm). The lax-mode validate-then-fix loop below stays untouched
-  // — it's the right shape for "seed a permissive partial state at
-  // mount."
-  if ((config.strict ?? true) !== false) {
-    // Async transforms can't be stripped: the transform's output shape
-    // is load-bearing for the inner schema's input. Skip the strict
-    // pass entirely; the post-mount async pass picks up verdicts via
-    // `safeParseAsync`.
-    if (containsAsyncTransform(rootSchema)) {
-      return {
-        data: rawDefaultValues as Form,
-        errors: undefined,
-        success: true,
-        formKey,
-      }
-    }
+  // Parse against the REAL schema so refines and container / leaf
+  // checks (`.min(n)` / `.max(n)` / `.email()` etc.) seed at
+  // construction. Mirrors v4 (`zod-v4/adapter.ts`'s equivalent arm).
 
-    try {
-      // Through `syncSafe`: this is the parse that discovers an async
-      // refinement by running it, so it is the one that would leak the
-      // predicate's rejection into the host app.
-      const strictResult = syncSafe(rootSchema).safeParse(rawDefaultValues)
-      if (strictResult.success) {
-        // Storage holds the pre-transform `z.input` view, so we return
-        // the raw defaults (already filled by
-        // `getDefaultValuesFromZodSchema`) rather than
-        // `strictResult.data` (the post-transform `z.output`). For
-        // schemas without `.transform()` the two coincide; for schemas
-        // with one the storage stays the honest input view that
-        // `form.values` reflects.
-        return {
-          data: rawDefaultValues as Form,
-          errors: undefined,
-          success: true,
-          formKey,
-        }
-      }
-      return {
-        data: rawDefaultValues as Form,
-        errors: zodIssuesToValidationErrors(strictResult.error.issues),
-        success: false,
-        formKey,
-      }
-    } catch (err) {
-      // Distinguish the v3 async-detect throw from a generic
-      // user-validator throw at construction. The async-detect throw
-      // is a standard `Error` with message `"Async refinement
-      // encountered during synchronous parse..."`. On that path strip
-      // every `ZodEffects` (sync + async — v3 can't tell apart at the
-      // predicate level, see `strip-async.ts` docblock) and re-parse
-      // to surface container + leaf-check seeds.
-      const isAsyncDetect =
-        err instanceof Error && err.message.includes('Async refinement encountered')
-      if (isAsyncDetect) {
-        try {
-          const strippedResult = syncSafe(stripAsyncChecks(rootSchema)).safeParse(rawDefaultValues)
-          if (strippedResult.success) {
-            return {
-              data: rawDefaultValues as Form,
-              errors: undefined,
-              success: true,
-              formKey,
-            }
-          }
-          return {
-            data: rawDefaultValues as Form,
-            errors: zodIssuesToValidationErrors(strippedResult.error.issues),
-            success: false,
-            formKey,
-          }
-        } catch {
-          // Defensive floor: the stripped schema also threw (e.g. a
-          // sync refine that itself throws). Mount cleanly; the
-          // post-mount async pass is the source of truth for any
-          // verdict this code path can't surface.
-          return {
-            data: rawDefaultValues as Form,
-            errors: undefined,
-            success: true,
-            formKey,
-          }
-        }
-      }
-      // Non-async throw at construction (user validator threw a raw
-      // exception): defensive floor, matches v4's catch.
-      return {
-        data: rawDefaultValues as Form,
-        errors: undefined,
-        success: true,
-        formKey,
-      }
+  // Async transforms can't be stripped: the transform's output shape
+  // is load-bearing for the inner schema's input. Skip the
+  // construction parse entirely; the post-mount async pass picks up
+  // verdicts via `safeParseAsync`.
+  if (containsAsyncTransform(rootSchema)) {
+    return {
+      data: rawDefaultValues as Form,
+      errors: undefined,
+      success: true,
     }
   }
 
-  // Lax mode: the shared DU-aware structural fix walk (sign-off 7,
-  // core/walk-fix-structural.ts) replaces the deleted slim-schema
-  // rebuild + issue-directed fix loop. Structural / primitive-type
-  // mismatches are patched with the node's derived default (DUs derive
-  // the variant the VALUE selects, foreign-variant keys are removed);
-  // refinement-level state is invisible to the walk, so the user's
-  // defaultValues are preserved verbatim and nothing parses — user
-  // refines and transforms never fire at construction.
-  const fixed = fixStructuralDefaults<Form, z.ZodTypeAny>(
-    rootSchema as z.ZodTypeAny,
-    rawDefaultValues,
-    config.useDefaultSchemaValues,
-    maxRecursionDepth,
-    {
-      intro: V3_INTROSPECTOR,
-      slimPrimitivesOf: (s: z.ZodTypeAny) => slimPrimitivesV3(s),
-      deriveDefault: (s: z.ZodTypeAny, useDefault: boolean) =>
-        getDefaultValuesFromZodSchema(s as z.ZodSchema, useDefault, formKey),
-      unwrapToDiscriminatedUnion: (s: z.ZodTypeAny) => unwrapToDiscriminatedUnion(s),
+  try {
+    // Through `syncSafe`: this is the parse that discovers an async
+    // refinement by running it, so it is the one that would leak the
+    // predicate's rejection into the host app.
+    const parseResult = syncSafe(rootSchema).safeParse(rawDefaultValues)
+    if (parseResult.success) {
+      // Storage holds the pre-transform `z.input` view, so we return
+      // the raw defaults (already filled by
+      // `getDefaultValuesFromZodSchema`) rather than
+      // `parseResult.data` (the post-transform `z.output`). For
+      // schemas without `.transform()` the two coincide; for schemas
+      // with one the storage stays the honest input view that
+      // `form.values` reflects.
+      return {
+        data: rawDefaultValues as Form,
+        errors: undefined,
+        success: true,
+      }
     }
-  )
-  return {
-    data: fixed.data,
-    errors: undefined,
-    success: true,
-    formKey,
+    return {
+      data: rawDefaultValues as Form,
+      errors: zodIssuesToValidationErrors(parseResult.error.issues),
+      success: false,
+    }
+  } catch {
+    // A throw here is either v3's async-detect (a standard `Error`
+    // reading "Async refinement encountered during synchronous
+    // parse") or a consumer validator throwing outright. Both mount
+    // clean and leave the verdict to the post-mount async pass, which
+    // was always the source of truth for either case.
+    //
+    // The async-detect arm used to strip every `ZodEffects` off the
+    // schema and re-parse the copy, so the sync checks beside an async
+    // refine could still seed at construction. That walker is gone —
+    // v4's equivalent was deleted first and this is what keeps the two
+    // adapters saying the same thing about the same schema, which is
+    // the rule that matters more than the seed did.
+    // Non-async throw at construction (user validator threw a raw
+    // exception): defensive floor, matches v4's catch.
+    return {
+      data: rawDefaultValues as Form,
+      errors: undefined,
+      success: true,
+    }
   }
 }

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import { z } from 'zod'
-import { useForm } from '../../src/zod'
+import { unset, useForm } from '../../src/zod'
 import type { UseFormConfigV4 } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
@@ -102,6 +102,41 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
 
     const afterTypePaths = api.meta.errors.map((e) => e.path.join('.'))
     expect(afterTypePaths).toEqual(initialPaths)
+  })
+
+  /**
+   * The same guarantee on the OTHER surface. `form.errors` materialises
+   * a tree, and its key order is observable through `JSON.stringify`.
+   * It used to be the error store's raw insertion order, so it agreed
+   * with `meta.errors` only until a path was cleared and re-broken:
+   * the store's delete-then-set moved that key to the end and the tree
+   * shuffled with it, the exact churn the ordinal sort above exists to
+   * absorb. The tree is placed by the same ordinal now, so the two
+   * surfaces agree and neither shuffles.
+   */
+  it('the materialised error tree holds schema-declaration order across a clear and re-break', async () => {
+    const { app, api } = mountForm(schema, { email: '', password: '' })
+    apps.push(app)
+
+    const handler = api.handleSubmit(
+      async () => {},
+      async () => {}
+    )
+    await handler()
+    const treeKeys = (): string[] => Object.keys(JSON.parse(JSON.stringify(api.errors)) as object)
+    await waitUntil(() => (treeKeys().join('|') === 'email|password' ? true : null))
+    expect(treeKeys()).toEqual(['email', 'password'])
+    expect(treeKeys()).toEqual(api.meta.errors.map((e) => e.path.join('.')))
+
+    // Clear the FIRST-declared field's error, then break it again. The
+    // store re-inserts `email` at the end; the tree must not follow.
+    api.setValue('email', 'ada@example.com')
+    await waitUntil(() => (treeKeys().join('|') === 'password' ? true : null))
+    api.setValue('email', '')
+    await waitUntil(() => (treeKeys().length === 2 ? true : null))
+
+    expect(treeKeys()).toEqual(['email', 'password'])
+    expect(treeKeys()).toEqual(api.meta.errors.map((e) => e.path.join('.')))
   })
 
   it('multiple per-field re-validations on the same field do not shuffle siblings', async () => {
@@ -206,8 +241,8 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     expect(api.meta.errors.map((e) => e.path.join('.'))).toEqual(['email', 'password'])
   })
 
-  it('reset preserves ordinals across re-derive (strict mode re-runs validation)', async () => {
-    // Under `strict: true` (the default), construction validates the
+  it('reset preserves ordinals across re-derive (reset re-runs validation)', async () => {
+    // Construction validates the
     // mounted defaults and seeds schemaErrors accordingly — and reset
     // mirrors that by re-deriving against the post-reset state. A
     // form mounted with invalid defaults stays in an invalid surface
@@ -280,6 +315,44 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
       'password:zod:too_small',
       'password:user:reused',
     ])
+  })
+
+  it('keeps schema then blank then user order when one path carries all three', async () => {
+    // The aggregate used to make three passes over the stores, one per
+    // source, which produced this order as a side effect of the pass
+    // order. It now makes ONE pass and gathers a path's three lists
+    // together, which is the same answer only because ordinals are
+    // injective over paths. This is the case that says so.
+    const threeWay = z.object({
+      first: z.string().min(1, 'first required'),
+      n: z.number().min(5, 'too small'),
+    })
+    const { app, api } = mountForm(threeWay, { first: '', n: 0 })
+    apps.push(app)
+
+    // `unset` marks `n` blank while storage keeps the slim default 0,
+    // which also fails `.min(5)`: one path, a schema error and a blank
+    // error at once.
+    api.setValue('n', unset)
+    const handler = api.handleSubmit(
+      async () => {},
+      async () => {}
+    )
+    await handler()
+    await waitUntil(() =>
+      api.meta.errors.some((e) => e.code === 'atta:no-value-supplied') ? true : null
+    )
+    api.setErrors((prev) => [
+      ...prev,
+      { path: ['n'], message: 'reused', formKey: api.key, code: 'user:reused' },
+    ])
+    await waitUntil(() => (api.meta.errors.some((e) => e.code === 'user:reused') ? true : null))
+
+    const atN = api.meta.errors.filter((e) => e.path.join('.') === 'n').map((e) => e.code)
+    expect(atN).toEqual(['zod:too_small', 'atta:no-value-supplied', 'user:reused'])
+    // And the path ordinal still puts `first` ahead of `n`.
+    const paths = api.meta.errors.map((e) => e.path.join('.'))
+    expect(paths.indexOf('first')).toBeLessThan(paths.indexOf('n'))
   })
 
   it('lazy-assigned paths get ordinals after construction-time leaves', async () => {

@@ -49,7 +49,6 @@ function mount(): { app: App; api: Api } {
       handle.api = useForm({
         schema,
         key: 'errors-at',
-        strict: false,
         defaultValues: {
           reference: 'SHP-1',
           cargo: { items: [{ sku: 'A', qty: 1 }] },

@@ -263,7 +263,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
     app.mount(document.createElement('div'))
     apps.push(app)
 
-    // strict mode (default) seeds schemaErrors with the refinement
+    // construction seeds schemaErrors with the refinement
     // failure for `''`. blank stays false — the schema is the
     // authority on what "non-empty required" means.
     expect(handle.api?.errors.name?.[0]?.message).toBe('name required')
@@ -407,7 +407,7 @@ describe('derivedBlankErrors — independent of imperative writers', () => {
         handle.api = useForm({
           schema: refineSchema,
           key: 'derived-blank-coexist-refine',
-          // strict mode + auto-blank → at construction, schemaErrors
+          // construction + auto-blank → at construction, schemaErrors
           // gets the refinement entry (0 fails > 1000) AND
           // derivedBlankErrors gets the synthesised entry. Both
           // should appear in errors.income.

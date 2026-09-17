@@ -24,15 +24,14 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *      flows preserve refinement-invalid values that became invalid
  *      after the schema tightened. Today's strip behavior silently
  *      clobbers these.
- *   3. Visible failure — refinement errors surface via the strict-
- *      mode validation pass at construction. Silent rewriting is
+ *   3. Visible failure — refinement errors surface via the
+ *      construction-time validation pass. Silent rewriting is
  *      replaced with explicit error display.
  */
 
 function mountWith<S extends z.ZodObject>(
   schema: S,
-  defaults: Partial<z.infer<S>>,
-  strict: boolean = false
+  defaults: Partial<z.infer<S>>
 ): { api: UseFormReturnV4<S>; app: App } {
   const captured: { api?: UseFormReturnV4<S> } = {}
   const App = defineComponent({
@@ -40,7 +39,6 @@ function mountWith<S extends z.ZodObject>(
       const config = {
         schema,
         key: `slim-defaults-${Math.random().toString(36).slice(2)}`,
-        strict,
         defaultValues: defaults,
       }
       captured.api = (useForm as unknown as (cfg: unknown) => UseFormReturnV4<S>)(config)
@@ -126,19 +124,19 @@ describe('slim-primitive defaults — wrong-primitive fixed to schema default', 
   })
 })
 
-describe('slim-primitive defaults — strict-mode surfaces refinement errors at construction', () => {
+describe('slim-primitive defaults — refinement errors surface at construction', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('strict mount with refinement-invalid default surfaces a field error', async () => {
+  it('a refinement-invalid default surfaces a field error', async () => {
     const schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
-    const { api, app } = mountWith(schema, { color: 'teal' as 'red' }, true)
+    const { api, app } = mountWith(schema, { color: 'teal' as 'red' })
     apps.push(app)
-    // Strict-mode runs the FULL schema's safeParse at construction
-    // and surfaces refinement errors. The form value is still 'teal'
-    // (passes through), but fieldErrors/color is populated.
+    // Construction runs the FULL schema's safeParse and surfaces
+    // refinement errors. The form value is still 'teal' (passes
+    // through), but fieldErrors/color is populated.
     expect(api.values.color).toBe('teal')
     const errs = api.errors.color
     expect(errs).toBeDefined()

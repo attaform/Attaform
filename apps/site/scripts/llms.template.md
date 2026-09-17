@@ -16,7 +16,7 @@ Forms are bound to native inputs through the `v-register` directive, which also 
 
 <!-- @snippet:template -->
 
-The form handle exposes reactive reads (`form.values`, `form.errors`, `form.fields`, `form.meta`), mutation helpers (`form.setValue`, `form.reset`, `form.history.undo`), and submission (`form.handleSubmit`). The `v-register` directive accepts `{ transforms, autoAria }` options for per-field configuration.
+The form handle exposes reactive reads (`form.values`, `form.errors`, `form.fields`, `form.meta`), mutation helpers (`form.setValue`, `form.reset`, `form.history.undo`), and submission (`form.handleSubmit`). The `v-register` directive accepts a `{ transforms }` option for per-field configuration.
 
 Multistep flows compose forms under `useWizard`:
 
@@ -46,14 +46,14 @@ The form handle returned by `useForm({ schema })`:
 - `form.fields.<path>` per-field state. Most-touched keys: `value`, `touched`, `interacted`, `blurredAfterInteraction`, `dirty`, `blank`, `displayState`, `showErrors`, `firstError`, `validating`, `valid`, `errors`, `key`, `focused`, `blurred`, `connected`. `displayState` (`idle` / `pending` / `error` / `success`) projects to `showPending` / `showSuccess` / `showIdle` alongside `showErrors`; every field also carries `id` + `aria.{errorId, descriptionId}` for accessibility wiring, and `key` follows an array element across reorders. The default display gate is reward-early/punish-late: it stays `idle` on a clean tab-through and mid-entry, reveals once a field is edited and then left (or on any submit), and clears live on re-focus. `interacted` (sticky on the first user edit) and `blurredAfterInteraction` (sticky on the first blur after an edit, the gate's driver) tell a real, completed edit apart from a tab-through.
 - `form.list(path)` / `form.record(path)` per-element reads: one FieldState per array element (index order) or per record entry (keyed), each carrying the stable `key` for a keyed `v-for`. `form.fields(path)` stays the rolled-up container for the whole array or record.
 - `form.meta` top-level flags: `valid`, `dirty`, `submitting`, `submitted`, `submissionAttempts`, `submitError`, `errorCount`, `errors`, `key`, `instanceId`. `form.meta` is itself a rolled-up FieldState, so it also carries `displayState` / `show*` aggregated over the form; `form.meta.showPending` additionally tracks the form's own validation, so it stays lit through a submit's validation pass. Gate a submit button on `form.meta.submitting` (the precise "a submit is in flight" flag); use `form.meta.showPending` for an ambient "validating" indicator.
-- `form.register(path, opts?)` returns the binding for `v-register`. Options: `transforms`, `autoAria`.
+- `form.register(path, opts?)` returns the binding for `v-register`. Options: `transforms`.
 - `form.handleSubmit(onSubmit, onError?)` submit wrapper. Validates, routes errors, calls `onSubmit` with the parsed values.
 - `form.setValue(path, value)`, `form.reset(defaults?)`, `form.resetField(path)`, `form.clear(path?)`, `form.unset(path)` programmatic writes.
 - `form.append`, `form.prepend`, `form.insert`, `form.remove`, `form.swap`, `form.move`, `form.replace` typed field-array mutations. An element's state (value, errors, dirty, touched) travels with it across reorders.
 - `form.validate(path?)`, `form.parse(path?, { commit? })` manual validation. `form.parse` is always async (no sync variant by design) and resolves the parsed Zod output; `{ commit: true }` writes the verdict to `form.errors` and cancels in-flight field runs.
 - `form.setErrors(errors)`, `form.setErrors(path, errors)`, `form.setErrors(updater)`, `form.clearErrors(path?)` set or clear the manual error layer. A path-less error is form-level at the root `[]`; each error accepts an optional `data` payload.
 - `form.history.{undo, redo, clear, canUndo, canRedo, size}` undo/redo namespace.
-- `form.applyInvalidSubmitPolicy(policy?)`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.
+- `form.applyInvalidSubmitPolicy()`, `form.focusFirstError()`, `form.scrollToFirstError()` UX primitives.
 - `form.touch(path?)`, `form.interact(path?)`, `form.toRef(path)`, `form.rehydrate()` introspection and lifecycle helpers. `touch` writes the descriptive `touched` flag; `interact` simulates a full focus/edit/blur so a seeded subtree reveals its errors under the default display heuristic.
 
 The wizard handle returned by `useWizard({ steps })`:
@@ -74,7 +74,7 @@ Patterns that keep Attaform code clean.
 - **Use the form handle. Don't destructure.** `const form = useForm(...)`, then reach for `form.register('email')`, `form.setValue(...)`, etc. Destructuring loses the central noun and the reactive bindings.
 - **Reach with `?.` on nullable returns.** `injectForm()` and `injectWizard()` return `T | null`. Chain optional access at every consumption site (`form?.register('email')`, `form?.fields.email.showErrors`). Skip the `!` non-null assertion; a single mount-order regression turns a quiet no-op into a runtime crash.
 - **Read errors through `field.showErrors` and `field.firstError`.** The visibility heuristic lives in `showErrors`; reaching into `field.errors[0]` directly bypasses it.
-- **Accessibility is automatic.** `v-register` keeps `aria-invalid`, `aria-busy`, `aria-required`, and `aria-describedby` in sync with each field's display state and emits them during SSR. Put `form.fields.<path>.aria.errorId` on the error element so `aria-describedby` resolves. Author any aria attribute yourself to take that one over, or pass `autoAria: false` to opt out.
+- **Accessibility is automatic.** `v-register` keeps `aria-invalid`, `aria-busy`, `aria-required`, and `aria-describedby` in sync with each field's display state and emits them during SSR. Put `form.fields.<path>.aria.errorId` on the error element so `aria-describedby` resolves. Author any aria attribute yourself to take that one over.
 - **Use `key` for stable forms.** Anonymous `useForm({ schema })` works for one-off forms. Pass `key: 'signup'` when you want cross-component lookup via `injectForm('signup')`.
 - **Compose, don't nest.** For multistep flows, compose multiple `useForm` instances under `useWizard` rather than nesting concerns into one schema.
 - **Native inputs first.** Bind to `<input>`, `<select>`, `<textarea>` with `v-register`. Reach for `useRegister` only when wrapping a custom component.

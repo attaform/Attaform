@@ -57,7 +57,7 @@ While `disabled` resolves truthy:
 
 A blocked write is silent to your code: it no-ops and returns, and the first one logs a one-time dev warning naming the freeze. Nothing throws, so a handler that writes on a frozen form needs no guard of its own.
 
-The resolved state reads back on `form.meta.disabled` and `field.disabled`, both read-only, so a template can style the frozen state without tracking the flag itself. Set it once for every form in the app through [`createAttaform({ defaults: { disabled } })`](/docs/cross-cutting-state/app-defaults).
+The resolved state reads back on `form.meta.disabled` and `field.disabled`, both read-only, so a template can style the frozen state without tracking the flag itself.
 
 One resolution rule to know when two components share a form: a keyed `FormStore` takes `disabled` from whichever `useForm({ key })` call ran first, and a later call passing a different value is ignored. Put the option on the call that owns the form.
 

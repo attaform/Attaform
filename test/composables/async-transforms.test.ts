@@ -91,7 +91,6 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
         const api = useForm({
           schema: opts.schema,
           key: `axf-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           ...(opts.defaultValues ? { defaultValues: opts.defaultValues } : {}),
         })
         handle.api = api

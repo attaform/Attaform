@@ -53,19 +53,43 @@ function runScoped<T>(scope: EffectScope, fn: () => T): T {
   return out
 }
 
+/**
+ * Let the construction-time async validation pass land.
+ *
+ * `signupSchema` carries an async refine, so every mount queues one
+ * pass regardless of whether the defaults parse. A test that reads
+ * `meta.validating` or `.valid` before it settles is reading that pass,
+ * not its own.
+ */
+async function settleMount(api: { meta: { validating: boolean } }): Promise<void> {
+  // The pass is queued in a microtask, so `validating` still reads false
+  // on entry. Drain a few rounds to let it start before waiting it out,
+  // or this returns before the run it is supposed to settle exists.
+  for (let i = 0; i < 4; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+  for (let i = 0; i < 32 && api.meta.validating; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
+
 function mountForm(onCreated: (form: UseFormReturn<typeof signupSchema>) => void) {
   type Returned = UseFormReturn<typeof signupSchema>
   const handle: { api?: Returned } = {}
   const App = defineComponent({
     setup() {
-      // Pin lax: these tests exercise async refinements via handleSubmit /
-      // validate() / parse({ commit: true }), not the construction-time strict-mode
-      // seed. Lax keeps the form mount-clean so each test drives the
-      // async path explicitly.
       handle.api = useForm({
         schema: signupSchema,
         key: 'async-validation',
-        strict: false,
+        // Start valid: these tests drive the async path explicitly via
+        // handleSubmit / validate() / parse({ commit: true }), and
+        // construction validates unconditionally, so failing defaults
+        // would seed the verdicts each test means to produce itself.
+        // Distinct from the values the tests write, so each `setValue`
+        // is a real change rather than a deduped no-op.
+        defaultValues: { email: 'seed@example.com', password: 'seed-secret' },
       })
       onCreated(handle.api)
       return () => h('div')
@@ -123,6 +147,7 @@ describe('async validation — handleSubmit awaits async refinements', () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
+    await settleMount(api)
     api.setValue('email', 'alice@example.com')
     api.setValue('password', 'very-secret')
     const handler = api.handleSubmit(async () => {})
@@ -282,6 +307,7 @@ describe('per-field valid — `form.fields.<path>.valid`', () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
+    await settleMount(api)
 
     api.setValue('email', 'alice@example.com')
     expect(api.fields.email.validating).toBe(true)
@@ -322,6 +348,7 @@ describe('form.meta.valid — `valid && !validating`', () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
+    await settleMount(api)
 
     api.setValue('email', 'alice@example.com')
     api.setValue('password', 'very-secret')

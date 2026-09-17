@@ -18,7 +18,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { DEFAULT_TIMINGS } from '../../src'
+import { DEFAULT_TIMINGS } from '../../src/runtime/core/display-state'
 import { wait, waitUntil } from '../utils/form-harness'
 
 // ── file-input simulation (jsdom can't drive the native picker) ──────────────
@@ -129,7 +129,6 @@ describe.each(adapters)('async file transforms — $name', ({ useForm, z }) => {
         const api = useForm({
           schema: opts.schema,
           key: `axff-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           ...(opts.defaultValues ? { defaultValues: opts.defaultValues } : {}),
         })
         handle.api = api
@@ -440,7 +439,6 @@ describe.each(adapters)('async file transform — gated display ($name)', ({ use
         const api = useForm({
           schema: z.object({ field: z.array(z.string()) }),
           key: `axff-disp-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: { field: [] },
         })
         handle.api = api

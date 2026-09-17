@@ -22,7 +22,7 @@ metaRows:
 ::docs-meta-table
 ::
 
-Submit the form with empty fields to watch focus pull to the first invalid one automatically. That's `handleSubmit` running its default invalid-submit policy (`'focus-first-error'`). The two buttons below dispatch the helpers imperatively, so you can drive focus or smooth-scroll outside the submit handler. Submitting again with valid fields shows the no-op success path.
+Submit the form with empty fields to watch focus pull to the first invalid one automatically. That's `handleSubmit` running Attaform's default invalid-submit nudge. The two buttons below dispatch the helpers imperatively, so you can drive focus or smooth-scroll outside the submit handler. Submitting again with valid fields shows the no-op success path.
 
 ::docs-demo{slug="focus-scroll" label="Focus & Scroll Demo"}
 ::
@@ -58,7 +58,7 @@ Reach for this when:
 
 - A page-level error banner has a "Jump to first error" button.
 - A multi-step form's "Next" button should pull focus on validation failure without going through `handleSubmit`.
-- Replacing the default invalid-submit policy with custom UX (see [Customizing the invalid-submit policy](#customizing-the-invalid-submit-policy)).
+- Replacing the automatic nudge with custom UX (see [Driving it yourself](#driving-it-yourself)).
 
 ## `scrollToFirstError(options?)`
 
@@ -68,7 +68,7 @@ form.scrollToFirstError({ behavior: 'smooth', block: 'center' })
 
 Returns `true` when a target was found and scrolled into view. Options forward to the underlying `Element.scrollIntoView`: `behavior: 'smooth'` for animated scroll, `block: 'center'` to position the field in the middle of the viewport.
 
-The default invalid-submit policy focuses but doesn't scroll on most browsers (focus triggers a minimal scroll). For tall forms where the first error might be far above the user's current scroll position, layer this on:
+The automatic nudge focuses but doesn't scroll on most browsers (focus triggers a minimal scroll). For tall forms where the first error might be far above the user's current scroll position, layer this on:
 
 ```ts
 const onSubmit = form.handleSubmit(
@@ -81,18 +81,18 @@ const onSubmit = form.handleSubmit(
 )
 ```
 
-## Customizing the invalid-submit policy
+## Driving it yourself
 
-Disable the default focus pull at the form level and run your own:
+`focusOnInvalidSubmit` turns the automatic pull off at the form level:
 
 ```ts
-useForm({
+const form = useForm({
   schema,
-  onInvalidSubmit: 'none', // skip the default focus
+  focusOnInvalidSubmit: false,
 })
 ```
 
-Then drive focus + scroll from `onError`:
+Then drive focus and scroll from `onError`:
 
 ```ts
 const onSubmit = form.handleSubmit(onSubmitValid, () => {
@@ -101,7 +101,7 @@ const onSubmit = form.handleSubmit(onSubmitValid, () => {
 })
 ```
 
-The `'focus-first-error'` (default), `'scroll-to-first-error'`, `'both'`, and `'none'` policy options live on the form config and on `createAttaform({ defaults })` for an app-wide default. See the [Types reference](/docs/reference/types) for the full set.
+Turning the automatic nudge off never takes the helpers away: `focusFirstError()` and `scrollToFirstError()` do exactly what they say whatever the form was configured with. That is the point of the off-switch, because the only reason to reach for it is that you want to run the move yourself.
 
 ## Where to next
 

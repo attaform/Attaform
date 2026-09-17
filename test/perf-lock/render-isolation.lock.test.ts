@@ -63,7 +63,7 @@ const ADAPTERS = [
   { name: 'zod-v3', z: zV3 as any, useForm: useFormV3 as any },
 ] as const
 
-type SubStyle = 'fields-display' | 'fields-value' | 'register-value'
+type SubStyle = 'fields-display' | 'fields-value' | 'register-value' | 'errors-tree'
 
 type FieldSpec = {
   path: string
@@ -111,6 +111,37 @@ const flatSiblings: ReadonlyArray<FieldSpec> = [
   { path: 'e', label: 'e', role: 'isolated' },
 ]
 const flatFields = (edit: FieldSpec): ReadonlyArray<FieldSpec> => [edit, ...flatSiblings]
+
+// NESTED — editing a leaf must leave the sibling subtree (contact.*) and the
+// sibling container untouched, while the OWN ancestor container stays live.
+// Hoisted because the one-shot pin at the bottom of the file re-runs it with
+// mount-seeded errors.
+const NESTED_FIELDS_DISPLAY: LockScenario = {
+  id: 'nested: fields-display',
+  style: 'fields-display',
+
+  makeSchema: (z: any): any =>
+    z.object({
+      profile: z.object({ first: z.string().min(2), last: z.string() }),
+      contact: z.object({ email: z.string().min(3), phone: z.string() }),
+    }),
+  // Defaults that PARSE. Construction validates unconditionally, and a form
+  // that mounts holding schema errors pays a one-shot aggregate rebuild on
+  // its first write (pinned separately below). This scenario measures
+  // steady-state isolation, so it starts clean.
+  defaultValues: { profile: { first: 'Ada', last: '' }, contact: { email: 'a@b.co', phone: '' } },
+  fields: [
+    { path: 'profile.first', label: 'profile.first', role: 'isolated' },
+    { path: 'profile.last', label: 'profile.last', role: 'isolated' },
+    { path: 'contact.email', label: 'contact.email', role: 'isolated' },
+    { path: 'contact.phone', label: 'contact.phone', role: 'isolated' },
+    { path: 'profile', label: 'profile(container)', role: 'ancestor' },
+    { path: 'contact', label: 'contact(container)', role: 'isolated' },
+  ],
+  edit: { label: 'profile.first', path: 'profile.first', value: 'Grace' },
+  validateOn: 'change',
+  note: 'ancestor container stays live; sibling subtree + sibling container hold 0',
+}
 
 const SCENARIOS: ReadonlyArray<LockScenario> = [
   // CONTROL — register-value is already granular. Green before AND after the
@@ -169,29 +200,7 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
     validateOn: 'change',
     note: 'same keystroke through the value surface',
   },
-  // NESTED — editing a leaf must leave the sibling subtree (contact.*) and the
-  // sibling container untouched, while the OWN ancestor container stays live.
-  {
-    id: 'nested: fields-display',
-    style: 'fields-display',
-    makeSchema: (z: any): any =>
-      z.object({
-        profile: z.object({ first: z.string().min(2), last: z.string() }),
-        contact: z.object({ email: z.string().min(3), phone: z.string() }),
-      }),
-    defaultValues: { profile: { first: '', last: '' }, contact: { email: '', phone: '' } },
-    fields: [
-      { path: 'profile.first', label: 'profile.first', role: 'isolated' },
-      { path: 'profile.last', label: 'profile.last', role: 'isolated' },
-      { path: 'contact.email', label: 'contact.email', role: 'isolated' },
-      { path: 'contact.phone', label: 'contact.phone', role: 'isolated' },
-      { path: 'profile', label: 'profile(container)', role: 'ancestor' },
-      { path: 'contact', label: 'contact(container)', role: 'isolated' },
-    ],
-    edit: { label: 'profile.first', path: 'profile.first', value: 'Grace' },
-    validateOn: 'change',
-    note: 'ancestor container stays live; sibling subtree + sibling container hold 0',
-  },
+  NESTED_FIELDS_DISPLAY,
   // ARRAY — editing one cell must leave the other cells (same row and other
   // rows) untouched.
   {
@@ -256,6 +265,10 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
         let read: unknown
         if (props.style === 'register-value') read = rv.displayValue.value
         else if (props.style === 'fields-value') read = (props.form as any).fields(props.path).value
+        else if (props.style === 'errors-tree')
+          // The materialised tree, a different reader from `fields(path)`:
+          // it walks the error stores rather than one path's field state.
+          read = JSON.stringify((props.form as any).errors[props.path] ?? null)
         else read = (props.form as any).fields(props.path).displayState
         return h('div', String(read ?? ''))
       }
@@ -272,7 +285,6 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
           schema,
           key: `iso-${adapter.name}-${keySeq}`,
           defaultValues: scenario.defaultValues,
-          strict: false,
           validateOn: scenario.validateOn,
           debounceMs: 0,
         })
@@ -312,6 +324,76 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
     await settle()
     return Object.fromEntries(renders)
   }
+
+  /**
+   * The mount-seeded case, which used to be the hole in the lock above.
+   *
+   * Construction validates unconditionally, so most real forms mount
+   * holding errors: required-but-empty fields. Clearing the first of
+   * them rebuilt the form-global error index, and every container read
+   * that index directly, so the first write after mount cost ONE render
+   * per unrelated container, linear in container count (measured n-1 at
+   * n = 2, 10, 50 and 200). The scenarios above start from defaults that
+   * parse and so never saw it.
+   *
+   * Containers now read their own memoised window of that index, which
+   * holds its previous array when the set of error paths under it is
+   * unchanged, so an unrelated path's error stops there. Both writes
+   * assert 0: the first for the fan-out itself, the second because the
+   * steady state it settles into is the same one the scenarios lock.
+   */
+  it('a mount-seeded error costs an unrelated container nothing, on any write', async () => {
+    const seeded: LockScenario = {
+      ...NESTED_FIELDS_DISPLAY,
+      id: 'nested: fields-display (mount-seeded)',
+      defaultValues: { profile: { first: '', last: '' }, contact: { email: '', phone: '' } },
+    }
+    const form = mount(seeded)
+    await settle()
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace H')
+    await settle()
+    form.setValue('profile.first', 'Grace Hopper')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+  })
+
+  /**
+   * The same mount-seeded shape through the OTHER error reader.
+   *
+   * `form.errors.<path>` materialises a tree rather than reading one
+   * path's field state, and it used to build that tree by scanning the
+   * whole error store and filtering by prefix, so it woke on every
+   * path's errors exactly as the aggregate did (measured 9 at n=10 and
+   * 49 at n=50 unrelated containers). Both readers now take their
+   * candidates from the same per-prefix window, so both hold 0.
+   */
+  it('a mount-seeded error costs an unrelated container nothing on the errors tree', async () => {
+    const seeded: LockScenario = {
+      ...NESTED_FIELDS_DISPLAY,
+      id: 'nested: errors-tree (mount-seeded)',
+      style: 'errors-tree',
+      defaultValues: { profile: { first: '', last: '' }, contact: { email: '', phone: '' } },
+    }
+    const form = mount(seeded)
+    await settle()
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace H')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+  })
 
   it.each(SCENARIOS)('$id — $note', async (scenario) => {
     const counts = await drive(scenario)

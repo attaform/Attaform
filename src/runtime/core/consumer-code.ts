@@ -4,7 +4,8 @@
  * A schema is not inert data. `z.lazy(() => ...)`, `.default(() => ...)`
  * and `.catch(() => ...)` all hold consumer functions, and Attaform
  * invokes them during its own walks: deriving blanks at mount,
- * resolving a recursive node, fingerprinting. A throw from any of them
+ * resolving a recursive node, filling a structural gap on a write. A
+ * throw from any of them
  * lands in the middle of a walk, which means it comes out of
  * `useForm(...)` or `setValue(...)` and takes the host component with
  * it. Attaform must never be the reason a third-party page goes down.

@@ -11,17 +11,15 @@ import { fakeSchema } from '../utils/fake-schema'
 import { assertNeverSettles } from '../utils/form-harness'
 
 /**
- * Initial validation seed: when a form is constructed in strict mode
- * and its default values fail schema validation, `schemaErrors` is
- * populated immediately at construction time (without requiring a user
- * mutation or an explicit `parse({ commit: true })` call).
+ * Initial validation seed: when a form's default values fail schema
+ * validation, `schemaErrors` is populated immediately at construction
+ * time (without requiring a user mutation or an explicit
+ * `parse({ commit: true })` call).
  *
- * Three invariants locked here:
- *   1. STRICT mode + invalid defaults  → seed populates schemaErrors.
- *   2. LAX mode    + invalid defaults  → no seed (lax explicitly opts
- *      out of construction-time validation).
- *   3. Hydration provided              → hydration replaces the seed
- *      wholesale; the server's snapshot is authoritative.
+ * Two invariants locked here:
+ *   1. Invalid defaults   → seed populates schemaErrors.
+ *   2. Hydration provided → hydration replaces the seed wholesale;
+ *      the server's snapshot is authoritative.
  */
 
 const tightSchema = z.object({
@@ -31,7 +29,7 @@ const tightSchema = z.object({
 
 type Tight = z.infer<typeof tightSchema>
 
-function mountWithZod(options: { strict?: boolean; defaultValues?: Partial<Tight> }): {
+function mountWithZod(options: { defaultValues?: Partial<Tight> }): {
   app: App
   api: UseFormReturn<typeof tightSchema>
 } {
@@ -42,7 +40,6 @@ function mountWithZod(options: { strict?: boolean; defaultValues?: Partial<Tight
       handle.api = useForm({
         schema: tightSchema,
         key: 'init-seed',
-        ...(options.strict !== undefined ? { strict: options.strict } : {}),
         ...(options.defaultValues ? { defaultValues: options.defaultValues } : {}),
       })
       return () => h('div')
@@ -55,19 +52,19 @@ function mountWithZod(options: { strict?: boolean; defaultValues?: Partial<Tight
   return { app, api: handle.api as API }
 }
 
-describe('initial validation seed — strict mode', () => {
+describe('initial validation seed', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('strict mode + async refine degrades gracefully — form mounts cleanly', () => {
-    // Regression: strict mode's seed pass calls `rootSchema.safeParse(data)`
+  it('an async refine degrades gracefully — form mounts cleanly', () => {
+    // Regression: the seed pass calls `rootSchema.safeParse(data)`
     // synchronously, which throws when the schema contains an async refine
     // (zod's "Encountered Promise during synchronous parse"). The adapter
     // catches the throw and returns success so the form still mounts.
-    // Without this fallback, strict-default useForm calls would crash
-    // setup for any form using `z.string().refine(async ...)`.
+    // Without this fallback, `useForm` would crash setup for any form
+    // using `z.string().refine(async ...)`.
     //
     // Async refines fire on the next microtask via the construction-
     // time async-validation seed (the runtime asks the schema's
@@ -99,11 +96,11 @@ describe('initial validation seed — strict mode', () => {
     expect(handle.api?.errors.email).toEqual([])
   })
 
-  it('strict is the default — omitting strict populates schemaErrors', () => {
-    // Pin: useForm({ schema, ... }) with no explicit strict flag
-    // must resolve to 'strict'. Flipping the default back to 'lax'
-    // would silently regress consumers who expect "errors are a pure
-    // function of (value, schema) at all times."
+  it('populates schemaErrors at construction when defaults fail validation', () => {
+    // Pin: errors are a pure function of (value, schema) at all
+    // times, including the frame the form mounts on. Empty defaults:
+    // '' fails .email(), '' fails .min(8). Both surface in
+    // fieldErrors before any user interaction.
     const { app, api } = mountWithZod({})
     apps.push(app)
     expect(api.errors.email?.[0]?.message).toBe('bad email')
@@ -111,19 +108,8 @@ describe('initial validation seed — strict mode', () => {
     expect(api.meta.valid).toBe(false)
   })
 
-  it('populates schemaErrors at construction when defaults fail validation', () => {
-    const { app, api } = mountWithZod({ strict: true })
-    apps.push(app)
-    // Empty defaults: '' fails .email(), '' fails .min(8). Both errors
-    // surface in fieldErrors before any user interaction.
-    expect(api.errors.email?.[0]?.message).toBe('bad email')
-    expect(api.errors.password?.[0]?.message).toBe('min 8 chars')
-    expect(api.meta.valid).toBe(false)
-  })
-
   it('does NOT seed when defaults validate cleanly', () => {
     const { app, api } = mountWithZod({
-      strict: true,
       defaultValues: { email: 'a@a.com', password: 'longenough' },
     })
     apps.push(app)
@@ -153,7 +139,7 @@ describe('initial validation seed — async-refine schema', () => {
     }
   }
 
-  it('strict mode fires async refines on the next microtask (no user input required)', async () => {
+  it('async refines fire on the next microtask (no user input required)', async () => {
     // Schema combines a sync constraint (`z.email()`) with an async
     // refine that rejects "taken@example.com". Default value is
     // `taken@example.com` — passes sync, fails refine. Pre-fix the
@@ -192,49 +178,6 @@ describe('initial validation seed — async-refine schema', () => {
     const message = await waitFor(() => api.errors.email?.[0]?.message ?? null)
     expect(message).toBe('That email is already registered.')
     expect(api.meta.valid).toBe(false)
-  })
-
-  it('lax mode does NOT fire the construction-time async seed', async () => {
-    // Lax mode opts out of construction-time validation (sync OR
-    // async). The async-refine seed is gated to strict mode so lax
-    // consumers continue to mount with a clean error state.
-    const asyncSchema = z.object({
-      email: z
-        .email()
-        .refine(async (v) => v !== 'taken@example.com', 'That email is already registered.'),
-    })
-    type AsyncApi = UseFormReturn<typeof asyncSchema>
-    const handle: { api?: AsyncApi } = {}
-    const App = defineComponent({
-      setup() {
-        handle.api = useForm({
-          schema: asyncSchema,
-          key: 'init-seed-async-lax',
-          strict: false,
-          defaultValues: { email: 'taken@example.com' },
-        })
-        return () => h('div')
-      },
-    })
-    const app = createApp(App).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    apps.push(app)
-    const api = handle.api
-    if (api === undefined) throw new Error('unreachable')
-    // Lax mode must NOT fire the construction-time async seed. Poll on
-    // the would-fire signal and fail if it ever lands. The signal is a
-    // NON-EMPTY errors array: a field with no errors reads `[]`, not
-    // `undefined`, so an `!== undefined` probe here is true on the
-    // first poll and waits for nothing.
-    await assertNeverSettles(
-      () => (api.errors.email?.length ?? 0) > 0,
-      50,
-      'lax mode fired the construction-time async seed (errors landed)'
-    )
-    expect(api.errors.email).toEqual([])
-    expect(api.meta.valid).toBe(true)
   })
 
   it('SSR pass does not schedule the async seed (validating stays false through microtasks)', async () => {
@@ -325,20 +268,22 @@ describe('initial validation seed — async-refine schema', () => {
     expect(api.errors.email?.[0]?.message).toBe('taken')
   })
 
-  it('mixed sync+async refines: sync error seeds synchronously, async lands on next microtask', async () => {
+  it('mixed sync+async refines: neither seeds, and both land on the async pass', async () => {
     // Regression: when a schema mixes sync and async refines and the
-    // SYNC refine fails on the supplied default, the sync error must
-    // seed at construction. Pre-fix, the construction-time
-    // `safeParse` threw on the async sibling and the catch swallowed
-    // both classes of error — sync verdicts only landed after the
-    // post-mount async pass. UI bound to construction-time errors
-    // ("fix N errors" badges, demo REPL wizard) missed the count
-    // for one frame.
+    // A schema mixing a failing SYNC refine with an async sibling seeds
+    // neither at construction: both verdicts arrive together on the
+    // post-mount pass.
     //
-    // Fix: when sync `safeParse` throws on async refines, the adapter
-    // retries against a sync-only variant of the schema
-    // (`stripAsyncChecks`) so sync verdicts seed synchronously.
-    // Async-only verdicts stay deferred to the post-mount pass.
+    // It used to seed the sync half, by rebuilding the schema without
+    // its async predicates and parsing that copy. The walker doing it
+    // was a second parallel understanding of every Zod kind, and its v3
+    // counterpart answered differently for the same schema, so the two
+    // adapters disagreed. Both are gone.
+    //
+    // What a consumer loses is one frame: UI bound to construction-time
+    // errors ("fix N errors" badges) shows zero until the pass lands.
+    // `meta.valid` does NOT flicker, because a schema declaring async
+    // work is already clamped invalid until `firstValidationDone`.
     const mixedSchema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z
@@ -365,15 +310,14 @@ describe('initial validation seed — async-refine schema', () => {
     const api = handle.api
     if (api === undefined) throw new Error('unreachable')
 
-    // Frame 1, no `await`: sync refine seeded directly. Async sibling's
-    // verdict is still in flight.
-    expect(api.errors.word?.[0]?.message).toBe('word required')
+    // Frame 1, no `await`: nothing seeded, but the form already reports
+    // itself invalid off the async gate, so a submit button bound to
+    // `meta.valid` renders disabled from the first paint either way.
+    expect(api.errors.word).toEqual([])
     expect(api.errors.email).toEqual([])
     expect(api.meta.valid).toBe(false)
-    expect(api.meta.errors.length).toBeGreaterThan(0)
 
-    // After microtasks settle: async refine error lands too. Sync
-    // error stays put.
+    // After the pass settles: both verdicts land, and they land together.
     const emailMessage = await waitFor(() => api.errors.email?.[0]?.message ?? null)
     expect(emailMessage).toBe('That email is already registered.')
     expect(api.errors.word?.[0]?.message).toBe('word required')
@@ -381,11 +325,9 @@ describe('initial validation seed — async-refine schema', () => {
   })
 
   it('mixed sync+async refines: clean sync default does not seed, async still deferred', async () => {
-    // Symmetry with the failing-sync case: when the sync sibling's
-    // default is clean, no error seeds synchronously. The async
-    // sibling's verdict still lands on the post-mount pass — the
-    // sync-only retry just succeeded, so the catch path returns lax
-    // success (matching today's behaviour for pure-async schemas).
+    // Symmetry with the failing-sync case: a clean sync default seeds
+    // nothing either, and the async sibling's verdict still lands on the
+    // post-mount pass.
     const mixedSchema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z
@@ -422,44 +364,7 @@ describe('initial validation seed — async-refine schema', () => {
     expect(api.errors.word).toEqual([])
   })
 
-  it('mixed sync+async refines + lax mode: no construction-time seed at all', () => {
-    // Lax explicitly opts out of construction-time validation. The
-    // sync-only retry path is gated to strict mode (same gate as the
-    // existing strict parse branch), so lax forms continue to mount
-    // with a clean error state regardless of whether the sync sibling
-    // would have failed.
-    const mixedSchema = z.object({
-      word: z.string().refine((v) => v.length > 0, 'word required'),
-      email: z
-        .email()
-        .refine(async (v) => v !== 'taken@example.com', 'That email is already registered.'),
-    })
-    type MixedApi = UseFormReturn<typeof mixedSchema>
-    const handle: { api?: MixedApi } = {}
-    const App = defineComponent({
-      setup() {
-        handle.api = useForm({
-          schema: mixedSchema,
-          key: 'init-seed-mixed-lax',
-          strict: false,
-          defaultValues: { word: '', email: 'taken@example.com' },
-        })
-        return () => h('div')
-      },
-    })
-    const app = createApp(App).use(createAttaform())
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    apps.push(app)
-    const api = handle.api
-    if (api === undefined) throw new Error('unreachable')
-    expect(api.errors.word).toEqual([])
-    expect(api.errors.email).toEqual([])
-    expect(api.meta.valid).toBe(true)
-  })
-
-  it('sync schema in strict mode lands errors synchronously and validating stays false', () => {
+  it('a sync schema lands errors synchronously and validating stays false', () => {
     // Detection's load-bearing invariant: sync schemas don't pay a
     // construction-time async pass. Errors don't flicker either way
     // (`applySchemaErrorsForSubtree` runs sync and Vue batches per
@@ -497,29 +402,6 @@ describe('initial validation seed — async-refine schema', () => {
   })
 })
 
-describe('initial validation seed — lax mode', () => {
-  const apps: App[] = []
-  afterEach(() => {
-    while (apps.length > 0) apps.pop()?.unmount()
-  })
-
-  it('does NOT populate schemaErrors at construction even when defaults fail', () => {
-    // Lax mode is the explicit opt-out for the construction-time
-    // schemaErrors seed: "best-effort defaults, no refinement
-    // enforcement at mount." The schema here is two strings — neither
-    // auto-marks blank (only numeric primitives do), so
-    // `derivedBlankErrors` stays empty and the test reads the
-    // schemaErrors-seed channel cleanly. A separate test in
-    // derived-blank-errors.test.ts covers the reactive blank class
-    // for numeric leaves.
-    const { app, api } = mountWithZod({ strict: false })
-    apps.push(app)
-    expect(api.errors.email).toEqual([])
-    expect(api.errors.password).toEqual([])
-    expect(api.meta.valid).toBe(true)
-  })
-})
-
 describe('initial validation seed — hydration takes precedence', () => {
   it('skips the seed when hydration is provided (server is authoritative)', () => {
     // Hand-roll a fakeSchema whose getDefaultValues reports a failure
@@ -554,7 +436,6 @@ describe('initial validation seed — hydration takes precedence', () => {
     const state = createFormStore<Form>({
       formKey: 'hyd',
       schema: failingDefaultsSchema,
-      strict: true,
       hydration: {
         form: { email: 'server@x.com', password: 'serverpw' },
         // Empty stores — hydration says the server saw a valid form.
@@ -608,7 +489,6 @@ describe('initial validation seed — hydration takes precedence', () => {
     const state = createFormStore<Form>({
       formKey: 'hyd2',
       schema: failingDefaultsSchema,
-      strict: true,
       hydration: {
         form: { email: 'a@a', password: 'irrelevant' },
         schemaErrors: [[emailKey, onlyServerError]],

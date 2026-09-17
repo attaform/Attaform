@@ -1,11 +1,12 @@
 import { getCurrentScope, onScopeDispose, ref, watchEffect, type Ref } from 'vue'
 import type {
   ErrorInput,
+  FormKey,
   HandleSubmit,
   OnError,
-  OnInvalidSubmitPolicy,
   OnSubmit,
   ReactiveValidationStatus,
+  SchemaParseResult,
   SubmitHandler,
   ValidationError,
   ValidationResponse,
@@ -104,19 +105,19 @@ function deriveSubmitErrors(err: unknown): { entries: ValidationError[]; message
 
 export type BuildProcessFormOptions = {
   /**
-   * Policy applied inside handleSubmit when validation fails. Invoked
-   * after the error store is populated and before the user's `onError`
-   * callback. Default `'none'`.
+   * Invoked inside handleSubmit when validation fails, after the error
+   * store is populated and before the user's `onError` callback. The
+   * form API supplies its own `focusOnInvalidSubmit` behavior here; with
+   * nothing supplied a failed submit moves neither focus nor viewport.
    */
-  onInvalidSubmit?: OnInvalidSubmitPolicy
+  applyInvalidSubmit?: () => void
 }
 
 export function buildProcessForm<F extends GenericForm, Out extends GenericForm = F>(
   state: FormStore<F, Out>,
-  formInstanceId: string,
   options: BuildProcessFormOptions = {}
 ) {
-  const invalidPolicy: OnInvalidSubmitPolicy = options.onInvalidSubmit ?? 'focus-first-error'
+  const applyInvalidSubmit = options.applyInvalidSubmit
 
   function validate(pathInput?: string | Path): Readonly<Ref<ReactiveValidationStatus<F>>> {
     // Start in a pending state — the first async run has not settled yet.
@@ -363,7 +364,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     data: unknown,
     path: Path | undefined
   ): Promise<ValidationResponse<Out>> {
-    return await state.schema.validateAtPath(data, path)
+    return stampFormKey(await state.schema.validateAtPath(data, path), state.formKey)
   }
 
   /**
@@ -542,14 +543,13 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
               state.setAllSchemaErrors(refinement.errors)
             }
           }
-          // Apply the invalid-submit focus/scroll policy AFTER populating
-          // the error store (so getFirstErrorElement walks the fresh
-          // entries) and BEFORE the user's onError callback (so consumer
-          // logic can override by calling .focus on something else).
-          // Skip the policy too on a stale generation — the post-reset
-          // form has no errors to focus.
+          // Run the invalid-submit nudge AFTER populating the error store
+          // (so getFirstErrorElement walks the fresh entries) and BEFORE
+          // the user's onError callback (so consumer logic can override
+          // by calling .focus on something else). Skip it too on a stale
+          // generation — the post-reset form has no errors to focus.
           if (generationStillValid) {
-            applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
+            applyInvalidSubmit?.()
           }
           if (onError !== undefined) {
             try {
@@ -588,7 +588,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         // the `onError` arm.
         if (hasUserErrorEntries(state)) {
           if (state.submissionGeneration.value === genAtEntry) {
-            applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
+            applyInvalidSubmit?.()
           }
           return
         }
@@ -652,7 +652,7 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
             // Focus the first error, mirroring the validation-failure and
             // leftover-errors branches. A form-level `[]` error owns no
             // element, so this is a no-op in that case.
-            applyInvalidSubmitPolicy(state, formInstanceId, invalidPolicy)
+            applyInvalidSubmit?.()
             if (__DEV__ && messageless) {
               console.warn(
                 '[attaform] handleSubmit callback threw a non-Error value; throw an ' +
@@ -681,6 +681,24 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   return { validate, parse, handleSubmit }
+}
+
+/**
+ * Name the form a schema verdict belongs to.
+ *
+ * An `AbstractSchema` answers for the SCHEMA: one instance is shared by
+ * every form built on the same schema, so it cannot know which of them
+ * asked and returns a verdict with no form key on it. The owning store
+ * is where that identity lives, so the store is what stamps it.
+ */
+function stampFormKey<T>(verdict: SchemaParseResult<T>, formKey: FormKey): ValidationResponse<T> {
+  if (verdict.success) return { ...verdict, formKey }
+  // Split on `data` as well as `success`: "failed with no data" and
+  // "failed with partial data" are separate arms of the public response,
+  // and a spread alone would not tell them apart.
+  return verdict.data === undefined
+    ? { data: undefined, errors: verdict.errors, success: false, formKey }
+    : { data: verdict.data, errors: verdict.errors, success: false, formKey }
 }
 
 function toSegments(pathInput: string | Path): Path {
@@ -738,33 +756,4 @@ function collectScopedBlankErrors<F extends GenericForm>(
     errors.push(...entries)
   }
   return errors
-}
-
-export function applyInvalidSubmitPolicy<F extends GenericForm>(
-  state: FormStore<F, GenericForm>,
-  formInstanceId: string,
-  policy: OnInvalidSubmitPolicy
-): void {
-  if (policy === 'none') return
-  const target = state.domBinding.value?.getFirstErrorElement(formInstanceId) ?? null
-  if (target === null) return
-  if (policy === 'scroll-to-first-error') {
-    target.element.scrollIntoView()
-    return
-  }
-  if (policy === 'focus-first-error') {
-    // `focusVisible: true` asks the UA to paint a focus ring as if
-    // `:focus-visible` matched. Without it, focus moved by script right
-    // after a pointer-driven submit doesn't satisfy the heuristic for
-    // non-text controls (radio / checkbox / custom widgets), so the
-    // field is focused but ringless and the user can't see where focus
-    // landed. Honored where supported, silently ignored elsewhere.
-    target.element.focus({ focusVisible: true })
-    return
-  }
-  // 'both' — scroll first, then focus with preventScroll so the
-  // browser doesn't undo the explicit scroll. `focusVisible` paints the
-  // ring on the moved-to field even for non-text controls.
-  target.element.scrollIntoView()
-  target.element.focus({ preventScroll: true, focusVisible: true })
 }

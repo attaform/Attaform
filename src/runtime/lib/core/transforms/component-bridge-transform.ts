@@ -760,8 +760,9 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     if (alreadyInjected) return
 
     // Signal compiled SSR that this v-register host is a component, so the
-    // directive's getSSRProps suppresses autoAria on the host root (the
-    // inner control the component re-binds via useRegister carries it).
+    // directive's getSSRProps suppresses the managed aria attrs on the
+    // host root (the inner control the component re-binds via useRegister
+    // carries them).
     // The runtime path reads the component vnode directly; compiled SSR
     // only has a null vnode, so this modifier is the channel. (#404)
     if (

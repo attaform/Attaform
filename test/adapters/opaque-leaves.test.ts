@@ -151,7 +151,6 @@ describe.each(ADAPTERS)('opaque leaves — $name', (adapter) => {
   it('validates a container of opaque elements at both levels', async () => {
     const { api } = makeMounter(adapter.useForm, adapter.fileArray(), {
       defaultValues: { files: [] },
-      strict: true,
     })()
 
     // Container-level refinement fires at the container's own path.

@@ -49,7 +49,7 @@ The first error's `.message` is what most templates render:
 </template>
 ```
 
-For display ergonomics, gating by [`getDisplayState`](/docs/validation/showing-errors) and pulling the first error in one shot, reach for [`form.fields.email.firstError`](/docs/reading-the-form/fields) paired with `form.fields.email.showErrors`. The errors Proxy is the raw aggregate; the fields Proxy is the same data with display gating and `firstError` sugar layered on.
+For display, reach for [`form.fields.email.firstError`](/docs/reading-the-form/fields) paired with `form.fields.email.showErrors`. The two answer different questions and neither one gates the other: `firstError` is sugar for `errors[0]` and reports whenever an error exists, while [`showErrors`](/docs/validation/showing-errors) is the separate decision of whether the user should see it yet. The errors Proxy is the raw aggregate; the fields Proxy is the same data with that pairing layered on.
 
 ## Container reads
 
@@ -112,7 +112,7 @@ form.setErrors([
 
 - [The form](/docs/reading-the-form/the-form): every other reactive read.
 - [`values`](/docs/reading-the-form/values): the read companion to errors.
-- [`fields`](/docs/reading-the-form/fields): per-leaf state, including the gated `firstError` / `showErrors` pairing.
+- [`fields`](/docs/reading-the-form/fields): per-leaf state, including the `showErrors` gate and the `firstError` message it renders.
 - [`meta`](/docs/reading-the-form/meta): the form-level aggregates (`errorCount`, `valid`, `submitting`, etc.).
 - [When validation runs](/docs/validation/when-validation-runs): the moment errors appear.
 - [Server-side errors](/docs/submitting/server-side-errors): `setErrors` and `clearErrors` in full.

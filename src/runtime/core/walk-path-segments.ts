@@ -120,6 +120,8 @@ export function walkPathSegments<Schema>(
     case 'optional':
     case 'nullable':
     case 'default':
+    case 'nonoptional':
+    case 'success':
     case 'readonly':
     case 'catch': {
       // `catch` peels like a wrapper — descend into the inner schema.

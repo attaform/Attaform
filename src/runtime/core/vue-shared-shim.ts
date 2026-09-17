@@ -30,7 +30,7 @@ export function isSet(value: unknown): value is Set<unknown> {
   return toTypeString(value) === '[object Set]'
 }
 
-export function isDate(value: unknown): value is Date {
+function isDate(value: unknown): value is Date {
   return toTypeString(value) === '[object Date]'
 }
 

@@ -153,10 +153,6 @@ type AnyUseForm = (opts: any) => any
  * called inside the root component's setup. Each invocation produces
  * an isolated app + form key (random suffix) so tests in the same
  * file don't collide.
- *
- * Defaults `strict: false` because the property tests focus
- * on write-gate semantics, not refinement-time validation. Override
- * via `options` for tests that need strict mode.
  */
 export function makeMounter<S>(
   useFormFn: AnyUseForm,
@@ -178,7 +174,6 @@ export function makeMounter<S>(
         captured.api = useFormFn({
           schema,
           key: `slim-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           ...options,
         })
         return () => (render === undefined ? h('div') : render(captured.api))

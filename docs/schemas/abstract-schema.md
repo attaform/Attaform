@@ -1,6 +1,6 @@
 ---
 title: AbstractSchema
-description: The schema-agnostic contract the core consumes, 15 required methods plus 4 optional hooks covering identity, defaults, shape, and validation. Implement it to wire any schema library into Attaform.
+description: The schema-agnostic contract the core consumes, 14 required methods plus 4 optional hooks covering defaults, shape, and validation. Implement it to wire any schema library into Attaform.
 metaRows:
   - label: Category
     value: Reference
@@ -26,11 +26,8 @@ This page is the contract reference. The Zod adapters under `attaform/zod` and `
 
 ```ts
 type AbstractSchema<Form, GetValueFormType = Form> = {
-  // Identity
-  fingerprint(): Promise<string>
-
   // Defaults
-  getDefaultValues(config): DefaultValuesResponse<Form>
+  getDefaultValues(config): SchemaDefaultsResult<Form>
   getDefaultAtPath(path: Path): unknown
   getEmptyValueAtPath(path: Path): unknown
 
@@ -51,7 +48,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
     data: unknown,
     path: Path | undefined,
     options?: ValidateOptions
-  ): MaybePromise<ValidationResponse<Form>>
+  ): MaybePromise<SchemaParseResult<Form>>
 
   // Optional hooks
   getFieldMetaAtPath?(path: Path): ResolvedFieldMeta
@@ -61,23 +58,13 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
 }
 ```
 
-Fifteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks, so omit them when your library doesn't model the feature.
-
-## Identity
-
-### `fingerprint()`
-
-Structural signature of the schema, resolved asynchronously. Two schemas with the same shape resolve to the same string; different shapes resolve to different ones. The promise is what lets an adapter keep its fingerprint walker off the eager path and import it on demand, which is exactly what both Zod adapters do. Mark the method `async` if yours is cheap enough to answer outright.
-
-It has one consumer today: the dev-mode shared-key check, where two `useForm({ key: 'x' })` calls with different schemas warn.
-
-Must NOT throw. If it does, Attaform catches the exception, logs it via `console.error` in dev, and skips the shared-key mismatch check for that call. An opaque stable string (`'custom-adapter:v1'`) is a valid fallback, at the cost of that one warning: two different schemas under the same key fingerprint identically and the mismatch goes unreported. Prefer a real structural hash if your library exposes the metadata.
+Fourteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks, so omit them when your library doesn't model the feature.
 
 ## Defaults
 
-### `getDefaultValues(config): DefaultValuesResponse<Form>`
+### `getDefaultValues(config): SchemaDefaultsResult<Form>`
 
-Returns `{ data, errors, success, formKey }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues`, `constraints`, and `strict` flags.
+Returns `{ data, errors, success }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues` and `constraints`.
 
 ### `getDefaultAtPath(path: Path): unknown`
 
@@ -157,9 +144,11 @@ For discriminated-union containers, return `{ discriminatorKey, getVariantDefaul
 
 ## Validation
 
-### `validateAtPath(data, path?, options?): MaybePromise<ValidationResponse>`
+### `validateAtPath(data, path?, options?): MaybePromise<SchemaParseResult>`
 
-Returns `MaybePromise<ValidationResponse>`. `path` is a `Segment[]` or `undefined` (whole-form validation). Honor `options.sync` when the schema is sync-capable; the runtime uses it to batch error writes inside DU variant reshape.
+Returns `MaybePromise<SchemaParseResult>`. `path` is a `Segment[]` or `undefined` (whole-form validation). Honor `options.sync` when the schema is sync-capable; the runtime uses it to batch error writes inside DU variant reshape.
+
+An `AbstractSchema` never names a form. One instance is shared by every form built on the same schema, and the owning store stamps its own `formKey` onto the verdict on the way out, which is why nothing you return here carries one.
 
 Must NOT throw. Return `{ success: false, errors }` for validation failures.
 
@@ -195,11 +184,10 @@ Assume your library exposes:
 ```ts
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
   GenericForm,
+  SchemaDefaultsResult,
   SlimPrimitiveKind,
   ValidationError,
-  ValidationResponse,
 } from 'attaform/abstract'
 
 const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
@@ -215,14 +203,10 @@ const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
 
 export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): AbstractSchema<F, F> {
   return {
-    async fingerprint() {
-      return schema.signature?.() ?? 'my-lib:v1'
-    },
-
-    getDefaultValues({ constraints }): DefaultValuesResponse<F> {
+    getDefaultValues({ constraints }): SchemaDefaultsResult<F> {
       const defaults = schema.defaultValues()
       const merged = mergeDeepPartial(defaults, constraints)
-      return { data: merged, errors: undefined, success: true, formKey: '' }
+      return { data: merged, errors: undefined, success: true }
     },
 
     getDefaultAtPath(path) {
@@ -302,7 +286,7 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
       const result = path !== undefined ? schema.parseAtPath(data, path) : schema.parse(data)
 
       if (result.success) {
-        return { success: true, data: result.data, errors: undefined, formKey: '' }
+        return { success: true, data: result.data, errors: undefined }
       }
 
       const errors: ValidationError[] = result.issues.map((issue) => ({
@@ -311,7 +295,7 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
         code: `my-lib:${issue.code ?? 'unknown'}`,
       }))
 
-      return { success: false, errors, data: undefined, formKey: '' }
+      return { success: false, errors, data: undefined }
     },
   }
 }

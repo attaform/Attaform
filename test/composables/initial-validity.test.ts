@@ -22,10 +22,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * lands. The gray state is the truth.
  *
  * Fix: gate `meta.valid` / per-path `valid` on a `firstValidationDone`
- * flag that starts `false` in strict mode and flips `true` once the
- * first validation completes (via the construction-time microtask
- * queue). Non-strict forms start `true` — they opt out of
- * validation by design.
+ * flag that starts `false` and flips `true` once the first validation
+ * completes (via the construction-time microtask queue).
  */
 
 // Reproduction: the SLIM schema (used at construction to derive defaults)
@@ -81,18 +79,14 @@ function mountAsync(): { app: App; api: AsyncApi } {
   return { app, api: handle.api as AsyncApi }
 }
 
-function mountSync(opts: { strict?: boolean } = {}): { app: App; api: SyncApi } {
+function mountSync(): { app: App; api: SyncApi } {
   const handle: { api?: SyncApi } = {}
   const App = defineComponent({
     setup() {
-      // exactOptionalPropertyTypes: only pass `strict` when the caller
-      // opted in; an explicit `undefined` is a different shape from an
-      // omitted property under that flag.
       handle.api = useForm({
         schema: syncSchema,
         key: `initial-validity-sync-${Math.random().toString(36).slice(2)}`,
         defaultValues: { reference: '' },
-        ...(opts.strict !== undefined ? { strict: opts.strict } : {}),
       })
       return () => h('div')
     },
@@ -180,7 +174,7 @@ describe('initial validity gating — sync-refinement schema', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('strict + sync: meta.valid is false synchronously after mount', () => {
+  it('a sync schema: meta.valid is false synchronously after mount', () => {
     const { app, api } = mountSync()
     apps.push(app)
     // Sync schemas don't queue construction-time async validation in
@@ -188,19 +182,6 @@ describe('initial validity gating — sync-refinement schema', () => {
     // catches this case — the form has never been validated, even
     // though the slim parse "succeeded" trivially.
     expect(api.meta.valid).toBe(false)
-  })
-
-  it('non-strict skips the gate (validation is opt-out by design)', () => {
-    const { app, api } = mountSync({ strict: false })
-    apps.push(app)
-    // Non-strict consumers explicitly tell the runtime to treat
-    // defaultValues as best-effort — locking the form forever
-    // because nothing validated would defeat the opt-out.
-    expect(api.meta.valid).toBe(true)
-    // Root subtree via the empty-path sentinel (`form.fields([])`), the
-    // same root convention used above; the empty STRING is not a schema
-    // field, so `form.fields('')` is undefined under the truthful gate.
-    expect(valid(api, [[]])).toBe(true)
   })
 })
 

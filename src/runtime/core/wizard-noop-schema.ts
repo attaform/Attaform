@@ -1,10 +1,9 @@
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
-  FormKey,
   MaybePromise,
+  SchemaDefaultsResult,
+  SchemaParseResult,
   SlimPrimitiveKind,
-  ValidationResponse,
 } from '../types/types-api'
 
 /**
@@ -19,41 +18,36 @@ import type {
  *  - No paths resolve in the schema: every introspection method returns
  *    a permissive empty answer so the form runtime never tries to walk
  *    fields that do not exist.
- *  - The fingerprint is constant — every noop form structurally agrees
- *    with every other noop form, so a same-key collision between a
- *    string slot and a real form raises the standard fingerprint
- *    mismatch warning from `useAbstractForm`.
+ *  - Every noop schema is structurally interchangeable with every
+ *    other, so a same-key collision between a string slot and a real
+ *    form raises the standard schema-mismatch warning from
+ *    `useAbstractForm`.
  */
-
-const NOOP_FINGERPRINT = 'attaform:wizard-noop'
 
 const EMPTY_SLIM_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set()
 
 /**
- * Build the noop schema for a given form key. The key only enters the
- * resolved `ValidationResponse.formKey` field so error envelopes stay
- * symmetric with adapter-backed schemas; structurally every noop schema
- * is interchangeable.
+ * The noop schema. Every affordance slot in every wizard in the app
+ * shares one instance: a schema that declares nothing has nothing to
+ * distinguish it, and the owning store stamps its own key onto the
+ * envelopes on the way out.
  */
-export function buildNoopWizardSchema(
-  formKey: FormKey
-): AbstractSchema<Record<string, never>, Record<string, never>> {
-  const emptyValue: Record<string, never> = {}
-  const success: ValidationResponse<Record<string, never>> = {
-    success: true,
-    data: emptyValue,
-    errors: undefined,
-    formKey,
-  }
-  const defaultsResponse: DefaultValuesResponse<Record<string, never>> = {
-    success: true,
-    data: emptyValue,
-    errors: undefined,
-    formKey,
-  }
-  return {
-    fingerprint: () => Promise.resolve(NOOP_FINGERPRINT),
-    getDefaultValues: () => defaultsResponse,
+const EMPTY_VALUE: Record<string, never> = {}
+const NOOP_SUCCESS: SchemaParseResult<Record<string, never>> = {
+  success: true,
+  data: EMPTY_VALUE,
+  errors: undefined,
+}
+const NOOP_DEFAULTS: SchemaDefaultsResult<Record<string, never>> = NOOP_SUCCESS
+
+let NOOP_SCHEMA: AbstractSchema<Record<string, never>, Record<string, never>> | undefined
+
+export function buildNoopWizardSchema(): AbstractSchema<
+  Record<string, never>,
+  Record<string, never>
+> {
+  NOOP_SCHEMA ??= {
+    getDefaultValues: () => NOOP_DEFAULTS,
     getDefaultAtPath: () => undefined,
     getEmptyValueAtPath: () => undefined,
     isPreprocessOrCoerceLeaf: () => false,
@@ -64,11 +58,12 @@ export function buildNoopWizardSchema(
     // addressable, root included.
     entryKeyKindAtPath: () => undefined,
     getSchemasAtPath: () => [],
-    validateAtPath: (): MaybePromise<ValidationResponse<Record<string, never>>> => success,
+    validateAtPath: (): MaybePromise<SchemaParseResult<Record<string, never>>> => NOOP_SUCCESS,
     getSlimPrimitiveTypesAtPath: () => new Set(EMPTY_SLIM_KINDS),
     isLeafAtPath: () => false,
     isRequiredAtPath: () => false,
     getUnionDiscriminatorAtPath: () => undefined,
     hasDiscriminatedUnions: () => false,
   }
+  return NOOP_SCHEMA
 }

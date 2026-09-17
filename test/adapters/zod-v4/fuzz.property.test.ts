@@ -26,7 +26,6 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
     const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
-      strict: false,
     })
     expect(result.success).toBe(true)
     // After `success === true`, the result type narrows so `.data` is
@@ -46,7 +45,6 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
       const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
       const initial = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
-        strict: false,
       })
       expect(initial.success).toBe(true)
       const validation = await adapter.validateAtPath(initial.data, undefined)
@@ -55,21 +53,21 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
   )
 
   test.prop([arbRootSchema, fc.string({ minLength: 1, maxLength: 8 })])(
-    'every produced ValidationError (when constraints violate strict mode) carries the right formKey',
+    'the verdict is a pure function of the schema, not of which form asked',
     (schema, formKey) => {
-      const adapter = zodAdapter(schema as z.ZodObject)(formKey, { maxRecursionDepth: 64 })
-      // Strict-mode getDefaultValues may surface errors for refinements that
-      // a derived blank shape doesn't satisfy. Since we don't generate
-      // refinements the success path is the common outcome, but if the
-      // adapter ever produces errors here, the response envelope must
-      // carry our key and every entry must be well-formed.
-      const result = adapter.getDefaultValues({
-        useDefaultSchemaValues: true,
-        strict: true,
-      })
-      expect(result.formKey).toBe(formKey)
-      if (!result.success) {
-        for (const err of result.errors) {
+      // The property that lets ONE AbstractSchema serve every form built
+      // on a schema: the key the caller happens to carry changes nothing
+      // about the answer. The owning store stamps its own `formKey` on
+      // the way out; the schema never sees one.
+      const built = zodAdapter(schema as z.ZodObject)
+      const config = { useDefaultSchemaValues: true } as const
+      const mine = built(formKey, { maxRecursionDepth: 64 }).getDefaultValues(config)
+      const theirs = built('some-other-form', { maxRecursionDepth: 64 }).getDefaultValues(config)
+      expect(mine.success).toBe(theirs.success)
+      expect(mine.data).toEqual(theirs.data)
+      if (!mine.success) {
+        expect(theirs.success).toBe(false)
+        for (const err of mine.errors) {
           expect(typeof err.code).toBe('string')
         }
       }

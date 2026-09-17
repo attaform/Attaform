@@ -93,7 +93,6 @@ describe.each(adapters)('per-path snapshot — $name', ({ useForm, build }) => {
         api = (useForm as any)({
           schema,
           key: 'per-path-snapshot',
-          strict: false,
           validateOn: 'blur',
           defaultValues: { a: '', b: '' },
         })

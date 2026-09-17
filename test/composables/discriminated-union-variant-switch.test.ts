@@ -1711,7 +1711,7 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     apps.push(app)
     await nextTick()
 
-    // Construction-time strict validation seeds schemaErrors with the
+    // Construction-time validation seeds schemaErrors with the
     // email variant's failure (address='' fails `.min(3)`). One error.
     expect(api.errors('notify.address')).toHaveLength(1)
 

@@ -27,7 +27,11 @@
  * field names written below are the same ones `introspect.ts` reads.
  */
 import type { z } from 'zod-v3'
-import { getDiscriminatedOptions, getDiscriminatedOptionsMap } from './introspect'
+import {
+  discriminatedOptionsAreMapped,
+  getDiscriminatedOptions,
+  getDiscriminatedOptionsMap,
+} from './introspect'
 
 // The internal `_def` carrier. Reads go through `introspect.ts`; the
 // writes below are the one sanctioned place outside it that mirrors
@@ -217,6 +221,13 @@ export function rebuildDiscriminatedUnion(
       const replacement = index >= 0 ? options[index] : undefined
       if (replacement !== undefined) optionsMap.set(value, replacement)
     }
+  }
+  // Write the replacement back in the shape this zod parses from: before
+  // 3.20.0 `_def.options` IS the routing map and there is no
+  // `_def.optionsMap`, so handing it an array produces a union that
+  // matches nothing.
+  if (discriminatedOptionsAreMapped(original)) {
+    return rebuildWithDef(original, { options: optionsMap })
   }
   return rebuildWithDef(original, { options, optionsMap })
 }

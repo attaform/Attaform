@@ -49,16 +49,14 @@ describe('zod v3 adapter — bounded wrapper recursion', () => {
     expect(() => adapter.getDefaultValues({ useDefaultSchemaValues: true })).not.toThrow()
   })
 
-  it('produces a finite fingerprint for a deep optional chain', async () => {
+  it('terminates the slim-primitive walk on a deep optional chain', () => {
     let schema: z.ZodTypeAny = z.string()
     for (let i = 0; i < 100; i++) {
       schema = schema.optional()
     }
     const root = z.object({ deep: schema })
     const adapter = zodAdapter(root)('f', { maxRecursionDepth: 64 })
-    const fp = await adapter.fingerprint()
-    expect(typeof fp).toBe('string')
-    expect(fp.length).toBeGreaterThan(0)
+    expect([...adapter.getSlimPrimitiveTypesAtPath(['deep'])]).toContain('string')
   })
 })
 
@@ -93,7 +91,7 @@ describe('zod v3 adapter — transparent wrapper kinds', () => {
     // Pass `strict: false` so the slim-parse rebuilds a checks-free
     // copy for default extraction. Strict mode (the default) would
     // surface the `email` validation rejection of `''`.
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true, strict: false })
+    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     // Input schema default (pre-transform) is `''`.
     expect(result.success).toBe(true)
     expect((result.data as { email: string }).email).toBe('')

@@ -187,21 +187,28 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
     // `zod`, so `attaform/zod-v3` has no static bare-`zod` import anywhere
     // in its closure: its zod-v3 imports are type-only (erased at build),
     // and it duck-types the schema passed to `useForm`. That keeps the v3
-    // bundle decoupled from whichever Zod major the consumer hoists. The
-    // only runtime `from 'zod'` lives in zod-v4/strip.ts, reachable from
-    // the v4 + unified entries below but not from here. A flip to `true`
-    // would mean a v4-only module (e.g. strip.ts) got re-co-located into
-    // the v3 closure by the chunk splitter, which is worth a look rather
-    // than a silent pass.
+    // bundle decoupled from whichever Zod major the consumer hoists.
     expect(closureContainsZodImport(join(distDir, 'zod-v3.mjs'))).toBe(false)
   })
 
-  it('zod-v4 entry references zod (directly or via a shared chunk)', () => {
-    expect(closureContainsZodImport(join(distDir, 'zod-v4.mjs'))).toBe(true)
+  it('zod-v4 entry carries no static `zod` import either', () => {
+    // v4 reached the same place v3 did, and only recently. Its last
+    // runtime `from 'zod'` lived in `zod-v4/strip.ts`, which built a
+    // replacement schema out of fresh `z.string()` / `z.object()` nodes
+    // and so had to reach for an ambient zod. That walker is gone: the
+    // adapter now only ever reads `_zod.def` off the schema the consumer
+    // handed it and calls methods through that object, including the
+    // version assertion, which duck-types on `def.type`.
+    //
+    // So both adapters are decoupled from whichever Zod the consumer
+    // hoists, which is the property worth having. A flip to `true` means
+    // something started constructing schema nodes rather than reading
+    // them — worth a look rather than a silent pass.
+    expect(closureContainsZodImport(join(distDir, 'zod-v4.mjs'))).toBe(false)
   })
 
-  it('zod (unified) entry references zod (directly or via a shared chunk)', () => {
-    expect(closureContainsZodImport(join(distDir, 'zod.mjs'))).toBe(true)
+  it('zod (unified) entry carries no static `zod` import', () => {
+    expect(closureContainsZodImport(join(distDir, 'zod.mjs'))).toBe(false)
   })
 
   it('no dist bundle imports `zod-v3` (the pnpm-alias specifier gets rewritten)', () => {

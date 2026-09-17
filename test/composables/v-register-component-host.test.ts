@@ -22,7 +22,7 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildRegister } from '../../src/runtime/core/register-api'
 import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
-import type { GetDisplayState, RegisterValue } from '../../src/runtime/types/types-api'
+import type { DisplayState, RegisterValue } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
 
@@ -672,10 +672,6 @@ describe('v-register component host: integration (modifier plumbed through)', ()
 const ariaSchema = z.object({ email: z.string().min(1), note: z.string().optional() })
 type AriaApi = UseFormReturn<typeof ariaSchema>
 
-const forceState =
-  (state: 'idle' | 'pending' | 'error' | 'success'): GetDisplayState =>
-  () => ({ display: state })
-
 type AriaHostMount = {
   app: App
   api: AriaApi
@@ -683,9 +679,15 @@ type AriaHostMount = {
   inner: () => HTMLInputElement
 }
 
+/**
+ * `display` forces the binding's verdict by swapping `ariaDisplayState`
+ * for a fixed ref. The display heuristic decides WHEN a verdict lands
+ * (`display-state.test.ts` owns that); these cases are about where on a
+ * component host the attributes land once a verdict exists.
+ */
 async function mountAriaHost(
   Child: ReturnType<typeof defineComponent>,
-  opts?: { getDisplayState?: GetDisplayState }
+  opts?: { display?: DisplayState }
 ): Promise<AriaHostMount> {
   const handle: { api?: AriaApi } = {}
   const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -694,10 +696,13 @@ async function mountAriaHost(
       const api = useForm({
         schema: ariaSchema,
         key: `aria-host-${Math.random().toString(36).slice(2)}`,
-        ...(opts?.getDisplayState ? { getDisplayState: opts.getDisplayState } : {}),
       })
       handle.api = api
-      const rv = api.register('email')
+      const real = api.register('email')
+      const rv =
+        opts?.display === undefined
+          ? real
+          : ({ ...real, ariaDisplayState: ref<DisplayState>(opts.display) } as RegisterValue)
       return () =>
         withDirectives(h(Child, { registerValue: rv }), [
           [vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true }],
@@ -741,7 +746,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 
   it('lights up aria-required on the discovered control, not the wrapper root', async () => {
-    m = await mountAriaHost(DivWrappedInput, { getDisplayState: forceState('idle') })
+    m = await mountAriaHost(DivWrappedInput, { display: 'idle' })
     // The required schema field surfaces aria-required on the inner control.
     expect(m.inner().getAttribute('aria-required')).toBe('true')
     // The presentational wrapper root carries no (invalid) aria.
@@ -749,7 +754,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 
   it('reflects a forced error state as aria-invalid + describedby on the control', async () => {
-    m = await mountAriaHost(DivWrappedInput, { getDisplayState: forceState('error') })
+    m = await mountAriaHost(DivWrappedInput, { display: 'error' })
     expect(m.inner().getAttribute('aria-invalid')).toBe('true')
     expect(m.inner().getAttribute('aria-describedby')).toBe(m.api.fields.email.aria.errorId)
   })
@@ -768,7 +773,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 
   it('respects aria the component authored on its own control (live-DOM lock)', async () => {
-    m = await mountAriaHost(DivWrappedAuthoredAria, { getDisplayState: forceState('error') })
+    m = await mountAriaHost(DivWrappedAuthoredAria, { display: 'error' })
     // The component shipped aria-invalid="false" on its control; the error
     // state would set it true, but the lock seeded from the live attribute
     // leaves it untouched.
@@ -778,7 +783,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 
   it('clears the control aria it set when the host unmounts', async () => {
-    m = await mountAriaHost(DivWrappedInput, { getDisplayState: forceState('error') })
+    m = await mountAriaHost(DivWrappedInput, { display: 'error' })
     const inner = m.inner()
     expect(inner.getAttribute('aria-invalid')).toBe('true')
     m.app.unmount()
@@ -790,7 +795,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 
   it('manages no control aria for a composite host (no latch, no target)', async () => {
-    m = await mountAriaHost(CompositePin, { getDisplayState: forceState('error') })
+    m = await mountAriaHost(CompositePin, { display: 'error' })
     // More than one control -> no latch -> no discovered aria target. The
     // composite widget owns its members' aria; value still binds via v-model.
     const segs = m.host().querySelectorAll('input')

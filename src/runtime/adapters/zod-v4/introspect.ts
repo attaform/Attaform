@@ -52,6 +52,11 @@ export type ZodKind =
   | 'template-literal'
   | 'transform'
   | 'file'
+  // Both carry their subject on `def.innerType`, so the walkers treat
+  // them as transparent wrappers. `nonoptional` additionally subtracts
+  // `undefined`, which is the whole point of it.
+  | 'nonoptional'
+  | 'success'
   // Enumerated so `assert-supported.ts` can reject them at construction
   // (none are form-representable — see the rationale on `UNSUPPORTED`).
   // Without explicit cases they would fall to `'unknown'` and the assert
@@ -148,6 +153,8 @@ const IDENTITY_KINDS = new Set<string>([
   'map',
   'symbol',
   'function',
+  'nonoptional',
+  'success',
 ])
 
 /**
@@ -350,6 +357,11 @@ export function getDefaultValue(schema: z.ZodType): unknown {
  * Kept on the introspect surface so the shared `SchemaIntrospector`
  * contract is uniform between v3 and v4; the core walkers consult this
  * for the v3-specific native-enum branch and silently skip on v4.
+ *
+ * The three stubs here read as one helper waiting to happen. Folding
+ * them into a shared `noV3Construct` was tried and measured 5 B LARGER:
+ * three adjacent identical bodies are something gzip already collects,
+ * while the shared name and its three re-exports are new tokens.
  */
 export function getNativeEnumValues(_schema: z.ZodType): Record<string, unknown> | undefined {
   return undefined
@@ -459,7 +471,7 @@ const DESCEND_SINGLE = [
 const DESCEND_RECORD = ['shape', 'entries'] as const
 const DESCEND_LIST = ['options', 'items'] as const
 
-export function walkSchemaTree(
+function walkSchemaTree(
   schema: z.ZodType,
   visit: (node: z.ZodType) => boolean,
   seen?: WeakSet<object>
@@ -522,7 +534,7 @@ export function walkSchemaTree(
  *
  * Used by the adapter's `needsAsyncValidation()` to drive the
  * runtime's construction-time async-validation seed (see
- * create-form-store's strict-mode block). False negatives just delay
+ * create-form-store's `queueInitialAsyncValidation`). False negatives just delay
  * async refines until first mutation — matches the pre-detection
  * behavior. False positives are unlikely (the AsyncFunction check is
  * precise) and cost only one extra microtask of validation work.
@@ -611,10 +623,10 @@ export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<objec
  * `def.checks[].def.fn` (refinement predicates). This walks
  * `def.transform` (the transform's payload). The two flags are OR'd
  * by the adapter to drive `needsAsyncValidation()`, but the
- * construction-time strict-mode pass treats them differently:
- * async refines can be stripped and the parse retried; async
- * transforms cannot, so the strict pass skips entirely and defers
- * to the post-mount `safeParseAsync` pass.
+ * construction-time parse treats them differently: async refines can
+ * be stripped and the parse retried; async transforms cannot, so the
+ * construction parse skips entirely and defers to the post-mount
+ * `safeParseAsync` pass.
  */
 export function containsAsyncTransform(schema: z.ZodType, seen?: WeakSet<object>): boolean {
   return walkSchemaTree(

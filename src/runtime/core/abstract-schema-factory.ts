@@ -13,15 +13,15 @@
  *
  *   - `AbstractSchemaServices<Schema, Form, GetValueFormType>` — the
  *     adapter-specific delegates the factory calls for everything that
- *     genuinely diverges per Zod version: fingerprinting, path-walking
+ *     genuinely diverges per Zod version: path-walking
  *     (the path walker itself has v3 / v4 quirks), default-value
- *     derivation, the strict-mode `getDefaultValues` flow,
+ *     derivation, the `getDefaultValues` flow,
  *     wrapper-peeling that's tied to the per-version wrapper set,
  *     field-meta resolution, and the per-version `safeParse`
  *     boundary.
  *
  * The two-interface split keeps the introspector reusable by any other
- * walker (fingerprint, slim-primitives, default-values) without dragging
+ * walker (slim-primitives, default-values) without dragging
  * in the side-effectful services. Services consume the introspector as
  * they wish; the factory consumes both.
  *
@@ -34,15 +34,14 @@
  */
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
-  FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
   SlimPrimitiveKind,
   UnionDiscriminatorContext,
   ValidationError,
-  ValidationResponse,
   ValidateOptions,
+  SchemaDefaultsResult,
+  SchemaParseResult,
   SchemaFactoryOptions,
 } from '../types/types-api'
 import { AttaformErrorCode } from './error-codes'
@@ -102,6 +101,9 @@ export type SharedZodKind =
   | 'promise'
   | 'custom'
   | 'template-literal'
+  // v4-only. Both wrap an inner schema on `def.innerType`.
+  | 'nonoptional'
+  | 'success'
 
 /**
  * A kind that declares a value without describing its shape.
@@ -214,8 +216,6 @@ export interface SchemaIntrospector<Schema> {
   getArrayElement(schema: Schema): Schema | undefined
   /** Element schema of a `z.set(...)`. Undefined for non-sets / malformed defs. */
   getSetValueType(schema: Schema): Schema | undefined
-  /** Key schema of a `z.record(K, V)`. Undefined for non-records / single-arg records. */
-  getRecordKeyType(schema: Schema): Schema | undefined
   /** Value schema of a `z.record(...)`. Undefined for non-records / malformed defs. */
   getRecordValueType(schema: Schema): Schema | undefined
   /**
@@ -270,12 +270,6 @@ export interface SchemaIntrospector<Schema> {
    * its target is constructed) returns `undefined`.
    */
   unwrapLazy(schema: Schema): Schema | undefined
-  /**
-   * Getter function reference of a `z.lazy()` wrapper — used by walkers
-   * that track cycle identity by the getter rather than its result
-   * (each call returns a distinct schema instance).
-   */
-  getLazyGetter(schema: Schema): (() => unknown) | undefined
 
   /**
    * Resolve a `z.default(...)` wrapper to its declared default value.
@@ -315,7 +309,7 @@ export interface SchemaIntrospector<Schema> {
  * `makeSubSchema` is the per-adapter sub-schema constructor for
  * `getSchemasAtPath`. v3 recurses through the full adapter factory
  * (sub-schemas expose the entire `AbstractSchema` surface). v4 builds
- * a 5-method stub (fingerprint / needsAsyncValidation /
+ * a 4-method stub (needsAsyncValidation /
  * getDefaultValues / getSchemasAtPath / validateAtPath) because none
  * of its consumers reach for the wider surface and the stub keeps
  * sub-walker allocation cheap. The factory preserves each adapter's
@@ -323,12 +317,6 @@ export interface SchemaIntrospector<Schema> {
  * coding one strategy.
  */
 export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
-  /**
-   * Resolves the deterministic structural fingerprint of the schema.
-   * Async so adapters can dynamic-import the fingerprint walker, keeping
-   * it off the eager path (only opt-in async features consume it).
-   */
-  fingerprint(schema: Schema): Promise<string>
   /**
    * Returns every sub-schema reachable at the given path. Multiple
    * results indicate a union / discriminated-union split; empty
@@ -356,25 +344,18 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    * yield the inner-schema's falsy concrete). v3 and v4 each implement
    * their own walker; the factory only consumes the result.
    */
-  deriveDefault(
-    schema: Schema,
-    useDefault: boolean,
-    maxRecursionDepth: number,
-    formKey: FormKey
-  ): unknown
+  deriveDefault(schema: Schema, useDefault: boolean, maxRecursionDepth: number): unknown
   /**
    * Adapter-owned construction-time default-values flow. v3 runs a
-   * validate-then-fix loop against a slim schema with strict-mode
-   * refine seeding; v4 runs a strict-pass-or-lax-success against the
-   * derived data. Both honour `config.strict ?? true` and
-   * `config.constraints`.
+   * validate-then-fix loop against a slim schema, then parses the real
+   * one; v4 parses the real schema against the derived data. Both
+   * honour `config.constraints`.
    */
-  runStrictGetDefaults(
+  runGetDefaults(
     schema: Schema,
     config: GetDefaultValuesConfig<Form>,
-    formKey: FormKey,
     maxRecursionDepth: number
-  ): DefaultValuesResponse<Form>
+  ): SchemaDefaultsResult<Form>
   /**
    * Peels `.optional()` / `.nullable()` only when the inner is
    * structurally fillable (object / array / tuple / record /
@@ -417,7 +398,7 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
   issuesToValidationErrors(issues: readonly unknown[]): ValidationError[]
   /**
    * Run a sync `safeParse` against the schema. Returns a tagged result
-   * the factory aggregates into a `ValidationResponse`. MAY throw when
+   * the factory aggregates into a `SchemaParseResult`. MAY throw when
    * the schema contains async-only refines / transforms (the factory
    * catches and falls back to the async path).
    */
@@ -440,9 +421,83 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    */
   makeSubSchema(
     schema: Schema,
-    formKey: FormKey,
     maxRecursionDepth: number
   ): AbstractSchema<unknown, GetValueFormType>
+}
+
+/**
+ * Ceiling on any one per-path memo inside an `AbstractSchema`.
+ *
+ * Chosen to sit far above a real form's working set (the widest bench
+ * form is 500 leaves) and far below anything worth holding, so in
+ * practice the cap is never reached and, when it is, the thing that
+ * reached it was a churn of invented keys rather than a working set.
+ */
+export const MEMO_CAP = 4096
+
+/** The root is always an object, and nothing else ever asks. */
+const ROOT_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>(['object'])
+/** A path the schema does not declare accepts nothing. */
+const NO_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>()
+
+/**
+ * Record a memoised answer, dropping the whole memo once it outgrows
+ * the cap.
+ *
+ * Clearing rather than evicting one entry is deliberate: every value
+ * here is a pure function of the schema and the path, so any of them is
+ * free to recompute, and a size check plus an occasional clear is the
+ * cheapest bound that exists. An LRU would cost a second structure per
+ * cache per schema to protect answers that are not expensive.
+ */
+export function memoPut<V>(memo: Map<PathKey, V>, key: PathKey, value: V): V {
+  if (memo.size >= MEMO_CAP) memo.clear()
+  memo.set(key, value)
+  return value
+}
+
+/**
+ * Per-adapter store of shared `AbstractSchema` instances.
+ *
+ * An `AbstractSchema` is a pure function of `(rootSchema,
+ * maxRecursionDepth)`: it answers questions about the SCHEMA, holds no
+ * form state, and since the form key left the contract there is nothing
+ * left in it that could differ between two forms declaring the same
+ * schema. Building one per `useForm()` callsite therefore minted 19
+ * methods, 18 service closures, 5 memos and 3 flags per form, 3,457 B,
+ * to hold answers identical to the ones the form next door already had.
+ *
+ * The map is weak on the schema, so a runtime-built schema still
+ * releases with the last form that referenced it. Sharing also raises
+ * the hit rate on the five memos: a second form on a known schema now
+ * starts warm.
+ *
+ * Each adapter calls this once at module scope to get its own store, so
+ * two majors can never answer for each other's schema objects.
+ */
+export function createSharedSchemaStore(): <Built>(
+  rootSchema: object,
+  maxRecursionDepth: number,
+  build: () => Built
+) => Built {
+  const bySchema = new WeakMap<object, Map<number, unknown>>()
+  return <Built>(rootSchema: object, maxRecursionDepth: number, build: () => Built): Built => {
+    let byDepth = bySchema.get(rootSchema)
+    if (byDepth === undefined) {
+      byDepth = new Map<number, unknown>()
+      bySchema.set(rootSchema, byDepth)
+    }
+    const hit = byDepth.get(maxRecursionDepth)
+    // The one unchecked step, and it is sound by construction: a
+    // caller's `Built` is derived from the schema it passes (v4's
+    // `Form` is `z.input<FormSchema>`), so the same key cannot produce
+    // two different built types. Nothing weaker than a dependent type
+    // expresses that, and a `WeakMap` has none.
+    if (hit !== undefined) return hit as Built
+    const built = build()
+    byDepth.set(maxRecursionDepth, built)
+    return built
+  }
 }
 
 /**
@@ -457,20 +512,34 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   rootSchema: Schema,
   intro: SchemaIntrospector<Schema>,
   services: AbstractSchemaServices<Schema, Form, GetValueFormType>,
-  formKey: FormKey,
   options: SchemaFactoryOptions
 ): AbstractSchema<Form, GetValueFormType> {
   const maxRecursionDepth = options.maxRecursionDepth
 
-  // Per-adapter caches. Lifetime = one `createAbstractSchema` call (one
-  // per `useForm()`). These memoise the schema walks that the proxy
-  // traps + reactive computeds hit on every read so the schema doesn't
-  // get re-walked per keystroke / per field-state get.
+  // Per-schema caches, memoising the schema walks that the proxy traps
+  // and reactive computeds hit on every read so the schema is not
+  // re-walked per keystroke / per field-state get.
+  //
+  // Lifetime is the SCHEMA's, not a form's, since `sharedAbstractSchema`
+  // hands one instance to every form built on the same schema. That
+  // makes bounding them load-bearing rather than tidy: a path can carry
+  // a record key or an array index the consumer invents at runtime, so
+  // the key domain is unbounded even though the schema is finite, and
+  // what used to be growth released on unmount would otherwise become
+  // growth released never. See `memoPut`.
   const leafCache = new Map<PathKey, boolean>()
   const preprocessOrCoerceCache = new Map<PathKey, boolean>()
   const opaqueLeafCache = new Map<PathKey, boolean>()
   const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
   const entryKeyKindCache = new Map<PathKey, 'string' | 'number' | undefined>()
+  // The accept-set at a path is a pure function of the schema, and it
+  // is asked for on the hot path: once per write by the slim-primitive
+  // gate, again per segment by the schema-filling writer, two or three
+  // more times by coercion. Each answer used to re-walk the schema from
+  // the root and allocate a fresh Set. Memoising it is what makes the
+  // set shared rather than copied, which is why the contract returns a
+  // `ReadonlySet`: the answer belongs to the schema, not to the caller.
+  const slimKindsCache = new Map<PathKey, ReadonlySet<SlimPrimitiveKind>>()
   // Memoised one-shot tree walks. `needsAsyncValidation` is queried at
   // construction by the store (drives the construction-time async seed);
   // `hasContainerOrRootRefine` is queried per keystroke (drives the
@@ -547,7 +616,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           if (intro.kindOf(litSchema) !== 'literal') continue
           const literalValues = intro.getLiteralValues(litSchema)
           if (literalValues.includes(value)) {
-            return services.deriveDefault(opt, true, maxRecursionDepth, formKey)
+            return services.deriveDefault(opt, true, maxRecursionDepth)
           }
         }
         return undefined
@@ -559,8 +628,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   }
 
   const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
-    fingerprint: () => services.fingerprint(rootSchema),
-
     needsAsyncValidation(): boolean {
       asyncValidationFlag ??=
         intro.containsAsyncRefine(rootSchema) || intro.containsAsyncTransform(rootSchema)
@@ -577,15 +644,15 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       return discriminatedUnionFlag
     },
 
-    getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form> {
-      return services.runStrictGetDefaults(rootSchema, config, formKey, maxRecursionDepth)
+    getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form> {
+      return services.runGetDefaults(rootSchema, config, maxRecursionDepth)
     },
 
     getDefaultAtPath(path) {
       // Empty path → root default. Reuses the same generator used at
       // form construction so refines / wrappers behave consistently.
       if (path.length === 0) {
-        return services.deriveDefault(rootSchema, true, maxRecursionDepth, formKey)
+        return services.deriveDefault(rootSchema, true, maxRecursionDepth)
       }
       const [first] = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       if (first === undefined) return undefined
@@ -596,7 +663,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       // the explicit default. First candidate matches
       // `validateAtPath`'s first-success semantic.
       const peeled = services.unwrapStructuralWrappers(first)
-      return services.deriveDefault(peeled, true, maxRecursionDepth, formKey)
+      return services.deriveDefault(peeled, true, maxRecursionDepth)
     },
 
     getEmptyValueAtPath(path) {
@@ -608,11 +675,11 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       // `.optional()` slot is legitimately `undefined`, clearing a
       // `.nullable()` slot is `null`.
       if (path.length === 0) {
-        return services.deriveDefault(rootSchema, false, maxRecursionDepth, formKey)
+        return services.deriveDefault(rootSchema, false, maxRecursionDepth)
       }
       const [first] = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       if (first === undefined) return undefined
-      return services.deriveDefault(first, false, maxRecursionDepth, formKey)
+      return services.deriveDefault(first, false, maxRecursionDepth)
     },
 
     arrayShapeAtPath(path) {
@@ -685,8 +752,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             answer = undefined
         }
       }
-      entryKeyKindCache.set(cacheKey, answer)
-      return answer
+      return memoPut(entryKeyKindCache, cacheKey, answer)
     },
 
     getSchemasAtPath(path) {
@@ -701,24 +767,27 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       // declare — callers (getValue / register / custom introspection)
       // treat `[]` as "no sub-schema here". No warning needed.
       if (resolved.length === 0) return []
-      return resolved.map((sub) => services.makeSubSchema(sub, formKey, maxRecursionDepth))
+      return resolved.map((sub) => services.makeSubSchema(sub, maxRecursionDepth))
     },
 
-    getSlimPrimitiveTypesAtPath(path): Set<SlimPrimitiveKind> {
+    getSlimPrimitiveTypesAtPath(path): ReadonlySet<SlimPrimitiveKind> {
       // Empty path is the root form: always an object.
-      if (path.length === 0) return new Set<SlimPrimitiveKind>(['object'])
+      if (path.length === 0) return ROOT_KINDS
+      const cacheKey = canonicalizePath(path).key
+      const hit = slimKindsCache.get(cacheKey)
+      if (hit !== undefined) return hit
       const resolved = services.getNestedSchemasInSlimMode(rootSchema, path, maxRecursionDepth)
       // Path doesn't resolve in the schema → no kinds accepted. The
       // gate's membership check rejects every kind against an empty
       // set, blocking writes to typo / unknown paths.
-      if (resolved.length === 0) return new Set<SlimPrimitiveKind>()
+      if (resolved.length === 0) return memoPut(slimKindsCache, cacheKey, NO_KINDS)
       const out = new Set<SlimPrimitiveKind>()
       for (const candidate of resolved) {
         for (const k of services.slimPrimitivesOf(candidate, maxRecursionDepth)) {
           out.add(k)
         }
       }
-      return out
+      return memoPut(slimKindsCache, cacheKey, out)
     },
 
     isLeafAtPath(path): boolean {
@@ -745,8 +814,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           !prim.has('array') &&
           !prim.has('map') &&
           !prim.has('set'))
-      leafCache.set(cacheKey, isLeaf)
-      return isLeaf
+      return memoPut(leafCache, cacheKey, isLeaf)
     },
 
     isPreprocessOrCoerceLeaf(path): boolean {
@@ -772,8 +840,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           }
         }
       }
-      preprocessOrCoerceCache.set(cacheKey, hit)
-      return hit
+      return memoPut(preprocessOrCoerceCache, cacheKey, hit)
     },
 
     isOpaqueLeafAtPath(path): boolean {
@@ -792,8 +859,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
         resolved.every((candidate) =>
           isOpaqueKind(intro.kindOf(services.peelAllWrappers(candidate)))
         )
-      opaqueLeafCache.set(cacheKey, opaque)
-      return opaque
+      return memoPut(opaqueLeafCache, cacheKey, opaque)
     },
 
     isRequiredAtPath(path): boolean {
@@ -818,9 +884,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       if (discriminatorCache.has(cacheKey)) {
         return discriminatorCache.get(cacheKey)
       }
-      const result = computeDiscriminator(path)
-      discriminatorCache.set(cacheKey, result)
-      return result
+      return memoPut(discriminatorCache, cacheKey, computeDiscriminator(path))
     },
 
     validateAtPath(
@@ -844,23 +908,22 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       return runAsync()
 
       // Post-parse aggregation core shared by runSync / runAsync: map a
-      // single safe-parse result to a ValidationResponse. The parse call
+      // single safe-parse result to a SchemaParseResult. The parse call
       // (sync vs async + its try/catch) stays in each runner; only the
       // success/issues -> response shaping is shared here.
       function parseResultToResponse(
         result: { success: true; data: unknown } | { success: false; issues: readonly unknown[] }
-      ): ValidationResponse<GetValueFormType> {
+      ): SchemaParseResult<GetValueFormType> {
         return result.success
-          ? { data: result.data as GetValueFormType, errors: undefined, success: true, formKey }
+          ? { data: result.data as GetValueFormType, errors: undefined, success: true }
           : {
               data: undefined,
               errors: services.issuesToValidationErrors(result.issues),
               success: false,
-              formKey,
             }
       }
 
-      function runSync(): ValidationResponse<GetValueFormType> {
+      function runSync(): SchemaParseResult<GetValueFormType> {
         if (path === undefined) {
           return parseResultToResponse(services.safeParseSync(rootSchema, data))
         }
@@ -872,10 +935,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           if (response.success) return response
           aggregated.push(...response.errors)
         }
-        return { data: undefined, errors: aggregated, success: false, formKey }
+        return { data: undefined, errors: aggregated, success: false }
       }
 
-      async function runAsync(): Promise<ValidationResponse<GetValueFormType>> {
+      async function runAsync(): Promise<SchemaParseResult<GetValueFormType>> {
         if (path === undefined) {
           let result: Awaited<ReturnType<typeof services.safeParseAsync>>
           try {
@@ -901,7 +964,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           if (response.success) return response
           aggregated.push(...response.errors)
         }
-        return { data: undefined, errors: aggregated, success: false, formKey }
+        return { data: undefined, errors: aggregated, success: false }
       }
 
       // User code inside `z.preprocess` / `.refine` / `.transform` can
@@ -916,7 +979,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       function validatorThrewResponse(
         err: unknown,
         errPath: Path
-      ): ValidationResponse<GetValueFormType> {
+      ): SchemaParseResult<GetValueFormType> {
         const message =
           err instanceof Error ? err.message : typeof err === 'string' ? err : 'Validator threw'
         return {
@@ -929,11 +992,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             },
           ],
           success: false,
-          formKey,
         }
       }
 
-      function pathNotFound(p: Path): ValidationResponse<GetValueFormType> {
+      function pathNotFound(p: Path): SchemaParseResult<GetValueFormType> {
         return {
           data: undefined,
           errors: [
@@ -944,7 +1006,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
             },
           ],
           success: false,
-          formKey,
         }
       }
     },

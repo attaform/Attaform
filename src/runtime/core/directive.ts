@@ -1185,7 +1185,7 @@ function findHostControl(el: HTMLElement): HTMLElement | null {
 // seeds only `connected` + focus/blur listeners, never reading or writing
 // `el.value`), so it cannot fight the v-model value channel. The live-DOM aria
 // lock honours aria the component authored on its own control (no vnode is
-// available for a runtime-discovered element); a no-op when autoAria is off.
+// available for a runtime-discovered element).
 function latchHostControl(el: HTMLElement, rv: RegisterValue, control: HTMLElement): void {
   rv.registerElement(control)
   setupAriaLive(control as AriaCarrier, rv)
@@ -1429,11 +1429,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // we re-paint and pick up any newly-authored attribute lock.
     const ariaEl = el as AriaCarrier
     const value = binding.value
-    if (
-      !isRegisterValue(value) ||
-      value.ariaEnabled !== true ||
-      value.ariaDisplayState === undefined
-    ) {
+    if (!isRegisterValue(value) || value.ariaDisplayState === undefined) {
       teardownAria(ariaEl)
     } else {
       const old = binding.oldValue
@@ -1508,8 +1504,8 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   // The lifecycle hooks above don't run on the server (Vue skips
   // directive lifecycle during SSR), so emit the same aria attributes
   // here from the SSR-time gated display state. Honors authored attrs
-  // (vnode-level lockout) and the ariaEnabled gate, touches no DOM, and
-  // shares `resolveAriaValue` with the client path. Ids are SSR-stable
+  // (vnode-level lockout), touches no DOM, and shares
+  // `resolveAriaValue` with the client path. Ids are SSR-stable
   // (formInstanceId derives from Vue's useId), so a server-rendered
   // describedby matches the client after hydration.
   getSSRProps(binding, vnode) {
@@ -1522,7 +1518,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // SSR path; under compiled SSR an authored aria attribute can't be
     // detected here, and the client directive reconciles it on hydration.
     const realVnode = (vnode as VNode | null) ?? null
-    // autoAria attrs belong on the bound form control, never on a
+    // Managed aria attrs belong on the bound form control, never on a
     // component host's root element (a presentational wrapper would carry
     // an invalid aria-* attribute). On the runtime path Vue invokes this
     // hook for both the component vnode and the resolved root element, so

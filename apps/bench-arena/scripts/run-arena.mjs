@@ -45,8 +45,14 @@ import { dirname, join, resolve } from 'node:path'
 import { argv, env, exit, version as nodeVersion } from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { readInstalledRepoSlug, readInstalledVersions } from './installed-version.mjs'
-import { measureBundles } from './measure-bundles.mjs'
-import { BASELINE, buildRuntime, crossMachineColumns, isDnf, SCENARIO_ORDER } from './runtime-shape.mjs'
+import { measureBundles, measureSharedValidatorFloor } from './measure-bundles.mjs'
+import {
+  BASELINE,
+  buildRuntime,
+  crossMachineColumns,
+  isDnf,
+  SCENARIO_ORDER,
+} from './runtime-shape.mjs'
 import { fetchScorecards, scorecardViewerUrl } from './scorecards.mjs'
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -317,6 +323,10 @@ async function assembleResults(cells, meta, runner, outPath) {
     baseline: BASELINE,
     capabilities: capabilitiesOf(meta, scorecardInfo),
     bundle: await measureBundles(),
+    // How much of a Zod row is not the form library. Measured by the same
+    // build as the rows, so the footnote under the bundle table cannot drift
+    // away from the chart it explains.
+    sharedValidator: await measureSharedValidatorFloor(),
     runtime: buildRuntime(cells, libOrder),
   }
 

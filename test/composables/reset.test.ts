@@ -604,41 +604,4 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     const postResetErr = await waitUntil(() => form.errors.email?.[0]?.message ?? null)
     expect(postResetErr).toBe('That email is already registered.')
   })
-
-  it('reset() with `strict: false` leaves schemaErrors empty (opt-out preserved)', async () => {
-    // Construction-time validation is gated on `strict: true` (the
-    // default). A form that explicitly opted out of strict mounts
-    // without populated schemaErrors. Reset must honor the same gate
-    // — re-running validation post-reset would violate the explicit
-    // opt-out. Pins that the re-derive fix in the other probe is
-    // strict-gated correctly.
-    const { useForm } = await import('../../src/zod')
-    const { createAttaform } = await import('../../src/runtime/core/plugin')
-    const { z } = await import('zod')
-
-    const schema = z.object({ name: z.string().min(1) })
-
-    let captured!: UseFormReturn<typeof schema>
-    const Probe = defineComponent({
-      setup() {
-        captured = useForm({
-          schema,
-          key: `reset-nonstrict-${Math.random().toString(36).slice(2)}`,
-          strict: false,
-          defaultValues: { name: '' },
-        })
-        return () => h('div')
-      },
-    })
-    const app = createApp(Probe).use(createAttaform())
-    app.mount(document.createElement('div'))
-    apps.push(app)
-    const form = captured
-
-    expect(form.meta.errors.length).toBe(0)
-    form.setValue('name', 'something')
-    form.reset()
-    // Still empty — strict: false opts out of the re-derive too.
-    expect(form.meta.errors.length).toBe(0)
-  })
 })

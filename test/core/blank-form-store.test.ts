@@ -3,10 +3,13 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
 
-// PathKey form used to read directly off the internal `Set<PathKey>`
-// (`state.blankPaths.has(...)`). The seed inputs (`initialBlankPaths`,
-// `hydration.blankPaths`) live at the I/O boundary and accept dotted
-// public paths instead.
+// The two seed inputs speak different dialects, on purpose.
+// `initialBlankPaths` comes from the construction-time unset walker,
+// which already emits canonical `PathKey`s, so it takes keys.
+// `hydration.blankPaths` comes off the wire, where `serialize.ts`
+// converts to dotted so the payload matches public path notation, so it
+// takes dotted paths. Each is converted (or not) by its own source
+// rather than sniffed per entry at the boundary.
 const incomeKey = canonicalizePath('income').key
 const nameKey = canonicalizePath('name').key
 
@@ -49,7 +52,7 @@ describe('FormStore — blank gate hook', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-2',
       schema: fakeSchema(defaults),
-      initialBlankPaths: ['income', 'name'],
+      initialBlankPaths: [incomeKey, nameKey],
     })
     expect(state.blankPaths.has(incomeKey)).toBe(true)
     expect(state.blankPaths.has(nameKey)).toBe(true)
@@ -61,7 +64,7 @@ describe('FormStore — blank gate hook', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-3',
       schema: fakeSchema(defaults),
-      initialBlankPaths: ['income'],
+      initialBlankPaths: [incomeKey],
       hydration: {
         form: defaults,
         schemaErrors: [],
@@ -124,7 +127,7 @@ describe('FormStore — blank gate hook', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-9',
       schema: fakeSchema(defaults),
-      initialBlankPaths: ['income'],
+      initialBlankPaths: [incomeKey],
     })
     state.setValueAtPath(['income'], 100, { blank: true })
     state.setValueAtPath(['income'], 200)
@@ -138,7 +141,7 @@ describe('FormStore — reset', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-10',
       schema: fakeSchema(defaults),
-      initialBlankPaths: ['income'],
+      initialBlankPaths: [incomeKey],
     })
     // User clears the path (manual unmark via a non-transient write).
     state.setValueAtPath(['income'], 100)
@@ -154,7 +157,7 @@ describe('FormStore — reset', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-11',
       schema: fakeSchema(defaults),
-      initialBlankPaths: ['income', 'name'],
+      initialBlankPaths: [incomeKey, nameKey],
     })
     state.reset({ income: 5 })
     // `income` is named, so its membership is re-decided by the args and
@@ -172,7 +175,7 @@ describe('FormStore — reset', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-12',
       schema: fakeSchema(defaults),
-      initialBlankPaths: ['income'],
+      initialBlankPaths: [incomeKey],
     })
     state.reset({ income: 5 })
     // Now snapshot is empty; reset() restores empty.

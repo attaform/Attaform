@@ -30,11 +30,7 @@ export function deriveDefault(
   useDefault: boolean,
   maxRecursionDepth: number
 ): unknown {
-  return deriveDefaultWalk(schema, useDefault, V4_INTROSPECTOR, maxRecursionDepth, {
-    // v4 has an exhaustive switch against `SchemaIntrospector.kindOf`;
-    // unknown kinds genuinely shouldn't appear, so return undefined.
-    unsupportedKindFallback: () => undefined,
-  })
+  return deriveDefaultWalk(schema, useDefault, V4_INTROSPECTOR, maxRecursionDepth)
 }
 
 export type GetDefaultValuesOptions = {
@@ -63,7 +59,7 @@ export type DefaultValuesResult<Form> = {
  * declare are preserved (except foreign-variant keys at DU values,
  * which the walk removes for the variant-memory machinery), and
  * async refines / transforms need no special casing — refinement
- * enforcement stays with the adapter's strict-mode pass and the
+ * enforcement stays with the adapter's construction parse and the
  * post-mount async pass.
  */
 export function getDefaultValuesFromZodSchema<Form>(
@@ -71,6 +67,19 @@ export function getDefaultValuesFromZodSchema<Form>(
 ): DefaultValuesResult<Form> {
   const { schema, useDefaultSchemaValues, constraints, maxRecursionDepth } = opts
   const initial = deriveDefault(schema, useDefaultSchemaValues, maxRecursionDepth)
+  // The walk repairs what the CONSTRAINTS broke: a constraint supplying
+  // a primitive where the schema declares an object, a DU value
+  // carrying keys from a variant it is not. With no constraints there
+  // is nothing to have broken, and the derivation is already a fixed
+  // point of the walk, so this skips 20 to 24 percent of the work on a
+  // wide form in what is the common case (most forms pass no
+  // `defaultValues` at all).
+  //
+  // That the derivation IS a fixed point is an invariant, not a
+  // theorem, so it is pinned across a corpus of schema shapes in
+  // `test/adapters/structural-walk-is-constraint-repair.test.ts`. If
+  // that suite ever fails, this branch is the thing to remove.
+  if (constraints === undefined) return { data: initial as Form, success: true }
   const merged = mergeDeep(initial, constraints)
 
   return fixStructuralDefaults<Form, z.ZodType>(

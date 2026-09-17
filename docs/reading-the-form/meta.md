@@ -136,7 +136,7 @@ Reach for it when an inline failure banner needs to react to submit errors witho
 - `goTo(currentKey)` (same-key jump) leaves it alone.
 - `next()` blocked by failed activation leaves it alone.
 
-The counter is a pure read; Attaform's default `getDisplayState` heuristic runs off `submissionAttempts` instead. Reach for `departAttempts` when an analytics event, a prior-step badge, or a layered error-reveal predicate wants the "user visited and left" signal:
+The counter is a pure read; Attaform's display heuristic runs off `submissionAttempts` instead. Reach for `departAttempts` when an analytics event or a prior-step badge wants the "user visited and left" signal:
 
 ```ts
 watch(

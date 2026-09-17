@@ -22,13 +22,11 @@ import {
   getEnumValues,
   getIntersectionLeft,
   getIntersectionRight,
-  getLazyGetter,
   getLiteralValues,
   getNativeEnumValues,
   getObjectShape,
   getMapKeyType,
   getMapValueType,
-  getRecordKeyType,
   getRecordValueType,
   getSetValueType,
   getTupleItems,
@@ -66,8 +64,6 @@ export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
     return getArrayElement(schema as z.ZodArray)
   },
   getSetValueType: (schema) => (kindOf(schema) === 'set' ? getSetValueType(schema) : undefined),
-  getRecordKeyType: (schema) =>
-    kindOf(schema) === 'record' ? getRecordKeyType(schema) : undefined,
   getRecordValueType: (schema) =>
     kindOf(schema) === 'record' ? getRecordValueType(schema) : undefined,
   getMapKeyType: (schema) => (kindOf(schema) === 'map' ? getMapKeyType(schema) : undefined),
@@ -83,7 +79,6 @@ export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
   unwrapPipeIn,
   unwrapPipeOut,
   unwrapLazy,
-  getLazyGetter,
   getDefaultValue,
   getCatchDefault,
   hasCatchValue,

@@ -2,7 +2,6 @@ import type { App, Plugin } from 'vue'
 import { __DEV__ } from './dev'
 import { attachRegistryToApp, createRegistry, type AttaformRegistry } from './registry'
 import type { SSRDetectOptions } from './ssr'
-import type { AttaformDefaults } from '../types/types-api'
 
 /**
  * Options for `createAttaform()`.
@@ -17,20 +16,6 @@ export type AttaformPluginOptions = SSRDetectOptions & {
    * fails silently. Pass `false` to skip the integration even in dev.
    */
   devtools?: boolean
-  /**
-   * App-level defaults applied to every `useForm` call in this app.
-   * Per-form options always win. See `AttaformDefaults` for
-   * the supported option set and the merge rules.
-   *
-   * ```ts
-   * app.use(
-   *   createAttaform({
-   *     defaults: { debounceMs: 100 },
-   *   })
-   * )
-   * ```
-   */
-  defaults?: AttaformDefaults
 }
 
 /**
@@ -103,7 +88,7 @@ function installAttaformOnApp(
  * CSR case — no `app.use(createAttaform())` required in `main.ts`.
  *
  * If the app already has an attaform registry attached (because the
- * consumer installed `createAttaform({ defaults, devtools })` or the
+ * consumer installed `createAttaform({ devtools })` or the
  * Nuxt module ran), this is a no-op and the existing registry is
  * returned. App-wide options are preserved.
  *
@@ -118,16 +103,16 @@ export function ensureAttaformInstalled(app: App): AttaformRegistry {
 /**
  * Create the Vue plugin that installs the form library on a Vue
  * application. Required only when you want app-wide options
- * (`defaults`, `devtools: false`, `ssr: true`) — for the default
- * setup, `useForm` / `injectForm` / `useRegister` lazy-install the
- * registry on first use.
+ * (`devtools: false`, `ssr: true`) — for the default setup,
+ * `useForm` / `injectForm` / `useRegister` lazy-install the registry
+ * on first use.
  *
  * ```ts
  * import { createApp } from 'vue'
  * import { createAttaform } from 'attaform'
  *
  * createApp(App)
- *   .use(createAttaform({ defaults: { debounceMs: 100 } }))
+ *   .use(createAttaform({ devtools: false }))
  *   .mount('#app')
  * ```
  *

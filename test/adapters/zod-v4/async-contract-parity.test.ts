@@ -3,17 +3,26 @@ import { z } from 'zod'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
 
 /**
- * v4 mirror of `test/adapters/zod-v3/async-contract-parity.test.ts`.
- * v4 already seeds sync-refine errors at construction via
- * `stripAsyncChecks(rootSchema)` in `adapter.ts:365-422`; this file
- * pins that reference so the v3 port lands as proven parity.
+ * What construction seeds when a schema mixes async and sync checks,
+ * for zod v4 — and its twin under `test/adapters/zod-v3/async-contract-parity.test.ts` must agree line for line.
  *
- * (`test/adapters/zod-v4/adapter.test.ts:94-169` covers the same
- * ground; mirroring the full suite here keeps the two adapter
- * trees row-for-row aligned during the Phase 10 work and beyond.)
+ * It seeds NOTHING. A schema declaring async work anywhere returns from
+ * `getDefaultValues` clean, and every verdict — sync or async — arrives
+ * on the post-mount async pass that `needsAsyncValidation()` schedules.
+ *
+ * This is where the two adapters converged. v4 used to rebuild the whole
+ * schema with async predicates removed and parse against that copy, so
+ * sync refines seeded; v3 could not tell sync from async at the
+ * predicate level, so its equivalent dropped EVERY `ZodEffects` and
+ * seeded only container and leaf checks. Two walkers, two different
+ * answers to the same schema, each a second parallel understanding of
+ * its Zod major. Both are gone, and the answer is now one answer.
+ *
+ * What did not change: a schema with no async work still seeds its sync
+ * violations at construction, which the counterweight case below pins.
  */
-describe('zod v4: strict getDefaultValues seeds sync refine errors alongside async siblings (V4-2 reference)', () => {
-  it('seeds sync-refinement errors at construction when an async sibling exists', () => {
+describe('zod v4: an async sibling defers the whole construction verdict', () => {
+  it('seeds nothing when an async refine exists, sync violations included', () => {
     const schema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
@@ -22,13 +31,23 @@ describe('zod v4: strict getDefaultValues seeds sync refine errors alongside asy
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
-      strict: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.errors).toBeUndefined()
+  })
+
+  it('still seeds the same violation when nothing async is present', () => {
+    // The counterweight: this is about the MIXTURE, not about the check.
+    const schema = z.object({ word: z.string().refine((v) => v.length > 0, 'word required') })
+    const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
+    const result = adapter.getDefaultValues({
+      useDefaultSchemaValues: false,
+      constraints: { word: '' },
     })
 
     expect(result.success).toBe(false)
-    const messages = result.errors?.map((e) => e.message) ?? []
-    expect(messages).toContain('word required')
-    expect(messages).not.toContain('taken')
+    expect(result.errors?.map((e) => e.message) ?? []).toContain('word required')
   })
 
   it('returns success when the sync portion is clean but async refines exist', () => {
@@ -40,14 +59,13 @@ describe('zod v4: strict getDefaultValues seeds sync refine errors alongside asy
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: 'hello', email: 'a@b.com' },
-      strict: true,
     })
 
     expect(result.success).toBe(true)
     expect(result.errors).toBeUndefined()
   })
 
-  it('strict: false bypasses the sync-only retry path entirely', () => {
+  it('a FAILING sync sibling is not seeded either, when an async refine is present', () => {
     const schema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
@@ -56,7 +74,6 @@ describe('zod v4: strict getDefaultValues seeds sync refine errors alongside asy
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
-      strict: false,
     })
 
     expect(result.success).toBe(true)
@@ -71,7 +88,6 @@ describe('zod v4: strict getDefaultValues seeds sync refine errors alongside asy
     const result = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { email: 'a@b.com' },
-      strict: true,
     })
 
     expect(result.success).toBe(true)

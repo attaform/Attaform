@@ -122,8 +122,8 @@ function isCheckboxInput(tagName: string, type: unknown): boolean {
  * attributes. Each managed attr is set or removed independently.
  */
 export function applyAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode | null): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
-  // Only real form controls carry autoAria (see setupAria). (#404)
+  if (rv.ariaDisplayState === undefined) return
+  // Only real form controls carry managed aria (see setupAria). (#404)
   if (!INTERACTIVE_TAG_NAMES.has(el.tagName)) return
   const locks = el[ariaLockKey] ?? EMPTY_ARIA_LOCKS
   const ds = rv.ariaDisplayState.value
@@ -145,8 +145,8 @@ export function applyAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode | nul
  * re-render fires. No-op when this binding has aria disabled.
  */
 export function setupAria(el: AriaCarrier, rv: RegisterValue, vnode: VNode): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
-  // autoAria only manages real form controls. When v-register lands on a
+  if (rv.ariaDisplayState === undefined) return
+  // The directive only manages aria on real form controls. When v-register lands on a
   // component host (a presentational wrapper such as a <div>), the attrs
   // would be invalid ARIA on a role-less element; the inner control the
   // component re-binds via useRegister carries them instead. (#404)
@@ -192,7 +192,7 @@ function seedLocksFromDom(el: AriaCarrier): void {
  * `teardownAria` releases it unchanged. (#404 follow-up)
  */
 export function setupAriaLive(el: AriaCarrier, rv: RegisterValue): void {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return
+  if (rv.ariaDisplayState === undefined) return
   // The discovered control is an interactive element by construction (the
   // host latch gates on input / select / textarea), but keep the tag gate
   // for parity with setupAria / applyAria.
@@ -222,7 +222,7 @@ export function getSSRAriaProps(
   rv: RegisterValue,
   vnode: VNode | null
 ): Record<string, string> | undefined {
-  if (rv.ariaEnabled !== true || rv.ariaDisplayState === undefined) return undefined
+  if (rv.ariaDisplayState === undefined) return undefined
   const props = vnode?.props ?? null
   const ds = rv.ariaDisplayState.value
   const tagName = typeof vnode?.type === 'string' ? vnode.type.toUpperCase() : ''

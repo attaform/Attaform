@@ -42,7 +42,6 @@ describe('#381 — aria-required is not stamped on array-member checkboxes', () 
           schema,
           key: 'aria-381-array',
           defaultValues: { permissions: ['role_create'] },
-          strict: false,
         })
         return () =>
           h(
@@ -73,7 +72,7 @@ describe('#381 — aria-required is not stamped on array-member checkboxes', () 
     const schema = z.object({ agree: z.boolean() })
     const Parent = defineComponent({
       setup() {
-        const form = useForm({ schema, key: 'aria-381-bool', strict: false })
+        const form = useForm({ schema, key: 'aria-381-bool' })
         return () =>
           withDirectives(h('input', { type: 'checkbox', class: 'agree' }), [
             [vRegister, form.register('agree')],

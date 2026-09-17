@@ -48,7 +48,7 @@ For a **compound** component that binds _multiple_ paths (a date range exposing 
 ## Let Attaform own display and ARIA
 
 - Read the display signals straight in the template: `field.showErrors` gates the error row, `field.showPending` gates an async "checking" indicator (it is anti-flash timed), `field.firstError?.message` is the text.
-- `v-register`'s `autoAria` (on by default) keeps `aria-invalid`, `aria-busy`, and `aria-required` in sync. It wires the _error_ id, and only while the field is in its error state, so author `aria-describedby` yourself if a _static_ hint should stay associated too.
+- `v-register` keeps `aria-invalid`, `aria-busy`, and `aria-required` in sync. It wires the _error_ id, and only while the field is in its error state, so author `aria-describedby` yourself if a _static_ hint should stay associated too.
 - **`v-register` alone does binding, SSR value injection, and ARIA.** Do not stack a second _writer_ on it: no `v-model`, no handler that writes the field back, no `:reset-signal` prop, no redundant directive import. If a control seems to need that scaffolding, find the idiomatic shape rather than hand-rolling around it.
 - **An _observer_ is not a second writer.** A `@change` that only reads, or a `watch(form.toRef('path'), ...)`, is supported beside `v-register`. The directive attaches its own listener in the `created` hook, before Vue applies yours, so it writes the field first and your handler reads committed state. That is the shape for a surface that saves each decision as it is made instead of on submit; see `references/saving.md`.
 

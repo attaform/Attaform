@@ -104,7 +104,7 @@ import { historyPlugin } from 'attaform/history'
 const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
 ```
 
-Ships `historyPlugin` and its types (`HistoryPlugin`, `HistoryPluginOptions`). One plugin instance is a reusable configuration — pass it to several forms, or set it once via `createAttaform({ defaults: { history: historyPlugin() } })`, and every form keeps its own independent chain. The [Undo & redo](/docs/cross-cutting-state/undo-redo) page covers the `form.history` namespace it unlocks.
+Ships `historyPlugin` and its types (`HistoryPlugin`, `HistoryPluginOptions`). One plugin instance is a reusable configuration — pass it to several forms and every one keeps its own independent chain. The [Undo & redo](/docs/cross-cutting-state/undo-redo) page covers the `form.history` namespace it unlocks.
 
 ## The framework-agnostic toolkit
 
@@ -129,8 +129,6 @@ import {
   vRegister,
   assignKey,
   isRegisterValue,
-  defaultCoercionRules,
-  defineCoercion,
   // SSR
   renderAttaformState,
   hydrateAttaformState,
@@ -148,10 +146,6 @@ import {
   SubmitErrorHandlerError,
   // Validation-error codes
   AttaformErrorCode,
-  // Display-state heuristic default, and the knobs to retune it
-  defaultDisplayState,
-  makeDefaultDisplayState,
-  DEFAULT_TIMINGS,
   // Path primitives (custom adapters only)
   canonicalizePath,
   parseDottedPath,

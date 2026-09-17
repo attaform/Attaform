@@ -44,7 +44,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
   // `username` carries an async uniqueness refine; `password` a sync
   // min length. Lax mode keeps the mount clean so every test drives the
   // async path explicitly through parse({ commit: true }) / handleSubmit rather
-  // than the construction-time strict seed.
+  // than the construction-time seed.
   const schema = z.object({
     username: z.string().refine(async (value: string) => {
       await Promise.resolve()
@@ -59,7 +59,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
     const handle: { api?: any } = {}
     const Host = defineComponent({
       setup() {
-        handle.api = useForm({ schema, key: `refine-parity-${keySeq++}`, strict: false })
+        handle.api = useForm({ schema, key: `refine-parity-${keySeq++}` })
         return () => h('div')
       },
     })

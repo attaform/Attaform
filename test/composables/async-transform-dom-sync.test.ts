@@ -66,7 +66,6 @@ describe.each(adapters)('async transform — no mid-flight DOM revert ($name)', 
         const api = useForm({
           schema: opts.schema,
           key: `dom-sync-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: opts.defaultValues,
         })
         handle.api = api

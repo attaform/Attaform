@@ -92,7 +92,6 @@ describe('empty-string path semantics — zod-v3 adapter', () => {
           to: zV3.ZodString
         }>,
         key: `empty-path-v3-${Math.random()}`,
-        strict: false,
         defaultValues: { from: '', to: '' },
       })
     )
@@ -177,7 +176,6 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
       useFormV4({
         schema,
         key: `empty-path-v4-${Math.random()}`,
-        strict: false,
         defaultValues: { from: '', to: '' },
       })
     )
@@ -258,7 +256,6 @@ describe("literal root '' field — zod-v3 adapter", () => {
           name: zV3.ZodString
         }>,
         key: `literal-empty-v3-${Math.random()}`,
-        strict: false,
         defaultValues: { '': '', name: '' },
       })
     )
@@ -298,7 +295,6 @@ describe("literal root '' field — zod-v4 adapter", () => {
       useFormV4({
         schema,
         key: `literal-empty-v4-${Math.random()}`,
-        strict: false,
         defaultValues: { '': '', name: '' },
       })
     )

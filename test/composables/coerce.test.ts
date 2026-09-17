@@ -19,7 +19,6 @@ import type { UseFormConfigV4, UseFormReturnV4 } from '../../src/zod'
 import { vRegister, assignKey } from '../../src/runtime/core/directive'
 import { isRegisterValue } from '../../src/runtime/core/register-protocol'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { defineCoercion, defaultCoercionRules } from '../../src/runtime/core/schema-coerce'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
 
 let app: App | undefined
@@ -33,8 +32,7 @@ afterEach(() => {
 function mount<S extends z.ZodObject>(
   schema: S,
   defaultValues: z.infer<S>,
-  body: (api: UseFormReturnV4<S>) => unknown,
-  pluginOpts?: Parameters<typeof createAttaform>[0]
+  body: (api: UseFormReturnV4<S>) => unknown
 ): { api: UseFormReturnV4<S>; root: HTMLDivElement } {
   const handle: { api?: UseFormReturnV4<S> } = {}
   const Parent = defineComponent({
@@ -48,7 +46,7 @@ function mount<S extends z.ZodObject>(
       return () => body(api)
     },
   })
-  app = createApp(Parent).use(createAttaform(pluginOpts))
+  app = createApp(Parent).use(createAttaform())
   const root = document.createElement('div')
   document.body.appendChild(root)
   app.mount(root)
@@ -510,35 +508,8 @@ describe('programmatic write bypass', () => {
   })
 })
 
-describe('plugin-default off', () => {
-  it('createAttaform({ defaults: { coerce: false } }) disables coerce globally', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const schema = z.object({ age: z.number() })
-    const { api, root } = mount(
-      schema,
-      { age: 0 },
-      (api) => {
-        const rv = api.register('age')
-        return h('div', null, [
-          withDirectives(h('input', { type: 'text', 'data-field': 'age' }), [[vRegister, rv]]),
-        ])
-      },
-      { defaults: { coerce: false } }
-    )
-    await waitUntil(() => (api.values.age === 0 ? true : null))
-    const input = root.querySelector('[data-field="age"]') as HTMLInputElement
-    input.value = '25'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    // Gate rejects; settle the cycle so any write that would have
-    // fired has had its chance.
-    await awaitSettle()
-    // Coerce off → string write rejected by gate; state unchanged.
-    expect(api.values.age).toBe(0)
-  })
-})
-
-describe('per-form override beats plugin default (both directions)', () => {
-  it('plugin off + useForm({ coerce: true }) → coerce runs', async () => {
+describe('per-form coerce, both directions', () => {
+  it('useForm({ coerce: true }) → coerce runs', async () => {
     const schema = z.object({ age: z.number() })
     const handle: { api?: UseFormReturnV4<typeof schema> } = {}
     const Parent = defineComponent({
@@ -557,7 +528,7 @@ describe('per-form override beats plugin default (both directions)', () => {
           ])
       },
     })
-    app = createApp(Parent).use(createAttaform({ defaults: { coerce: false } }))
+    app = createApp(Parent).use(createAttaform())
     const root = document.createElement('div')
     document.body.appendChild(root)
     app.mount(root)
@@ -570,7 +541,7 @@ describe('per-form override beats plugin default (both directions)', () => {
     expect(handle.api.values.age).toBe(25)
   })
 
-  it('plugin on + useForm({ coerce: false }) → coerce off', async () => {
+  it('useForm({ coerce: false }) → coerce off', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const schema = z.object({ age: z.number() })
     const handle: { api?: UseFormReturnV4<typeof schema> } = {}
@@ -708,53 +679,6 @@ describe('reference-equality preservation', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (api.values.note === 'x' ? true : null))
     expect(api.values.ids).toBe(before)
-  })
-})
-
-describe('consumer-extended registry — string->bigint', () => {
-  it('a custom bigint rule supplied via plugin coerces', async () => {
-    const schema = z.object({ amount: z.bigint() })
-    const customRules = [
-      ...defaultCoercionRules,
-      defineCoercion({
-        input: 'string',
-        output: 'bigint',
-        transform: (s) => {
-          try {
-            return { coerced: true, value: BigInt(s) }
-          } catch {
-            return { coerced: false }
-          }
-        },
-      }),
-    ]
-    const handle: { api?: UseFormReturnV4<typeof schema> } = {}
-    const Parent = defineComponent({
-      setup() {
-        const api = useForm({
-          schema,
-          defaultValues: { amount: 0n },
-          key: `bigint-coerce-${Math.random()}`,
-        })
-        handle.api = api
-        const rv = api.register('amount')
-        return () =>
-          h('div', null, [
-            withDirectives(h('input', { type: 'text', 'data-field': 'amount' }), [[vRegister, rv]]),
-          ])
-      },
-    })
-    app = createApp(Parent).use(createAttaform({ defaults: { coerce: customRules } }))
-    const root = document.createElement('div')
-    document.body.appendChild(root)
-    app.mount(root)
-    await waitUntil(() => (handle.api?.values.amount === 0n ? true : null))
-    if (handle.api === undefined) throw new Error('api never set')
-    const input = root.querySelector('[data-field="amount"]') as HTMLInputElement
-    input.value = '12345'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitUntil(() => (handle.api?.values.amount === 12345n ? true : null))
-    expect(handle.api.values.amount).toBe(12345n)
   })
 })
 

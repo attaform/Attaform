@@ -1,10 +1,21 @@
 #!/usr/bin/env node
 /**
- * Guardrail: run the keystroke bench and fail if the new writer regresses
- * below 3× the old flatten+setDiff approach for any scenario.
+ * Guardrail: run the benches and fail if a `new:` implementation
+ * regresses below 3× the `old:` one it replaced, for any scenario that
+ * pairs the two.
  *
- * Current headroom is comfortable (~7-10× in both scenarios), so this rule
- * catches real regressions rather than normal measurement noise.
+ * KNOW WHAT THIS DOES NOT COVER, because it is most of the suite. Only
+ * groups pairing an `old:` bench with a `new:` one are gated — three of
+ * fifteen bench files — and the ratio compares each revision against a
+ * baseline implementation in the same file, not against the previous
+ * commit. So when both arms slow down together the ratio holds, and a
+ * scenario with no pair is not measured at all. A 34% regression in
+ * `getAtPath` shipped through exactly that gap: `value-tree-access` has
+ * no pair, so nothing looked.
+ *
+ * The ungated groups are now listed rather than skipped in silence, and
+ * `scripts/bench-delta.mjs` covers the other half by measuring this
+ * revision against the merge base directly.
  *
  * Runs as part of `pnpm check` via the `check:bench` script in
  * package.json. The bench itself lives at bench/keystroke.bench.ts — each
@@ -47,6 +58,7 @@ try {
 }
 
 const failures = []
+const ungated = []
 
 for (const file of report.files ?? []) {
   for (const group of file.groups ?? []) {
@@ -54,7 +66,10 @@ for (const file of report.files ?? []) {
     const oldBench = benchmarks.find((b) => b.name?.startsWith('old:'))
     const newBench = benchmarks.find((b) => b.name?.startsWith('new:'))
     if (!oldBench || !newBench) {
-      // Group doesn't follow the old/new pairing convention — skip silently.
+      // No old/new pair, so there is no ratio to hold. Record it: an
+      // unmeasured scenario reported as nothing is how a regression gets
+      // to look like a pass.
+      ungated.push(group.fullName)
       continue
     }
     const ratio = newBench.hz / oldBench.hz
@@ -87,5 +102,18 @@ if (failures.length > 0) {
   process.exit(1)
 }
 
+if (ungated.length > 0) {
+  // eslint-disable-next-line no-console
+  console.log(
+    `\n[check-bench] ${ungated.length} group(s) carry no old/new pair and are NOT gated here:`
+  )
+  for (const name of ungated) {
+    // eslint-disable-next-line no-console
+    console.log(`  - ${name}`)
+  }
+  // eslint-disable-next-line no-console
+  console.log('[check-bench] Their regressions surface through scripts/bench-delta.mjs.')
+}
+
 // eslint-disable-next-line no-console
-console.log(`[check-bench] All scenarios within ${RATIO_FLOOR}× floor.`)
+console.log(`\n[check-bench] All ${RATIO_FLOOR}×-gated scenarios within floor.`)

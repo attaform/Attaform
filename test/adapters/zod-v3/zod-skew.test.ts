@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import * as ZodV3 from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
-import { stripAsyncChecks } from '../../../src/runtime/adapters/zod-v3/strip-async'
+import { wrapAsyncSafeRefinements } from '../../../src/runtime/adapters/zod-v3/strip-async'
 
 // This static import IS subject to the `vi.mock` below, so the `ZodV3`
 // VALUE resolves to v4 at runtime (used in the live-skew check). Its
@@ -86,17 +86,18 @@ describe('zod-v3 adapter under version skew (hoisted zod v4 alongside v3)', () =
     // without an empty accept-set swallowing the branch leaf.
     expect(adapter.getSlimPrimitiveTypesAtPath(['payment', 'number']).size).toBeGreaterThan(0)
     expect(() =>
-      adapter.getDefaultValues({ useDefaultSchemaValues: true, constraints: {}, strict: false })
+      adapter.getDefaultValues({ useDefaultSchemaValues: true, constraints: {} })
     ).not.toThrow()
   })
 
-  it('strips effects into a working v3 schema', () => {
+  it('rebuilds effects into a working v3 schema', () => {
+    // Was the strip walker's case; the rejection-handler walk exercises
+    // the same rebuild machinery under the same skew, and is what still
+    // ships. The refinement survives the rebuild, so the seed is rejected.
     const schema = z.object({ name: z.string().refine((v) => v.length > 2, 'too short') })
-    const stripped = stripAsyncChecks(schema)
+    const rebuilt = wrapAsyncSafeRefinements(schema)
 
-    expect(stripped).toBeInstanceOf(z.ZodObject)
-    // The strip drops the ZodEffects refinement (rebuilt via rebuildObject
-    // under the skew); the rebuilt node parses the empty seed.
-    expect(stripped.safeParse({ name: '' }).success).toBe(true)
+    expect(rebuilt.safeParse({ name: '' }).success).toBe(false)
+    expect(rebuilt.safeParse({ name: 'abc' }).success).toBe(true)
   })
 })

@@ -46,7 +46,6 @@ describe('<select v-register> with out-of-enum option', () => {
         const form = useForm({
           schema,
           key: 'select-out-of-enum-test',
-          strict: false,
         })
         captured.api = form
         return () =>
@@ -103,7 +102,6 @@ describe('<select v-register> with out-of-enum option', () => {
         captured.api = useForm({
           schema,
           key: 'select-out-of-enum-setvalue-wrongprim',
-          strict: false,
         })
         return () => h('div')
       },
@@ -150,7 +148,6 @@ describe('<select v-register> with out-of-enum option', () => {
         captured.api = useForm({
           schema,
           key: 'select-out-of-enum-setvalue-magenta',
-          strict: false,
         })
         return () => h('div')
       },

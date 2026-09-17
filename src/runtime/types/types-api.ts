@@ -39,12 +39,12 @@ export type FormKey = string
 
 /**
  * Per-form options threaded from `useForm` into the adapter factory.
- * Today carries the resolved `maxRecursionDepth` so adapter walks can
- * cap their descent through recursive schemas; future per-form runtime
- * knobs land here too.
+ * Today carries `maxRecursionDepth` so adapter walks can cap their
+ * descent through recursive schemas; future per-form runtime knobs
+ * land here too.
  */
 export interface SchemaFactoryOptions {
-  /** Resolved recursion ceiling (per-form > app-default > library default). */
+  /** Recursion ceiling for walks through recursive schemas. */
   maxRecursionDepth: number
 }
 
@@ -156,27 +156,52 @@ export type ErrorInput =
       data?: Json | null
     }
 
-/** Settled validation result when the form (or subtree) parsed successfully. */
-export type ValidationResponseSuccess<TData> = {
+/**
+ * A parse verdict as an `AbstractSchema` produces it.
+ *
+ * A schema knows nothing about which form asked: it is a pure function
+ * of the schema it wraps, which is what lets one `AbstractSchema` serve
+ * every form built on the same schema. The owning store stamps its own
+ * `formKey` on the way out, producing the `ValidationResponse*` arms
+ * below. Adapter authors implement THESE.
+ */
+export type SchemaParseSuccess<TData> = {
   /** The parsed value at the validated subtree (whole form when `validate()` was called without a path). */
   data: TData
   errors: undefined
   success: true
-  formKey: FormKey
 }
-/** Settled validation result when no data could be produced (e.g. a top-level type mismatch). */
-export type ValidationResponseErrorWithoutData = {
+/** Schema-level verdict when no data could be produced (e.g. a top-level type mismatch). */
+export type SchemaParseErrorWithoutData = {
   data: undefined
   /** Non-empty list of failures. */
   errors: ValidationError[]
   success: false
-  formKey: FormKey
 }
-/** Settled validation result when the parser produced partial data alongside failures. */
-export type ValidationResponseErrorWithData<TData> = {
+/** Schema-level verdict when the parser produced partial data alongside failures. */
+export type SchemaParseErrorWithData<TData> = {
   data: TData
   errors: ValidationError[]
   success: false
+}
+/** Settled schema-level verdict. Discriminate on `success`. */
+export type SchemaParseResult<TData> =
+  SchemaParseSuccess<TData> | SchemaParseErrorWithData<TData> | SchemaParseErrorWithoutData
+/** Schema-level `getDefaultValues` verdict: defaults always come back. */
+export type SchemaDefaultsResult<TData> =
+  SchemaParseSuccess<TData> | SchemaParseErrorWithData<TData>
+
+/** Settled validation result when the form (or subtree) parsed successfully. */
+export type ValidationResponseSuccess<TData> = SchemaParseSuccess<TData> & {
+  /** The form this verdict belongs to. Stamped by the store, not the schema. */
+  formKey: FormKey
+}
+/** Settled validation result when no data could be produced (e.g. a top-level type mismatch). */
+export type ValidationResponseErrorWithoutData = SchemaParseErrorWithoutData & {
+  formKey: FormKey
+}
+/** Settled validation result when the parser produced partial data alongside failures. */
+export type ValidationResponseErrorWithData<TData> = SchemaParseErrorWithData<TData> & {
   formKey: FormKey
 }
 
@@ -195,14 +220,6 @@ export type ValidationResponse<TData> =
   | ValidationResponseSuccess<TData>
   | ValidationResponseErrorWithData<TData>
   | ValidationResponseErrorWithoutData
-
-/**
- * Result of resolving the form's default values. Always returns at
- * least the shape derived from the schema; `errors` carry any
- * failures from validating those defaults against the schema.
- */
-export type DefaultValuesResponse<TData> =
-  ValidationResponseSuccess<TData> | ValidationResponseErrorWithData<TData>
 
 /**
  * Trimmed `ValidationResponse` that omits the `data` payload. Used by
@@ -255,21 +272,13 @@ export type ValidateOptions = {
 /**
  * Configuration passed to `AbstractSchema.getDefaultValues`. Adapters
  * receive `useDefaultSchemaValues` (honor `.default(x)` wrappers vs.
- * empty/falsy fallbacks), an optional `strict` mode (refinement
- * preservation), and an optional `constraints` overlay merged into the
- * derived defaults so the runtime can stamp user-supplied defaults at
- * construction. Exported so adapter authors can co-implement the
- * service contract.
+ * empty/falsy fallbacks) and an optional `constraints` overlay merged
+ * into the derived defaults so the runtime can stamp user-supplied
+ * defaults at construction. Exported so adapter authors can
+ * co-implement the service contract.
  */
 export type GetDefaultValuesConfig<Form> = {
   useDefaultSchemaValues: boolean
-  /**
-   * Whether to keep schema refinements when deriving slim defaults.
-   * `true` (default) — preserve refinements; `false` — strip them so
-   * placeholder data lands without immediate construction-time
-   * errors. Mirrors `useForm({ strict })`.
-   */
-  strict?: boolean
   constraints?: DeepPartial<WriteShape<Form>> | undefined
 }
 
@@ -284,46 +293,7 @@ export type GetDefaultValuesConfig<Form> = {
  * adding support for a new schema library (Valibot, ArkType, custom).
  */
 export type AbstractSchema<Form, GetValueFormType> = {
-  /**
-   * Structural fingerprint of the schema. Same shape → same string;
-   * different shape → (best-effort) different string.
-   *
-   * Resolves a `Promise` so adapters can defer the structural walk (and
-   * its `canonicalStringify` helper) onto a dynamic import. The framework
-   * only ever needs the fingerprint for the dev-only shared-key schema
-   * mismatch warning, so none of those bytes belong on the eager
-   * `useForm` path.
-   *
-   * The library uses this to detect schema mismatches at a shared
-   * form key: two `useForm({ key: 'x', schema })` calls are allowed
-   * to land on the same `FormStore` (the "shared store" semantic),
-   * but only when their schemas agree. If the second call's
-   * fingerprint differs from the first's, the library emits a
-   * dev-mode warning — the first call's schema stays canonical and
-   * the second call's schema is silently ignored.
-   *
-   * Guarantees adapter authors should provide:
-   * - **Determinism:** equal shapes at different memory addresses
-   *   must produce the same fingerprint. Referential equality fails
-   *   99% of the time across files, so reference-identity is not a
-   *   substitute.
-   * - **Key-order-insensitivity** for record-like shapes (object,
-   *   struct) — two shapes with the same keys but different iteration
-   *   order must match.
-   * - **Order-insensitivity for unbounded unions** — `a | b` and
-   *   `b | a` must match (the set of members is what matters, not
-   *   their source order).
-   *
-   * Compromises adapter authors may accept:
-   * - Function-valued metadata (refinements, transforms, lazy
-   *   defaults) is not stably hashable. Represent it as an opaque
-   *   sentinel; two schemas differing only in refinement logic will
-   *   look identical. The warning is a footgun catcher, not a
-   *   soundness guarantee.
-   */
-  fingerprint(): Promise<string>
-
-  getDefaultValues(config: GetDefaultValuesConfig<Form>): DefaultValuesResponse<Form>
+  getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form>
   /**
    * Return the schema-prescribed default value at the given path. The
    * runtime uses this to fill structural gaps so every `setValue` write
@@ -528,7 +498,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
     data: unknown,
     path: Path | undefined,
     options?: ValidateOptions
-  ): MaybePromise<ValidationResponse<GetValueFormType>>
+  ): MaybePromise<SchemaParseResult<GetValueFormType>>
   /**
    * Sync sister to `getSchemasAtPath` / `validateAtPath`. Returns the
    * set of primitive `typeof`-style kinds the path's leaf schema
@@ -559,7 +529,7 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * - For nullable / optional wrappers: adds `'null'` / `'undefined'`
    *   to the inner's set.
    */
-  getSlimPrimitiveTypesAtPath(path: Path): Set<SlimPrimitiveKind>
+  getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<SlimPrimitiveKind>
   /**
    * Return `true` iff `path` resolves to a **leaf** in the schema: a
    * path the schema declares no sub-paths under. That is every path
@@ -863,39 +833,6 @@ export type SettledValidationStatus<Form> = {
 export type ReactiveValidationStatus<Form> = PendingValidationStatus | SettledValidationStatus<Form>
 
 /**
- * What to do when a submit attempt fails validation. The library can
- * focus and/or scroll the first errored field into view without you
- * wiring an `onError` callback yourself. Defaults to
- * `'focus-first-error'` because moving keyboard / screen-reader focus
- * to the broken field on submit is an accessibility baseline; opt out
- * with `'none'` if you're managing focus elsewhere.
- *
- * - `'focus-first-error'` (default): focus the first errored field's
- *   first visible element. Modern browsers scroll the focused element
- *   into view by default; pair with `'both'` if you want an explicit
- *   scroll alongside.
- * - `'scroll-to-first-error'`: scroll that element into view without
- *   moving focus.
- * - `'both'`: scroll first, then focus (with `preventScroll: true` so
- *   the browser doesn't undo the explicit scroll).
- * - `'none'`: no automatic UI nudge; the dev handles focus / scroll
- *   manually via `form.focusFirstError()` or `form.scrollToFirstError()`
- *   from an `onError` callback.
- *
- * Both focusing policies request `focusVisible: true`, so the browser
- * paints a focus ring even though the move is programmatic. Where a UA
- * doesn't yet support that hint, non-text controls (radio, checkbox,
- * custom widgets) may end up focused without a visible ring after a
- * pointer-driven submit; if you target those browsers, pair the policy
- * with your own indicator (e.g. a `:focus-within` ring on the option
- * wrapper).
- *
- * If no errored field has a currently mounted, visible element, the
- * policy silently no-ops.
- */
-export type OnInvalidSubmitPolicy = 'none' | 'focus-first-error' | 'scroll-to-first-error' | 'both'
-
-/**
  * When per-field VALIDATION runs. Only validation timing varies per
  * mode; storage commit timing is the directive's concern (the
  * default `<input v-register>` commits per keystroke; `.lazy` defers
@@ -1083,8 +1020,7 @@ export type HistoryModule = {
  * and `undo()` cannot reach the transient pre-hydration default.
  *
  * One plugin instance is a reusable configuration, not per-form state:
- * passing the same instance to several forms (or setting it once via
- * `createAttaform({ defaults: { history } })`) gives each form its own
+ * passing the same instance to several forms gives each form its own
  * independent chain.
  */
 export type HistoryPlugin = {
@@ -1176,11 +1112,9 @@ export type UseFormConfiguration<
    *
    * For schemas that depend on the form's identity or per-form
    * options, pass a factory `(key, options) => schema` instead — the
-   * library calls it once per form, after `mergeWithDefaults` has
-   * resolved the options bag (`maxRecursionDepth`, etc.). Most
-   * adapters ignore the options argument; the typed Zod entry points
-   * use it to thread the resolved recursion cap into the adapter
-   * closure.
+   * library calls it once per form. Most adapters ignore the options
+   * argument; the typed Zod entry points use it to thread the
+   * recursion cap into the adapter closure.
    */
   schema: Schema | ((key: FormKey, options: SchemaFactoryOptions) => Schema)
   /**
@@ -1238,40 +1172,29 @@ export type UseFormConfiguration<
    */
   defaultValues?: DefaultValues | (() => DefaultValues) | (() => Promise<DefaultValues>)
   /**
-   * Whether to validate default values at construction. Default
-   * `true`.
+   * Move keyboard / screen-reader focus to the first errored field when
+   * a submit attempt fails validation. Fires after errors are populated
+   * and before your `onError` callback runs.
    *
-   * - `true` (default): the schema is run against the derived
-   *   defaults immediately; any failures populate `form.errors` from
-   *   the first frame. The UI decides when to *show* errors — gate
-   *   on `form.fields.<path>.touched`, `form.meta.submissionAttempts`, etc.
-   * - `false`: refinements are stripped during defaults derivation
-   *   and construction-time validation is skipped. Useful for
-   *   multi-step wizards, field arrays seeded with placeholder
-   *   rows, or any form intentionally mounting with incomplete data.
+   * Default `true`: focusing the broken field on submit is an
+   * accessibility baseline, and modern browsers scroll the focused
+   * element into view as part of the move. Pass `false` when you drive
+   * the nudge yourself from an `onError` callback with
+   * `form.focusFirstError()` or `form.scrollToFirstError()`, both of
+   * which stay available either way.
    *
-   * Runtime validation (per-field on edit, full-form on submit) is
-   * identical regardless of this flag.
+   * The focus requests `focusVisible: true`, so the browser paints a
+   * focus ring even though the move is programmatic. Where a UA doesn't
+   * yet support that hint, non-text controls (radio, checkbox, custom
+   * widgets) may end up focused without a visible ring after a
+   * pointer-driven submit; if you target those browsers, pair this with
+   * your own indicator (e.g. a `:focus-within` ring on the option
+   * wrapper).
+   *
+   * If no errored field has a currently-mounted, visible element, the
+   * focus silently no-ops.
    */
-  strict?: boolean
-  /**
-   * Automatic UI nudge on submit-validation failure. Fires after
-   * errors are populated and before your `onError` callback runs.
-   * Default `'focus-first-error'`, which moves keyboard / screen-reader
-   * focus to the broken field as an accessibility baseline.
-   *
-   * - `'focus-first-error'` (default): focus the first errored field's
-   *   first visible element.
-   * - `'scroll-to-first-error'`: scroll it into view without focusing.
-   * - `'both'`: scroll, then focus.
-   * - `'none'`: opt out entirely; handle focus / scroll yourself in an
-   *   `onError` callback via `form.focusFirstError()` or
-   *   `form.scrollToFirstError()`.
-   *
-   * If no errored field has a currently-mounted, visible element,
-   * the policy silently no-ops.
-   */
-  onInvalidSubmit?: OnInvalidSubmitPolicy
+  focusOnInvalidSubmit?: boolean
   /**
    * Freeze the form's data. When this resolves truthy every value write
    * no-ops at the store's write chokepoint (programmatic `setValue`, the
@@ -1289,7 +1212,6 @@ export type UseFormConfiguration<
    *
    * Accepts a boolean, a ref, a computed, or a getter, read live so the
    * freeze tracks a reactive source. `undefined` resolves to `false`.
-   * Falls back to `AttaformDefaults.disabled`.
    *
    * A shared FormStore resolves `disabled` from its first `useForm({ key })`
    * call; a later caller passing a different value is ignored.
@@ -1359,68 +1281,18 @@ export type UseFormConfiguration<
   rememberVariants?: boolean
   /**
    * Schema-driven coercion of user-typed DOM values at the v-register
-   * directive layer. Per-form override of the plugin-level
-   * `AttaformDefaults.coerce`.
+   * directive layer.
    *
-   * - `true` / `undefined` — runs the built-in `defaultCoercionRules`.
-   * - `false` — disables coercion; the slim gate rejects mismatches.
-   * - `CoercionRegistry` — a custom array of entries (REPLACES, not
-   *   merges, the plugin defaults). Spread `defaultCoercionRules` to
-   *   extend.
+   * Two rules ship: string→number and string→boolean, each firing
+   * only when the schema declares that single type at the path.
+   * Defaults to on; `false` disables coercion form-wide and the slim
+   * gate rejects mismatches instead.
    *
    * Coercion applies ONLY to user-typed DOM values. Programmatic
    * writes (`form.setValue`, `setValueWithInternalPath`) are NEVER
    * coerced.
    */
-  coerce?: boolean | CoercionRegistry
-  /**
-   * Per-form override of the `getDisplayState` heuristic that drives
-   * `field.displayState` and the `show*` booleans (and their `form.meta`
-   * rollups). Falls back to `AttaformDefaults.getDisplayState`, then to
-   * the library default (`defaultDisplayState`). See
-   * `AttaformDefaults.getDisplayState` for the resolution rules and
-   * predicate signature.
-   */
-  getDisplayState?: GetDisplayState
-  /**
-   * Recursion ceiling for schema walks that descend through recursive
-   * schemas (Zod's `z.lazy(...)` today). Default `64`. Per-form value
-   * overrides `AttaformDefaults.maxRecursionDepth`, which overrides
-   * the library default.
-   *
-   * Schemas that don't include a recursive boundary ignore this knob
-   * entirely — it's read only at the descent step through a recursive
-   * wrapper. Set it on the specific form whose schema is recursive
-   * (a comment tree, a category tree, a nested-rule editor):
-   *
-   * ```ts
-   * useForm({ schema: commentTreeSchema, maxRecursionDepth: 128 })
-   * ```
-   *
-   * Past the cap, the slim-primitive type gate falls back to permissive
-   * (write-time type checks skip; full schema validation still runs).
-   * Storage and reads work at any depth; only the per-write type gate
-   * stops short of the cap. Raise the cap if you regularly edit nodes
-   * beyond the default depth.
-   *
-   * See `AttaformDefaults.maxRecursionDepth` for the resolution rules
-   * and the broader description of where the cap is read.
-   */
-  maxRecursionDepth?: number
-  /**
-   * Whether `v-register` automatically manages aria attributes
-   * (`aria-invalid`, `aria-busy`, `aria-required`, `aria-describedby`)
-   * from the field's display state. **Defaults to `true`.**
-   *
-   * **Resolution order (per-register override > per-form > global > library):**
-   *
-   *   register(path, { autoAria })  >  useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
-   *
-   * Set `false` to leave all aria wiring to your own markup form-wide.
-   * Any aria attribute you author yourself is always left untouched,
-   * independent of this flag.
-   */
-  autoAria?: boolean
+  coerce?: boolean
   /**
    * @internal
    * SSR prefetch mark — set by the `attaform/vite` compile-time
@@ -1438,177 +1310,6 @@ export type UseFormConfiguration<
   __ssrAccessed?: boolean
 }
 
-/**
- * App-level defaults applied to every `useForm` call. Set these once
- * per app via `createAttaform({ defaults })` (bare Vue) or
- * `attaform.defaults` (Nuxt module).
- *
- * Resolution order (per-form wins):
- *
- *   useForm({ ... })  >  createAttaform({ defaults })  >  library default
- *
- * `validateOn` and `debounceMs` resolve per-field — set the debounce
- * globally while still overriding the trigger per form:
- *
- * ```ts
- * createAttaform({
- *   defaults: { debounceMs: 100 },
- * })
- * // later
- * useForm({ schema, validateOn: 'blur' })
- * // → { validateOn: 'blur', debounceMs: <ignored under blur> }
- * ```
- *
- * Note: per the discriminated union, `debounceMs` only takes effect
- * when `validateOn` is `'change'` (or omitted). Setting it as an
- * app-level default is fine — forms that switch to `'blur'` /
- * `'submit'` simply ignore the inherited `debounceMs`.
- *
- * `schema`, `key`, and `defaultValues` are not configurable here —
- * they belong on the per-form call.
- */
-export type AttaformDefaults = {
-  /** Default for `useForm({ strict })`. Default `true`. */
-  strict?: boolean
-  /** Default for `useForm({ onInvalidSubmit })`. */
-  onInvalidSubmit?: OnInvalidSubmitPolicy
-  /** Default for `useForm({ validateOn })` — when validation runs. */
-  validateOn?: ValidateOn
-  /**
-   * Default for `useForm({ debounceMs })` — ms to wait after the last
-   * input event before re-running validation. Only meaningful when
-   * `validateOn` resolves to `'change'`. Default `0` (synchronous).
-   */
-  debounceMs?: number
-  /** Default for `useForm({ history })` — a `historyPlugin()` instance. */
-  history?: HistoryPlugin
-  /** Default for `useForm({ rememberVariants })`. */
-  rememberVariants?: boolean
-  /** Default for `useForm({ disabled })` — freeze the form's data. */
-  disabled?: MaybeRefOrGetter<boolean | undefined>
-  /**
-   * Default for `useForm({ coerce })`. Schema-driven coercion of
-   * user-typed DOM values at the v-register directive layer.
-   *
-   * - `true` (default) — runs the built-in `defaultCoercionRules`
-   *   (`string→number`, `string→boolean`).
-   * - `false` — disables coercion globally; the slim-primitive gate
-   *   rejects type mismatches with its existing dev-warn instead.
-   * - `CoercionRegistry` — a custom array of `CoercionEntry` records.
-   *   Spread `defaultCoercionRules` to extend rather than replace:
-   *   `[...defaultCoercionRules, defineCoercion({ ... })]`.
-   *
-   * Coercion applies ONLY to user-typed DOM values flowing through
-   * the directive's assigner. Programmatic writes (`form.setValue`,
-   * `setValueWithInternalPath`) are NEVER coerced — they're
-   * authoritative writes whose strict typing is on the caller.
-   */
-  coerce?: boolean | CoercionRegistry
-  /**
-   * Default for `useForm({ getDisplayState })`. The centralised
-   * heuristic that resolves every path's `field.displayState` — and thus
-   * the `show*` booleans and their `form.meta` rollups — to one of
-   * `'idle' | 'pending' | 'error' | 'success'`.
-   *
-   * Resolution order (per-form wins):
-   *
-   *   useForm({ getDisplayState })  >  AttaformDefaults  >  library default
-   *
-   * The library default opens one timing gate, then resolves by
-   * precedence: gate closed → `'idle'`; a run in flight → a delayed
-   * `'pending'` (held briefly to smooth fast validations, then held a
-   * minimum so it never flashes); an own-path error → `'error'`;
-   * otherwise earned `valid` → `'success'`, else `'idle'`. The gate opens
-   * after the first submit attempt OR once the field is edited and left:
-   *
-   * ```ts
-   * (prev, ctx) => {
-   *   const gateOpen =
-   *     ctx.formMeta.submissionAttempts > 0 ||
-   *     ctx.field.blurredAfterInteraction === true
-   *   if (!gateOpen) return { display: 'idle' }
-   *   // ...timed 'pending' while validating; own-path error → 'error';
-   *   //    earned valid → 'success'; else 'idle'
-   * }
-   * ```
-   *
-   * Compose with the library default via the public `defaultDisplayState`
-   * export, or retune its timing via `makeDefaultDisplayState`. The
-   * reducer runs on every field-state read, so it owns the
-   * idle / pending / error / success decision outright.
-   *
-   * The reducer's `ctx.field` / `ctx.formMeta` are `Omit`'d of the
-   * derived `displayState` / `show*` / `firstError` keys (see
-   * `FieldStateDerivedKey`) to prevent a self-referential reducer.
-   */
-  getDisplayState?: GetDisplayState
-  /**
-   * Default for `useForm({ maxRecursionDepth })`. Recursion ceiling
-   * for schema walks that descend through recursive schemas (Zod's
-   * `z.lazy(...)` today, equivalent constructs in any future adapter).
-   * Library default: `64`.
-   *
-   * Resolution order (per-form wins):
-   *
-   *   useForm({ maxRecursionDepth })  >  AttaformDefaults  >  library default (64)
-   *
-   * Read at every step of a schema walk that crosses a recursive
-   * boundary — default-value derivation at construction, slim-primitive
-   * type gates on each write, path-by-path schema resolution. Walks
-   * track their descent depth and switch to a permissive fallback once
-   * `depth > maxRecursionDepth`.
-   *
-   * "Permissive fallback" means storage and reads keep working at any
-   * depth; only the per-write type gate stops checking past the cap.
-   * Full schema validation (`parse`, `handleSubmit`) still runs
-   * against the real schema, so refinement errors at any depth still
-   * surface — the cap only affects the *write-time gate*.
-   *
-   * Forms with no recursive schemas ignore this entirely — the cap is
-   * read only at the descent step through a recursive wrapper. Setting
-   * it app-wide is the right move when you have multiple recursive
-   * forms that should share one ceiling:
-   *
-   * ```ts
-   * createAttaform({
-   *   defaults: { maxRecursionDepth: 128 },
-   * })
-   * ```
-   *
-   * Per-form override stays available for the one tree-shaped form
-   * whose depth is unusual:
-   *
-   * ```ts
-   * useForm({ schema: deepCategoryTreeSchema, maxRecursionDepth: 256 })
-   * ```
-   *
-   * Setting this app-wide costs nothing for non-recursive forms — the
-   * walks that read the cap never run for them.
-   *
-   * Pass `Infinity` to disable the cap entirely. Walks will then
-   * descend through recursive boundaries until they terminate
-   * structurally; a schema with no structural terminator will exhaust
-   * the JS call stack. Reserve for schemas whose authors are
-   * confident the recursion is bounded by the actual data shape.
-   */
-  maxRecursionDepth?: number
-  /**
-   * App-wide default for `useForm({ autoAria })`. Library default is
-   * `true`: `v-register` keeps `aria-invalid` / `aria-busy` /
-   * `aria-required` / `aria-describedby` in sync with each field's
-   * display state out of the box.
-   *
-   * **Resolution order (per-form wins):**
-   *
-   *   useForm({ autoAria })  >  AttaformDefaults.autoAria  >  library default (`true`)
-   *
-   * Set `false` once at the plugin level to make every form manage its
-   * own aria markup. Authored aria attributes are always preserved
-   * regardless of this setting.
-   */
-  autoAria?: boolean
-}
-
 export type FormStore<TData extends GenericForm> = Map<FormKey, TData>
 
 /**
@@ -1624,7 +1325,7 @@ export type OnSubmit<Form extends GenericForm> = (form: Form) => void | Promise<
  * the user-error layer (the `setErrors(...); return` server-rejection
  * pattern). Receives the full list of errors. Bind this when you want to
  * react to submit failures explicitly (alongside or instead of the
- * automatic `onInvalidSubmit` UI nudge).
+ * automatic `focusOnInvalidSubmit` nudge).
  */
 export type OnError = (error: ValidationError[]) => void | Promise<void>
 
@@ -1689,11 +1390,11 @@ export type DisplayMachine = {
 }
 
 /**
- * Inputs to a `getDisplayState` reducer. `field` and `formMeta` are the
- * same reactive snapshots a predicate has always received (still minus
- * the derived `displayState` / `show*` / `firstError` keys — see
- * `FieldStateDerivedKey` — so a reducer can never read its own output and
- * form a cycle), now joined by:
+ * Inputs to the display reducer. `field` and `formMeta` are the
+ * reactive snapshots it resolves against (minus the derived
+ * `displayState` / `show*` / `firstError` keys — see
+ * `FieldStateDerivedKey` — so the reducer can never read its own output
+ * and form a cycle), joined by:
  *
  * - `validatingSince` — `Date.now()` at which the field's current
  *   validation streak opened, or `null` when nothing is in flight. This,
@@ -1722,26 +1423,9 @@ export type DisplayCtx = {
  * returns the next machine; the engine owns the clock and the timers, the
  * reducer owns the timing policy. Runs on every field-state read (and
  * again whenever a `reviewAt` deadline fires), so the whole app's
- * validation-display behavior flows from this one function.
- *
- * The library default — `defaultDisplayState` — is publicly exported so a
- * layered reducer can compose with it, and `makeDefaultDisplayState`
- * builds a default with custom anti-flash timings:
- *
- * ```ts
- * import { defaultDisplayState } from 'attaform'
- *
- * useForm({
- *   schema,
- *   // Defer to the default everywhere, but never show a success check on `username`.
- *   getDisplayState: (prev, ctx) => {
- *     const next = defaultDisplayState(prev, ctx)
- *     return next.display === 'success' && ctx.field.path[0] === 'username'
- *       ? { display: 'idle' }
- *       : next
- *   },
- * })
- * ```
+ * validation-display behavior flows from this one function
+ * (`core/display-state.ts`).
+ * @internal
  */
 export type GetDisplayState = (prev: DisplayMachine, ctx: DisplayCtx) => DisplayMachine
 
@@ -1902,88 +1586,6 @@ export type RegisterFlatPath<Form> = Form extends unknown
 export type RegisterTransform = (value: unknown, ctx?: TransformContext) => unknown
 
 /**
- * Runtime type for a slim primitive kind. Used to narrow the
- * `transform` parameter and return value on a `CoercionEntry` so
- * authors writing rules don't have to cast `unknown`.
- *
- * Exhaustive over `SlimPrimitiveKind` — adding a new kind to that
- * union must add a corresponding branch here.
- */
-export type SlimRuntimeOf<K extends SlimPrimitiveKind> = K extends 'string'
-  ? string
-  : K extends 'number'
-    ? number
-    : K extends 'boolean'
-      ? boolean
-      : K extends 'bigint'
-        ? bigint
-        : K extends 'date'
-          ? Date
-          : K extends 'null'
-            ? null
-            : K extends 'undefined'
-              ? undefined
-              : K extends 'array'
-                ? readonly unknown[]
-                : K extends 'set'
-                  ? ReadonlySet<unknown>
-                  : K extends 'map'
-                    ? ReadonlyMap<unknown, unknown>
-                    : K extends 'object'
-                      ? Record<string, unknown>
-                      : K extends 'symbol'
-                        ? symbol
-                        : K extends 'function'
-                          ? (...args: never[]) => unknown
-                          : never
-
-/**
- * Outcome of a coercion attempt.
- *
- * - `coerced: true` — the rule produced `value`, which the directive
- *   forwards to the slim gate (the gate may still reject if the
- *   value doesn't satisfy the path's accept set).
- * - `coerced: false` — the rule decided it can't coerce this input.
- *   The directive passes the original value through; the slim gate
- *   decides downstream.
- *
- * Discriminated rather than `O | undefined` so rules with
- * `output: 'undefined'` or `output: 'null'` don't conflict with the
- * "skip" signal.
- */
-export type CoercionResult<O> = { coerced: true; value: O } | { coerced: false }
-
-/**
- * A single coercion rule. `input` and `output` are
- * `SlimPrimitiveKind` literals; `transform` receives a value already
- * narrowed to `SlimRuntimeOf<input>` and returns
- * `CoercionResult<SlimRuntimeOf<output>>`.
- *
- * Rules MUST be sync. They SHOULD NOT throw — wrap internal
- * try/catch when the conversion can fail (e.g. `BigInt(s)` throws
- * for non-numeric strings). The library wraps each invocation in
- * try/catch as defense in depth; throws are caught, logged once per
- * `(input, output)`, and the original value passes through.
- */
-export type CoercionEntry<
-  I extends SlimPrimitiveKind = SlimPrimitiveKind,
-  O extends SlimPrimitiveKind = SlimPrimitiveKind,
-> = {
-  readonly input: I
-  readonly output: O
-  readonly transform: (value: SlimRuntimeOf<I>) => CoercionResult<SlimRuntimeOf<O>>
-}
-
-/**
- * A registry is an ordered array of `CoercionEntry` records.
- * Consumers compose by spreading `defaultCoercionRules` and
- * appending their own entries. Order is observable only when two
- * entries share the same `(input, output)` pair — the library emits
- * a one-shot dev-warn and the LATER entry wins.
- */
-export type CoercionRegistry = readonly CoercionEntry[]
-
-/**
  * Options for `register(path, options)`. Per-field configuration
  * applied at the binding's own call site.
  */
@@ -2020,22 +1622,6 @@ export type RegisterOptions = {
    * instead — see the "Custom assigners" section in the API docs.
    */
   transforms?: ReadonlyArray<RegisterTransform>
-  /**
-   * Per-binding override for automatic aria management, the narrowest
-   * tier of the `autoAria` cascade. By default the directive keeps
-   * `aria-invalid` / `aria-busy` / `aria-required` / `aria-describedby`
-   * in sync with the field's display state. Pass `autoAria: false` to
-   * leave every aria attribute on this element to you (the directive
-   * still manages value binding and registration), or `autoAria: true`
-   * to re-enable management on one binding even when the form set
-   * `useForm({ autoAria: false })`.
-   *
-   * Overrides `useForm({ autoAria })` and
-   * `createAttaform({ defaults: { autoAria } })`. Writing an aria
-   * attribute yourself also locks the directive out of that one
-   * attribute, regardless of this flag.
-   */
-  autoAria?: boolean
 }
 
 /**
@@ -2388,14 +1974,6 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * @internal
    */
   isRequired?: boolean
-  /**
-   * Whether the directive should auto-manage aria attributes for this
-   * binding. Resolves the per-register `autoAria` override against the
-   * form-level value: `options.autoAria ?? formAutoAria`. The directive
-   * treats an absent value as off.
-   * @internal
-   */
-  ariaEnabled?: boolean
   /**
    * The gated display-state verdict for this path, reusing the same
    * field-state identity as `form.fields`. The directive watches it to
@@ -3028,11 +2606,11 @@ export type FieldState<Value = unknown> = {
    * <FieldStatusIcon :state="form.fields.email.displayState" />
    * ```
    *
-   * Resolved by the `getDisplayState` heuristic:
-   * `useForm({ getDisplayState })` →
-   * `createAttaform({ defaults: { getDisplayState } })` → library
-   * default (`defaultDisplayState`). Override per form, app-wide, or
-   * compose with `defaultDisplayState` for a layered predicate.
+   * Resolved by the display heuristic: gate closed → `'idle'`; a run
+   * in flight → a delayed `'pending'`; an own-path error → `'error'`;
+   * otherwise earned `valid` → `'success'`, else `'idle'`. The gate
+   * opens after the first submit attempt OR once the field is edited
+   * and left.
    *
    * Available on container paths too: `form.fields.users[0].displayState`
    * rolls up over the row's descendants.
@@ -3694,9 +3272,8 @@ export type FormMeta<F = unknown> = FieldState<F> & {
    * the counter at its prior value.
    *
    * Pure introspection counter — useful for "this form has been
-   * visited and left" UX (analytics, prior-step badges, layered
-   * `getDisplayState` predicates) but does NOT drive the library's
-   * default `getDisplayState` heuristic. The reveal-on-submit story
+   * visited and left" UX (analytics, prior-step badges) but does NOT
+   * drive the display heuristic. The reveal-on-submit story
    * runs entirely through `submissionAttempts`, which
    * `wizard.handleSubmit` bumps on every form (it always validates the
    * whole step list).
@@ -4549,20 +4126,19 @@ export type UseFormReturnType<
   scrollToFirstError: (options?: ScrollIntoViewOptions) => boolean
 
   /**
-   * Drive the form's `onInvalidSubmit` policy imperatively. The same
-   * focus/scroll behavior `handleSubmit` runs after a failed submit,
-   * but available standalone. Defaults to the policy configured via
-   * `useForm({ onInvalidSubmit })` (or `'focus-first-error'` when
-   * omitted). Pass an explicit policy to override for one call.
+   * Run the form's own invalid-submit nudge imperatively: exactly what
+   * `handleSubmit` does after a failed submit, but available standalone
+   * and honoring this form's `useForm({ focusOnInvalidSubmit })` choice.
    *
    * Used by `useWizard` after navigating to the first failing form
    * during `wizard.handleSubmit`, so the failing form's own configured
-   * policy fires once its DOM is in view.
+   * behavior fires once its DOM is in view.
    *
-   * No-op when no errored field is currently registered or when the
-   * resolved policy is `'none'`.
+   * No-op when this form opted out, or when no errored field is
+   * currently registered. Use `focusFirstError()` to focus regardless
+   * of the configured choice.
    */
-  applyInvalidSubmitPolicy: (policy?: OnInvalidSubmitPolicy) => void
+  applyInvalidSubmitPolicy: () => void
 
   /**
    * Programmatically mark fields as `touched` — the descriptive
@@ -4579,9 +4155,9 @@ export type UseFormReturnType<
    * heuristic.** `touched` also flips on a bare focus → blur with no
    * edit, so the library-default gate deliberately ignores it and
    * reads `blurredAfterInteraction` instead — the stricter bit that
-   * only a blur *following* an edit sets. Reach for `touch()` when a
-   * custom `getDisplayState` reducer or your analytics reads
-   * `touched`; reach for {@link UseFormReturnType.interact} to make
+   * only a blur *following* an edit sets. Reach for `touch()` when
+   * your own analytics reads `touched`; reach for
+   * {@link UseFormReturnType.interact} to make
    * seeded or imported values surface their errors.
    *
    * Pure flag write — does not mutate value, focused, blurred, or

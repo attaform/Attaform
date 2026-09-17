@@ -1,10 +1,10 @@
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, defineComponent, h, withDirectives } from 'vue'
+import { createSSRApp, defineComponent, h, ref, withDirectives } from 'vue'
 import { z } from 'zod'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import type { GetDisplayState } from '../../src/runtime/types/types-api'
+import type { DisplayState, RegisterValue } from '../../src/runtime/types/types-api'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 
@@ -19,13 +19,16 @@ import type { UseFormReturn } from '../../src/zod'
 const schema = z.object({ email: z.string().min(1), note: z.string().optional() })
 type Api = UseFormReturn<typeof schema>
 
-const forceState =
-  (state: 'idle' | 'pending' | 'error' | 'success'): GetDisplayState =>
-  () => ({ display: state })
-
+/**
+ * Bind a register value whose `ariaDisplayState` is a fixed verdict.
+ * The display heuristic decides WHEN a verdict lands (and under SSR the
+ * gate is closed at first paint by design, so a real error never
+ * surfaces here); these cases are about which attributes the SSR path
+ * emits for a GIVEN verdict, so forcing it is what isolates them.
+ */
 async function renderField(opts?: {
-  getDisplayState?: GetDisplayState
-  autoAria?: boolean
+  display?: DisplayState
+  dropChannel?: boolean
   authored?: Record<string, unknown>
   path?: 'email' | 'note'
 }): Promise<{ html: string; api: Api }> {
@@ -35,11 +38,14 @@ async function renderField(opts?: {
       const api = useForm({
         schema,
         key: `ssr-aria-${Math.random().toString(36).slice(2)}`,
-        ...(opts?.autoAria === false ? { autoAria: false } : {}),
-        ...(opts?.getDisplayState ? { getDisplayState: opts.getDisplayState } : {}),
       })
       handle.api = api
-      const rv = api.register(opts?.path ?? 'email')
+      const real = api.register(opts?.path ?? 'email')
+      const { ariaDisplayState: _dropped, ...withoutChannel } = real
+      const rv =
+        opts?.dropChannel === true
+          ? (withoutChannel as RegisterValue)
+          : { ...real, ariaDisplayState: ref<DisplayState>(opts?.display ?? 'idle') }
       return () =>
         withDirectives(h('input', { type: 'text', ...(opts?.authored ?? {}) }), [[vRegister, rv]])
     },
@@ -52,7 +58,7 @@ async function renderField(opts?: {
 
 describe('auto-aria SSR', () => {
   it('emits aria-required for a required field', async () => {
-    const { html } = await renderField({ getDisplayState: forceState('idle') })
+    const { html } = await renderField({ display: 'idle' })
     expect(html).toContain('aria-required="true"')
     // Idle: no error/busy attrs.
     expect(html).not.toContain('aria-invalid')
@@ -60,12 +66,12 @@ describe('auto-aria SSR', () => {
   })
 
   it('omits aria-required for an optional field', async () => {
-    const { html } = await renderField({ path: 'note', getDisplayState: forceState('idle') })
+    const { html } = await renderField({ path: 'note', display: 'idle' })
     expect(html).not.toContain('aria-required')
   })
 
   it('emits aria-invalid + a deterministic aria-describedby in the error state', async () => {
-    const { html, api } = await renderField({ getDisplayState: forceState('error') })
+    const { html, api } = await renderField({ display: 'error' })
     expect(html).toContain('aria-invalid="true"')
     // The server-rendered id matches the value the client reads after
     // hydration (formInstanceId is SSR-stable via Vue's useId).
@@ -73,22 +79,25 @@ describe('auto-aria SSR', () => {
   })
 
   it('emits aria-busy in the pending state', async () => {
-    const { html } = await renderField({ getDisplayState: forceState('pending') })
+    const { html } = await renderField({ display: 'pending' })
     expect(html).toContain('aria-busy="true"')
     expect(html).not.toContain('aria-invalid')
   })
 
   it('never overwrites an authored aria attribute on the server', async () => {
     const { html } = await renderField({
-      getDisplayState: forceState('error'),
+      display: 'error',
       authored: { 'aria-invalid': 'false' },
     })
     expect(html).toContain('aria-invalid="false"')
     expect(html).not.toContain('aria-invalid="true"')
   })
 
-  it('emits nothing when autoAria is disabled', async () => {
-    const { html } = await renderField({ autoAria: false, getDisplayState: forceState('error') })
+  it('emits nothing for a binding carrying no ariaDisplayState', async () => {
+    // A hand-rolled register factory has no field-state accessor to close
+    // over, so `buildRegister` omits `ariaDisplayState`. That is the one
+    // remaining "aria off" path — there is no opt-out flag.
+    const { html } = await renderField({ dropChannel: true })
     expect(html).not.toContain('aria-invalid')
     expect(html).not.toContain('aria-required')
   })

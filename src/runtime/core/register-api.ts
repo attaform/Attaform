@@ -1,6 +1,5 @@
 import { computed, nextTick, ref, shallowReadonly, warn, type Ref } from 'vue'
 import type {
-  CoercionRegistry,
   DisplayState,
   DomBindingFactory,
   InternalRegisterValue,
@@ -14,7 +13,7 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { computeFieldIdentity } from './field-ids'
 import { canonicalizePath, type Path, type PathKey } from './paths'
-import { buildCoerceFn, buildElementCoerceFn, resolveCoercionIndex } from './schema-coerce'
+import { buildCoerceFn, buildElementCoerceFn, resolveCoerceEnabled } from './schema-coerce'
 import { __DEV__ } from './dev'
 
 // Dev-only dedup for the multi-root host warning: a host value update flowing
@@ -32,14 +31,7 @@ const warnedMultiRootHosts = new Set<string>()
  */
 export type InstanceRegisterConfig = {
   readonly instanceMeta?: WriteMeta['instance']
-  readonly coerce?: boolean | CoercionRegistry
-  /**
-   * Form-level `autoAria` resolution (form config merged over app
-   * defaults). The per-register `autoAria` option overrides this per
-   * binding to produce each binding's `ariaEnabled`. Omitted (undefined)
-   * is treated as the library default, `true`.
-   */
-  readonly autoAria?: boolean
+  readonly coerce?: boolean
   /**
    * Resolves the gated `displayState` at a path, reusing the same
    * field-state identity as `form.fields`. Closed over the form's
@@ -80,20 +72,16 @@ export function buildRegister<F extends GenericForm>(
   instanceConfig?: InstanceRegisterConfig
 ) {
   // Per-instance coerce resolution: when a `useForm()` callsite passes
-  // its own `coerce` config, resolve to a fresh CoercionIndex local to
-  // this register factory. Sibling instances sharing the FormStore
-  // (modal + main) keep their own input-side coerce semantics — one's
-  // `'1' → 1` doesn't infect the other's. Falls through to the store's
-  // captured index when the per-call config is absent.
-  const coerceIndex =
+  // its own `coerce` config, this register factory honours it locally.
+  // Sibling instances sharing the FormStore (modal + main) keep their
+  // own input-side coerce semantics — one's `'1' → 1` doesn't infect
+  // the other's. Falls through to the store's captured switch when the
+  // per-call config is absent.
+  const coerceEnabled =
     instanceConfig?.coerce !== undefined
-      ? resolveCoercionIndex(instanceConfig.coerce)
-      : state.coerceIndex
+      ? resolveCoerceEnabled(instanceConfig.coerce)
+      : state.coerceEnabled
   const instanceMeta = instanceConfig?.instanceMeta
-  // Form-level aria resolution captured once for this register factory.
-  // `autoAria` omitted is the library default (`true`); the per-register
-  // `autoAria` option overrides this per call below.
-  const formAutoAria = instanceConfig?.autoAria ?? true
   const getDisplayStateAt = instanceConfig?.getDisplayStateAt
   // `meta.instance` is forwarded into every store write below so the
   // store's reads of `validateOn` / `debounceMs` / `rememberVariants`
@@ -225,33 +213,31 @@ export function buildRegister<F extends GenericForm>(
     const transforms = options?.transforms ?? EMPTY_TRANSFORMS
 
     // Schema-driven coerce closure. Captures the path's slim accept set
-    // and the form's resolved coercion index so the per-event hot path
-    // is a single function call. Identity when the form has coercion
-    // disabled (`useForm({ coerce: false })`) or the path admits no
-    // coercion target. Cached on RegisterValue so the directive doesn't
-    // re-walk the schema per keystroke.
+    // so the per-event hot path is a single function call. Identity
+    // when the form has coercion disabled (`useForm({ coerce: false })`)
+    // or the path admits no coercion target. Cached on RegisterValue so
+    // the directive doesn't re-walk the schema per keystroke.
     const coerce = buildCoerceFn(
       state.schema as Parameters<typeof buildCoerceFn>[0],
       segments,
-      coerceIndex
+      coerceEnabled
     )
     const coerceElement = buildElementCoerceFn(
       state.schema as Parameters<typeof buildElementCoerceFn>[0],
       segments,
-      coerceIndex
+      coerceEnabled
     )
 
     // Aria wiring baked onto the RegisterValue so the (store-less)
     // directive can drive `aria-*` without a field-state lookup. The
     // ids match `FieldState.aria` exactly (same pure derivation).
-    // `ariaEnabled` resolves this binding's per-register `autoAria`
-    // override against the form-level value, so a binding can re-enable
-    // aria even when the form opted out. `ariaDisplayState` reuses the
-    // form's field-state accessor, so it carries the SAME gated verdict
-    // the visible `form.fields.<path>.displayState` shows.
+    // `ariaDisplayState` reuses the form's field-state accessor, so it
+    // carries the SAME gated verdict the visible
+    // `form.fields.<path>.displayState` shows; a hand-rolled register
+    // factory has no accessor to close over, and a binding with no
+    // `ariaDisplayState` gets no aria wiring at all.
     const { aria } = computeFieldIdentity(formInstanceId, state.formKey, pathKey)
     const isRequired = state.schema.isRequiredAtPath(segments)
-    const ariaEnabled = options?.autoAria ?? formAutoAria
     const ariaDisplayState =
       getDisplayStateAt !== undefined
         ? (computed(() => getDisplayStateAt(segments)) as Readonly<Ref<DisplayState>>)
@@ -485,7 +471,6 @@ export function buildRegister<F extends GenericForm>(
       // --- Aria (internal; consumed by the directive) ---
       aria,
       isRequired,
-      ariaEnabled,
       ...(ariaDisplayState !== undefined ? { ariaDisplayState } : {}),
     }
     return shallowReadonly(internalRv) as RegisterValue

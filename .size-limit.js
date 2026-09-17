@@ -375,7 +375,11 @@ export default [
     // This entry ships both adapters, so it carries the v3 issue-path
     // rewrite too.
     // Measured at 53.25 KB.
-    limit: '53.5 KB',
+    limit: '51.5 KB',
+    // Ratcheted by the 2026-09 efficiency program (E0 fingerprint SPI
+    // deletion + E3 mechanical sweep), measured at 50.86 KB. A win that
+    // is not ratcheted gets re-absorbed: this budget drifted +4.6% in 22
+    // days of ordinary guard code before anyone measured it.
     gzip: true,
     // `zod` is a peer dep, external in the measurement exactly as for
     // dist/zod.mjs — this entry dispatches into it now that it's the barrel.
@@ -623,7 +627,11 @@ export default [
     // This entry ships both adapters, so it carries the v3 issue-path
     // rewrite too.
     // Measured at 53.25 KB.
-    limit: '53.5 KB',
+    limit: '51.5 KB',
+    // Ratcheted by the 2026-09 efficiency program (E0 fingerprint SPI
+    // deletion + E3 mechanical sweep), measured at 50.86 KB. A win that
+    // is not ratcheted gets re-absorbed: this budget drifted +4.6% in 22
+    // days of ordinary guard code before anyone measured it.
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -826,7 +834,11 @@ export default [
     // had to learn; a `z.set` member stopped being one, which took the
     // reserved member segment plus its coercion lookup.
     // Measured at 48.43 KB.
-    limit: '48.75 KB',
+    limit: '47.5 KB',
+    // Ratcheted by the 2026-09 efficiency program (E0 fingerprint SPI
+    // deletion + E3 mechanical sweep), measured at 46.9 KB. A win that
+    // is not ratcheted gets re-absorbed: this budget drifted +4.6% in 22
+    // days of ordinary guard code before anyone measured it.
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1109,7 +1121,11 @@ export default [
     // index, neither of which is a path the runtime reads, so both are
     // re-filed before they reach the error stores.
     // Measured at 49.65 KB.
-    limit: '50 KB',
+    limit: '49 KB',
+    // Ratcheted by the 2026-09 efficiency program (E0 fingerprint SPI
+    // deletion + E3 mechanical sweep), measured at 48.25 KB. A win that
+    // is not ratcheted gets re-absorbed: this budget drifted +4.6% in 22
+    // days of ordinary guard code before anyone measured it.
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -1176,7 +1192,17 @@ export default [
     // reserved member segment plus its coercion lookup.
     // Adapter-free, so this entry measures the shared-core half alone.
     // Measured at 39.2 KB.
-    limit: '39.5 KB',
+    //
+    // Raised 39.5 -> 40.25 KB on the E4 heap-and-hot-paths phase
+    // (2026-09-16). Adapter-free, so this entry carries the shared-core
+    // half of that phase in full: the per-schema `AbstractSchema` store
+    // and the bound on its memos, the sorted prefix index over the error
+    // stores, and one Proxy per meta forest. Priced against -22% per-form
+    // heap untouched, -36% read-swept at 100 leaves, and a 400-row
+    // `form.list()` going 278 ms to 7.4 ms per keystroke; see the E4
+    // paragraph in `scripts/check-eager-size.mjs`.
+    // Measured at 39.74 KB.
+    limit: '40.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -1852,7 +1878,17 @@ export default [
     // reserved member segment plus its coercion lookup. Adapter-free,
     // so this entry measures the shared-core half alone.
     // Measured at 26.43 KB.
-    limit: '26.75 KB',
+    //
+    // Raised 26.75 -> 27.5 KB on the E4 heap-and-hot-paths phase
+    // (2026-09-16). Adapter-free, so this entry carries the shared-core
+    // half of that phase in full: the per-schema `AbstractSchema` store
+    // and the bound on its memos, the sorted prefix index over the error
+    // stores, and one Proxy per meta forest. Priced against -22% per-form
+    // heap untouched, -36% read-swept at 100 leaves, and a 400-row
+    // `form.list()` going 278 ms to 7.4 ms per keystroke; see the E4
+    // paragraph in `scripts/check-eager-size.mjs`.
+    // Measured at 26.93 KB.
+    limit: '27.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

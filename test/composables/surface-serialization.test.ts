@@ -50,7 +50,9 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
         handle.api = useForm({
           schema,
           key: `surface-${Math.random().toString(36).slice(2)}`,
-          strict: false,
+          // Construction validates, and schema errors sort ahead of
+          // user ones. These cases read the user layer.
+          defaultValues: { email: 'seed@example.com', password: 'pw' },
         })
         return () => h('div')
       },
@@ -85,7 +87,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
 
       const stringified = String(form.values)
       const parsed = JSON.parse(stringified)
-      expect(parsed).toEqual({ email: 'a@b.co', password: '' })
+      expect(parsed).toEqual({ email: 'a@b.co', password: 'pw' })
     })
 
     it('JSON.stringify(form.values) returns the form data via toJSON', () => {
@@ -93,7 +95,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       form.setValue('email', 'a@b.co')
 
       const parsed = JSON.parse(JSON.stringify(form.values))
-      expect(parsed).toEqual({ email: 'a@b.co', password: '' })
+      expect(parsed).toEqual({ email: 'a@b.co', password: 'pw' })
     })
   })
 
@@ -170,7 +172,6 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
           handle.api = useForm({
             schema,
             key: `surface-du-${Math.random().toString(36).slice(2)}`,
-            strict: false,
             defaultValues: { notify: { channel: 'email', address: 'bad@' } } as never,
           })
           return () => h('div')

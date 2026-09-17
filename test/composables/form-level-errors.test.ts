@@ -36,7 +36,13 @@ function mount(): { app: App; api: Api } {
   const handle: { api?: Api } = {}
   const App = defineComponent({
     setup() {
-      handle.api = useForm({ schema, key: 'form-level-errors', strict: false })
+      handle.api = useForm({
+        schema,
+        key: 'form-level-errors',
+        // Construction validates, and schema errors sort ahead of user
+        // ones. These suites read the user layer, so they start clean.
+        defaultValues: { email: 'seed@example.com', password: 'longenough' },
+      })
       return () => h('div')
     },
   })

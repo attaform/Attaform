@@ -298,7 +298,7 @@ describe('SSR connected — cross-component sync via shared form key', () => {
       name: 'Reader',
       setup() {
         // Same key → useForm returns the existing FormStore. The
-        // schema fingerprint matches (factory returns an equivalent
+        // schema sketch matches (factory returns an equivalent
         // shape) so no warning fires.
         const form = useForm<SharedForm>({ schema: sharedSchema(), key: SHARED_KEY })
         return { form }

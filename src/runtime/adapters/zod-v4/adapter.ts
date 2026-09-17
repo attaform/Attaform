@@ -1,7 +1,7 @@
 import type { z } from 'zod'
 import type {
   AbstractSchema,
-  DefaultValuesResponse,
+  SchemaDefaultsResult,
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
@@ -9,6 +9,7 @@ import type {
 } from '../../types/types-api'
 import {
   createAbstractSchema,
+  createSharedSchemaStore,
   type AbstractSchemaServices,
 } from '../../core/abstract-schema-factory'
 import {
@@ -40,7 +41,6 @@ import {
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
-import { stripAsyncChecks } from './strip'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
@@ -51,9 +51,9 @@ import { V4_INTROSPECTOR } from './walker-introspector'
  * framework's AbstractSchema contract.
  *
  * Feature parity with the v3 adapter:
- * - getDefaultValues: validate-then-fix loop (delegated to default-values.ts)
- *   with refinement stripping in lax mode; discriminated-union-aware
- *   first-option fallback for invalid_type issues.
+ * - getDefaultValues: validate-then-fix loop (delegated to
+ *   default-values.ts); discriminated-union-aware first-option
+ *   fallback for invalid_type issues.
  * - getSchemasAtPath: discriminated-union-aware path walker.
  * - validateAtPath: per-union-branch parse with aggregated errors.
  */
@@ -269,8 +269,8 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
  *
  * The returned factory accepts per-form `SchemaFactoryOptions` (notably
  * `maxRecursionDepth`); the adapter closure bakes them into every
- * downstream walk so a per-form override can lift the cap without
- * touching the app-level default.
+ * downstream walk so a per-form override can lift the cap for that
+ * form alone.
  *
  * Throws if the schema isn't Zod v4, or if its root is not a shape
  * that can hold keys. No kind is refused anywhere BELOW the root: a
@@ -289,40 +289,36 @@ export function zodV4Adapter<
   assertZodVersion(rootSchema)
   assertKeyedRoot(rootSchema)
 
-  return (formKey: FormKey, options: SchemaFactoryOptions) =>
-    createAbstractSchema<z.ZodType, Form, GetValueFormType>(
-      rootSchema,
-      V4_INTROSPECTOR,
-      buildV4Services<Form, GetValueFormType>(),
-      formKey,
-      options
+  return (_formKey: FormKey, options: SchemaFactoryOptions) =>
+    sharedV4Schemas(rootSchema, options.maxRecursionDepth, () =>
+      createAbstractSchema<z.ZodType, Form, GetValueFormType>(
+        rootSchema,
+        V4_INTROSPECTOR,
+        buildV4Services<Form, GetValueFormType>(),
+        options
+      )
     )
 }
+
+/**
+ * v4's store of shared `AbstractSchema` instances, keyed weakly on the
+ * root schema. See `createSharedSchemaStore`.
+ */
+const sharedV4Schemas = createSharedSchemaStore()
 
 /**
  * Build the v4 `AbstractSchemaServices` instance. The services are
  * stateless — every method receives the schema it acts on plus the
  * factory-supplied `formKey` / `maxRecursionDepth`. The function is
  * generic in `Form` / `GetValueFormType` so the typed methods
- * (`runStrictGetDefaults` / `makeSubSchema`) propagate the form
+ * (`runGetDefaults` / `makeSubSchema`) propagate the form
  * shape correctly.
  */
-// Lazy fingerprint: the only consumers are the public
-// `AbstractSchema.fingerprint()` accessor and a dev-only mismatch
-// warning, so the structural walk + its `canonicalStringify` helper
-// load on demand off the eager `useForm` path instead of being
-// anchored eager by a static import.
-async function lazyFingerprint(schema: z.ZodType): Promise<string> {
-  const { fingerprintZodSchema } = await import('./fingerprint')
-  return fingerprintZodSchema(schema)
-}
-
 function buildV4Services<
   Form extends GenericForm,
   GetValueFormType extends GenericForm,
 >(): AbstractSchemaServices<z.ZodType, Form, GetValueFormType> {
   return {
-    fingerprint: (schema) => lazyFingerprint(schema),
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
     // v4 doesn't pre-strip for the slim-mode walk — its path walker
@@ -333,8 +329,8 @@ function buildV4Services<
     slimPrimitivesOf: (schema, maxRecursionDepth) => slimPrimitivesOf(schema, maxRecursionDepth),
     deriveDefault: (schema, useDefault, maxRecursionDepth) =>
       deriveDefault(schema, useDefault, maxRecursionDepth),
-    runStrictGetDefaults: (schema, config, fk, maxRecursionDepth) =>
-      runStrictGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, fk, maxRecursionDepth),
+    runGetDefaults: (schema, config, maxRecursionDepth) =>
+      runGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, maxRecursionDepth),
     unwrapStructuralWrappers: (schema) => unwrapStructuralWrappers(schema),
     unwrapToDiscriminatedUnion: (schema) => unwrapToDiscriminatedUnion(schema),
     peelAllWrappers: (schema) => peelAllWrappers(schema),
@@ -354,12 +350,12 @@ function buildV4Services<
         ? { success: true, data: result.data }
         : { success: false, issues: result.error.issues }
     },
-    makeSubSchema: (schema, fk, maxRecursionDepth) =>
-      buildSubSchemaStubV4<GetValueFormType>(schema, fk, maxRecursionDepth),
+    makeSubSchema: (schema, maxRecursionDepth) =>
+      buildSubSchemaStubV4<GetValueFormType>(schema, maxRecursionDepth),
   }
 }
 
-// `runStrictGetDefaultsV4` infers its target shape from a single schema
+// `runGetDefaultsV4` infers its target shape from a single schema
 // argument; this alias lets the service signature compose without the
 // adapter having to repeat the ZodObject constraint inline.
 type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
@@ -367,29 +363,24 @@ type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
 /**
  * v4's construction-time `getDefaultValues` flow. Wraps the slim
  * default-value derivation (`getDefaultValuesFromZodSchema`) with a
- * strict-mode parse that surfaces refinement errors at construction,
- * with two pre-flight gates:
+ * parse against the real schema that surfaces refinement errors at
+ * construction, with two pre-flight gates:
  *
  *   1. Async transforms (`z.preprocess(async fn, T)`) cannot be
  *      stripped — the transform's output shape is load-bearing for
- *      the inner schema's input. Skip the strict pass; the post-mount
- *      async pass picks up verdicts via `safeParseAsync`.
+ *      the inner schema's input. Skip the construction parse; the
+ *      post-mount async pass picks up verdicts via `safeParseAsync`.
  *
  *   2. Async refines CAN be stripped (the predicate is detachable
  *      from the schema's shape). Strip them up front so the sync
  *      parse runs cleanly; sync-refinement seeds on supplied defaults
  *      still surface.
- *
- * Lax mode short-circuits: the validate-then-fix loop inside the slim
- * derivation has done everything it can; partial-valid state ships
- * over a mount-time exception.
  */
-function runStrictGetDefaultsV4<Form>(
+function runGetDefaultsV4<Form>(
   rootSchema: z.ZodType & { _output: Form },
   config: GetDefaultValuesConfig<Form>,
-  formKey: FormKey,
   maxRecursionDepth: number
-): DefaultValuesResponse<Form> {
+): SchemaDefaultsResult<Form> {
   const { data } = getDefaultValuesFromZodSchema<Form>({
     schema: rootSchema,
     useDefaultSchemaValues: config.useDefaultSchemaValues,
@@ -397,33 +388,44 @@ function runStrictGetDefaultsV4<Form>(
     maxRecursionDepth,
   })
 
-  if (config.strict === false) {
-    // Lax mode: see docblock — partial-valid initial state preferred
-    // to a mount-time exception.
-    return { data, errors: undefined, success: true, formKey }
+  // A schema carrying async work of any kind skips the construction
+  // parse. An async TRANSFORM always did: its output shape is
+  // load-bearing for the inner schema's input, so there is nothing sound
+  // to parse against. An async REFINE used to be handled by rebuilding
+  // the whole schema with the async predicates stripped out, purely so
+  // the SYNC checks beside them could still seed at construction.
+  //
+  // That walker was 206 lines and a second, parallel understanding of
+  // every Zod kind — a shape this codebase has been retiring wherever it
+  // appears, because the copy drifts from the original and nothing
+  // notices. It bought one thing: a schema with an async refine seeded
+  // its sync violations at first paint, exactly as an async-free twin
+  // did. Without it, those seeds arrive one async pass later instead of
+  // at construction, which on SSR means a submit button bound to
+  // `meta.valid` renders enabled and then disables.
+  //
+  // The post-mount async pass remains the source of truth for every
+  // verdict either way; what changed is only how early the sync half of
+  // them appears, and only for schemas that mix the two.
+  if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) {
+    return { data, errors: undefined, success: true }
   }
 
-  if (containsAsyncTransform(rootSchema)) {
-    return { data, errors: undefined, success: true, formKey }
-  }
-
-  const parseTarget = containsAsyncRefine(rootSchema) ? stripAsyncChecks(rootSchema) : rootSchema
   try {
-    const strictResult = parseTarget.safeParse(data) as z.ZodSafeParseResult<Form>
-    if (strictResult.success) {
+    const parseResult = rootSchema.safeParse(data) as z.ZodSafeParseResult<Form>
+    if (parseResult.success) {
       // Storage holds the pre-transform `z.input` view, so we return
       // the original `data` (already filled by
-      // `getDefaultValuesFromZodSchema`) rather than `strictResult.data`
+      // `getDefaultValuesFromZodSchema`) rather than `parseResult.data`
       // (the post-transform `z.output`). For schemas without
       // `.transform()` the two coincide; for schemas with one the
       // storage stays the honest input view that `form.values` reflects.
-      return { data, errors: undefined, success: true, formKey }
+      return { data, errors: undefined, success: true }
     }
     return {
       data,
-      errors: zodIssuesToValidationErrors(strictResult.error.issues),
+      errors: zodIssuesToValidationErrors(parseResult.error.issues),
       success: false,
-      formKey,
     }
   } catch {
     // Defensive floor: the strip walker covers every ZodKind, but a
@@ -431,14 +433,14 @@ function runStrictGetDefaultsV4<Form>(
     // throws would land here. Mount cleanly; the post-mount async
     // pass is the source of truth for any verdict this code path
     // can't surface.
-    return { data, errors: undefined, success: true, formKey }
+    return { data, errors: undefined, success: true }
   }
 }
 
 /**
  * Build the 5-method sub-schema stub that v4 returns from
  * `getSchemasAtPath`. Mirrors the shape consumers expect
- * (`fingerprint`, `needsAsyncValidation`, `getDefaultValues`,
+ * (`needsAsyncValidation`, `getDefaultValues`,
  * `getSchemasAtPath: () => []`, `validateAtPath`) without re-walking
  * through the full factory — sub-schemas in the runtime are only
  * queried for `needsAsyncValidation`, so the stub is observationally
@@ -446,17 +448,14 @@ function runStrictGetDefaultsV4<Form>(
  */
 function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
   schema: z.ZodType,
-  formKey: FormKey,
   maxRecursionDepth: number
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
-    fingerprint: () => lazyFingerprint(schema),
     needsAsyncValidation: () => containsAsyncRefine(schema),
     getDefaultValues: () => ({
       data: deriveDefault(schema, true, maxRecursionDepth) as unknown,
       errors: undefined,
       success: true,
-      formKey,
     }),
     getSchemasAtPath: () => [],
     validateAtPath: async (data: unknown) => {
@@ -469,14 +468,12 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
           data: result.data as GetValueFormType,
           errors: undefined,
           success: true,
-          formKey,
         }
       }
       return {
         data: undefined,
         errors: zodIssuesToValidationErrors(result.error.issues),
         success: false,
-        formKey,
       }
     },
   } as unknown as AbstractSchema<unknown, GetValueFormType>

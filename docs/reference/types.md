@@ -22,21 +22,16 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 ## Form configuration
 
-| Type                                | Source                     | Purpose                                                                                                  |
-| ----------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `UseFormConfiguration<Form>`        | runtime/types/types-api    | The options bag passed to `useForm`.                                                                     |
-| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api    | The whole reactive return: values, fields, errors, meta, methods.                                        |
-| `AttaformPluginOptions`             | runtime/core/plugin        | Options for `createAttaform({ defaults, devtools })`.                                                    |
-| `AttaformDefaults`                  | runtime/types/types-api    | The fields settable via `createAttaform({ defaults })`.                                                  |
-| `FormKey`                           | runtime/types/types-api    | The `useForm({ key })` identifier: distant lookup, error labelling, DevTools naming.                     |
-| `AttaformRegistry`                  | runtime/core/registry      | The per-Vue-app container every form registers into. Reached explicitly only for SSR or a custom plugin. |
-| `HistoryPlugin`                     | runtime/types/types-api    | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`.               |
-| `OnInvalidSubmitPolicy`             | runtime/types/types-api    | `'none'` \| `'focus-first-error'` \| `'scroll-to-first-error'` \| `'both'`.                              |
-| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api    | `validateOn` field and its discriminated config.                                                         |
-| `DisplayState` / `GetDisplayState`  | runtime/types/types-api    | The display-state verdict (`idle` \| `pending` \| `error` \| `success`) and its resolver.                |
-| `DisplayCtx`                        | runtime/types/types-api    | What a `getDisplayState` reducer receives: the field and form snapshots, plus the injected clock.        |
-| `DisplayMachine`                    | runtime/types/types-api    | What a reducer returns: the verdict to render now, plus optional timings to re-run itself.               |
-| `DisplayTimings`                    | runtime/core/display-state | The anti-flash delays the default reducer runs on (`showDelay`, `minDuration`), in milliseconds.         |
+| Type                                | Source                  | Purpose                                                                                                  |
+| ----------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `UseFormConfiguration<Form>`        | runtime/types/types-api | The options bag passed to `useForm`.                                                                     |
+| `UseFormReturnType<Form, GetValue>` | runtime/types/types-api | The whole reactive return: values, fields, errors, meta, methods.                                        |
+| `AttaformPluginOptions`             | runtime/core/plugin     | Options for `createAttaform({ devtools, ssr })`.                                                         |
+| `FormKey`                           | runtime/types/types-api | The `useForm({ key })` identifier: distant lookup, error labelling, DevTools naming.                     |
+| `AttaformRegistry`                  | runtime/core/registry   | The per-Vue-app container every form registers into. Reached explicitly only for SSR or a custom plugin. |
+| `HistoryPlugin`                     | runtime/types/types-api | What `historyPlugin()` from `attaform/history` returns; passed via `useForm({ history })`.               |
+| `ValidateOn` / `ValidateOnConfig`   | runtime/types/types-api | `validateOn` field and its discriminated config.                                                         |
+| `DisplayState`                      | runtime/types/types-api | The display-state verdict: `idle` \| `pending` \| `error` \| `success`.                                  |
 
 ## Reactive surfaces
 
@@ -70,10 +65,13 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 | Type                             | Source                  | Purpose                                                          |
 | -------------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 15-method + 4-optional contract custom adapters implement.   |
-| `DefaultValuesResponse<Form>`    | runtime/types/types-api | What `getDefaultValues` returns.                                 |
+| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 14-method + 4-optional contract custom adapters implement.   |
+| `SchemaDefaultsResult<Form>`     | runtime/types/types-api | What `getDefaultValues` returns.                                 |
+| `SchemaParseResult<Form>`        | runtime/types/types-api | What `validateAtPath` settles as: a verdict with no form key.    |
+| `SchemaParseSuccess<Form>`       | runtime/types/types-api | The `success: true` arm of `SchemaParseResult`.                  |
+| `SchemaParseErrorWithData<Form>` | runtime/types/types-api | Failed, but partial data came back with the errors.              |
+| `SchemaParseErrorWithoutData`    | runtime/types/types-api | Failed with no data (for example a top-level type mismatch).     |
 | `SlimPrimitiveKind`              | runtime/types/types-api | `'string'` \| `'number'` \| … (typeof-style kinds).              |
-| `SlimRuntimeOf<T>`               | runtime/types/types-api | Type-level helper to compute the slim primitive set for a type.  |
 | `FieldMetaPayload`               | runtime/types/types-api | Schema-attached metadata: label, description, placeholder, meta. |
 
 ## Path types
@@ -157,12 +155,6 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 | Type                     | Source                       | Purpose                                               |
 | ------------------------ | ---------------------------- | ----------------------------------------------------- |
 | `AttaformDevtoolsBridge` | runtime/core/devtools-shared | The window-bridge contract the Nuxt overlay consumes. |
-
-## Coercion
-
-| Type                                                    | Source                  | Purpose                            |
-| ------------------------------------------------------- | ----------------------- | ---------------------------------- |
-| `CoercionEntry` / `CoercionRegistry` / `CoercionResult` | runtime/types/types-api | The schema-driven coercion shapes. |
 
 ## Internal-only (not for direct consumption)
 

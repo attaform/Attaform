@@ -86,6 +86,13 @@ export default defineConfig({
     // glob collects `apps/bench-arena/tests/*.spec.ts` (Playwright specs)
     // and fails to import them.
     include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    // Same anchoring for `vitest bench`. Its default glob is repo-wide, so
+    // any nested checkout (a git worktree, a vendored copy) gets swept in
+    // and every scenario runs twice — which `check-bench` then gates on
+    // twice, at half the machine. The suite lives in `bench/`; say so.
+    benchmark: {
+      include: ['bench/**/*.bench.?(c|m)[jt]s?(x)'],
+    },
     // Global setup file: stubs `window.isSecureContext = true` so the
     // secure-context gate doesn't disable built-in persistence in
     // jsdom-backed tests, and resets the one-shot dev-warning dedup

@@ -4,11 +4,11 @@ import { computed, isRef, ref } from 'vue'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { vRegister } from '../../src/runtime/core/directive'
 import { computeFieldIdentity } from '../../src/runtime/core/field-ids'
-import { canonicalizePath } from '../../src/runtime/core/paths'
 import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { buildRegister, type InstanceRegisterConfig } from '../../src/runtime/core/register-api'
 import type { DisplayState } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 
 type F = { email: string; note: string }
 
@@ -68,9 +68,12 @@ describe('buildRegister', () => {
     it('exposes the canonical PathKey string', () => {
       const { register } = makeRegister()
       const rv = register(['email'])
-      // PathKey is the JSON-encoded segment array — opaque, stable for
-      // Map/Set keys, equality, and log strings.
-      expect(rv.path).toBe('["email"]')
+      // PathKey is opaque by contract — stable for Map/Set keys,
+      // equality and log strings, and nothing may parse it. Asserted
+      // against the canonicaliser rather than a literal, so the encoding
+      // stays free to change without this file being the thing that
+      // stops it.
+      expect(rv.path).toBe(canonicalizePath(['email']).key)
       expect(typeof rv.path).toBe('string')
       expect(isRef(rv.path)).toBe(false)
     })
@@ -125,7 +128,7 @@ describe('buildRegister', () => {
         // Vue's readonly proxies log a console.warn and silently drop
         // the write — the value is unchanged, no exception thrown.
         ;(rv as unknown as { path: string }).path = 'phone' as never
-        expect(rv.path).toBe('["email"]')
+        expect(rv.path).toBe(canonicalizePath(['email']).key)
         expect(warn).toHaveBeenCalled()
       } finally {
         warn.mockRestore()
@@ -309,35 +312,14 @@ describe('buildRegister', () => {
       expect(typeof register(['email']).isRequired).toBe('boolean')
     })
 
-    it('enables aria by default, and the verdict reuses getDisplayStateAt', () => {
+    it('the verdict reuses getDisplayStateAt', () => {
       const ds = ref<DisplayState>('idle')
       const { register } = makeAriaRegister({ getDisplayStateAt: () => ds.value })
       const rv = register(['email'])
-      expect(rv.ariaEnabled).toBe(true)
       expect(rv.ariaDisplayState?.value).toBe('idle')
       // Reactive: a verdict change flows through without re-registering.
       ds.value = 'error'
       expect(rv.ariaDisplayState?.value).toBe('error')
-    })
-
-    it('disables aria for the whole form when autoAria is false', () => {
-      const { register } = makeAriaRegister({ autoAria: false, getDisplayStateAt: () => 'idle' })
-      expect(register(['email']).ariaEnabled).toBe(false)
-    })
-
-    it('disables aria per-binding via the register autoAria option', () => {
-      const { register } = makeAriaRegister({ getDisplayStateAt: () => 'idle' })
-      expect(register(['email'], { autoAria: false }).ariaEnabled).toBe(false)
-      // Sibling bindings on the same form keep aria on.
-      expect(register(['note']).ariaEnabled).toBe(true)
-    })
-
-    it('re-enables aria per-binding even when the form opted out', () => {
-      const { register } = makeAriaRegister({ autoAria: false, getDisplayStateAt: () => 'idle' })
-      // Per-binding autoAria overrides the form-level opt-out in both directions.
-      expect(register(['email'], { autoAria: true }).ariaEnabled).toBe(true)
-      // Bindings that don't override still inherit the form's opt-out.
-      expect(register(['note']).ariaEnabled).toBe(false)
     })
 
     it('omits ariaDisplayState when no accessor is wired (hand-rolled factory)', () => {

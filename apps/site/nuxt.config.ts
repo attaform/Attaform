@@ -628,9 +628,6 @@ export default defineNuxtConfig({
 
     // `/docs/recipes/*` — task-shaped pages folded into the matching
     // concept page (the concept-per-page rebuild's whole point).
-    '/docs/recipes/app-defaults': {
-      redirect: { to: '/docs/cross-cutting-state/app-defaults', statusCode: 301 },
-    },
     '/docs/recipes/async-validation': {
       redirect: { to: '/docs/validation/async-refinements', statusCode: 301 },
     },

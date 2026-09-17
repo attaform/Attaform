@@ -9,6 +9,7 @@ import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 import { fakeSchema } from '../utils/fake-schema'
+import { canonicalizePath } from '../../src/runtime/core/paths'
 
 /**
  * SSR coverage for `useRegister()` — closes the gap left by
@@ -94,6 +95,11 @@ function makeAppWithParentChildTemplate(parentTemplate: string) {
   const app = createSSRApp(Parent)
   app.use(createAttaform({ ssr: true /* SSR */ }))
   return app
+}
+
+/** Vue's SSR attribute escaping, for comparing against rendered markup. */
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 }
 
 describe('useRegister — SSR (renderToString)', () => {
@@ -194,7 +200,10 @@ describe('useRegister — SSR (renderToString)', () => {
 
     // Path is the canonical PathKey (JSON-encoded). Vue's HTML
     // serializer escapes `"` as `&quot;`, so check the escaped form.
-    expect(html).toContain('data-atta-path="[&quot;email&quot;]"')
+    // The path attribute carries the canonical `PathKey`, which is
+    // opaque by contract — asserted through the canonicaliser so a
+    // change of encoding does not have to come through this file.
+    expect(html).toContain(`data-atta-path="${escapeAttr(canonicalizePath(['email']).key)}"`)
     expect(html).toContain('data-atta-segments="[&quot;email&quot;]"')
     expect(html).toContain('data-atta-form-key="ssr-path-test"')
   })

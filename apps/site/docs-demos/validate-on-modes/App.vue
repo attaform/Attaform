@@ -11,19 +11,19 @@
     schema,
     key: 'docs-demo-validate-on-change',
     validateOn: 'change',
-    strict: false,
+    defaultValues: { handle: 'ada' },
   })
   const blurForm = useForm({
     schema,
     key: 'docs-demo-validate-on-blur',
     validateOn: 'blur',
-    strict: false,
+    defaultValues: { handle: 'ada' },
   })
   const submitForm = useForm({
     schema,
     key: 'docs-demo-validate-on-submit',
     validateOn: 'submit',
-    strict: false,
+    defaultValues: { handle: 'ada' },
   })
 
   const modes = [
@@ -57,8 +57,9 @@
 <template>
   <div class="demo layout">
     <p class="lede">
-      The same schema runs in all three. What changes is <em>when</em>. Type one or two characters
-      into each, then tab away or submit, and watch when the message lands.
+      The same schema runs in all three. What changes is <em>when</em>. Each starts with a valid
+      handle: shorten one to a character or two, then tab away or submit. Each panel reports two
+      things, and they move at different moments.
     </p>
 
     <div class="layout split3">
@@ -81,15 +82,30 @@
           <button type="submit">Submit</button>
         </form>
 
-        <div class="banner" :class="{ error: item.form.fields.handle.firstError }">
-          {{ item.form.fields.handle.firstError?.message ?? 'No error yet' }}
-        </div>
+        <section>
+          <p class="hint"><code>firstError</code>: the schema's verdict</p>
+          <div class="banner" :class="{ error: item.form.fields.handle.firstError }">
+            {{ item.form.fields.handle.firstError?.message ?? 'No error' }}
+          </div>
+
+          <p class="hint"><code>showErrors</code>: what you would render</p>
+          <div class="banner" :class="{ error: item.form.fields.handle.showErrors }">
+            {{
+              item.form.fields.handle.showErrors
+                ? (item.form.fields.handle.firstError?.message ?? 'Error')
+                : 'Nothing shown yet'
+            }}
+          </div>
+        </section>
       </section>
     </div>
 
     <p class="hint">
-      These panels read the raw validation result so the timing is the only variable. In real UI you
-      gate what shows with <code>showErrors</code>, which adds its own reveal-on-submit rhythm.
+      An error is a property of the schema, not of the interaction. <code>firstError</code> answers
+      as soon as that panel's mode validates, which is what these three columns differ on.
+      <code>showErrors</code> is the separate decision of whether the user should see it yet, and it
+      waits for a blur or a submit in every column. Bind <code>showErrors</code> in real UI: the
+      reveal rhythm comes with it, and the verdict stays readable whenever you need it.
     </p>
   </div>
 </template>

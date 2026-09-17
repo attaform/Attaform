@@ -17,15 +17,13 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
-import { DEFAULT_TIMINGS, defaultDisplayState, makeDefaultDisplayState } from '../../src'
-import { FOCUS_OUT_GRACE } from '../../src/runtime/core/display-state'
-import type {
-  DisplayCtx,
-  DisplayMachine,
-  DisplayState,
-  GetDisplayState,
-  ValidationError,
-} from '../../src'
+import {
+  DEFAULT_TIMINGS,
+  defaultDisplayState,
+  FOCUS_OUT_GRACE,
+} from '../../src/runtime/core/display-state'
+import type { DisplayState, ValidationError } from '../../src'
+import type { DisplayCtx, DisplayMachine } from '../../src/runtime/types/types-api'
 
 /**
  * `field.displayState` + the `getDisplayState` reducer.
@@ -45,8 +43,7 @@ import type {
  *      pending, else error if any descendant (or own cross-field) error
  *      has cleared its own reveal gate, else earned success, else idle.
  *      An ungated sibling error never surfaces at the container.
- *   2. `createAttaform({ defaults: { getDisplayState } })`.
- *   3. `useForm({ getDisplayState })`, wins over both above.
+ *   2. `useForm({ getDisplayState })`, which wins over the above.
  *
  * The reducer runs unconditionally (it must see the no-error states to
  * resolve success / idle / pending). Its `ctx.field` / `ctx.formMeta` are
@@ -54,7 +51,7 @@ import type {
  * BOTH the type and runtime level, so a self-referential reducer is
  * impossible regardless of language (TS or JS). The pure timing matrix is
  * locked in `display-reducer.test.ts`; this file covers the verdicts and
- * the override tiers through a real mounted form.
+ * the per-form override through a real mounted form.
  */
 
 const apps: App[] = []
@@ -63,10 +60,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-function mountWithApp<T>(
-  setup: () => T,
-  pluginOptions: Parameters<typeof createAttaform>[0] = {}
-): T {
+function mountWithApp<T>(setup: () => T): T {
   const handle: { captured?: T } = {}
   const App = defineComponent({
     setup() {
@@ -74,7 +68,7 @@ function mountWithApp<T>(
       return () => h('div')
     },
   })
-  const app = createApp(App).use(createAttaform({ ...pluginOptions }))
+  const app = createApp(App).use(createAttaform())
   const root = document.createElement('div')
   document.body.appendChild(root)
   app.mount(root)
@@ -149,7 +143,10 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
       it('errors present, untouched, submissionAttempts=0 → idle (gate closed)', () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
-        expect(form.fields('email').errors.length).toBe(1)
+        // Two: the construction seed (`''` fails the schema's `.min(1)`)
+        // plus the one just injected. The count is the precondition; the
+        // subject is that the closed gate shows neither.
+        expect(form.fields('email').errors.length).toBe(2)
         expect(form.fields('email').displayState).toBe('idle')
         expectProjections(form.fields('email'))
       })
@@ -317,79 +314,6 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
   })
 }
 
-function describeOverrideTier(
-  label: string,
-  makeForm: (
-    pluginDefault: GetDisplayState | undefined,
-    perFormConfig: GetDisplayState | undefined
-  ) => FormLike
-): void {
-  describe(label, () => {
-    function inject(form: FormLike) {
-      form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
-    }
-
-    // A reducer that surfaces errors purely on touch, ignoring the
-    // submit arm of the default gate.
-    const touchOnly: GetDisplayState = (_prev, { field }) =>
-      field.errors.length > 0 && field.touched === true ? { display: 'error' } : { display: 'idle' }
-    // "Always show when errors exist" — the eager reducer.
-    const eager: GetDisplayState = (_prev, { field }) =>
-      field.errors.length > 0 ? { display: 'error' } : { display: 'idle' }
-    // "Never surface anything."
-    const silent: GetDisplayState = () => ({ display: 'idle' })
-
-    it('plugin-level override: custom predicate ignores submissionAttempts', async () => {
-      const form = makeForm(touchOnly, undefined)
-      inject(form)
-      await form.handleSubmit(() => {})()
-      await nextTick()
-      expect(form.meta.submissionAttempts).toBeGreaterThan(0)
-      // touched is still false (no DOM blur, no programmatic touch)
-      expect(form.fields('email').displayState).toBe('idle')
-      form.touch('email')
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('error')
-    })
-
-    it('plugin-level override: eager predicate shows as soon as errors exist', async () => {
-      const form = makeForm(eager, undefined)
-      inject(form)
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('error')
-    })
-
-    it('plugin-level override: silent predicate never surfaces even after submit', async () => {
-      const form = makeForm(silent, undefined)
-      inject(form)
-      await form.handleSubmit(() => {})()
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('idle')
-    })
-
-    it('per-form useForm override beats plugin-level', async () => {
-      // Plugin says ALWAYS show; per-form overrides to NEVER surface.
-      const form = makeForm(eager, silent)
-      inject(form)
-      await form.handleSubmit(() => {})()
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('idle')
-    })
-
-    it('per-form useForm override beats plugin-level (touch-gated)', async () => {
-      // Plugin says always; per-form gates on touched only.
-      const form = makeForm(eager, touchOnly)
-      inject(form)
-      await form.handleSubmit(() => {})()
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('idle')
-      form.touch('email')
-      await nextTick()
-      expect(form.fields('email').displayState).toBe('error')
-    })
-  })
-}
-
 // -----------------------------------------------------------------------------
 // v3 adapter
 // -----------------------------------------------------------------------------
@@ -411,25 +335,8 @@ describeAdapter('displayState — zod-v3 adapter', () =>
       useFormV3({
         schema: v3Schema,
         key: `display-state-v3-${Math.random()}`,
-        strict: false,
         defaultValues: v3Defaults,
       })
-    )
-  )
-)
-
-describeOverrideTier('getDisplayState override resolution — zod-v3', (pluginDefault, perForm) =>
-  asForm(
-    mountWithApp(
-      () =>
-        useFormV3({
-          schema: v3Schema,
-          key: `display-state-override-v3-${Math.random()}`,
-          strict: false,
-          defaultValues: v3Defaults,
-          ...(perForm === undefined ? {} : { getDisplayState: perForm }),
-        }),
-      pluginDefault === undefined ? {} : { defaults: { getDisplayState: pluginDefault } }
     )
   )
 )
@@ -455,25 +362,8 @@ describeAdapter('displayState — zod-v4 adapter', () =>
       useFormV4({
         schema: v4Schema,
         key: `display-state-v4-${Math.random()}`,
-        strict: false,
         defaultValues: v4Defaults,
       })
-    )
-  )
-)
-
-describeOverrideTier('getDisplayState override resolution — zod-v4', (pluginDefault, perForm) =>
-  asForm(
-    mountWithApp(
-      () =>
-        useFormV4({
-          schema: v4Schema,
-          key: `display-state-override-v4-${Math.random()}`,
-          strict: false,
-          defaultValues: v4Defaults,
-          ...(perForm === undefined ? {} : { getDisplayState: perForm }),
-        }),
-      pluginDefault === undefined ? {} : { defaults: { getDisplayState: pluginDefault } }
     )
   )
 )
@@ -482,134 +372,14 @@ describeOverrideTier('getDisplayState override resolution — zod-v4', (pluginDe
 // Cross-cutting: omit'd args, public default heuristic, runtime safety
 // -----------------------------------------------------------------------------
 
-describe('getDisplayState — cross-cutting', () => {
-  it('predicate runtime args literally omit the derived display keys', async () => {
-    const derivedKeys = [
-      'displayState',
-      'showErrors',
-      'showPending',
-      'showSuccess',
-      'showIdle',
-      'firstError',
-    ] as const
-    const probe = {
-      fieldPresent: [] as string[],
-      formMetaPresent: [] as string[],
-    }
-    const form = asForm(
-      mountWithApp(() =>
-        useFormV4({
-          schema: v4Schema,
-          key: `omit-runtime-${Math.random()}`,
-          strict: false,
-          defaultValues: v4Defaults,
-          getDisplayState: (_prev, { field, formMeta }) => {
-            for (const k of derivedKeys) {
-              if (k in (field as object)) probe.fieldPresent.push(k)
-              if (k in (formMeta as object)) probe.formMetaPresent.push(k)
-            }
-            return { display: 'error' }
-          },
-        })
-      )
-    )
-    form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
-    // Trigger evaluation
-    void form.fields('email').displayState
-    await nextTick()
-
-    expect(probe.fieldPresent).toEqual([])
-    expect(probe.formMetaPresent).toEqual([])
-  })
-
-  it('defaultDisplayState is publicly exported as a (prev, ctx) reducer', () => {
+describe('the display reducer — cross-cutting', () => {
+  it('defaultDisplayState is a (prev, ctx) reducer', () => {
     expect(typeof defaultDisplayState).toBe('function')
     expect(defaultDisplayState.length).toBe(2)
   })
-
-  it('defaultDisplayState composes inside a layered reducer', async () => {
-    const layered: GetDisplayState = (prev, ctx) =>
-      ctx.field.path[0] === 'urgent' ? { display: 'error' } : defaultDisplayState(prev, ctx)
-
-    const form = asForm(
-      mountWithApp(() =>
-        useFormV4({
-          schema: v4Schema,
-          key: `composed-${Math.random()}`,
-          strict: false,
-          defaultValues: v4Defaults,
-          getDisplayState: layered,
-        })
-      )
-    )
-    form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
-    // path[0] === 'urgent' is false for 'email' — falls through to the
-    // default, which is 'idle' at this state (untouched, submissionAttempts=0).
-    await nextTick()
-    expect(form.fields('email').displayState).toBe('idle')
-    // Trigger the default branch's error case.
-    await form.handleSubmit(() => {})()
-    await nextTick()
-    expect(form.fields('email').displayState).toBe('error')
-  })
-
-  // The full synthetic gate / error / earned-success / container matrix
-  // for the default reducer now lives in `display-reducer.test.ts`, where
-  // it can inject `now` / `validatingSince` / `prev` deterministically and
-  // also lock the anti-flash timing. Integration coverage of the same
-  // verdicts (through a real mounted form) stays in the adapter blocks above.
-
-  // PASS2-11 — a consumer predicate that throws must not take the
-  // reactive surface down. The catch was already there (correct, never
-  // throws into the app), but the throw was silently swallowed so a
-  // misbehaving predicate stayed invisible. Standing diagnostic: warn
-  // once in dev, fall back to the library default.
-  it('consumer predicate throw: warns in dev once, falls back to default verdict', async () => {
-    const warnings: string[] = []
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
-      warnings.push(args.map((a) => String(a)).join(' '))
-    })
-
-    let throws = 0
-    const exploding: GetDisplayState = () => {
-      throws += 1
-      throw new Error('boom')
-    }
-
-    const form = asForm(
-      mountWithApp(() =>
-        useFormV4({
-          schema: v4Schema,
-          key: `throw-pred-${Math.random()}`,
-          strict: false,
-          defaultValues: v4Defaults,
-          getDisplayState: exploding,
-        })
-      )
-    )
-    form.setErrors([{ path: ['email'], message: 'required', code: 'test' }])
-    // Read the field twice to exercise the predicate path on a hot
-    // re-read; the warn should still fire once (dedup on the predicate
-    // reference).
-    const first = form.fields('email').displayState
-    const second = form.fields('email').displayState
-
-    warnSpy.mockRestore()
-    expect(typeof first).toBe('string')
-    expect(typeof second).toBe('string')
-    // Library default returned the error verdict (an own-path error +
-    // submissionAttempts=0 → 'idle' under the gate). The exact verdict
-    // is the library default's call; what matters is the FALLBACK
-    // landed, not what value it produced.
-    expect(throws).toBeGreaterThan(0)
-    const matchingWarns = warnings.filter(
-      (w) => w.includes('getDisplayState') && w.includes('default')
-    )
-    expect(matchingWarns.length).toBe(1)
-  })
 })
 
-describe('getDisplayState — anti-flash spinner timing (integration)', () => {
+describe('anti-flash spinner timing (integration)', () => {
   // Fake timers drive both the engine's deadline `setTimeout` and the
   // injected `now` (vitest mocks `Date.now()`), so the show-delay /
   // min-visible thresholds are exercised deterministically. The form's
@@ -638,7 +408,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `pending-timing-${Math.random()}`,
-          strict: false,
           defaultValues: { email: '' },
         } as never)
       )
@@ -736,7 +505,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `client-compute-${Math.random()}`,
-          strict: false,
           defaultValues: { email: '' },
         } as never)
       )
@@ -896,54 +664,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
     expect(frames).not.toContain('idle')
   })
 
-  it('a custom factory drives the clock at its own thresholds', async () => {
-    let resolveValidation: (ok: boolean) => void = () => {}
-    const schema = zV4.object({
-      email: zV4.string().refine(
-        (val) =>
-          val.length === 0
-            ? false
-            : new Promise<boolean>((resolve) => {
-                resolveValidation = resolve
-              }),
-        { error: 'invalid email' }
-      ),
-    })
-    const form = asForm(
-      mountWithApp(() =>
-        useFormV4({
-          schema,
-          key: `custom-timing-${Math.random()}`,
-          strict: false,
-          defaultValues: { email: '' },
-          // Tighter than the default: spinner after 30ms, held for 90ms.
-          getDisplayState: makeDefaultDisplayState({ showDelay: 30, minVisible: 90 }),
-        } as never)
-      )
-    )
-
-    form.touch('email')
-    await form.handleSubmit(() => {})()
-    await nextTick()
-    expect(form.fields('email').displayState).toBe('error')
-
-    form.setValue('email', 'a@b.c')
-    await nextTick()
-    // Still held at the default's 100ms would be wrong — this factory shows
-    // the spinner at 30ms. Just before, it is still held.
-    await vi.advanceTimersByTimeAsync(29)
-    expect(form.fields('email').displayState).toBe('error')
-    await vi.advanceTimersByTimeAsync(1)
-    expect(form.fields('email').displayState).toBe('pending')
-
-    resolveValidation(false)
-    await vi.advanceTimersByTimeAsync(0)
-    // Held for the custom 90ms min-visible, not the default 120ms.
-    expect(form.fields('email').displayState).toBe('pending')
-    await vi.advanceTimersByTimeAsync(90)
-    expect(form.fields('email').displayState).toBe('error')
-  })
-
   it('reset() mid-spinner clears the held state and leaves no orphaned timer', async () => {
     const { form, resolve } = mountGatedRefine()
     const api = form as unknown as { reset: () => void }
@@ -1005,7 +725,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `container-spinner-${Math.random()}`,
-          strict: false,
           defaultValues: { profile: { a: '', b: '' } },
         } as never)
       )
@@ -1054,7 +773,6 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
         useFormV4({
           schema,
           key: `perf-${Math.random()}`,
-          strict: false,
           defaultValues: defaults,
         } as never)
       )
@@ -1213,20 +931,19 @@ describe('getDisplayState — anti-flash spinner timing (integration)', () => {
       const f = useFormV4({
         schema,
         key: `wiz-timing-${Math.random()}`,
-        strict: false,
         defaultValues: { email: '' },
       } as never)
       const w = useWizard({ steps: [f], restore: false, persist: false })
       return { form: asForm(f), wizard: w }
     })
 
-    // Clean first wizard submit opens the gate. The wizard validates via
-    // parse(), which does not write per-field errors to the store, so the
-    // empty field reads idle (gate open, nothing surfaced yet) rather than
-    // error — that is fine; we only need the gate open to drive a spinner.
+    // First wizard submit opens the gate. The refine rejects the empty
+    // string synchronously, so construction already seeded the verdict
+    // and the open gate surfaces it. We only need the gate open here;
+    // the spinner is driven below.
     await wizard.handleSubmit(() => {})()
     await nextTick()
-    expect(form.fields('email').displayState).toBe('idle')
+    expect(form.fields('email').displayState).toBe('error')
 
     // Drive a spinner into its min-visible hold (change validation DOES write
     // the error, so the field carries a verdict under the spinner).
@@ -1278,7 +995,6 @@ describe('resetField — in-flight validation teardown', () => {
           useFormV4({
             schema,
             key: `resetfield-teardown-${Math.random()}`,
-            strict: false,
             validateOn: 'blur',
             defaultValues: { email: '' },
           } as never)
@@ -1329,7 +1045,7 @@ describe('resetField — in-flight validation teardown', () => {
   })
 })
 
-describe('getDisplayState — focus-out collapses the show-delay', () => {
+describe('display timing — focus-out collapses the show-delay', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
@@ -1356,7 +1072,6 @@ describe('getDisplayState — focus-out collapses the show-delay', () => {
           useFormV4({
             schema,
             key: `focusout-grace-${Math.random()}`,
-            strict: false,
             validateOn: 'blur',
             defaultValues: { email: '' },
           } as never)
@@ -1395,7 +1110,7 @@ describe('getDisplayState — focus-out collapses the show-delay', () => {
   })
 })
 
-describe('getDisplayState — success is earned (dirty + non-blank)', () => {
+describe('display verdict — success is earned (dirty + non-blank)', () => {
   /**
    * The green check only fires for a field the user filled with valid
    * content themselves. A pre-filled field left untouched, an empty
@@ -1414,7 +1129,6 @@ describe('getDisplayState — success is earned (dirty + non-blank)', () => {
         useFormV4({
           schema,
           key: `earned-success-${Math.random()}`,
-          strict: false,
           defaultValues: { handle: 'ada', bio: '' },
         } as never)
       )
@@ -1446,7 +1160,7 @@ describe('getDisplayState — success is earned (dirty + non-blank)', () => {
   })
 })
 
-describe('getDisplayState — reward early, punish late (DOM gate)', () => {
+describe('display verdict — reward early, punish late (DOM gate)', () => {
   const gateSchema = zV4.object({ email: zV4.string().email('Enter a valid email') })
 
   function mountInput(): { api: FormLike; input: HTMLInputElement } {
@@ -1456,7 +1170,6 @@ describe('getDisplayState — reward early, punish late (DOM gate)', () => {
         const api = useFormV4({
           schema: gateSchema,
           key: `gate-${Math.random()}`,
-          strict: false,
           validateOn: 'blur',
         } as never) as unknown as FormLike & { register: (p: string) => unknown }
         handle.api = api
@@ -1551,7 +1264,6 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
         const api = useFormV4({
           schema,
           key: `rollup-dom-${Math.random()}`,
-          strict: false,
           ...formOpts,
         } as never) as unknown as FormLike & { register: (p: string) => unknown }
         handle.api = api
@@ -1646,28 +1358,6 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
     expect(api.meta.displayState).toBe('error')
   })
 
-  it('a custom getDisplayState at a container is not overridden by the rollup', async () => {
-    const neverError: GetDisplayState = () => ({ display: 'idle' })
-    const schema = zV4.object({ profile: zV4.object({ name: zV4.string().min(1) }) })
-    const form = asForm(
-      mountWithApp(() =>
-        useFormV4({
-          schema,
-          key: `rollup-custom-${Math.random()}`,
-          strict: false,
-          defaultValues: { profile: { name: '' } },
-          getDisplayState: neverError,
-        } as never)
-      )
-    )
-    await form.handleSubmit(() => {})()
-    await nextTick()
-    // Empty name fails and the gate is open, but the consumer's reducer owns
-    // container verdicts: the default-only rollup override never fires.
-    expect(form.fields('profile').displayState).toBe('idle')
-    expect(form.fields('profile.name').displayState).toBe('idle')
-  })
-
   describe('with fake timers', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => vi.useRealTimers())
@@ -1687,7 +1377,6 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
           useFormV4({
             schema,
             key: `rollup-pending-${Math.random()}`,
-            strict: false,
             defaultValues: { a: '', b: '' },
           } as never)
         )
@@ -1737,7 +1426,7 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
   })
 })
 
-describe('getDisplayState — type-level guards', () => {
+describe('DisplayCtx — type-level guards', () => {
   it('ctx.field / ctx.formMeta omit the derived display keys; reducer returns a DisplayMachine', () => {
     type Field = DisplayCtx['field']
     type Meta = DisplayCtx['formMeta']
@@ -1767,9 +1456,9 @@ describe('getDisplayState — type-level guards', () => {
 
     // The reducer's args are (prev: DisplayMachine, ctx: DisplayCtx) and it
     // returns the next DisplayMachine.
-    expectTypeOf<Parameters<GetDisplayState>[0]>().toEqualTypeOf<DisplayMachine>()
-    expectTypeOf<Parameters<GetDisplayState>[1]>().toEqualTypeOf<DisplayCtx>()
-    expectTypeOf<ReturnType<GetDisplayState>>().toEqualTypeOf<DisplayMachine>()
+    expectTypeOf(defaultDisplayState).parameter(0).toEqualTypeOf<DisplayMachine>()
+    expectTypeOf(defaultDisplayState).parameter(1).toEqualTypeOf<DisplayCtx>()
+    expectTypeOf(defaultDisplayState).returns.toEqualTypeOf<DisplayMachine>()
     // `display` carries the same enum the FieldState projection exposes.
     expectTypeOf<DisplayMachine['display']>().toEqualTypeOf<DisplayState>()
   })

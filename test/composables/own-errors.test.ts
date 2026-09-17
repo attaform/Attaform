@@ -140,6 +140,9 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
 
     it('container ownErrors surfaces a schema .refine() without its child errors', async () => {
       const form = makeForm()
+      // Break both the leaf check and the container refine in one write:
+      // 'no' is under `.min(5)` and does not mention the handle.
+      form.setValue('profile.bio', 'no')
       await form.handleSubmit(
         () => {},
         () => {}
@@ -205,7 +208,10 @@ const v3Schema = zV3.object({
       message: 'Bio must mention your handle',
     }),
 })
-const defaults = { email: '', profile: { bio: 'no', handle: 'attaboy' } }
+const defaults = {
+  email: 'seed@example.com',
+  profile: { bio: 'attaboy writes things', handle: 'attaboy' },
+}
 
 describeOwnErrors('ownErrors / firstOwnError — zod-v3 adapter', () =>
   asForm(
@@ -213,7 +219,6 @@ describeOwnErrors('ownErrors / firstOwnError — zod-v3 adapter', () =>
       useFormV3({
         schema: v3Schema,
         key: `own-errors-v3-${Math.random()}`,
-        strict: false,
         defaultValues: defaults,
       })
     )
@@ -242,7 +247,6 @@ describeOwnErrors('ownErrors / firstOwnError — zod-v4 adapter', () =>
       useFormV4({
         schema: v4Schema,
         key: `own-errors-v4-${Math.random()}`,
-        strict: false,
         defaultValues: defaults,
       })
     )

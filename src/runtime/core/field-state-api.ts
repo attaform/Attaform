@@ -6,41 +6,20 @@ import type {
   FieldState,
   FieldStateDerivedKey,
   FormMeta,
-  GetDisplayState,
   ValidationError,
 } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import type { DynamicPathSweep } from './dynamic-path-sweep'
 import { __DEV__ } from './dev'
-import { defaultDisplayState, isDefaultDisplayState } from './display-state'
+import { defaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
 import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
-import { cellEntriesFor } from './errors'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
-import {
-  canonicalizePath,
-  isPathPrefix,
-  keyForSegments,
-  segmentsForPathKey,
-  type Path,
-  type PathKey,
-} from './paths'
-
-/**
- * Dedup set for the dev-only "consumer predicate threw" warn. Keyed by
- * the predicate function itself so a stable consumer reference earns
- * one warn for its lifetime — a single bad predicate doesn't flood the
- * console on every field read. New predicate references (each new
- * `useForm({ getDisplayState })` call producing a fresh closure) warn
- * once each, so a regression on a different form still surfaces.
- *
- * WeakSet so the registry never pins a consumer predicate against GC.
- */
-const warnedDisplayStatePredicates = new WeakSet<GetDisplayState>()
+import { canonicalizePath, isPathPrefix, keyForSegments, type Path, type PathKey } from './paths'
 
 function isUnderStubAncestor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -87,9 +66,9 @@ export type { FieldState }
 
 /**
  * Internal shape of a field's reactive state minus the derived
- * predicate-fed properties (`displayState`, the `show*` booleans, and
- * `firstError` — see `FieldStateDerivedKey`). The predicate
- * `state.getDisplayState(field, formMeta)` is invoked with this exact
+ * reducer-fed properties (`displayState`, the `show*` booleans, and
+ * `firstError` — see `FieldStateDerivedKey`). The reducer
+ * `defaultDisplayState(prev, { field, formMeta, ... })` is invoked with this exact
  * shape on the field side: the keys literally are not present, so a
  * vanilla-JS adopter (or `as`-cast caller) cannot read `field.displayState`
  * from inside their predicate and form a cycle. Pair with `FormMetaBase`
@@ -122,14 +101,12 @@ export function buildFieldStateAccessor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   formInstanceId: string,
   getFormMetaBase: FormMetaBaseGetter,
-  sweep: DynamicPathSweep,
-  options?: { readonly getDisplayState?: GetDisplayState }
+  sweep: DynamicPathSweep
 ) {
   // Per-path memoisation so `getFieldStateAt(p)` returns the same
   // `ComputedRef` reference on repeated reads with the same canonical
   // path.
   const cache = new Map<PathKey, ComputedRef<FieldState<unknown>>>()
-  const predicate = options?.getDisplayState
 
   // A cached entry holds its path's `value` and its `original`, so this
   // cache pins form data rather than bookkeeping alone. Nothing evicted
@@ -156,8 +133,8 @@ export function buildFieldStateAccessor<F extends GenericForm>(
     if (cached !== undefined) return cached
     const c = computed<FieldState<unknown>>(() =>
       state.schema.isLeafAtPath(segments)
-        ? buildLeafFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
-        : buildContainerFieldState(state, segments, key, formInstanceId, getFormMetaBase, predicate)
+        ? buildLeafFieldState(state, segments, key, formInstanceId, getFormMetaBase)
+        : buildContainerFieldState(state, segments, key, formInstanceId, getFormMetaBase)
     )
     cache.set(key, c)
     sweep.track(segments, key)
@@ -198,7 +175,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const record = state.fields.get(key)
   const value = state.getValueAtPath(segments)
   const original = state.originals.get(key)?.value
-  const pristine = state.isPristineAtPath(segments)
+  const pristine = state.isPristineAtPathByKey(key, segments)
   const cell = state.errorCells.get(key)
   const schemaForKey = cell !== undefined && cell.schema.length > 0 ? cell.schema : undefined
   // Synthesize this leaf's blank-required error from its OWN blank membership
@@ -207,9 +184,9 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   // field's computed (P3 vector 2). `blankPaths.has(key)` tracks only this
   // key's membership (Vue 3.5 reactive Set), so a sibling's blank change no
   // longer invalidates this field. Byte-identical to the aggregated entry: the
-  // shared builder, gated on the same `isRequiredAtPath`. The container /
-  // form-level rollup (`aggregateErrorsAt`) still reads `derivedBlankErrors` —
-  // a container legitimately depends on every descendant.
+  // shared builder, gated on the same `isRequiredAtPath`. `aggregateErrorsAt`
+  // now synthesizes the same way for the same reason, so no reader of a blank
+  // error carries the whole-form map as a dep.
   const blankForKey =
     state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
       ? [makeBlankRequiredError(segments)]
@@ -229,7 +206,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   // `z.string()` leaf) skip the gate — there's nothing to wait on,
   // and clamping every such field to `false` at mount would defeat
   // the green-checkmark UX pattern that `field.valid` is built for.
-  const gated = state.pathHasAsyncValidation(segments) && !state.firstValidationDone.value
+  const gated = state.pathHasAsyncValidationByKey(key, segments) && !state.firstValidationDone.value
   // Stub-state orphan gate: when a leaf is structurally absent from
   // `form.value` AND any DU ancestor is in stub state (its disc value
   // isn't a known variant), the surface MUST NOT report `valid: true`.
@@ -292,19 +269,17 @@ function buildLeafFieldStateBase<F extends GenericForm>(
 
 /**
  * Per-leaf full computation: builds the base, then layers on
- * `displayState` / the `show*` booleans / `firstError` via
- * `state.getDisplayState`. The base object passed to the predicate has
- * none of those keys at runtime (it's the literal `FieldStateBase` we
- * just constructed) — recursion is impossible regardless of TS vs
- * vanilla-JS.
+ * `displayState` / the `show*` booleans / `firstError` via the display
+ * reducer. The base object handed to the reducer has none of those keys
+ * at runtime (it's the literal `FieldStateBase` we just constructed) —
+ * recursion is impossible regardless of TS vs vanilla-JS.
  */
 function buildLeafFieldState<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   segments: Path,
   key: PathKey,
   formInstanceId: string,
-  getFormMetaBase: FormMetaBaseGetter,
-  getDisplayState?: GetDisplayState
+  getFormMetaBase: FormMetaBaseGetter
 ): FieldState<unknown> {
   const base = buildLeafFieldStateBase(state, segments, key, formInstanceId)
   const validatingSince = state.fieldValidatingSince.get(key) ?? null
@@ -317,8 +292,7 @@ function buildLeafFieldState<F extends GenericForm>(
     validatingSince,
     transformingSince,
     false, // revealedDescendantError: leaves have no descendants
-    false, // isRoot: a leaf is never the form root
-    getDisplayState
+    false // isRoot: a leaf is never the form root
   )
 }
 
@@ -551,7 +525,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // applied via the same `hasAtPath` gate the descendant walk used.
   // `valid` derives from this single source so the two fields can
   // never disagree.
-  const errors = aggregateErrorsAt(state, segments)
+  const errors = aggregateErrorsAt(state, segments, key)
   // Descendant display rollup: does any error UNDER this container have its
   // owning field's reveal gate open? Iterates the aggregated errors (not just
   // the leaf walk) so a cross-field error pinned at an intermediate object is
@@ -576,7 +550,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // leaf `pathHasAsyncValidation` reading. Check the container's
   // OWN path too, so the firstValidationDone gate fires until that
   // pass lands.
-  if (!asyncPending && state.pathHasAsyncValidation(segments)) asyncPending = true
+  if (!asyncPending && state.pathHasAsyncValidationByKey(key, segments)) asyncPending = true
   // A transform or validation registered directly on THIS container path runs
   // at the container key itself, not at a descendant leaf — the walk above
   // skips self (`segments.length === entry.segments.length`). The file
@@ -676,8 +650,7 @@ function buildContainerFieldState<F extends GenericForm>(
   segments: Path,
   key: PathKey,
   formInstanceId: string,
-  getFormMetaBase: FormMetaBaseGetter,
-  getDisplayState?: GetDisplayState
+  getFormMetaBase: FormMetaBaseGetter
 ): FieldState<unknown> {
   const { base, validatingSince, transformingSince, revealedDescendantError } =
     buildContainerFieldStateBase(state, segments, key, formInstanceId)
@@ -689,8 +662,7 @@ function buildContainerFieldState<F extends GenericForm>(
     validatingSince,
     transformingSince,
     revealedDescendantError,
-    segments.length === 0,
-    getDisplayState
+    segments.length === 0
   )
 }
 
@@ -710,13 +682,6 @@ function buildContainerFieldState<F extends GenericForm>(
  * not just error visibility, so it must see the no-error states too. The
  * four `show*` booleans are pure projections of the single
  * `machine.display`, so they can never disagree with it.
- *
- * A misbehaving custom reducer must not take down the reactive surface:
- * its throw is caught, warned once per reference in dev, and the read is
- * retried through the engine with `defaultDisplayState` so the fallback
- * still participates in machine state. The reducer call happens before
- * any engine mutation, so a throw leaves the machine map untouched and
- * the retry sees the same `prev`.
  */
 function decorateWithDerivedProps<F extends GenericForm>(
   base: FieldStateBase,
@@ -726,14 +691,12 @@ function decorateWithDerivedProps<F extends GenericForm>(
   validatingSince: number | null,
   transformingSince: number | null,
   revealedDescendantError: boolean,
-  isRoot: boolean,
-  getDisplayState?: GetDisplayState
+  isRoot: boolean
 ): FieldState<unknown> {
   const firstError = base.errors[0]
   // Exact-path counterpart to `firstError`: the first error in this node's
   // OWN bucket. At a leaf `base.ownErrors === base.errors`, so the two agree.
   const firstOwnError = base.ownErrors[0]
-  const predicate = getDisplayState ?? state.getDisplayState
   const formMeta = getFormMetaBase()
   const ctx: DisplayCtx = {
     field: base,
@@ -744,50 +707,31 @@ function decorateWithDerivedProps<F extends GenericForm>(
     // flight) so the reducer returns the plain verdict and hydration matches.
     now: state.ssr ? 0 : Date.now(),
   }
-  let machine: DisplayMachine
-  // The rollup is a library-default behavior; a fully custom reducer owns
-  // container verdicts. A throw falls back to the default, which restores it.
-  let rollupApplies = isDefaultDisplayState(predicate)
-  try {
-    machine = state.displayEngine.resolve(key, ctx, predicate)
-  } catch (err) {
-    if (__DEV__ && !warnedDisplayStatePredicates.has(predicate)) {
-      warnedDisplayStatePredicates.add(predicate)
-      console.warn(
-        '[attaform] custom getDisplayState threw — falling back to defaultDisplayState. ' +
-          'Subsequent throws from the same predicate will not warn again.',
-        err
-      )
-    }
-    machine = state.displayEngine.resolve(key, ctx, defaultDisplayState)
-    rollupApplies = true
-  }
+  const machine: DisplayMachine = state.displayEngine.resolve(key, ctx, defaultDisplayState)
   // Container rollup: surface a descendant's gated error (or a nested
   // cross-field error) at the container, unless a validation is in flight
-  // (pending wins) or a custom reducer owns the verdict. The reducer already
-  // resolves the field's own-path error and the anti-flash timing; this only
-  // adds the descendant dimension it cannot see from the aggregate base. The
-  // four `show*` booleans below project from this single value, so the
-  // exactly-one-true invariant holds by construction.
+  // (pending wins). The reducer already resolves the field's own-path error
+  // and the anti-flash timing; this only adds the descendant dimension it
+  // cannot see from the aggregate base. The four `show*` booleans below
+  // project from this single value, so the exactly-one-true invariant holds
+  // by construction.
   // form.meta (the root) also reads as pending while a submit runs its own
   // validation pass. The submit clears the per-field anchors, so the rollup
   // cannot see that window; gating on a live submit keeps everyday per-field
   // validation on the anti-flashed rollup path, and the handler phase
   // (submitting with no active validation) is never pending, since show*
   // tracks validation, not submission.
-  const submitValidating =
-    rollupApplies && isRoot && state.submitting.value && state.activeValidations.value > 0
+  const submitValidating = isRoot && state.submitting.value && state.activeValidations.value > 0
   const resolvedDisplayState: DisplayState =
     machine.display === 'pending' || submitValidating
       ? 'pending'
-      : rollupApplies && revealedDescendantError
+      : revealedDescendantError
         ? 'error'
         : machine.display
   // A disabled form shows no field verdict: value writes no-op and the
   // field is inert, so error / pending / success all stand down to
-  // `'idle'` regardless of the (possibly custom) reducer's output. The
-  // engine still ran above, so its per-path machine state stays coherent
-  // for when the form is re-enabled.
+  // `'idle'`. The engine still ran above, so its per-path machine state
+  // stays coherent for when the form is re-enabled.
   const displayState: DisplayState = base.disabled === true ? 'idle' : resolvedDisplayState
   return {
     ...base,
@@ -813,41 +757,58 @@ function decorateWithDerivedProps<F extends GenericForm>(
  */
 export function aggregateErrorsAt<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
-  prefix: Path
+  prefix: Path,
+  prefixKey: PathKey
 ): ValidationError[] {
+  const candidates = state.errorWindowAt(prefix, prefixKey)
+  if (candidates.length === 0) return []
   const formValue = state.form.value
+  const cells = state.errorCells
   const buckets = new Map<number, ValidationError[]>()
-  const collect = (errs: Iterable<readonly [PathKey, readonly ValidationError[]]>): void => {
-    for (const [pathKey, list] of errs) {
-      if (list.length === 0) continue
-      // Resolve the path's segments via the canonical PathKey ↔
-      // Segment[] inverse cache (`segmentsForPathKey`). Covers
-      // every shape the error stores can hold — leaf paths,
-      // container paths (cross-field refines), and the form-level
-      // `[]` key — without depending on `originals` (which only
-      // tracks leaves).
-      const segs = segmentsForPathKey(pathKey)
-      if (segs === null) continue
-      if (!isPathPrefix(prefix, segs)) continue
-      // Skip inactive variants (e.g. the inactive arm of a discriminated
-      // union after a switch). The root bucket `[]` (global / root
-      // `.refine()` errors, `setErrors`) has `segs.length === 0` and
-      // is never variant-bound, so the `segs.length > 0` guard always
-      // retains it. Container-level errors (cross-field refines on a
-      // container path) are filtered when their container path is
-      // unreachable; the refine pinned the error at the container, not at
-      // any particular leaf.
-      if (segs.length > 0 && !hasAtPath(formValue, segs)) continue
-      const ordinal = state.ensurePathOrdinal(pathKey)
-      const existing = buckets.get(ordinal)
-      if (existing === undefined) buckets.set(ordinal, [...list])
-      else existing.push(...list)
+  for (const { key, segments } of candidates) {
+    // The index window is a superset (it is a key-range, not a prefix
+    // test), so membership is still decided here.
+    if (!isPathPrefix(prefix, segments)) continue
+    // Skip inactive variants (e.g. the inactive arm of a discriminated
+    // union after a switch). The root bucket `[]` (global / root
+    // `.refine()` errors, `setErrors`) has `segments.length === 0` and
+    // is never variant-bound, so the `segments.length > 0` guard always
+    // retains it. Container-level errors (cross-field refines on a
+    // container path) are filtered when their container path is
+    // unreachable; the refine pinned the error at the container, not at
+    // any particular leaf.
+    if (segments.length > 0 && !hasAtPath(formValue, segments)) continue
+    // One bucket per path, filled schema -> blank -> user. Ordinals are
+    // injective over paths, so gathering a path's three lists together
+    // here is the same order the three separate store passes produced.
+    const cell = cells.get(key)
+    // Synthesized per path from its OWN blank membership, for the same
+    // reason the leaf base does it (see `buildLeafFieldStateBase`): the
+    // whole-form `derivedBlankErrors` map returns a fresh identity on
+    // ANY blank transition in the form, so reading it here would give
+    // every container a dep on every other container's blanks. Same
+    // builder, same `isRequiredAtPath` gate, so the entry is identical
+    // to the one that map would have held.
+    const blankList =
+      state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
+        ? [makeBlankRequiredError(segments)]
+        : undefined
+    const schemaList = cell?.schema
+    const userList = cell?.user
+    const total = (schemaList?.length ?? 0) + (blankList?.length ?? 0) + (userList?.length ?? 0)
+    if (total === 0) continue
+    const ordinal = state.ensurePathOrdinal(key)
+    let bucket = buckets.get(ordinal)
+    if (bucket === undefined) {
+      bucket = []
+      buckets.set(ordinal, bucket)
     }
+    if (schemaList !== undefined) bucket.push(...schemaList)
+    if (blankList !== undefined) bucket.push(...blankList)
+    if (userList !== undefined) bucket.push(...userList)
   }
-  collect(cellEntriesFor(state.errorCells, 'schema'))
-  collect(state.derivedBlankErrors.value)
-  collect(cellEntriesFor(state.errorCells, 'user'))
   if (buckets.size === 0) return []
+  if (buckets.size === 1) return [...buckets.values()][0] as ValidationError[]
   return [...buckets.entries()].sort(([a], [b]) => a - b).flatMap(([, errs]) => errs)
 }
 

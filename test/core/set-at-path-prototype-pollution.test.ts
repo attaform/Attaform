@@ -1,13 +1,23 @@
+// @vitest-environment jsdom
 /**
- * Prototype-pollution gate for `setAtPath` (path-walker.ts).
+ * Prototype-pollution gate for the copy-on-write write spine
+ * (path-walker.ts).
  *
- * `setAtPath` is the copy-on-write walker behind every value mutation
- * the runtime performs: `form.setValue(path, value)`, history undo/redo
- * patch apply (`applyPatchesForward` / `Inverse`), and hydration.
- * Every consumer-controlled path eventually reaches it. Without
- * protection, a `__proto__` segment lands at `rec[head] = …` on a
- * plain `{}` intermediate and the inherited `[[Set]]` accessor
- * reassigns the prototype chain.
+ * `setAtPathWithSchemaFill` is that spine: every `form.setValue(path,
+ * value)`, every history undo/redo patch apply, and every hydration
+ * merge reaches it, and every consumer-controlled path arrives with it.
+ * Without protection a `__proto__` segment lands at `rec[head] = …` on a
+ * plain `{}` intermediate and the inherited `[[Set]]` accessor reassigns
+ * the prototype chain. `setAtPath` is a thin call over the same spine.
+ *
+ * THAT SHAPE IS WHY THIS FILE EXISTS IN ITS CURRENT FORM. The hardening
+ * originally landed on `setAtPath`, and this suite tested `setAtPath` —
+ * but the write path had already moved to the schema-aware walker, which
+ * was still writing through a raw `rec[head]`. Both facts were true and
+ * the suite was green: it guarded a walker nothing called. The two
+ * walkers are now one, and the end-to-end block at the bottom asserts
+ * through `form.setValue`, so a future divergence cannot hide the same
+ * way.
  *
  * The fix routes every untrusted-key write through `safeAssign`,
  * which lands the `__proto__` key via `Object.defineProperty`
@@ -27,7 +37,23 @@
  *      declared path on the result.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createApp, defineComponent, h, type App } from 'vue'
+import { z } from 'zod'
 import { getAtPath, setAtPath } from '../../src/runtime/core/path-walker'
+import { useForm } from '../../src/zod'
+import { createAttaform } from '../../src/runtime/core/plugin'
+
+/**
+ * The slice of the form surface these cases touch. Declared structurally
+ * rather than as `ReturnType<typeof useForm<S>>`: the fixtures reach paths
+ * by string through the call form, which the inferred path unions cannot
+ * describe for a `z.record` key that does not exist until it is written.
+ */
+type FormProbe = {
+  setValue(path: string, value: unknown): unknown
+  values(path?: string): unknown
+  fields(path: string): { value: unknown; dirty: boolean }
+}
 
 const SENTINEL = 'attaformSetAtPathProtoPollutionCanary'
 
@@ -140,5 +166,106 @@ describe('setAtPath proto-less intermediates', () => {
     expect(first).toBeDefined()
     expect(Object.getPrototypeOf(first)).toBe(Object.prototype)
     expect(first?.['name']).toBe('first')
+  })
+})
+
+/**
+ * The same guarantee, asserted where a consumer can see it.
+ *
+ * The exposure is a key the target does not already own. A fixed object
+ * schema that declares `__proto__` seeds the own data property at
+ * construction, and from then on a plain `rec['__proto__'] = v` finds the
+ * own slot and shadows the inherited accessor — which is why the defect
+ * survived a suite that only ever wrote to declared fields. `z.record`
+ * is the case where the key is genuinely new on first write, and it
+ * fails two different ways depending on the value's type:
+ *
+ *  - a STRING (or any primitive) makes the inherited setter a no-op. The
+ *    write is silently discarded. `setValue` returns normally, no error
+ *    is raised, and the value is simply gone.
+ *  - an OBJECT makes the inherited setter do exactly what it is for: it
+ *    reassigns the container's prototype. The datum disappears off the
+ *    own-property list into the chain, and the form's own value tree now
+ *    carries an attacker-supplied prototype.
+ *
+ * `{ __proto__: ... }` in an object literal sets the prototype rather
+ * than declaring a key, so the fixed-schema fixture uses a computed key.
+ * That is also part of why this was easy to miss by hand.
+ */
+describe('a __proto__ key round-trips through setValue', () => {
+  const apps: App[] = []
+  afterEach(() => {
+    for (const app of apps.splice(0)) app.unmount()
+  })
+
+  function mountForm(schema: z.ZodObject, defaultValues: unknown): FormProbe {
+    let captured: unknown
+    const App = defineComponent({
+      setup() {
+        captured = (useForm as unknown as (config: unknown) => unknown)({
+          schema,
+          key: `proto-${Math.random().toString(36).slice(2)}`,
+          defaultValues,
+        })
+        return () => h('div')
+      },
+    })
+    const app = createApp(App).use(createAttaform())
+    app.config.warnHandler = () => {}
+    app.mount(document.createElement('div'))
+    apps.push(app)
+    if (captured === undefined) throw new Error('useForm did not return')
+    return captured as FormProbe
+  }
+
+  const stringRecord = z.object({ meta: z.record(z.string(), z.string()) })
+  const objectRecord = z.object({ meta: z.record(z.string(), z.object({ z: z.number() })) })
+
+  it('a new __proto__ key on a record keeps a primitive instead of dropping it', () => {
+    const form = mountForm(stringRecord, { meta: { a: '1' } })
+    form.setValue('meta.__proto__', 'written')
+    expect(form.values('meta.__proto__')).toBe('written')
+    // Asserted through the descriptor rather than a deep-equal against an
+    // object literal, because `{ __proto__: 'written' }` in the EXPECTED
+    // literal sets the prototype instead of declaring a key — the same
+    // trap the code under test is about, one level up.
+    const meta = (JSON.parse(JSON.stringify(form.values())) as Record<string, object>)['meta']
+    expect(meta).toBeDefined()
+    expect(Object.keys(meta as object).sort()).toEqual(['__proto__', 'a'])
+    expect(Object.getOwnPropertyDescriptor(meta as object, '__proto__')?.value).toBe('written')
+  })
+
+  it('a new __proto__ key holding an object does not reassign the container prototype', () => {
+    const form = mountForm(objectRecord, { meta: {} })
+    form.setValue('meta.__proto__', { z: 9 })
+    const meta = (form.values() as Record<string, object>)['meta'] as object
+    expect(Object.getPrototypeOf(meta)).toBe(Object.prototype)
+    expect(form.values('meta.__proto__')).toEqual({ z: 9 })
+  })
+
+  it('leaves Object.prototype itself clean', () => {
+    const form = mountForm(objectRecord, { meta: {} })
+    form.setValue('meta.__proto__', { z: 9 })
+    const probe: Record<string, unknown> = {}
+    expect(probe['z']).toBeUndefined()
+  })
+
+  it('marks the field dirty, so the write is visible to the rest of the form', () => {
+    // A discarded write is not just an unreadable value: every derived
+    // signal agrees with the storage, so the field reports itself clean
+    // and a submit ships the stale value without anything looking wrong.
+    const form = mountForm(stringRecord, { meta: { a: '1' } })
+    form.setValue('meta.__proto__', 'written')
+    expect(form.fields('meta.__proto__').dirty).toBe(true)
+  })
+
+  it('a declared __proto__ field still round-trips (the pre-seeded case)', () => {
+    const declared = z.object({
+      wrap: z.object({ ['__proto__']: z.string(), city: z.string() }),
+    })
+    const form = mountForm(declared, { wrap: { ['__proto__']: 'initial', city: 'NYC' } })
+    form.setValue('wrap.__proto__', 'written')
+    expect(form.values('wrap.__proto__')).toBe('written')
+    expect(form.values('wrap.city')).toBe('NYC')
   })
 })

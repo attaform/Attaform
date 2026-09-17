@@ -420,9 +420,9 @@ describe('history — one plugin instance across forms', () => {
   })
 
   it('a shared historyPlugin() gives each form its own independent chain', () => {
-    // The plugin object is a reusable configuration (the shape
-    // `createAttaform({ defaults: { history } })` shares app-wide), so
-    // attaching one instance to two forms must produce two chains.
+    // The plugin object is a reusable configuration, not per-form
+    // state, so attaching one instance to two forms must produce two
+    // independent chains.
     const shared = historyPlugin({ max: 10 })
     const a = mountForm(shared)
     const b = mountForm(shared)

@@ -9,7 +9,7 @@ import { zodV4Adapter } from '../../../src/runtime/adapters/zod-v4/adapter'
  * intersect.
  */
 
-function probe(rootSchema: z.ZodObject, path: (string | number)[]): Set<string> {
+function probe(rootSchema: z.ZodObject, path: (string | number)[]): ReadonlySet<string> {
   const adapter = zodV4Adapter(rootSchema)('f', { maxRecursionDepth: 64 })
   return adapter.getSlimPrimitiveTypesAtPath(path)
 }

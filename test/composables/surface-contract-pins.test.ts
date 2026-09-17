@@ -102,7 +102,7 @@ const META_KEYS = [
 ].sort()
 
 /**
- * The predicate-facing meta argument (`FormMetaBase`): FieldState keys
+ * The reducer-facing meta argument (`FormMetaBase`): FieldState keys
  * minus the derived display keys, plus lifecycle and errorCount.
  */
 const DERIVED_KEYS = new Set([
@@ -377,30 +377,19 @@ describe.each(adapters)('surface contract pins — $name', ({ mount }) => {
     expect(api.meta.errorCount).toBe(api.meta.errors.length)
   })
 
-  it('meta: the predicate meta argument enumerates the FormMetaBase key set', () => {
-    let seenKeys: string[] | null = null
-    let seenDirty: boolean | null = null
+  it('meta: the reducer-facing base is the full meta minus the derived display keys', () => {
     const { api, app } = mount()
     apps.push(app)
-    void api
-    // A dedicated mount with a custom predicate that captures its ctx.
-    const custom = makeMounter(useFormV4, schemaV4, {
-      defaultValues: DEFAULTS,
-      getDisplayState: (
-        prev: unknown,
-        ctx: { formMeta: Record<string, unknown> & { dirty: boolean } }
-      ) => {
-        if (seenKeys === null) {
-          seenKeys = Object.keys(ctx.formMeta).sort()
-          seenDirty = ctx.formMeta.dirty
-        }
-        return prev
-      },
-    })()
-    apps.push(custom.app)
-    // Reading any field state runs the predicate.
-    void custom.api.fields.email.displayState
-    expect(seenKeys).toEqual(META_BASE_KEYS)
-    expect(seenDirty).toBe(false)
+    // `form.meta` IS the base object the display reducer receives
+    // (`FormMetaBase`) with the derived display keys layered on top, so
+    // stripping those back off observes the real base rather than a
+    // restatement of its definition. Load-bearing: the reveal gate reads
+    // `submissionAttempts` off this object, so a key silently dropped
+    // from the base builder would leave the gate permanently closed.
+    const base = Object.keys(api.meta)
+      .filter((k) => !DERIVED_KEYS.has(k))
+      .sort()
+    expect(base).toEqual(META_BASE_KEYS)
+    expect(api.meta.dirty).toBe(false)
   })
 })

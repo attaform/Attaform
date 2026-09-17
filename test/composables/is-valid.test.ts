@@ -57,7 +57,6 @@ function mount(): { app: App; api: Api; store: FormStore<GenericForm> } {
       handle.api = useForm({
         schema,
         key: 'is-valid',
-        strict: false,
         defaultValues: {
           reference: 'SHP-1',
           cargo: { items: [{ sku: 'A', qty: 1 }] },

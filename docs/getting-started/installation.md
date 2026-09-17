@@ -27,9 +27,9 @@ export default defineNuxtConfig({
 
 What this gets you: the form composables as auto-imports (`useForm`, `useWizard`, `injectForm`, `injectWizard`, `fieldMeta`, `withMeta`, `lazy`, `gate`, and `useRegister`; see [Auto-imports](#auto-imports)), `v-register` bound into every template that uses it, the SSR hydration plumbing, the Vite plugin, and the Attaform tab inside Nuxt DevTools.
 
-## Optional: Vue 3 plugin (app-wide defaults)
+## Optional: Vue 3 plugin
 
-For app-wide defaults (`validateOn`, `debounceMs`, etc.) or explicit control over plugin registration on bare Vue 3, install the plugin in your app entry:
+`useForm` installs Attaform on first use, so a bare Vue 3 app needs no entry-file wiring at all. Install the plugin explicitly when you want control over registration order, or when you need one of its app-wide switches:
 
 ```ts
 import { createApp } from 'vue'
@@ -37,11 +37,11 @@ import { createAttaform } from 'attaform'
 import App from './App.vue'
 
 createApp(App)
-  .use(createAttaform({ defaults: { debounceMs: 100 } }))
+  .use(createAttaform({ devtools: false }))
   .mount('#app')
 ```
 
-What this gets you: `createAttaform({ defaults })` for app-wide settings that every `useForm` call inherits.
+What this gets you: `devtools: false` to skip the Vue DevTools integration even in development, and `ssr: true` for a server entry, which the SSR serialization helpers require.
 
 ## Vite plugin (bare Vue 3 + Vite)
 

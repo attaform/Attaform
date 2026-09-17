@@ -81,7 +81,6 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
       useForm({
         schema,
         key: `arr-clear-${Math.random()}`,
-        strict: false,
         defaultValues: { profile: { bio: 'no mention here', handle: 'attaboy' } },
       })
     )
@@ -121,7 +120,6 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
       useForm({
         schema,
         key: `arr-fire-${Math.random()}`,
-        strict: false,
         defaultValues: { profile: { bio: 'attaboy is great', handle: 'attaboy' } },
       })
     )
@@ -158,7 +156,6 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
           confirmPassword: z.ZodString
         }>,
         key: `arr-root-${Math.random()}`,
-        strict: false,
         defaultValues: { password: 'one', confirmPassword: 'two' },
       })
     )

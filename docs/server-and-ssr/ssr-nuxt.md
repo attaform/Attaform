@@ -63,34 +63,15 @@ The Nuxt module auto-imports the form composables you reach for inside `<script 
 </script>
 ```
 
-Everything else stays an explicit import from `attaform`: the plugin (`createAttaform`), the `unset` sentinel, and the `defaultDisplayState` reducer.
+Everything else stays an explicit import from `attaform`: the plugin (`createAttaform`), the `unset` sentinel, and the error classes.
 
 ```vue
 <script setup lang="ts">
-  import { defaultDisplayState, unset } from 'attaform'
+  import { AttaformError, unset } from 'attaform'
 </script>
 ```
 
 Toggle the whole set with the module's `autoImports` option (default on); see [Installation](/docs/getting-started/installation#auto-imports) for the full list.
-
-## App-wide defaults under Nuxt
-
-The Nuxt module surfaces the same `AttaformDefaults` you'd pass to `createAttaform({ defaults })`:
-
-```ts
-export default defineNuxtConfig({
-  modules: ['attaform/nuxt'],
-  attaform: {
-    defaults: {
-      validateOn: 'change',
-      debounceMs: 100,
-      onInvalidSubmit: 'focus-first-error',
-    },
-  },
-})
-```
-
-See [App-wide defaults](/docs/cross-cutting-state/app-defaults) for the full option list and merge semantics.
 
 ## Common issues
 

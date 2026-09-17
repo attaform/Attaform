@@ -100,6 +100,21 @@ async function tick(rounds = 4): Promise<void> {
   }
 }
 
+/**
+ * Drain the construction-time async validation pass.
+ *
+ * Construction validates unconditionally and these schemas carry a
+ * deferred async refine, so a fresh mount parks one gate invocation per
+ * async leaf before any test write happens. Release them with a clean
+ * verdict so each test below starts from `pending() === 0` and every
+ * parked invocation it then counts is one its own writes caused.
+ */
+async function settleMount(gate: Gate): Promise<void> {
+  for (let i = 0; i < 8 && (await tick(), gate.pending() > 0); i++) {
+    gate.releaseAll(true)
+  }
+}
+
 const adapters = [
   {
     name: 'zod-v3',
@@ -130,7 +145,6 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
         api = (useForm as any)({
           schema,
           key: `p1-cancel-${keySeq}`,
-          strict: false,
           validateOn: 'change',
           debounceMs: 0,
           ...options,
@@ -161,7 +175,7 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
   it('supersede: a newer write drops the prior in-flight run (:2601)', async () => {
     const gate = makeGate()
     const api = mount(leafGateSchema(gate))
-    await tick()
+    await settleMount(gate)
     expect(gate.pending()).toBe(0)
 
     api.setValue('name', 'STALE') // run A fires; its parse starts
@@ -182,7 +196,7 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
   it('cancelFieldValidation via reset() drops an in-flight run (:2768)', async () => {
     const gate = makeGate()
     const api = mount(leafGateSchema(gate))
-    await tick()
+    await settleMount(gate)
 
     api.setValue('name', 'STALE') // run A fires; its parse is in-flight
     await tick()
@@ -203,7 +217,7 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
   it('cancelFieldValidationUnder via resetField() drops an in-flight run (:2793)', async () => {
     const gate = makeGate()
     const api = mount(leafGateSchema(gate))
-    await tick()
+    await settleMount(gate)
 
     api.setValue('name', 'STALE')
     await tick()
@@ -226,7 +240,7 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
       ),
     })
     const api = mount(schema, { defaultValues: { rows: [{ name: '' }] } })
-    await tick()
+    await settleMount(gate)
     expect(gate.pending()).toBe(0)
 
     api.setValue('rows.0.name', 'STALE') // run A fires at rows.0.name; in-flight
@@ -255,7 +269,7 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
       ]),
     })
     const api = mount(schema, { defaultValues: { notify: { channel: 'sync', label: '' } } })
-    await tick()
+    await settleMount(gate)
 
     // Switch INTO the async variant: the reshape's sync arm can't apply (the
     // token refine is async), so it schedules a debounced async validation at

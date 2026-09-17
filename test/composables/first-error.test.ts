@@ -142,8 +142,8 @@ const v3Schema = zV3.object({
   users: zV3.array(zV3.object({ label: zV3.string().min(1) })),
 })
 const v3Defaults = {
-  email: '',
-  users: [{ label: '' }, { label: '' }],
+  email: 'seed@example.com',
+  users: [{ label: 'first' }, { label: 'second' }],
 }
 
 describeFirstError('field.firstError — zod-v3 adapter', () =>
@@ -152,7 +152,6 @@ describeFirstError('field.firstError — zod-v3 adapter', () =>
       useFormV3({
         schema: v3Schema,
         key: `first-error-v3-${Math.random()}`,
-        strict: false,
         defaultValues: v3Defaults,
       })
     )
@@ -168,8 +167,8 @@ const v4Schema = zV4.object({
   users: zV4.array(zV4.object({ label: zV4.string().min(1) })),
 })
 const v4Defaults = {
-  email: '',
-  users: [{ label: '' }, { label: '' }],
+  email: 'seed@example.com',
+  users: [{ label: 'first' }, { label: 'second' }],
 }
 
 describeFirstError('field.firstError — zod-v4 adapter', () =>
@@ -178,7 +177,6 @@ describeFirstError('field.firstError — zod-v4 adapter', () =>
       useFormV4({
         schema: v4Schema,
         key: `first-error-v4-${Math.random()}`,
-        strict: false,
         defaultValues: v4Defaults,
       })
     )

@@ -223,7 +223,7 @@ form.setValue('session', markRaw(new Session(token)))
 
 ### Code in your schema never takes the page down
 
-A schema is not inert data. `z.lazy(() => ...)`, `.default(() => ...)` and `.catch(() => ...)` hold functions you wrote, and Attaform calls them during its own work: deriving blank values at mount, resolving a recursive node, fingerprinting. If one of those throws, the throw lands in the middle of an Attaform walk.
+A schema is not inert data. `z.lazy(() => ...)`, `.default(() => ...)` and `.catch(() => ...)` hold functions you wrote, and Attaform calls them during its own work: deriving blank values at mount, resolving a recursive node, filling a structural gap on a write. If one of those throws, the throw lands in the middle of an Attaform walk.
 
 Attaform contains it. The field falls back to absent, exactly as if the schema had never described it, and development logs once per kind of failure with the original error attached. The rest of the form mounts and stays usable.
 
@@ -262,13 +262,13 @@ Refinements ask "is this value acceptable?" Transforms ask "given this value, wh
 
 The split is intentional. Refinements drive live feedback as users type; transforms shape the wire format on the way out.
 
-## Fingerprinting
+## Two forms, one key
 
-Every schema carries a structural fingerprint: a short string that changes when the shape changes (adding or removing a field, changing a leaf type, restructuring nesting) but stays stable under refinement, transform, or metadata tweaks.
+Two `useForm({ key: 'x' })` calls resolve to the same form by design. The first call wires it; the second one's schema is dropped. That is what you want when a parent and a child read the same form, and a bug when the two call sites only happened to agree on a name.
 
-It has one consumer today: the dev-mode shared-key check. Two `useForm({ key: 'x' })` calls whose schemas disagree structurally warn at the second call, which is what catches a key you meant to be unique and a genuine shape drift between two components that share one form.
+Development tells the two apart. On the second call Attaform sketches both schemas over the shape they describe, comparing the types each path accepts, whether it is required, and whether it bottoms out. Disagreement warns, and the message shows both sketches so you can see which path diverged.
 
-`schema.fingerprint()` lives on the adapter; the runtime calls it when needed.
+The sketch reads the shape, never the values, so a `.default(() => new Date())` cannot make a schema disagree with itself. It also only sees paths the schema gives a default, so an optional branch with nothing behind it is invisible to the check. It is a footgun catcher, not a proof.
 
 ## Where to next
 

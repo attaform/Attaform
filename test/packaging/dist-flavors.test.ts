@@ -46,8 +46,8 @@ const RUNTIME_ENTRIES = [
 
 /**
  * Transitive closure over relative imports, both static (`from './x'`)
- * and dynamic (`import('./x')`), so lazily-loaded chunks (fingerprint,
- * devtools, key-collision warnings) are part of the walked graph.
+ * and dynamic (`import('./x')`), so lazily-loaded chunks (devtools,
+ * key-collision warnings) are part of the walked graph.
  */
 function closureFiles(baseDir: string): string[] {
   const seen = new Set<string>()

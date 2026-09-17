@@ -79,7 +79,6 @@ describe.each(adapters)('$name: clearing a text field', ({ useFormFn, required, 
         const form = useFormFn({
           schema,
           key: `clearable-${Math.random().toString(36).slice(2)}`,
-          strict: false,
         })
         formOut.form = form
         return { form }

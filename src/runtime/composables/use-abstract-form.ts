@@ -12,7 +12,6 @@ import { createFormStore, type FormStore } from '../core/create-form-store'
 import {
   ANONYMOUS_FORM_KEY_PREFIX,
   DEFAULT_MAX_RECURSION_DEPTH,
-  normalizeNumericOption,
   pickDefined,
   RESERVED_KEY_PREFIX,
 } from '../core/defaults'
@@ -21,13 +20,13 @@ import { captureUserCallSite } from '../core/dev-stack-trace'
 import { InvalidUseFormConfigError, ReservedFormKeyError } from '../core/errors'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
+import type { PathKey } from '../core/paths'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
 import { walkUnsetSentinels } from '../core/unset-walker'
 import type {
   AbstractSchema,
-  AttaformDefaults,
   FormKey,
   HistoryModule,
   UseFormReturnType,
@@ -102,7 +101,7 @@ export function useAbstractForm<
   //
   // Lazy-install: if the consumer hasn't called `createAttaform()`,
   // attach the registry now. Idempotent — explicit installs (Nuxt
-  // module, manual `app.use(createAttaform({ defaults }))`) win when
+  // module, manual `app.use(createAttaform())`) win when
   // they ran first. The strict `useRegistry()` below still throws
   // `OutsideSetupError` when called outside setup; the lazy install
   // only ever fires when an instance is available.
@@ -111,9 +110,8 @@ export function useAbstractForm<
   const registry = options?.registry ?? useRegistry()
 
   // Materialise the `defaultValues` trichotomy (`T | (() => T) |
-  // (() => Promise<T>)`) before the merge — downstream consumers
-  // (`mergeWithDefaults`, `walkUnsetSentinels` inside `buildFreshState`)
-  // expect a plain `DeepPartial<...>`, not a function. Sync inputs use
+  // (() => Promise<T>)`) up front — `walkUnsetSentinels` inside
+  // `buildFreshState` expects a plain `DeepPartial<...>`, not a function. Sync inputs use
   // their value as-is; function inputs swap to `undefined` so the form
   // constructs against the schema's slim defaults, and the factory
   // settles into `state.applyFormReplacement` once it resolves (wired
@@ -132,7 +130,7 @@ export function useAbstractForm<
       : undefined
   const { defaultValues: _droppedDefaults, ...configWithoutDefaults } = configuration
   void _droppedDefaults
-  const trichotomyOverride: UseFormConfiguration<
+  const materialisedConfiguration: UseFormConfiguration<
     Form,
     GetValueFormType,
     AbstractSchema<Form, GetValueFormType>,
@@ -151,38 +149,25 @@ export function useAbstractForm<
         DefaultValuesInput<Form>
       >)
 
-  // Merge app-level defaults from the registry over per-form options.
-  // Per-form values always win for scalars; `validateOn` and `debounceMs`
-  // resolve independently so consumers can set `debounceMs` globally
-  // and override `validateOn` per-form. Every downstream read uses
-  // `merged` so the merge happens exactly once. Runs BEFORE schema
-  // resolution so the merged `maxRecursionDepth` can thread into the
-  // adapter factory.
-  const merged = mergeWithDefaults(registry.defaults, trichotomyOverride)
-
   // Resolve the schema (accepts either an AbstractSchema or a factory).
   // Preserve both generics — dropping `GetValueFormType` here would make
   // `state.schema.getSchemasAtPath(...)` return `AbstractSchema<_, Form>[]`
   // for consumers whose schema intentionally produces a different runtime
   // shape (e.g. an adapter that narrows via a transform). The factory
-  // receives the resolved per-form options (`maxRecursionDepth`) so the
-  // adapter can bake them into its walk closures.
-  //
-  // Sanitise the consumer-supplied value: `NaN` / `-Infinity` /
-  // non-numbers fall back to the library default with a dev-warn;
-  // negatives clamp to 0; non-integers floor; `Infinity` is allowed
-  // (disables the cap). The adapter's `>=` comparisons assume integer
-  // depth, so the normalisation prevents footguns at the boundary.
-  const maxRecursionDepth = normalizeNumericOption({
-    value: merged.maxRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH,
-    source: 'useForm.maxRecursionDepth',
-    allowInfinity: true,
-    min: 0,
-    defaultValue: DEFAULT_MAX_RECURSION_DEPTH,
-  })
-  const resolvedSchema = getComputedSchema(key, configuration.schema, { maxRecursionDepth })
-
+  // receives the per-form options (`maxRecursionDepth`) so the adapter
+  // can bake them into its walk closures.
   const existing = registry.forms.get(key) as FormStore<Form, GetValueFormType> | undefined
+  // A second `useForm({ key })` on a live store drops its own schema in
+  // favour of the first caller's wiring, so resolving one is pure
+  // garbage in a production build. A dev build still resolves it,
+  // because the key-collision warning below needs this call site's own
+  // answer to compare against.
+  const resolvedSchema =
+    existing === undefined || __DEV__
+      ? getComputedSchema(key, configuration.schema, {
+          maxRecursionDepth: DEFAULT_MAX_RECURSION_DEPTH,
+        })
+      : existing.schema
   if (__DEV__ && existing !== undefined) {
     // Two `useForm({ key })` calls resolve to one FormStore by design;
     // the second call's schema is then dropped in favour of the first's
@@ -204,7 +189,13 @@ export function useAbstractForm<
   const hadPendingHydration = registry.pendingHydration.has(key)
 
   const state: FormStore<Form, GetValueFormType> =
-    existing ?? buildFreshState<Form, GetValueFormType>(key, resolvedSchema, merged, registry)
+    existing ??
+    buildFreshState<Form, GetValueFormType>(
+      key,
+      resolvedSchema,
+      materialisedConfiguration,
+      registry
+    )
 
   // Wire function-form `defaultValues` once per FormStore. Sync inputs
   // already applied at construction; async inputs stay dormant until
@@ -284,8 +275,8 @@ export function useAbstractForm<
   // subsequent `useForm` / `injectForm` calls for the same key retrieve
   // the SAME instance, keeping `canUndo` / `canRedo` / `historySize` /
   // `undo` / `redo` consistent across mount order.
-  if (existing === undefined && merged.history !== undefined) {
-    const historyModule = merged.history.attach(state)
+  if (existing === undefined && materialisedConfiguration.history !== undefined) {
+    const historyModule = materialisedConfiguration.history.attach(state)
     state.modules.set(HISTORY_MODULE_KEY, historyModule)
     state.registerCleanup(() => historyModule.dispose())
   }
@@ -332,21 +323,19 @@ export function useAbstractForm<
   }
 
   // Per-instance config lifts: each `useForm()` callsite carries its
-  // own `validateOn` / `debounceMs` / `getDisplayState` / `coerce` /
+  // own `validateOn` / `debounceMs` / `coerce` /
   // `rememberVariants`. These thread through `buildFormApi` into
   // register's coerce closure, the field-state predicate, and store
   // writes' WriteMeta — so two `useForm({ key })` calls (modal + main)
   // can validate on different cadences and surface errors with
   // different visibility rules even though they share a FormStore.
   const apiOptions: Parameters<typeof buildFormApi<Form, GetValueFormType>>[2] = pickDefined({
-    onInvalidSubmit: merged.onInvalidSubmit,
+    focusOnInvalidSubmit: materialisedConfiguration.focusOnInvalidSubmit,
     history: state.modules.get(HISTORY_MODULE_KEY) as HistoryModule | undefined,
-    validateOn: merged.validateOn,
-    debounceMs: (merged as { debounceMs?: number }).debounceMs,
-    getDisplayState: merged.getDisplayState,
-    coerce: merged.coerce,
-    rememberVariants: merged.rememberVariants,
-    autoAria: merged.autoAria,
+    validateOn: materialisedConfiguration.validateOn,
+    debounceMs: (materialisedConfiguration as { debounceMs?: number }).debounceMs,
+    coerce: materialisedConfiguration.coerce,
+    rememberVariants: materialisedConfiguration.rememberVariants,
   })
   // `buildFormApi` returns the schema-agnostic shape (`ReadForm = Form`);
   // adapter callers compute the richer `ReadForm` (zod-v4's
@@ -355,52 +344,6 @@ export function useAbstractForm<
   const api = buildFormApi<Form, GetValueFormType>(state, formInstanceId, apiOptions)
 
   return api as unknown as UseFormReturnType<Form, GetValueFormType, ReadForm, K>
-}
-
-/**
- * Merge app-level defaults from the registry over a per-form
- * configuration. Per-form values always win for scalars; `validateOn`
- * and `debounceMs` resolve independently so a default like
- * `{ debounceMs: 100 }` carries through even when the per-form call
- * passes `{ validateOn: 'blur' }`. See `AttaformDefaults` for the
- * full merge contract.
- */
-function mergeWithDefaults<
-  Form extends GenericForm,
-  GetValueFormType extends GenericForm,
-  Schema extends AbstractSchema<Form, GetValueFormType>,
-  Defaults extends DefaultValuesInput<Form>,
->(
-  defaults: AttaformDefaults,
-  configuration: UseFormConfiguration<Form, GetValueFormType, Schema, Defaults>
-): UseFormConfiguration<Form, GetValueFormType, Schema, Defaults> {
-  // exactOptionalPropertyTypes rejects explicit `undefined` on optional
-  // properties (different from omitting), so resolve each candidate and
-  // keep only the defined ones. `disabled` is threaded raw (ref /
-  // getter / boolean), never resolved here — the store unwraps it live
-  // via `toValue` so a reactive source keeps tracking; `??` picks
-  // config over default at the reference level, so an explicit `false`
-  // still wins over a truthy default. `debounceMs` is type-narrowed in
-  // the public discriminated union to disallow non-`'change'` mode +
-  // debounce; at this resolution boundary only the unwrapped fields are
-  // visible, so the access is unconditional (the runtime check in
-  // `create-form-store.ts` ignores the value under other modes).
-  return {
-    ...configuration,
-    ...pickDefined({
-      strict: configuration.strict ?? defaults.strict,
-      onInvalidSubmit: configuration.onInvalidSubmit ?? defaults.onInvalidSubmit,
-      history: configuration.history ?? defaults.history,
-      rememberVariants: configuration.rememberVariants ?? defaults.rememberVariants,
-      disabled: configuration.disabled ?? defaults.disabled,
-      coerce: configuration.coerce ?? defaults.coerce,
-      validateOn: configuration.validateOn ?? defaults.validateOn,
-      debounceMs: (configuration as { debounceMs?: number }).debounceMs ?? defaults.debounceMs,
-      getDisplayState: configuration.getDisplayState ?? defaults.getDisplayState,
-      maxRecursionDepth: configuration.maxRecursionDepth ?? defaults.maxRecursionDepth,
-      autoAria: configuration.autoAria ?? defaults.autoAria,
-    }),
-  } as UseFormConfiguration<Form, GetValueFormType, Schema, Defaults>
 }
 
 /**
@@ -444,7 +387,7 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   // keys `blankPaths` by the same PathKey form, so we pass
   // `walked.paths` straight through to `createFormStore` without
   // reformatting at this boundary.
-  let initialBlankPaths: ReadonlyArray<string> | undefined
+  let initialBlankPaths: ReadonlyArray<PathKey> | undefined
   if (pending === undefined) {
     initialBlankPaths = walked.paths
   }
@@ -455,13 +398,11 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     hydration: pending,
     ssr: registry.ssr,
     ...pickDefined({
-      strict: configuration.strict,
       validateOn: configuration.validateOn,
       debounceMs: (configuration as { debounceMs?: number }).debounceMs,
       rememberVariants: configuration.rememberVariants,
       disabled: configuration.disabled,
       coerce: configuration.coerce,
-      getDisplayState: configuration.getDisplayState,
       initialBlankPaths,
     }),
     // Server-only: bind the SSR prefetch coordination handles. `enqueue`
@@ -587,7 +528,7 @@ function resolveFormKey(key: FormKey | undefined): FormKey {
     // namespace. Without this, a consumer key like `__atta:anon:0`
     // could silently collide with the synthetic anonymous-key
     // allocation below — both would land on the same FormStore in
-    // the registry, and the dev-mode schema-fingerprint warning
+    // the registry, and the dev-mode schema-mismatch warning
     // only catches collisions when schemas differ. Throwing here
     // makes the collision impossible by construction.
     if (key.startsWith(RESERVED_KEY_PREFIX)) {

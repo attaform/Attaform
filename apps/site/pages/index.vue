@@ -61,7 +61,7 @@
   const registerLines = [
     `${LT}input v-register="form.register('email')" />`,
     `${LT}input v-register="form.register('email', { transforms: [trim] })" />`,
-    `${LT}input v-register="form.register('email', { transforms: [trim, lowercase], autoAria: false })" />`,
+    `${LT}input v-register="form.register('email', { transforms: [trim, lowercase] })" />`,
   ]
 
   // The wizard callout snippet. Pure TS expressions, so we tell

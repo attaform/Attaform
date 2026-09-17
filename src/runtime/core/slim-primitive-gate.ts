@@ -187,7 +187,7 @@ function reportRejection(
   store: object,
   path: Path,
   kind: SlimPrimitiveKind,
-  accepted: Set<SlimPrimitiveKind>
+  accepted: ReadonlySet<SlimPrimitiveKind>
 ): void {
   if (!__DEV__) return
   const dotted = path.map((s: Segment) => String(s)).join('.') || '(root)'
@@ -234,7 +234,7 @@ function reportRejection(
   )
 }
 
-function formatExpectedKinds(accepted: Set<SlimPrimitiveKind>): string {
+function formatExpectedKinds(accepted: ReadonlySet<SlimPrimitiveKind>): string {
   const list = [...accepted].sort()
   if (list.length === 1) return list[0] as string
   if (list.length === 2) return `${list[0]} or ${list[1]}`

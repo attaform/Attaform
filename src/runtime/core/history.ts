@@ -203,7 +203,6 @@ export function historyPlugin(options?: HistoryPluginOptions): HistoryPlugin {
   const max = normalizeNumericOption({
     value: options?.max ?? DEFAULT_HISTORY_MAX_SNAPSHOTS,
     source: 'historyPlugin({ max })',
-    allowInfinity: false,
     min: 0,
     defaultValue: DEFAULT_HISTORY_MAX_SNAPSHOTS,
   })

@@ -24,7 +24,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { DEFAULT_TIMINGS } from '../../src'
+import { DEFAULT_TIMINGS } from '../../src/runtime/core/display-state'
 
 function makeGate(): {
   transform: () => Promise<unknown>
@@ -66,7 +66,6 @@ describe.each(adapters)('async transform — gated display ($name)', ({ useForm,
         const api = useForm({
           schema: z.object({ field: z.string() }),
           key: `gated-${Math.random().toString(36).slice(2)}`,
-          strict: false,
           defaultValues: { field: '' },
         })
         handle.api = api

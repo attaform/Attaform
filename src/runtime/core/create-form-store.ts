@@ -2,6 +2,7 @@ import {
   computed,
   reactive,
   ref,
+  shallowReactive,
   shallowRef,
   toRaw,
   toValue,
@@ -15,17 +16,15 @@ import {
 import type {
   AbstractSchema,
   AttaformDomBinding,
-  CoercionRegistry,
   ErrorCell,
   FormKey,
-  DefaultValuesResponse,
-  GetDisplayState,
+  SchemaDefaultsResult,
   TransformAbortHolder,
   ValidateOn,
   ValidationError,
   WriteMeta,
 } from '../types/types-api'
-import { resolveGetDisplayState } from './display-state'
+import { createDynamicPathSweep, type DynamicPathSweep } from './dynamic-path-sweep'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
 import {
   cloneVariantSnapshot,
@@ -43,6 +42,12 @@ import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
+import {
+  buildErrorPathIndex,
+  isSameWindow,
+  windowUnder,
+  type ErrorPathEntry,
+} from './error-path-index'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
   consumerKeys,
@@ -55,7 +60,6 @@ import { runFactoryAndApply } from './form-activation'
 import { mergeSparseHydration } from './merge-hydration'
 import {
   canonicalizePath,
-  coerceToPathKey,
   isPathPrefix,
   ROOT_PATH_KEY,
   segmentsForPathKey,
@@ -74,7 +78,7 @@ import {
 } from './path-walker'
 import { isShadowedKey, safeAssign } from './safe-assign'
 import { __DEV__ } from './dev'
-import { resolveCoercionIndex, type CoercionIndex } from './schema-coerce'
+import { resolveCoerceEnabled } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
 import { walkAuthoredFromConstraints, walkUnspecified } from './unset-walker'
 
@@ -168,6 +172,17 @@ function warnMalformedHydration(formKey: FormKey, kind: string, rawKey: string):
 }
 
 export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
+  /**
+   * The form's single liveness sweep over every per-path cache. Owned by
+   * the store rather than by `buildFormApi` because the store's own
+   * per-path maps (`fields`, `originals`, `authoredPaths`,
+   * `fieldValidationState`) are the largest thing it evicts, and they
+   * exist whether or not a form API was ever built around them. Read
+   * surfaces register their own evictions into it, so one subscription
+   * and one liveness walk serve all of them. See
+   * `dynamic-path-sweep.ts`.
+   */
+  readonly pathSweep: DynamicPathSweep
   readonly formKey: FormKey
   readonly form: Ref<F>
   readonly fields: Map<PathKey, FieldRecord>
@@ -206,6 +221,22 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * sentinel — see `docs/validation/blank.md`.
    */
   readonly derivedBlankErrors: ComputedRef<ReadonlyMap<PathKey, ValidationError[]>>
+  /**
+   * Every path carrying an error at or under `prefix`, sorted by key.
+   * `aggregateErrorsAt` takes its candidates from here instead of
+   * re-scanning all three error stores per call, which is what turns a
+   * table of N rows from O(N x errors) back into O(errors). See
+   * `error-path-index.ts`.
+   *
+   * Reading this rather than the form-global index is also what keeps
+   * containers isolated from each other. The index is one value for the
+   * whole form, so any path gaining or losing an error gives it a new
+   * identity; a container reading it directly woke on every other
+   * container's errors. Each prefix gets its own memoised `computed`
+   * that holds its previous array when its own window is unchanged, so
+   * the global change stops there. See `errorWindowAt` in the store.
+   */
+  readonly errorWindowAt: (prefix: Path, prefixKey: PathKey) => readonly ErrorPathEntry[]
   readonly originals: Map<PathKey, OriginalsRecord>
   /**
    * Reactive set of paths whose displayed state should be EMPTY even
@@ -258,18 +289,8 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly ssr: boolean
 
   /**
-   * Resolved `getDisplayState` predicate driving `field.displayState`,
-   * the `show*` booleans, and their `form.meta` rollups. Resolved once
-   * at construction via `resolveGetDisplayState(options.getDisplayState)`;
-   * `undefined` config falls through to `defaultDisplayState`. The
-   * field-state computeds read the resolved function directly on every
-   * read.
-   */
-  readonly getDisplayState: GetDisplayState
-
-  /**
    * Per-form display engine: owns the clock and the single timer the timed
-   * `getDisplayState` reducer policy needs, keeping the reducer itself a
+   * display-reducer policy needs, keeping the reducer itself a
    * pure `(prev, ctx) => next` function. The field-state computeds route
    * every `displayState` read through `displayEngine.resolve(...)`, which
    * threads the path's previous machine, persists or evicts the result, and
@@ -304,8 +325,8 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   // Bumped by `useWizard` each time wizard navigation (`next`, `back`,
   // `goTo`) actually departs this form. Cleared by `reset()` alongside
   // the submission lifecycle. Feeds `submissionAttempts`-style reveal in
-  // layered `getDisplayState` predicates but does NOT drive the
-  // library default. Distinct from `submissionAttempts` (which counts
+  // layered consumer reveal logic but does NOT drive the display
+  // heuristic. Distinct from `submissionAttempts` (which counts
   // `handleSubmit` passes only) so submission accounting stays
   // unambiguous; distinct from `form.validate()`, which is a read-only
   // primitive that never bumps any counter.
@@ -443,26 +464,10 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * run yet — so without the gate, frame 1 paints the form as
    * "valid" before the real verdict arrives a tick later.
    *
-   * Initialized to `!strict`: non-strict consumers opt out of the
-   * validation pipeline by design, so locking them on
-   * `firstValidationDone === false` would defeat the opt-out.
    * Reset is left untouched — the post-reset validation flips it
    * back true on completion, same as the construction-time path.
    */
   readonly firstValidationDone: Ref<boolean>
-  /**
-   * `true` when the sub-schema rooted at `path` (or any of its
-   * descendants) declares async work — composes
-   * `schema.getSchemasAtPath(path)` with each candidate's
-   * `needsAsyncValidation()`, memoised per canonical path key for
-   * the lifetime of the FormStore. Used by `meta.valid` /
-   * `field.valid` to skip the `firstValidationDone` gate on subtrees
-   * that are fully synchronous: their verdict resolves at construction
-   * (or on the next per-field run) without waiting on a microtask, so
-   * honouring the form-wide gate would just play dumb about a known
-   * answer.
-   */
-  pathHasAsyncValidation(path: Path): boolean
   /**
    * Precomputed-key shortcut for `pathHasAsyncValidation`. The
    * canonical key is required and must correspond to `segments`; the
@@ -701,17 +706,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
 
   // --- derived ---
   /**
-   * Leaf-only pristine check. `originals` is populated via
-   * `diffAndApply`'s `added` patches, which fire only on primitive
-   * leaves — a container path (e.g. `['profile']`) that isn't in
-   * `originals` returns `true` here even when a descendant is dirty.
-   * Callers that need container semantics should either loop over
-   * leaves or walk `originals` manually. The public `getFieldState`
-   * surface is typed to accept leaf paths only, so in practice this
-   * isn't exposed to consumers.
-   */
-  isPristineAtPath(path: Path): boolean
-  /**
    * Precomputed-key shortcut for `isPristineAtPath`. The canonical
    * key is required and must correspond to `segments`; the helper
    * skips the `canonicalizePath` round-trip so descendant-walk loops
@@ -737,7 +731,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   hasRemovedSubtreeUnder(path: Path): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
-  getOriginalAtPath(path: Path): unknown
 
   /**
    * Cancel every in-flight field-level validation run — clears timers
@@ -764,12 +757,6 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   endTransform(key: PathKey, token: number): void
   /** Record a per-field normalization failure at `key` (`field.transformError`). */
   setTransformError(key: PathKey, err: Error): void
-  /**
-   * Abort + release every in-flight async-transform run (all paths) and
-   * clear `transformErrors`. Mirrors `cancelFieldValidation`; called by
-   * `reset()` and store teardown.
-   */
-  cancelTransforms(): void
   /**
    * Path-scoped counterpart to `cancelTransforms`: abort + release only
    * the runs at-or-under `prefix`, clearing their `transformError`.
@@ -801,11 +788,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * store's captured `debounceMs`. Used so sibling instances sharing a
    * FormStore can each validate on their own cadence.
    */
-  scheduleFieldValidation(
-    path: Path,
-    immediate: boolean,
-    override?: { readonly mode?: ValidateOn; readonly debounceMs?: number }
-  ): void
+  scheduleFieldValidation(path: Path, immediate: boolean, instance?: WriteMeta['instance']): void
 
   /**
    * Subscribe to every `applyFormReplacement`. Fires synchronously
@@ -859,14 +842,12 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly modules: Map<string, unknown>
 
   /**
-   * Resolved schema-coercion index — the merged config from
-   * `createAttaform({ defaults: { coerce } })` ∪ `useForm({ coerce })`,
-   * keyed by `${input}->${output}` for O(1) per-keystroke dispatch.
-   * Empty Map when coercion is disabled. Read at `register()` time
-   * by `buildCoerceFn` to bake the per-path coerce closure on
-   * `RegisterValue.coerce`.
+   * Whether schema-driven coercion runs for this form — `false` only
+   * when the consumer passed `useForm({ coerce: false })`. Read at
+   * `register()` time by `buildCoerceFn` to bake the per-path coerce
+   * closure on `RegisterValue.coerce`.
    */
-  readonly coerceIndex: CoercionIndex
+  readonly coerceEnabled: boolean
 
   /**
    * Tear down non-reactive resources owned by this FormStore. Invoked
@@ -911,7 +892,6 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
   readonly formKey: FormKey
   readonly schema: AbstractSchema<F, G>
   readonly defaultValues?: DeepPartial<WriteShape<F>> | undefined
-  readonly strict?: boolean | undefined
   readonly hydration?: FormStoreHydration | undefined
   /**
    * When per-field validation runs. Default `'change'`. See `ValidateOn`.
@@ -935,7 +915,7 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    * pass (commit 7 wires the producer); commit 2 plumbs the channel
    * through with no callers yet.
    */
-  readonly initialBlankPaths?: ReadonlyArray<string> | undefined
+  readonly initialBlankPaths?: ReadonlyArray<PathKey> | undefined
   /**
    * Whether to remember per-variant typed state across discriminated-
    * union switches. Default `true`. See `UseFormConfiguration.rememberVariants`
@@ -951,21 +931,11 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
    */
   readonly disabled?: MaybeRefOrGetter<boolean | undefined> | undefined
   /**
-   * Schema-driven coercion config. See
-   * `UseFormConfiguration.coerce` for the full contract. Resolved
-   * once via `resolveCoercionIndex(options.coerce)` and cached on
-   * `FormStore.coerceIndex`.
+   * Schema-driven coercion switch. See `UseFormConfiguration.coerce`
+   * for the full contract. Resolved once at construction and cached
+   * on `FormStore.coerceEnabled`.
    */
-  readonly coerce?: boolean | CoercionRegistry | undefined
-  /**
-   * Configurable predicate driving `field.displayState`, the `show*`
-   * booleans, and their `form.meta` rollups. Function | undefined;
-   * resolved once at construction via `resolveGetDisplayState`. See
-   * `UseFormConfiguration.getDisplayState` and
-   * `AttaformDefaults.getDisplayState` for the full contract and
-   * three-tier resolution rules.
-   */
-  readonly getDisplayState?: GetDisplayState | undefined
+  readonly coerce?: boolean | undefined
   /**
    * SSR prefetch coordination, bound at `buildFreshState` time. Omitted
    * on the client where the queue is never read.
@@ -1224,7 +1194,6 @@ type TransformRun = { token: number; holder: TransformAbortHolder; released: boo
 export type FormState<F extends GenericForm, G extends GenericForm = F> = FormStore<F, G> & {
   // --- resolved configuration (fixed at construction, except
   // `defaultValues`, which the form re-seats as it learns them) ---
-  readonly strict: boolean
   /**
    * The form's CURRENT defaults, and the single source both baselines
    * read. Seeded from `useForm({ defaultValues })`, then re-seated by
@@ -1293,9 +1262,8 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
  */
 function computeBaselineResponse<F extends GenericForm, G extends GenericForm = F>(
   schema: AbstractSchema<F, G>,
-  strict: boolean,
   source: DeepPartial<WriteShape<F>> | undefined
-): DefaultValuesResponse<F> {
+): SchemaDefaultsResult<F> {
   const completed =
     source === undefined
       ? undefined
@@ -1303,7 +1271,6 @@ function computeBaselineResponse<F extends GenericForm, G extends GenericForm = 
   return schema.getDefaultValues({
     useDefaultSchemaValues: true,
     constraints: completed,
-    strict,
   })
 }
 
@@ -1311,14 +1278,13 @@ function computeBaselineResponse<F extends GenericForm, G extends GenericForm = 
  * Initial value of the `firstValidationDone` gate — shared by the ref's
  * construction seed and `reset()`'s restore, so the post-reset window
  * gates container `.valid` exactly like the post-mount window does. Only
- * async-validating strict schemas need the gate; see the
+ * async-validating schemas need the gate; see the
  * `FormStore.firstValidationDone` JSDoc.
  */
 function initialFirstValidationGate<F extends GenericForm, G extends GenericForm = F>(
-  schema: AbstractSchema<F, G>,
-  strict: boolean
+  schema: AbstractSchema<F, G>
 ): boolean {
-  return !strict || schema.needsAsyncValidation?.() !== true
+  return schema.needsAsyncValidation?.() !== true
 }
 
 /**
@@ -1352,8 +1318,8 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
  * `renderToString` serialises, so firing would only stamp a misleading
  * `validating: true` into the SSR HTML that the client's hydration pass
  * wouldn't reproduce), and `queueMicrotask` so the increment lands AFTER
- * Vue's synchronous hydration / first render. Gated to strict mode AND to
- * schemas that actually need async work — sync-only schemas would
+ * Vue's synchronous hydration / first render. Gated to schemas that
+ * actually need async work — sync-only schemas would
  * otherwise pay a redundant microtask + briefly flash
  * `meta.validating: true`, misrepresenting "validation is running" when
  * nothing is.
@@ -1361,7 +1327,7 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
 function queueInitialAsyncValidation<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>
 ): void {
-  if (!st.ssr && st.strict && st.schema.needsAsyncValidation?.() === true) {
+  if (!st.ssr && st.schema.needsAsyncValidation?.() === true) {
     queueMicrotask(() => scheduleFieldValidation(st, [], true /* immediate */))
   }
 }
@@ -1445,14 +1411,6 @@ function ensurePathOrdinal<F extends GenericForm, G extends GenericForm = F>(
     st.nextOrdinal += 1
   }
   return ordinal
-}
-
-function pathHasAsyncValidation<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path
-): boolean {
-  const { key } = canonicalizePath(path)
-  return pathHasAsyncValidationByKey(st, key, path)
 }
 
 function pathHasAsyncValidationByKey<F extends GenericForm, G extends GenericForm = F>(
@@ -1737,10 +1695,42 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
   const now = new Date().toISOString()
   for (const patch of patches) {
     const { key } = canonicalizePath(patch.path)
-    if (patch.kind === 'added' && !st.originals.has(key)) {
+    if (!st.originals.has(key)) {
+      // No baseline at a path a write just touched means the path was not
+      // there at construction, whatever KIND the diff called the patch —
+      // so absence is its baseline and its first appearance is a change.
+      //
+      // Keyed on the missing baseline rather than on `kind === 'added'`
+      // because the two disagree for a key named after an
+      // `Object.prototype` member: `Object.keys` never lists an inherited
+      // member, but a plain read of one resolves it, so the first write of
+      // a `__proto__` entry diffs as a change FROM `Object.prototype`
+      // rather than as an appearance. That left the field reading
+      // `dirty: false` immediately after being written. Reading the other
+      // side own-property-wise would fix it at the source, and costs ~8%
+      // of a 500-leaf write; this test was already here.
       st.originals.set(key, { segments: patch.path, value: undefined })
     }
     touchFieldRecord(st, key, patch.path, { updatedAt: now })
+    // Offer the path to the liveness sweep. This is the single tail every
+    // value mutation passes through, so it is where a runtime-added path
+    // becomes known to the store — and therefore the only place that can
+    // make the store's own maps sweepable. The sweep ignores a path the
+    // schema shape bounds, and its pass runs in the listener flush below,
+    // after this loop, so a path written on this very write is live when
+    // it is checked.
+    st.pathSweep.track(patch.path, key)
+    // …and the containers on the way to it. A diff yields LEAF patches, so
+    // a container path (`rows.0`) is never a patch of its own and would
+    // otherwise stay tracked by nothing — which is what left `authoredPaths`
+    // holding an entry per row after the rows were gone. Ancestors a fixed
+    // object shape bounds are rejected by `track` itself, so only the
+    // genuinely unbounded ones (through an array index or a record key)
+    // cost anything, and re-offering a tracked path is a Set lookup.
+    for (let i = 1; i < patch.path.length; i++) {
+      const ancestor = patch.path.slice(0, i)
+      st.pathSweep.track(ancestor, canonicalizePath(ancestor).key)
+    }
   }
   for (const listener of st.formChangeListeners) {
     try {
@@ -2226,12 +2216,7 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
     if (newlyAuthored && st.schema.isPreprocessOrCoerceLeaf(path)) {
       const modeForAuthoringTransition = meta?.instance?.validateOn ?? st.fieldValidationMode
       if (modeForAuthoringTransition === 'change') {
-        scheduleFieldValidation(st, path, false /* debounced */, {
-          ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-          ...(meta?.instance?.debounceMs !== undefined
-            ? { debounceMs: meta.instance.debounceMs }
-            : {}),
-        })
+        scheduleFieldValidation(st, path, false /* debounced */, meta?.instance)
       }
     }
     return true
@@ -2275,15 +2260,12 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
     // optional section that was empty at construction — added, then cleared
     // again — lands back at pristine rather than reading dirty.
     if (subtreeHadRealBaseline(st, path, currentValue)) {
-      st.removedSubtrees.add(canonicalizePath(path).key)
+      st.removedSubtrees.add(pathKey)
     }
   }
   const effectiveModeAfterWrite = meta?.instance?.validateOn ?? st.fieldValidationMode
   if (effectiveModeAfterWrite === 'change') {
-    scheduleFieldValidation(st, path, false /* debounced */, {
-      ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-      ...(meta?.instance?.debounceMs !== undefined ? { debounceMs: meta.instance.debounceMs } : {}),
-    })
+    scheduleFieldValidation(st, path, false /* debounced */, meta?.instance)
   }
   return true
 }
@@ -2468,7 +2450,6 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
       applySchemaErrorsForSubtree(st, parentPath, reStamped)
       // Cancel any in-flight async validation at this path so a
       // late-arriving result can't clobber the sync write.
-      const { key: parentKey } = canonicalizePath(parentPath)
       const prevValidation = st.fieldValidationState.get(parentKey)
       if (prevValidation !== undefined) {
         if (prevValidation.timer !== null) clearTimeout(prevValidation.timer)
@@ -2481,10 +2462,7 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
   applyFormReplacement(st, nextForm, meta)
   for (const k of newBlankPaths) st.blankPaths.add(k)
   if (reshapeMode === 'change' && !appliedSync) {
-    scheduleFieldValidation(st, parentPath, false /* debounced */, {
-      ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-      ...(meta?.instance?.debounceMs !== undefined ? { debounceMs: meta.instance.debounceMs } : {}),
-    })
+    scheduleFieldValidation(st, parentPath, false /* debounced */, meta?.instance)
   }
   return true
 }
@@ -2505,11 +2483,19 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
   st: FormState<F, G>,
   path: Path,
   immediate: boolean,
-  override?: { readonly mode?: ValidateOn; readonly debounceMs?: number }
+  // The write's per-instance overrides, taken whole. Every caller had
+  // exactly this bag in hand and rebuilt a two-key object from it under
+  // a different spelling, guarded by a `!== undefined ? {k} : {}` spread
+  // per key — four copies of a ceremony that exists only because
+  // `exactOptionalPropertyTypes` rejects an explicit `undefined` at an
+  // optional slot. The reads below use `??`, which cannot tell an absent
+  // key from an undefined one, so the ceremony never meant anything at
+  // runtime.
+  instance?: WriteMeta['instance']
 ): void {
-  const effectiveMode = override?.mode ?? st.fieldValidationMode
+  const effectiveMode = instance?.validateOn ?? st.fieldValidationMode
   if (effectiveMode === 'submit') return
-  const effectiveDebounce = override?.debounceMs ?? st.fieldValidationDebounceMs
+  const effectiveDebounce = instance?.debounceMs ?? st.fieldValidationDebounceMs
   const { key } = canonicalizePath(path)
   const prev = st.fieldValidationState.get(key)
   if (prev !== undefined) {
@@ -3113,12 +3099,7 @@ function markFocused<F extends GenericForm, G extends GenericForm = F>(
       })
     }
     if (changed) {
-      scheduleFieldValidation(st, path, true /* immediate */, {
-        ...(meta?.instance?.validateOn !== undefined ? { mode: meta.instance.validateOn } : {}),
-        ...(meta?.instance?.debounceMs !== undefined
-          ? { debounceMs: meta.instance.debounceMs }
-          : {}),
-      })
+      scheduleFieldValidation(st, path, true /* immediate */, meta?.instance)
     }
   }
 }
@@ -3173,11 +3154,13 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
 ): void {
   const formValue = st.form.value
   let touchedAny = false
-  for (const [, entry] of st.originals) {
+  // `originals` is keyed by the canonical key of each entry's own
+  // segments, so the iteration already yields what a `canonicalizePath`
+  // here would recompute — once per leaf, on a whole-form walk.
+  for (const [leafKey, entry] of st.originals) {
     if (!isPathPrefix(segments, entry.segments)) continue
     if (!hasAtPath(formValue, entry.segments)) continue
     touchedAny = true
-    const leafKey = canonicalizePath(entry.segments).key
     const current = st.fields.get(leafKey)
     if (current?.touched === true) continue
     touchFieldRecord(st, leafKey, entry.segments, { touched: true })
@@ -3233,11 +3216,12 @@ function interactAtPath<F extends GenericForm, G extends GenericForm = F>(
   if (st.effectiveDisabled.value) return false
   const formValue = st.form.value
   let interactedAny = false
-  for (const [, entry] of st.originals) {
+  // Same as `touchSubtree`: the map key is already this leaf's canonical
+  // key, so re-deriving it per leaf bought nothing.
+  for (const [leafKey, entry] of st.originals) {
     if (!isPathPrefix(segments, entry.segments)) continue
     if (!hasAtPath(formValue, entry.segments)) continue
     interactedAny = true
-    const leafKey = canonicalizePath(entry.segments).key
     const current = st.fields.get(leafKey)
     // Skip the reactive write once the whole ladder is already set —
     // records are replaced wholesale, so an unconditional
@@ -3383,11 +3367,7 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
       st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
     )
   ) as DeepPartial<WriteShape<F>>
-  seedOriginalsFromBaseline(
-    st,
-    computeBaselineResponse(st.schema, st.strict, st.defaultValues).data,
-    false
-  )
+  seedOriginalsFromBaseline(st, computeBaselineResponse(st.schema, st.defaultValues).data, false)
 }
 
 // --- Reset ---
@@ -3433,7 +3413,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // to an array or nested object after a reset would mutate the very
   // baseline the next `reset()` restores from.
   st.defaultValues = structuralSnapshot(resetSource)
-  const resetResponse = computeBaselineResponse(st.schema, st.strict, resetSource)
+  const resetResponse = computeBaselineResponse(st.schema, resetSource)
   const next = resetResponse.data
   // Rebuild authoredPaths against the post-reset baseline. Reset is
   // "fresh start" semantics, so the prior authoring set is wiped and
@@ -3482,19 +3462,15 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // errors are not preserved across a reset (different from submit-success,
   // which preserves them).
   st.errorCells.clear()
-  // Re-derive schemaErrors from the post-reset state under strict mode,
-  // mirroring the construction-time seed. Without this,
+  // Re-derive schemaErrors from the post-reset state, mirroring the
+  // construction-time seed. Without this,
   // reset clears the error store but never re-runs validation — so a
   // form mounted with invalid defaults (e.g. empty required strings)
   // would surface as `valid: true` immediately after reset even though
   // the values it landed back on are the same INVALID defaults it
   // mounted with. `field.valid` aggregates over schemaErrors and would
   // otherwise come up empty, flipping every leaf green.
-  //
-  // Gated on `strict` to honor the same opt-out construction uses:
-  // a non-strict form opted out of construction-time validation
-  // explicitly, and post-reset behaviour follows suit.
-  if (st.strict && !resetResponse.success) {
+  if (!resetResponse.success) {
     replaceErrorChannel(st, 'schema', resetResponse.errors)
   }
   // `getDefaultValues` strips refinements before parsing (see
@@ -3512,11 +3488,9 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // invisible: the form mounts before the user is looking, errors
   // land within a microtask, and the UI never has time to render
   // the empty-errors state.
-  if (st.strict) {
-    const syncResult = st.schema.validateAtPath(st.form.value, undefined, { sync: true })
-    if (!(syncResult instanceof Promise) && !syncResult.success) {
-      applySchemaErrorsForSubtree(st, [], syncResult.errors)
-    }
+  const syncResult = st.schema.validateAtPath(st.form.value, undefined, { sync: true })
+  if (!(syncResult instanceof Promise) && !syncResult.success) {
+    applySchemaErrorsForSubtree(st, [], syncResult.errors)
   }
   // Restore the `firstValidationDone` gate to its construction-time
   // value (`initialFirstValidationGate`, the same primitive that seeds
@@ -3533,7 +3507,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // `valid: true` for every container — the docs-site wizard
   // demo's step titles turn green for ~600ms-1.5s. Restoring the
   // gate keeps containers `valid: false` throughout that window.
-  st.firstValidationDone.value = initialFirstValidationGate(st.schema, st.strict)
+  st.firstValidationDone.value = initialFirstValidationGate(st.schema)
   // Re-queue the async validation pass through the same primitive
   // construction uses (`queueInitialAsyncValidation`). Picks up
   // async-only verdicts the sync pass above can't reach
@@ -3746,14 +3720,6 @@ function clearFieldRecordFlags<F extends GenericForm, G extends GenericForm = F>
 
 // --- Derived ---
 
-function isPristineAtPath<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path
-): boolean {
-  const { key, segments } = canonicalizePath(path)
-  return isPristineAtPathByKey(st, key, segments)
-}
-
 function isPristineAtPathByKey<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   key: PathKey,
@@ -3826,18 +3792,10 @@ function getFieldRecord<F extends GenericForm, G extends GenericForm = F>(
   return st.fields.get(key)
 }
 
-function getOriginalAtPath<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  path: Path
-): unknown {
-  const { key } = canonicalizePath(path)
-  return st.originals.get(key)?.value
-}
-
 export function createFormStore<F extends GenericForm, G extends GenericForm = F>(
   options: CreateFormStoreOptions<F, G>
 ): FormStore<F, G> {
-  const { formKey, schema, defaultValues, strict = true, hydration } = options
+  const { formKey, schema, defaultValues, hydration } = options
   const ssr = options.ssr === true
   const ssrPrefetch = options.ssrPrefetch
   const rememberVariants: boolean = options.rememberVariants !== false
@@ -3850,21 +3808,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const fieldValidationDebounceMs = normalizeNumericOption({
     value: options.debounceMs ?? DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
     source: 'useForm.debounceMs',
-    allowInfinity: false,
     min: 0,
     defaultValue: DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS,
   })
 
-  // Resolve the coercion config to a concrete index ONCE per form.
-  // The index is keyed by `${input}->${output}` for O(1) per-keystroke
-  // dispatch. `register()` reads it via `state.coerceIndex` to bake
-  // path-scoped coerce closures on each `RegisterValue`.
-  const coerceIndex: CoercionIndex = resolveCoercionIndex(options.coerce)
-
-  // Resolve `getDisplayState` once. `undefined` falls back to
-  // `defaultDisplayState`. The field-state computeds read the resolved
-  // function directly on every read.
-  const resolvedGetDisplayState: GetDisplayState = resolveGetDisplayState(options.getDisplayState)
+  // Resolve the coercion switch ONCE per form. `register()` reads it
+  // via `state.coerceEnabled` to bake path-scoped coerce closures on
+  // each `RegisterValue`.
+  const coerceEnabled = resolveCoerceEnabled(options.coerce)
 
   // State-scoped teardown hooks. History / any other per-state module
   // registers its disposer here so the cleanup is bound to the
@@ -3874,7 +3825,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const modules = new Map<string, unknown>()
 
   // Anti-flash display engine + its episode-timing companion. The engine
-  // owns the clock and the single timer the timed `getDisplayState` reducer
+  // owns the clock and the single timer the timed display-reducer
   // needs; `fieldValidatingSince` records when each path's latest validation
   // run started (re-stamped on every run, cleared on the → 0 edge, in
   // inc/decFieldValidation). Disposed with the store so a held spinner
@@ -3893,11 +3844,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Schema is ALWAYS consulted: we need the schema-derived originals even
   // when hydrating, so pristine/dirty computation survives SSR round-trip.
   // The form's actual starting value, though, prefers hydration data.
-  const schemaResponse: DefaultValuesResponse<F> = computeBaselineResponse(
-    schema,
-    strict,
-    defaultValues
-  )
+  const schemaResponse: SchemaDefaultsResult<F> = computeBaselineResponse(schema, defaultValues)
   const schemaInitialData = schemaResponse.data
 
   // Paths the consumer or schema-author explicitly authored a starting
@@ -3955,10 +3902,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return Array.isArray(v) ? v.length : 0
   })
 
-  // Per-path state. `reactive(new Map())` uses Vue's collection handlers —
-  // reads of specific keys track those keys only, so a change to one field
-  // doesn't invalidate computeds watching another.
-  const fields = reactive(new Map<PathKey, FieldRecord>()) as Map<PathKey, FieldRecord>
+  // Per-path state. Vue's collection handlers make reads of specific
+  // keys track those keys only, so a change to one field doesn't
+  // invalidate computeds watching another.
+  //
+  // `shallowReactive`, not `reactive`: the deep variant additionally
+  // wraps every value a read HANDS BACK, minting a proxy per record per
+  // pass over the map. A `FieldRecord` is `readonly` in every field and
+  // every writer REPLACES it through `.set()`, so nothing was ever
+  // observing a mutation inside one. On a 200-field read-swept form
+  // that wrapping was a third of the form's heap. See
+  // `test/core/store-collection-reactivity.test.ts` for the tracking
+  // this keeps.
+  const fields = shallowReactive(new Map<PathKey, FieldRecord>()) as Map<PathKey, FieldRecord>
 
   // The DOM slice (element registry, no-latch host anchors, DOM-order
   // sort cache, focus listeners, first-error focus resolution) lives in
@@ -3975,7 +3931,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // side, the `setErrors` / `clearErrors` API owns `user`. Reads merge via
   // `getErrorsForPath` and the top-level `errors` drillable Proxy in
   // build-form-api, schema -> blank -> user.
-  const errorCells = reactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
+  //
+  // `shallowReactive`, not `reactive`, and the difference is not small.
+  // Deep `reactive` wraps every value a collection read HANDS BACK, so
+  // iterating this map minted a fresh reactive proxy per cell per pass:
+  // a 400-row table reading `form.list()` after a keystroke spent most
+  // of its time in `createReactiveObject`, for cells nothing can mutate.
+  // An `ErrorCell` is `readonly` on both sides and every writer REPLACES
+  // it through `.set()`, so key-level tracking, which `shallowReactive`
+  // keeps in full, is the whole of what the readers need.
+  const errorCells = shallowReactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
 
   // Originals are captured at init and on first appearance of a path; never
   // re-assigned. Reactive: the dirty computed iterates this map AND accesses
@@ -3989,7 +3954,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // Map's iteration / set / delete fire Vue's collection deps,
   // picking up exactly the change that prompted the originals
   // mutation.
-  const originals = reactive(new Map<PathKey, OriginalsRecord>()) as Map<PathKey, OriginalsRecord>
+  //
+  // `shallowReactive` for the same reason as `fields`: an
+  // `OriginalsRecord` is `readonly` in both fields and is replaced, never
+  // mutated, so the deep variant's per-read proxy bought nothing. The
+  // collection-level tracking this paragraph is about is exactly the
+  // half `shallowReactive` keeps.
+  const originals = shallowReactive(new Map<PathKey, OriginalsRecord>()) as Map<
+    PathKey,
+    OriginalsRecord
+  >
 
   // Paths where a baseline-present container (object or array) was replaced
   // wholesale by a non-container — `setValue('profile', undefined)` and the
@@ -4011,24 +3985,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // (the SSR snapshot wins when present), matching how the hydrated
   // `form` value overrides the schema's getDefaultValues result.
   //
-  // The I/O boundary accepts strings in either shape:
-  //
-  //  - dotted-string paths (`'user.email'`) — what the public path
-  //    notation looks like, also what persistence writes to disk
-  //    (`buildPersistedPayload` converts via `pathKeyToDotted`);
-  //  - already-canonical `PathKey` strings (`'["user","email"]'`) —
-  //    what the construction-time unset walker emits and what the rest
-  //    of the runtime keys on.
-  //
-  // `coerceToPathKey` normalises both shapes to a canonical `PathKey`
-  // so the live Set is uniformly keyed regardless of which seed source
-  // (walker, SSR hydration payload, persisted draft) supplied the entry.
-  const initialTransientList: ReadonlyArray<string> =
-    hydration?.blankPaths ?? options.initialBlankPaths ?? []
+  // Two seed sources, and each one's shape is known here rather than
+  // guessed. A hydration payload arrives DOTTED, because `serialize.ts`
+  // converts at the wire boundary so the payload matches public path
+  // notation; the construction-time unset walker already emits canonical
+  // keys. Branching on the source replaced a per-entry sniff that tried
+  // `JSON.parse` on anything starting with `[`, which by its own
+  // docblock misread a literal key spelled like JSON.
   const blankPaths = reactive(new Set<PathKey>()) as Set<PathKey>
   const originalBlankPaths = new Set<PathKey>()
-  for (const raw of initialTransientList) {
-    const key = coerceToPathKey(raw)
+  const seededBlankPaths: readonly PathKey[] =
+    hydration !== undefined
+      ? (hydration.blankPaths ?? []).map((dotted) => canonicalizePath(dotted).key)
+      : (options.initialBlankPaths ?? [])
+  for (const key of seededBlankPaths) {
     blankPaths.add(key)
     originalBlankPaths.add(key)
   }
@@ -4075,6 +4045,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     return result
   })
 
+  // Rebuilt whenever a cell is added, replaced or removed, or a blank
+  // path joins or leaves. Vue's collection tracking makes that exact:
+  // a keystroke that rewrites one path's errors invalidates this once,
+  // not once per reader.
+  //
+  // Store-local on purpose. Every reader goes through `errorWindowAt`
+  // below, which is what keeps one path's error off every other
+  // container's dependency list; handing the index itself to a reader
+  // would put the form-global dep straight back.
+  const errorPathIndex = computed<readonly ErrorPathEntry[]>(() =>
+    buildErrorPathIndex(errorCells, derivedBlankErrors.value)
+  )
+
   // Submission lifecycle refs. Initial values encode "no submission has
   // happened yet": not in flight, zero attempts, no captured error.
   // `activeSubmissions` counts concurrent in-flight submissions so the
@@ -4087,8 +4070,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const submitError = ref<Error | null>(null)
   // Counts wizard departures from this form. Bumped by `useWizard`
   // when `next` / `back` / `goTo` actually leaves this form; zeroed by
-  // `reset()`. Introspection only — the library-default
-  // `getDisplayState` reveals via `submissionAttempts`, not this.
+  // `reset()`. Introspection only — the display heuristic reveals via
+  // `submissionAttempts`, not this.
   const departAttempts = ref(0)
   // Data-freeze channel. `externalLock` is written by `useWizard` to
   // force a locked step's form frozen; the form's own config contributes
@@ -4161,11 +4144,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const activated = ref(false)
   const activationPromise = ref<Promise<void> | undefined>(undefined)
   // Initial-validity gate. See `FormStore.firstValidationDone` JSDoc and
-  // `initialFirstValidationGate` for why only async-validating strict
+  // `initialFirstValidationGate` for why only async-validating
   // schemas start gated. The watch flips the gate when
   // `activeValidations` returns to 0 from a positive value (i.e. the
   // construction-time queued validation completes).
-  const firstValidationDone = ref(initialFirstValidationGate(schema, strict))
+  const firstValidationDone = ref(initialFirstValidationGate(schema))
   // `watch(source, cb)` only fires when the source CHANGES (no immediate
   // first-invocation), so `prev` is always the pre-transition value, typed
   // as `number`, never `undefined`.
@@ -4217,6 +4200,72 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // vacated indices. Owns no state of its own — every dep is a
   // reference into the surrounding store, so the bookkeeping's
   // lifecycle exactly matches the host.
+  // One `computed` per prefix anyone aggregates errors at, holding that
+  // prefix's slice of the index.
+  //
+  // The index is one value for the whole form and is rebuilt whole on
+  // every error change, so it has a fresh identity every time. A
+  // container that read it directly therefore woke whenever ANY path in
+  // the form gained or lost an error, not just one of its own
+  // descendants: a form mounting with errors paid one render per
+  // unrelated container on its first write, linear in container count.
+  //
+  // The window `computed` is the barrier. It re-evaluates on every
+  // index change (a binary search and a key compare over its own
+  // slice), but hands back the array it returned last time when its own
+  // window is unchanged, and Vue stops propagating a `computed` whose
+  // value is identical. So an unrelated path's error reaches this far
+  // and no further. Contents are deliberately NOT part of the
+  // comparison: `aggregateErrorsAt` reads each path's errors through the
+  // per-key `errorCells` / `blankPaths` tracking, which is already
+  // precise, and folding contents in here would only re-add the
+  // form-global dep this exists to remove.
+  const errorWindows = new Map<PathKey, ComputedRef<readonly ErrorPathEntry[]>>()
+
+  // The form's single liveness sweep, built here so the store's own
+  // per-path maps are swept alongside the read surfaces'. They were the
+  // omission: the sweep landed with the caches that read a path and
+  // never reached the maps that RECORD one, so a form that grew a
+  // container and shrank it again kept a `fields` record and an
+  // originals entry per path it had ever held. Emptying a 200-row array
+  // released nothing.
+  const pathSweep = createDynamicPathSweep({
+    onFormChange: (listener) => {
+      formChangeListeners.add(listener as (next: F, meta?: WriteMeta) => void)
+    },
+    isFixedObjectAtPath: (path) => schema.isFixedObjectAtPath(path),
+  })
+  pathSweep.onEvict((key) => {
+    fields.delete(key)
+    fieldValidationState.delete(key)
+    authoredPaths.delete(key)
+    // Originals are the form's memory of what it STARTED as, so an entry
+    // recording a real value outlives the path going away — a removed row
+    // restored by undo has to compare against the value it had, not
+    // against absence. An entry holding `undefined` is the absence
+    // baseline `commitWritePatches` seeds the first time a runtime-added
+    // path appears, and it re-seeds identically on re-appearance, so
+    // dropping it costs nothing and is the half that grows without bound.
+    if (originals.get(key)?.value === undefined) originals.delete(key)
+    // Bounded here like every other per-path cache (#617): a prefix the
+    // form no longer has loses its window on the next write.
+    errorWindows.delete(key)
+  })
+
+  const errorWindowAt = (prefix: Path, prefixKey: PathKey): readonly ErrorPathEntry[] => {
+    let cached = errorWindows.get(prefixKey)
+    if (cached === undefined) {
+      const frozen = [...prefix]
+      cached = computed<readonly ErrorPathEntry[]>((prev) => {
+        const next = windowUnder(errorPathIndex.value, frozen)
+        return prev !== undefined && isSameWindow(prev, next) ? prev : next
+      })
+      errorWindows.set(prefixKey, cached)
+      pathSweep.track(frozen, prefixKey)
+    }
+    return cached.value
+  }
+
   const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
     form,
     fields,
@@ -4235,6 +4284,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     decFieldValidation: (key) => decFieldValidation(st, key),
   })
 
+  // Bind the module kernel's `st`-first functions into the per-instance
+  // skin table. Every entry was an arrow that forwarded its own
+  // parameters verbatim, so the parameter list was pure repetition.
+  const bind =
+    <A extends unknown[], R>(fn: (state: FormState<F, G>, ...args: A) => R) =>
+    (...args: A): R =>
+      fn(st, ...args)
+
   const st: FormState<F, G> = {
     // --- public data (the FormStore contract's state members) ---
     formKey,
@@ -4242,10 +4299,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     fields,
     errorCells,
     derivedBlankErrors,
+    errorWindowAt,
     originals,
+    pathSweep,
     schema,
     ssr,
-    getDisplayState: resolvedGetDisplayState,
     submitting,
     activeSubmissions,
     submissionAttempts,
@@ -4273,12 +4331,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     displayEngine,
     domBinding,
     modules,
-    coerceIndex,
+    coerceEnabled,
     blankPaths,
     originalBlankPaths,
 
     // --- kernel-internal state ---
-    strict,
     // Defensive copy, not a fix for an observed alias: today
     // `getDefaultValues` happens to build a fresh tree, so form storage
     // does not currently share structure with the consumer's object.
@@ -4316,17 +4373,20 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     warnedDisabledWrite: false,
 
     // --- methods: thin per-instance skins over the module kernel ---
-    rehydrate: () => rehydrate(st),
-    activate: () => activate(st),
-    adoptResolvedDefaults: (value) => adoptResolvedDefaults(st, value),
-    pathHasAsyncValidation: (path) => pathHasAsyncValidation(st, path),
-    pathHasAsyncValidationByKey: (key, segments) => pathHasAsyncValidationByKey(st, key, segments),
-    applyFormReplacement: (next, meta) => applyFormReplacement(st, next, meta),
-    setValueAtPath: (path, value, meta) => setValueAtPath(st, path, value, meta),
-    getValueAtPath: (path) => getValueAtPath(st, path),
-    arrayElementKey: (path) => arrayElementKey(st, path),
-    reset: (nextDefaultValues) => reset(st, nextDefaultValues),
-    resetField: (path) => resetField(st, path),
+    rehydrate: bind(rehydrate),
+    activate: bind(activate),
+    adoptResolvedDefaults: bind(adoptResolvedDefaults),
+    pathHasAsyncValidationByKey: bind(pathHasAsyncValidationByKey),
+    applyFormReplacement: bind(applyFormReplacement),
+    setValueAtPath: bind(setValueAtPath),
+    getValueAtPath: bind(getValueAtPath),
+    arrayElementKey: bind(arrayElementKey),
+    reset: bind(reset),
+    resetField: bind(resetField),
+    // The schema/user pair below reads as a fold waiting to happen. It was
+    // tried: a `setErrorsForPathIn(channel)` factory measured 10 B LARGER,
+    // because gzip had already collected the rent on two adjacent copies
+    // and the helper added a name the original did not need.
     setSchemaErrorsForPath: (path, entries) =>
       setErrorChannelForKey(
         st,
@@ -4336,7 +4396,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       ),
     setAllSchemaErrors: (entries) => replaceErrorChannel(st, 'schema', entries),
     clearSchemaErrors: (path) => clearErrorChannel(st, 'schema', path),
-    applySchemaErrorsForSubtree: (path, entries) => applySchemaErrorsForSubtree(st, path, entries),
+    applySchemaErrorsForSubtree: bind(applySchemaErrorsForSubtree),
     setAllUserErrors: (entries) => replaceErrorChannel(st, 'user', entries),
     setUserErrorsForPath: (path, entries) =>
       setErrorChannelForKey(
@@ -4346,38 +4406,34 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         entries.length === 0 ? NO_ERRORS : [...entries]
       ),
     clearUserErrors: (path) => clearErrorChannel(st, 'user', path),
-    restoreErrorCells: (entries) => restoreErrorCells(st, entries),
-    getErrorsForPath: (path) => getErrorsForPath(st, path),
-    ensurePathOrdinal: (key) => ensurePathOrdinal(st, key),
-    noteDomConnected: (path) => noteDomConnected(st, path),
-    noteDomDisconnected: (path) => noteDomDisconnected(st, path),
-    markFocused: (path, focused, meta) => markFocused(st, path, focused, meta),
-    markInteracted: (path) => markInteracted(st, path),
-    touchAtPath: (segments) => touchAtPath(st, segments),
-    interactAtPath: (segments) => interactAtPath(st, segments),
-    markConnectedOptimistically: (path) => markConnectedOptimistically(st, path),
-    isPristineAtPath: (path) => isPristineAtPath(st, path),
-    isPristineAtPathByKey: (key, segments) => isPristineAtPathByKey(st, key, segments),
-    hasStructuralChangeUnder: (path) => hasStructuralChangeUnder(st, path),
-    hasRemovedSubtreeUnder: (path) => hasRemovedSubtreeUnder(st, path),
-    getFieldRecord: (path) => getFieldRecord(st, path),
-    getOriginalAtPath: (path) => getOriginalAtPath(st, path),
-    cancelFieldValidation: () => cancelFieldValidation(st),
-    beginTransform: (key, holder) => beginTransform(st, key, holder),
-    isCurrentTransform: (key, token) => isCurrentTransform(st, key, token),
-    endTransform: (key, token) => endTransform(st, key, token),
-    setTransformError: (key, err) => setTransformError(st, key, err),
-    cancelTransforms: () => cancelTransforms(st),
-    cancelTransformsUnder: (prefix) => cancelTransformsUnder(st, prefix),
-    settleTransforms: (path) => settleTransforms(st, path),
-    scheduleFieldValidation: (path, immediate, override) =>
-      scheduleFieldValidation(st, path, immediate, override),
-    onFormChange: (listener) => onFormChange(st, listener),
-    onSubmitSuccess: (listener) => onSubmitSuccess(st, listener),
-    onReset: (listener) => onReset(st, listener),
-    emitSubmitSuccess: () => emitSubmitSuccess(st),
-    registerCleanup: (fn) => registerCleanup(st, fn),
-    dispose: () => dispose(st),
+    restoreErrorCells: bind(restoreErrorCells),
+    getErrorsForPath: bind(getErrorsForPath),
+    ensurePathOrdinal: bind(ensurePathOrdinal),
+    noteDomConnected: bind(noteDomConnected),
+    noteDomDisconnected: bind(noteDomDisconnected),
+    markFocused: bind(markFocused),
+    markInteracted: bind(markInteracted),
+    touchAtPath: bind(touchAtPath),
+    interactAtPath: bind(interactAtPath),
+    markConnectedOptimistically: bind(markConnectedOptimistically),
+    isPristineAtPathByKey: bind(isPristineAtPathByKey),
+    hasStructuralChangeUnder: bind(hasStructuralChangeUnder),
+    hasRemovedSubtreeUnder: bind(hasRemovedSubtreeUnder),
+    getFieldRecord: bind(getFieldRecord),
+    cancelFieldValidation: bind(cancelFieldValidation),
+    beginTransform: bind(beginTransform),
+    isCurrentTransform: bind(isCurrentTransform),
+    endTransform: bind(endTransform),
+    setTransformError: bind(setTransformError),
+    cancelTransformsUnder: bind(cancelTransformsUnder),
+    settleTransforms: bind(settleTransforms),
+    scheduleFieldValidation: bind(scheduleFieldValidation),
+    onFormChange: bind(onFormChange),
+    onSubmitSuccess: bind(onSubmitSuccess),
+    onReset: bind(onReset),
+    emitSubmitSuccess: bind(emitSubmitSuccess),
+    registerCleanup: bind(registerCleanup),
+    dispose: bind(dispose),
   }
 
   // --- Construction sequence (the reset-shared baseline + the
@@ -4440,11 +4496,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     })
     // No hydration — seed schemaErrors from the construction-time
     // validation result IF the schema rejected the defaults AND the
-    // form was constructed in strict mode. Non-strict mode treats
-    // default values as "best-effort," so populating errors there
-    // would surprise consumers who explicitly opted out via
-    // `strict: false`.
-    if (strict && !schemaResponse.success) {
+    // validation result if the schema rejected the defaults.
+    if (!schemaResponse.success) {
       replaceErrorChannel(st, 'schema', schemaResponse.errors)
     }
   }
@@ -4454,7 +4507,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // adapter degrades to success when the schema's sync parse can't
   // resolve them. Queue the one-shot full-form validation pass so the
   // errors land on a later microtask instead of waiting for a user
-  // mutation; see `queueInitialAsyncValidation` for the SSR and strict
+  // mutation; see `queueInitialAsyncValidation` for the SSR and async
   // gates.
   queueInitialAsyncValidation(st)
 

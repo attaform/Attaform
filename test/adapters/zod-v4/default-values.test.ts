@@ -172,9 +172,8 @@ describe('getDefaultValuesFromZodSchema — validate-then-fix recovery', () => {
 })
 
 describe('getDefaultValuesFromZodSchema — bigint default', () => {
-  // z.bigint() rejects numbers (Object.is(typeof 0, 'number') !== 'bigint').
-  // Using `0` here previously caused the schema's own safeParse to fail
-  // before validate-then-fix could intervene.
+  // z.bigint() rejects a number, so `0` here fails the schema's own
+  // safeParse before validate-then-fix can intervene.
   it('returns a bigint zero, not a number', () => {
     const schema = z.object({ count: z.bigint() })
     const { data, success } = run(schema)

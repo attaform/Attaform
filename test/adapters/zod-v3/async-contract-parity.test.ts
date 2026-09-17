@@ -3,23 +3,23 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * What construction seeds when a schema mixes async and sync checks,
- * for zod v3 — and its twin under `test/adapters/zod-v4/async-contract-parity.test.ts` must agree line for line.
+ * What construction seeds when a schema mixes async and sync checks, on
+ * zod v3. Its twin under
+ * `test/adapters/zod-v4/async-contract-parity.test.ts` agrees line for
+ * line.
  *
  * It seeds NOTHING. A schema declaring async work anywhere returns from
- * `getDefaultValues` clean, and every verdict — sync or async — arrives
- * on the post-mount async pass that `needsAsyncValidation()` schedules.
+ * `getDefaultValues` clean, and every verdict, sync or async, arrives on
+ * the post-mount async pass that `needsAsyncValidation()` schedules.
  *
- * This is where the two adapters converged. v4 used to rebuild the whole
- * schema with async predicates removed and parse against that copy, so
- * sync refines seeded; v3 could not tell sync from async at the
- * predicate level, so its equivalent dropped EVERY `ZodEffects` and
- * seeded only container and leaf checks. Two walkers, two different
- * answers to the same schema, each a second parallel understanding of
- * its Zod major. Both are gone, and the answer is now one answer.
+ * Seeding the sync half would mean parsing against a copy of the schema
+ * with its async predicates removed, and building that copy is a second
+ * parallel understanding of a Zod major that drifts from the original
+ * with nothing to notice. One answer per schema is worth the one
+ * async pass of latency.
  *
- * What did not change: a schema with no async work still seeds its sync
- * violations at construction, which the counterweight case below pins.
+ * A schema with no async work still seeds its sync violations at
+ * construction, which the counterweight case below pins.
  */
 describe('zod v3: an async sibling defers the whole construction verdict', () => {
   it('seeds nothing when an async refine exists, container checks included', () => {

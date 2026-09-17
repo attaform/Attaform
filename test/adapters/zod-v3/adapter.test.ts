@@ -3,12 +3,9 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * The v3 adapter is the pre-rewrite implementation moved verbatim in
- * Phase 4a. It was previously only exercised through `test/ssr.test.ts`
- * (Nuxt fixture). This file is the v3's unit-test counterpart to the
- * v4 suite under `test/adapters/zod-v4/`, covering the `AbstractSchema`
- * contract directly so regressions in shared zod behaviour surface
- * without a full Nuxt build.
+ * The v3 counterpart to the suite under `test/adapters/zod-v4/`,
+ * covering the `AbstractSchema` contract directly so a regression in
+ * shared Zod behaviour surfaces without a full Nuxt build.
  */
 
 describe('zod v3 adapter — getDefaultValues', () => {
@@ -121,11 +118,10 @@ describe('zod v3 adapter — getDefaultValues', () => {
     expect(result.data).toEqual({ event: { kind: 'click', x: 0 } })
   })
 
-  // The four kinds below were previously unhandled — generateValue
-  // logged "unsupported schema kind" and returned `null`, so any form
-  // built against a schema using lazy / intersection / nativeEnum / set
-  // initialised with phantom nulls instead of the typed empty value.
-  // Each case mirrors v4's `deriveDefault` semantics.
+  // lazy, intersection, nativeEnum and set each derive a typed empty
+  // value, mirroring v4's `deriveDefault`. An "unsupported schema kind"
+  // warn returning `null` initialises the whole form with phantom nulls
+  // instead.
 
   it('z.lazy(...) descends into the lazy target for the default', () => {
     // Non-recursive lazy — the wrapper is transparent, so the default

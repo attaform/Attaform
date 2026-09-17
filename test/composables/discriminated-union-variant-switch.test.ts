@@ -1007,9 +1007,8 @@ describe('variant memory — same-discriminator Case B', () => {
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'sms', number: '8888888' })
 
-    // Verify the email memory is intact: switching back must restore
-    // the originally-typed address, not anything affected by the
-    // same-disc Case B above.
+    // The email memory is intact: switching back restores the typed
+    // address, untouched by the same-disc Case B above.
     api.setValue('notify.channel', 'email')
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'email', address: 'baseline@x.io' })

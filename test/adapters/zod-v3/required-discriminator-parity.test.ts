@@ -144,8 +144,9 @@ describe('zod v3: required + discriminator parity (D9 / D10 / D11 / D12)', () =>
     it('a preprocess-wrapped optional leaf reports as required (opaque, not peeled)', () => {
       const schema = z.object({ f: z.preprocess((v) => v, z.string().optional()) })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      // v3 used to peel the effect and report not-required; it now treats
-      // preprocess as opaque, matching v4's isLeafRequired.
+      // preprocess is opaque on both sides, so peeling the effect and
+      // reporting not-required would break parity with v4's
+      // `isLeafRequired`.
       expect(adapter.isRequiredAtPath(['f'])).toBe(true)
     })
 

@@ -494,20 +494,19 @@ describe('createDisplayEngine', () => {
     })
 
     it('re-arms a still-future deadline it already fired for', () => {
-      // Regression: the forward-progress guard used to refuse any deadline
-      // equal to the one just fired, on the premise that legitimate timing
-      // always advances a deadline. The min-visible hold breaks that
-      // premise by design: while a spinner is inside its window the reducer
+      // The forward-progress guard must accept a deadline equal to the
+      // one just fired. "Legitimate timing always advances a deadline" is
+      // false by design here: inside its window the min-visible hold
       // re-emits `pendingShownAt + minVisible`, the SAME instant on every
-      // pass. A timer that fired a fraction early left the reducer
-      // re-emitting that deadline while the guard still held it, so the
-      // engine cleared the timer and armed nothing. The field then held
-      // `'pending'` forever, showing `aria-busy="true"` over a validation
-      // that had already finished and committed its error.
+      // pass. A guard refusing it drops the re-emit of a timer that fired
+      // a fraction early, so the engine clears the timer, arms nothing,
+      // and the field holds `'pending'` forever, showing
+      // `aria-busy="true"` over a validation that already committed its
+      // error.
       //
-      // This is the `docs-demos-smoke > async-refinements` flake. It is
-      // spelled out against the engine rather than the demo because the
-      // demo only reaches it at ~2-3% per mount.
+      // This is the `docs-demos-smoke > async-refinements` flake, spelled
+      // out against the engine rather than the demo because the demo only
+      // reaches it at ~2-3% per mount.
       const engine = createDisplayEngine(false)
       // A reducer that pins one fixed future deadline, which is what the
       // min-visible hold looks like from the engine's side.

@@ -2,12 +2,11 @@
 /**
  * What actually puts a defaulted leaf back to its default.
  *
- * `docs/schemas/storage-shape.md` used to carry
- * `form.setValue('flag', undefined) // OK; default fills the gap`.
- * There is no such mechanism. The write fails the slim gate, dev-warns,
- * and no-ops — storage keeps whatever it already held, which on a
- * freshly mounted form is the default, so the snippet's implied
- * assertion passed by accident and the wrong mental model survived.
+ * There is no `form.setValue('flag', undefined)` that "lets the default
+ * fill the gap": that write fails the slim gate, dev-warns and no-ops,
+ * leaving storage on whatever it already held. On a freshly mounted form
+ * that IS the default, which is how the mental model survives being
+ * wrong.
  *
  * Three verbs do have an answer here, and they give three different
  * ones. Pinned together because the page now prescribes choosing

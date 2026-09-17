@@ -114,9 +114,9 @@ describe.each(adapters)('shared AbstractSchema — $name', ({ schema, build, fre
 describe('the per-path memo bound', () => {
   // The size half of the same contract, on the helper itself: what the
   // case above cannot see from outside is whether the memo GREW. It is
-  // the sharing that makes this load-bearing. A memo of invented record
-  // keys used to die with its form; it now lives as long as the schema,
-  // which for a module-level schema is the life of the process.
+  // the sharing that makes this load-bearing: a memo of invented record
+  // keys lives as long as the SCHEMA, not the form, which for a
+  // module-level schema is the life of the process.
   it('never grows past the cap', () => {
     const memo = new Map<PathKey, number>()
     for (let i = 0; i < MEMO_CAP * 3; i++) {

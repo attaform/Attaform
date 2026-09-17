@@ -267,16 +267,13 @@ describe('initial validation seed — async-refine schema', () => {
   })
 
   it('mixed sync+async refines: neither seeds, and both land on the async pass', async () => {
-    // Regression: when a schema mixes sync and async refines and the
     // A schema mixing a failing SYNC refine with an async sibling seeds
     // neither at construction: both verdicts arrive together on the
     // post-mount pass.
     //
-    // It used to seed the sync half, by rebuilding the schema without
-    // its async predicates and parsing that copy. The walker doing it
-    // was a second parallel understanding of every Zod kind, and its v3
-    // counterpart answered differently for the same schema, so the two
-    // adapters disagreed. Both are gone.
+    // Seeding the sync half means parsing a copy of the schema with its
+    // async predicates removed, which is a second parallel understanding
+    // of every Zod kind and drifts per major.
     //
     // What a consumer loses is one frame: UI bound to construction-time
     // errors ("fix N errors" badges) shows zero until the pass lands.

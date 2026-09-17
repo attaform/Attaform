@@ -368,9 +368,9 @@ describe('useForm — field array helpers', () => {
   })
 
   it('append flips dirty (newly-introduced leaves count as mutations)', () => {
-    // Regression: previously the post-init originals capture treated
-    // `append`'d items as "always pristine" because the new path's
-    // first-seen value was recorded as its own baseline.
+    // An `append`'d item is not pristine by construction. Recording the
+    // new path's first-seen value as its own baseline makes the
+    // post-init originals capture say it is.
     const { app, form } = harness({ tags: [] })
     apps.push(app)
     expect(form.meta.dirty).toBe(false)

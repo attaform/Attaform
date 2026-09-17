@@ -10,9 +10,9 @@ import { deriveDefault } from '../../../src/runtime/adapters/zod-v4/default-valu
  * sub-paths) rather than refused, so a schema a newer Zod can parse is
  * a schema Attaform can mount.
  *
- * Behaviour of each formerly-refused kind, end to end through a real
- * form and against both majors, lives in
- * `test/adapters/every-zod-kind.test.ts`. This file pins construction.
+ * Per-kind behaviour, end to end through a real form and against both
+ * majors, lives in `test/adapters/every-zod-kind.test.ts`. This file
+ * pins construction.
  */
 describe('zod-v4 adapter — construction accepts every kind', () => {
   it.each([

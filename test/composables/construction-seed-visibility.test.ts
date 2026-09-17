@@ -10,26 +10,24 @@
  * per-field display gate keeps them out of the field UI
  * (`displayState` stays 'idle', `showErrors` false, until interaction).
  *
- * WHAT CHANGED, and it is a deliberate trade. A schema that mixes an
- * async refine with sync checks used to seed the sync half anyway: the
- * adapter rebuilt the entire schema with the async predicates removed
- * and parsed against that copy. The walker doing it was 206 lines and a
- * second, parallel understanding of every Zod kind — the shape this
- * codebase keeps finding drifted from the original with nothing to
- * notice. It is gone, and with it the construction seed for exactly
- * that mixed case: the verdict now arrives one async pass later, so on
- * SSR the submit button renders enabled and then disables.
+ * THE ONE DELIBERATE TRADE: a schema mixing an async refine with sync
+ * checks seeds NEITHER. Seeding the sync half means rebuilding the
+ * schema without its async predicates and parsing that copy, and such a
+ * walker is a second parallel understanding of every Zod kind, the shape
+ * this codebase keeps finding drifted from the original with nothing to
+ * notice. So that verdict arrives one async pass later, and on SSR the
+ * submit button renders enabled and then disables.
  *
- * Nothing else moved. An async-free schema still seeds at construction,
+ * Nothing else moves. An async-free schema still seeds at construction,
  * the display gate still hides seeds from the field UI, and the
- * post-mount async pass was already the source of truth for every
- * verdict in every case.
+ * post-mount async pass is the source of truth for every verdict in
+ * every case.
  *
  * The suite pins four facts:
  *  1. construction seeds sync-check violations found on the starting
  *     data, and the seed is meta-visible at first paint;
  *  2. a schema that ALSO carries an async refine defers its whole
- *     verdict to the async pass rather than seeding — the trade above,
+ *     verdict to the async pass rather than seeding, the trade above,
  *     pinned so it stays a decision;
  *  3. it converges on the same verdict once that pass lands;
  *  4. the per-field display gate still hides the seed from the field

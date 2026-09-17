@@ -566,12 +566,11 @@ describe('anti-flash spinner timing (integration)', () => {
     // (same error). That is the guarantee here and it is asserted below by
     // advancing timers by 0.
     //
-    // This branch used to hold `pending` with NO engine timer at all,
-    // trusting the settle to be a reactive event. That trust was the bug:
-    // when the edge was missed the field held `pending` forever. The engine
-    // now floors a deadline-less spinner with a review of its own, so a
-    // backstop timer is armed here. It is a backstop, not the release path,
-    // which is exactly what the zero-advance assertions below prove.
+    // The engine floors a deadline-less spinner with a review of its
+    // own, so a backstop timer is armed here. Holding `pending` with NO
+    // timer trusts the settle to be a reactive event, and a missed edge
+    // then holds the field forever. It is a backstop, not the release
+    // path, which is what the zero-advance assertions below prove.
     // (Note: this passes whether `fieldValidatingSince` is reactive or
     // plain, because the field computed also depends on the reactive validation
     // count; it guards the behaviour, not that specific mechanism.)

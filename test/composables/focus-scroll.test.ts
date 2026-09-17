@@ -832,14 +832,14 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
 
 // --- Blank-required fields are focus / scroll targets (issue #468) ---
 //
-// The blank-required error class (a required leaf left absent / `unset`)
-// lives ONLY in `derivedBlankErrors`, never `schemaErrors` or `userErrors`.
-// `getFirstErrorElement` used to consult just the schema / user stores, so
-// it silently skipped blank required fields — the first empty field on a
-// submit never received focus. These cases use a real Zod schema because
-// the blank class is schema-driven (`isRequiredAtPath` + numeric
-// auto-mark), mirroring the issue repro where `age: z.number()` is
-// submitted blank.
+// The blank-required error class, a required leaf left absent or
+// `unset`, lives ONLY in `derivedBlankErrors`, never in `schemaErrors`
+// or `userErrors`, so `getFirstErrorElement` has to consult all three.
+// Reading the schema and user stores alone silently skips them, and the
+// first empty field on a submit never receives focus. These cases use a
+// real Zod schema because the blank class is schema-driven
+// (`isRequiredAtPath` plus numeric auto-mark), mirroring the issue repro
+// where `age: z.number()` is submitted blank.
 
 function mountApp(component: Parameters<typeof createApp>[0]): {
   app: ReturnType<typeof createApp>

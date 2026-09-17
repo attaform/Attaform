@@ -4,20 +4,18 @@
  * block that imports from `attaform` out of the docs, the published
  * Agent Skill, and the curated llms.txt template, then type-checks each
  * against the *built*
- * `dist/*.d.mts` — the exact surface a consumer sees. A docs example
- * that imports a symbol the library no longer exports (the drift that
- * prompted the schema-entry refactor) fails here instead of silently
- * misleading a reader or a low-context model.
+ * `dist/*.d.mts`, the exact surface a consumer sees. A docs example that
+ * imports a symbol Attaform no longer exports fails here instead of
+ * silently misleading a reader or a low-context model.
  *
- * Scope — import-bearing blocks only. A block that imports from
- * `attaform` is asserting the public surface; a bare fragment
- * (`form.setValue(...)` with no import) is not independently
- * type-checkable and is deliberately skipped. This mirrors the origin
- * story: the failure mode is a wrong *import*, and an import lives in a
- * `ts` block or an SFC `<script setup>`, never in a template-only `vue`
- * fragment — so those self-exclude.
+ * Scope: import-bearing blocks only. A block that imports from `attaform`
+ * is asserting the public surface; a bare fragment (`form.setValue(...)`
+ * with no import) is not independently type-checkable and is deliberately
+ * skipped. The failure mode being guarded is a wrong *import*, and an
+ * import lives in a `ts` block or an SFC `<script setup>`, never in a
+ * template-only `vue` fragment, so those self-exclude.
  *
- * Engine — one `tsc` pass over a generated fixture project, mirroring
+ * Engine: one `tsc` pass over a generated fixture project, mirroring
  * `check:bundled-types`: same bundler-resolution tsconfig, same real
  * `dist` (built via `pnpm prepack` if stubbed). `vue` blocks contribute
  * their `<script setup>` (where the import + form wiring live); the
@@ -55,7 +53,7 @@ const docsDir = resolve(repoRoot, 'docs')
 const skillsDir = resolve(repoRoot, 'skills')
 // The curated llms.txt template carries hand-written `ts` blocks (the
 // wizard "API at a glance", the Quick reference cheat-sheet) that live
-// nowhere in docs/ — including it type-checks that curated code too.
+// nowhere in docs/, so including it type-checks that curated code too.
 const llmsTemplate = resolve(repoRoot, 'apps/site/scripts/llms.template.md')
 
 const KEEP_LANGS = new Set(['ts', 'typescript', 'vue'])
@@ -115,7 +113,7 @@ function extractVueScript(block) {
 }
 
 // Fixture line numbers (1-based) that belong to an `import`/`export … from
-// 'attaform…'` statement — single- or multi-line. An error on one of these
+// 'attaform…'` statement, single- or multi-line. An error on one of these
 // lines is real surface drift (a symbol or subpath the built dist no longer
 // exposes); everything else is a narrative gap the tolerant gate accepts.
 function attaformImportLineSet(fixtureText) {
@@ -219,11 +217,12 @@ try {
 
 // --- classify: attaform-surface drift (fail) vs narrative gap (tolerate) ---
 // The tolerant gate (chosen deliberately) fails ONLY on errors that land on an
-// `attaform` import line — a removed export, a wrong subpath, a missing default.
-// API-shape drift is `check:bundled-types`' job; here the unique signal is
-// "every documented `attaform` import still resolves". Narrative gaps — a block
-// that reuses `schema`/`form` from an earlier block, references the multistep
-// example cast, or imports a placeholder consumer file — are reported, not failed.
+// `attaform` import line: a removed export, a wrong subpath, a missing
+// default. API-shape drift is `check:bundled-types`' job; the unique signal
+// here is "every documented `attaform` import still resolves". A narrative
+// gap, where a block reuses `schema`/`form` from an earlier block, references
+// the multistep example cast, or imports a placeholder consumer file, is
+// reported rather than failed.
 const byName = new Map(fixtures.map((f) => [f.fixtureName, f]))
 const TSC_ERROR = /^(.*?\.ts)\((\d+),\d+\): error (TS\d+): (.*)$/
 const surfaceErrors = []

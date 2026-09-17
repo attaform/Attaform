@@ -2,17 +2,17 @@
 /**
  * Bundled-types regression gate. Verifies that every fixture under
  * `tests/fixtures/bundled-types/*.ts` typechecks against the published
- * `.d.ts` shape — the artifact a real consumer sees through
+ * `.d.ts` shape, the artifact a real consumer sees through
  * `attaform/zod-v4` and `attaform`. The fixture tsconfig globs the
  * directory, so adding a new `.ts` next to the existing ones brings it
  * under the gate without any wiring changes here.
  *
  * Acceptance tests carried by the fixtures:
- *   - `4-form-wizard.ts` — depth-efficiency regression. A 4-form
+ *   - `4-form-wizard.ts`: depth efficiency. A 4-form
  *     `useWizard` pattern with discriminated unions, nested objects,
  *     arrays, and tuples must not trip TS2589 ("Type instantiation is
  *     excessively deep") under the bundled `.d.ts`.
- *   - `mixed-wizard.ts` — v2 surface regression. String / function /
+ *   - `mixed-wizard.ts`: the wizard v2 surface. String / function /
  *     `defer()` step slots, the universal `wizard.handleSubmit` context,
  *     and the namespaced aggregation surfaces (`wizard.allValues`,
  *     `wizard.allErrors`, `wizard.forms.<key>`) must compile against the
@@ -20,8 +20,8 @@
  *
  * A second fixture project, `tests/fixtures/bundled-types-v3/`, compiles
  * the unified `attaform/zod` entry with `zod` remapped (via tsconfig
- * `paths`) to a single v3 install — recreating the one-Zod-major
- * consumer the repo itself can't represent (it installs both majors).
+ * `paths`) to a single v3 install, recreating the one-Zod-major consumer
+ * the repo itself cannot represent, since it installs both majors.
  * It guards the read-slot regression where the unified entry's v4
  * overload greedily matched a v3 schema and collapsed `form.values` /
  * `form.fields` to `never`.

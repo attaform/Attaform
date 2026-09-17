@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * Promote the CHANGELOG's `## Unreleased` block to the version npm is
- * about to tag. Runs from the `version` npm hook — `pnpm version X`
- * bumps package.json first, fires this script, then commits + tags.
- * Adding CHANGELOG.md to the working tree here means it rides along
- * on the version commit (instead of drifting behind the tag).
+ * about to tag. Runs from the `version` npm hook: `pnpm version X` bumps
+ * package.json first, fires this script, then commits and tags. Adding
+ * CHANGELOG.md to the working tree here means it rides along on the
+ * version commit rather than drifting behind the tag.
  *
- * If no `## Unreleased` block exists we leave the file untouched —
- * the release machinery shouldn't fail a publish just because the
- * changelog has already been hand-promoted.
+ * With no `## Unreleased` block the file is left untouched, since the
+ * release machinery should not fail a publish over a changelog that has
+ * already been hand-promoted.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

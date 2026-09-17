@@ -6,39 +6,23 @@ import { rewriteDirectiveDelivery } from './src/runtime/lib/core/transforms/dire
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
 /**
- * Vitest config — kept intentionally minimal. The unit suite lives
- * entirely under `test/`, so `include` is anchored there: vitest's
- * default glob otherwise also swept `apps/bench-arena/tests/arena.spec.ts`,
- * a Playwright spec that throws when vitest imports it. The bench arena
- * runs under its own Playwright config; the root suite stays in `test/`.
- * Coverage settings are overridden below.
+ * Vitest config for the unit suite.
  *
- * Coverage scope is the "new-code" surface: core primitives, the abstract
- * composable, and the v4 adapter. The v3 adapter is the pre-rewrite
- * implementation moved verbatim in Phase 4a; it's verified indirectly
- * through test/ssr.test.ts (Nuxt integration fixture using the v3 adapter)
- * but the v8 provider can't instrument that path, so we exclude it from
- * include to keep thresholds honest.
- *
- * use-form.ts (the zod-v3 composable wrapper) is likewise exercised only
- * through the SSR fixture and the integration tests that stand it up; it's
- * ~60 lines of wiring with no new logic beyond what useAbstractForm does,
- * so keeping it out of `include` is appropriate.
- *
- * `pnpm check:coverage` runs locally and in CI via the package.json
- * scripts. Thresholds fail the run if coverage drops.
+ * Coverage `include` is scoped to the core primitives, useAbstractForm and
+ * the v4 adapter. The v3 adapter and `use-form.ts` are exercised only
+ * through the Nuxt SSR fixture in test/ssr.test.ts, which the v8 provider
+ * cannot instrument, so counting them would understate coverage rather
+ * than measure it.
  */
 export default defineConfig({
-  // Vue SFC support for `*.test.ts` files that import `.vue` components
-  // (e.g., the overlay-panel devtools tests). The plugin is otherwise
-  // dormant — tests that don't touch `.vue` files pay no cost.
+  // Vue SFC support, for test files that import `.vue` components.
   //
   // The second plugin is the production v-register delivery: the same
   // post-compile rewrite `attaform/vite` ships, binding each compiled
-  // SFC's `v-register` to the directive by static import (createAttaform
-  // registers no app-level directive). Registering it here means every
-  // SFC-based suite — the docs-demos smoke in particular — mounts
-  // through the real delivery mechanism. The injected
+  // SFC's `v-register` to the directive by static import, since
+  // createAttaform registers no app-level directive. Registering it here
+  // means every SFC-based suite, the docs-demos smoke in particular,
+  // mounts through the real delivery mechanism. The injected
   // `attaform/directive` specifier resolves through the alias map below.
   plugins: [
     vue(),
@@ -52,23 +36,19 @@ export default defineConfig({
     },
   ],
   resolve: {
-    // Source-alias `attaform/*` to `src/*.ts` for tests. Without this,
-    // any SFC or module reached by tests that bare-imports `attaform`
-    // resolves through `dist/*.mjs` — a `jiti --stub` shim with the
-    // alias `attaform: /app` baked in at build time inside Docker.
-    // Running tests on the host (where the project lives somewhere
-    // other than `/app`) makes the shim throw
-    // `Cannot find module '/app/src/index.ts'`. Aliasing to the real
-    // `src/*.ts` bypasses the shim and lets tests share whatever
-    // edits are live in the source tree. Mirrors the alias map on
-    // `apps/site/nuxt.config.ts` (vite + nitro) — see the comment
-    // there for the broader staleness story.
+    // Source-alias `attaform/*` to `src/*.ts` so tests read the live
+    // source. Without this, a bare `attaform` import resolves through
+    // `dist/*.mjs`, which in dev is a `jiti --stub` shim carrying the
+    // Docker build's `attaform: /app` alias, and throws
+    // `Cannot find module '/app/src/index.ts'` when the suite runs on the
+    // host. Mirrors the vite and nitro alias maps in
+    // `apps/site/nuxt.config.ts`.
     //
-    // Array form with anchored regex `find` patterns. The object
-    // form's prefix-matching semantics rewrote `attaform/zod` to
-    // `${rootDir}src/index.ts/zod` because the bare `attaform`
-    // entry was iterated first; the regex finds anchor each entry
-    // to an exact specifier so no entry can swallow a sibling.
+    // The array form with anchored regex patterns is required. The object
+    // form prefix-matches, so the bare `attaform` entry was iterated first
+    // and rewrote `attaform/zod` to `${rootDir}src/index.ts/zod`;
+    // anchoring each `find` to an exact specifier stops an entry
+    // swallowing a sibling.
     alias: [
       { find: /^attaform\/zod-v3$/, replacement: `${rootDir}src/zod-v3.ts` },
       { find: /^attaform\/zod-v4$/, replacement: `${rootDir}src/zod-v4.ts` },
@@ -82,33 +62,31 @@ export default defineConfig({
     ],
   },
   test: {
-    // Anchor the picker to the unit suite. Without this, vitest's default
-    // glob collects `apps/bench-arena/tests/*.spec.ts` (Playwright specs)
-    // and fails to import them.
+    // Anchor the picker to the unit suite. Vitest's default glob otherwise
+    // collects `apps/bench-arena/tests/*.spec.ts`, Playwright specs that
+    // throw on import.
     include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
     // Same anchoring for `vitest bench`. Its default glob is repo-wide, so
-    // any nested checkout (a git worktree, a vendored copy) gets swept in
-    // and every scenario runs twice — which `check-bench` then gates on
-    // twice, at half the machine. The suite lives in `bench/`; say so.
+    // a nested checkout (a git worktree, a vendored copy) makes every
+    // scenario run twice, and `check-bench` then gates on both halves.
     benchmark: {
       include: ['bench/**/*.bench.?(c|m)[jt]s?(x)'],
     },
-    // Global setup file: stubs `window.isSecureContext = true` so the
-    // secure-context gate doesn't disable built-in persistence in
-    // jsdom-backed tests, and resets the one-shot dev-warning dedup
-    // between tests.
+    // Stubs `window.isSecureContext = true`, so the secure-context gate
+    // does not disable persistence under jsdom, and resets the one-shot
+    // dev-warning dedup between tests.
     setupFiles: ['./test/setup.ts'],
-    // Materialize the docs-demos' generated `styles.css` once before the
-    // suite runs. The files are gitignored and produced at dev/build time by
-    // `apps/site/scripts/demo-styles/codegen.mjs`; the docs-demos smoke suite
-    // imports each demo's App.vue, which `import './styles.css'`, so the
-    // import must resolve on a fresh checkout where the CSS does not exist yet.
+    // Materialize the docs-demos' generated `styles.css` once up front.
+    // Those files are gitignored and written at dev/build time by
+    // `apps/site/scripts/demo-styles/codegen.mjs`, but the docs-demos smoke
+    // suite imports each demo's App.vue, which imports `./styles.css`, so
+    // the import has to resolve on a fresh checkout.
     globalSetup: ['./test/global-setup.ts'],
-    // Shuffle test-file AND intra-file test order on every run. Surfaces
-    // any implicit ordering dependency (a test leaking state, a module-
-    // level side effect triggered by load order, etc.) that would
-    // otherwise hide in the always-same default order. CI reruns with
-    // different seeds, so a flake pinned to one ordering is a blocker.
+    // Shuffle file order AND intra-file test order on every run, so an
+    // implicit ordering dependency (leaked state, a load-order side
+    // effect) surfaces instead of hiding behind a stable default order.
+    // CI reruns with fresh seeds, so a flake pinned to one ordering is a
+    // blocker.
     sequence: {
       shuffle: {
         files: true,
@@ -134,18 +112,12 @@ export default defineConfig({
         '**/dist/**',
         '**/test/**',
         '**/*.d.ts',
-        // directive.ts is a port of Vue's v-model runtime; it's tested via
-        // the SSR fixture (test/ssr.test.ts with the Nuxt integration app)
-        // and manual QA in apps/site. v8 can't instrument directive hooks
-        // that fire through Vue's compile-time bindings, so including this
-        // file would understate coverage by ~400 lines without a
-        // corresponding loss in test rigour. The file is small, stable, and
-        // lifted from Vue's own implementation — the exclusion is pragmatic.
+        // A port of Vue's v-model runtime, covered through the SSR fixture
+        // in test/ssr.test.ts. v8 cannot instrument directive hooks that
+        // fire through Vue's compile-time bindings, so counting the file
+        // would understate coverage by roughly 400 lines without any loss
+        // of rigour behind it.
         'src/runtime/core/directive.ts',
-        // Shim for @vue/shared utilities — pure utility functions inlined
-        // to avoid the peer dep. Well-covered via vue-shared-shim.test.ts
-        // but the `else`-branch walkers on the `isSet` / `isArray`
-        // predicates add noise without adding real risk.
       ],
     },
   },

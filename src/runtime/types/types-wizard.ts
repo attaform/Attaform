@@ -1,107 +1,100 @@
 /**
- * Public types for `useWizard` — the multistep-form orchestrator.
+ * Public types for `useWizard`, the multistep-form orchestrator.
  *
- * The wizard is built around an ordered list of step slots. Each slot
- * resolves to a participating form: an existing `useForm` reference, a
- * bare string key (desugared to a noop form so affordance steps
- * participate uniformly), an eagerly-evaluated function slot for
- * runtime branching, or a `lazy()`-wrapped function slot that caches
- * its resolution and re-fires only on its own tracked deps.
+ * A wizard is an ordered list of step slots. Each slot resolves to a
+ * participating form: a `useForm` reference, a bare string key
+ * (desugared to a noop form so affordance steps participate
+ * uniformly), a function slot for runtime branching, or a `lazy()`
+ * function slot that caches its resolution.
  *
- * The wizard surface is loosely keyed (`Record<FormKey, …>`).
- * Cross-component flows threaded through `injectWizard` lose lexical
- * key knowledge anyway, so the public read surface is a string-keyed
- * record. Typed per-form access flows back through the original form
- * refs and through `wizard.handleSubmit`'s `ctx.get(formRef)` accessor.
+ * The read surface is string-keyed (`Record<FormKey, ...>`), because a
+ * flow threaded through `injectWizard` has no lexical key knowledge.
+ * Typed per-form access flows back through the original form refs and
+ * through `wizard.handleSubmit`'s `ctx.get(formRef)` accessor.
  */
 
 import type { FormKey, UseFormReturnType } from './types-api'
 import type { GenericForm } from './types-core'
 
 /**
- * Minimum structural shape the wizard requires from a participating
- * form. Constraining to the full `UseFormReturnType` would force
- * contravariant unification of the storage / read shapes across all
- * steps; the wizard does not care about those — it routes by `key` at
- * runtime and exposes the original form objects untouched.
+ * Minimum shape the wizard requires from a participating form. The
+ * wizard routes by `key` at runtime and hands back the original form
+ * objects untouched, so it never constrains their value shapes.
  */
 export type AnyForm = {
   readonly key: FormKey
 }
 
 /**
- * Per-form summary surface — what `wizard.statuses[key]` exposes (and
- * what `defaultStatuses` seeds). Distinct from `form.meta`: `FormStatus`
- * is the cross-step rollup optimized for template ergonomics
- * (`{{ wizard.statuses.cargo.valid }}`), while `form.meta` carries the
- * full per-form lifecycle surface.
+ * Per-form summary at `wizard.statuses[key]`, and what `defaultStatuses`
+ * seeds. This is the cross-step rollup built for templates
+ * (`{{ wizard.statuses.cargo.valid }}`); `form.meta` carries the full
+ * per-form lifecycle surface.
  *
- * Field semantics:
- *  - `valid` — `form.meta.valid`. `false` while errors exist or while
- *    the first-validation-done gate has not flipped.
- *  - `dirty` — `form.meta.dirty`. `true` once any value differs from
- *    the original defaults.
- *  - `submitted` — `form.meta.submitted`. `true` once a `handleSubmit`
- *    callback has resolved without throwing. A failed submit
- *    (validation or callback rejection) leaves this `false`;
- *    `submissionAttempts > 0` is the "user has tried" signal.
- *  - `errorCount` — `form.meta.errorCount`. Count of active validation
- *    errors (zero when valid).
- *  - `locked`: `true` when this step sits after an uncleared gate. Its
- *    member form is frozen (data writes no-op) and navigation to it is
- *    refused, so a stepper can render it as an unreachable step. `false`
- *    when no gate seals it. Orthogonal to `gate`: the first uncleared
- *    gate reads `locked: false` (you must reach it to clear it), while a
- *    later gate sealed behind it reads both `gate: 'uncleared'` and
- *    `locked: true`.
- *  - `gate`: this step's own role as a hard prerequisite. `null` when the
- *    step is not a `gate()`; `'uncleared'` while its member form is
- *    unconfirmed (so it seals every later step); `'cleared'` once
- *    confirmed by a clean member submit or seeded cleared via
- *    `defaultStatuses`. Reflects the live compiled shape, so a conditional
- *    `gate()` that a function slot drops resolves to `null`.
- *
- * Noop forms generated for string slots surface as default-valid
- * (`{ valid: true, dirty: false, submitted: false, errorCount: 0, locked: false, gate: null }`),
- * unless the string slot is a `gate('...')`, whose `gate` tracks the
+ * A noop form generated for a string slot reads as default-valid,
+ * unless that slot is a `gate('...')`, whose `gate` tracks the
  * in-session acknowledgment.
  */
 export type FormStatus = {
+  /** `form.meta.valid`. `false` while errors exist, or before the first validation pass. */
   readonly valid: boolean
+  /** `form.meta.dirty`. `true` once any value differs from the original defaults. */
   readonly dirty: boolean
+  /**
+   * `form.meta.submitted`. `true` once a `handleSubmit` callback has
+   * resolved without throwing. A failed submit leaves it `false`;
+   * `submissionAttempts > 0` is the "user has tried" signal.
+   */
   readonly submitted: boolean
+  /** `form.meta.errorCount`. Active validation errors, zero when valid. */
   readonly errorCount: number
+  /**
+   * `true` when this step sits after an uncleared gate: its form is
+   * frozen and navigation to it is refused, so a stepper can render it
+   * as unreachable.
+   *
+   * Orthogonal to `gate`. The first uncleared gate reads
+   * `locked: false`, since you must reach it to clear it; a later gate
+   * sealed behind it reads both `gate: 'uncleared'` and `locked: true`.
+   */
   readonly locked: boolean
+  /**
+   * This step's own role as a hard prerequisite. `null` when the step is
+   * not a `gate()`, `'uncleared'` while its form is unconfirmed (so it
+   * seals every later step), `'cleared'` once confirmed by a clean
+   * submit or seeded via `defaultStatuses`.
+   *
+   * Reflects the live compiled shape, so a conditional `gate()` that a
+   * function slot drops resolves to `null`.
+   */
   readonly gate: 'cleared' | 'uncleared' | null
 }
 
 /**
- * Seed shape accepted by `useWizard({ defaultStatuses })`. Every field is
- * optional; an omitted meta field falls back to the pending sentinel on
- * read.
+ * Seed accepted by `useWizard({ defaultStatuses })`. An omitted field
+ * falls back to the pending sentinel on read.
  *
- * `locked` is never accepted: it is purely live-derived (sealed behind an
- * earlier uncleared gate) and overlaid on every status read, so a seeded
- * value would be ignored.
- *
- * `gate` is a WRITE-only seed, not a status field echoed back on read. A
- * seed of `'cleared'` latches the gate's cleared state once at construction
- * (an SSR restore of a confirmed prerequisite); the live `gate` overlay
- * then owns the read. `'uncleared'` is the default and seeds nothing. Only
- * a step that compiles to a `gate()` honors it — other keys ignore it.
+ * `locked` is not accepted: it is derived live from the wizard's gates
+ * and overlaid on every status read, so a seeded value would be ignored.
  */
 export type FormStatusSeed = {
   readonly valid?: boolean
   readonly dirty?: boolean
   readonly submitted?: boolean
   readonly errorCount?: number
+  /**
+   * Write-only, and not echoed back on read. `'cleared'` latches the
+   * gate's cleared state once at construction, for restoring a
+   * confirmed prerequisite; the live `gate` overlay then owns the read.
+   * `'uncleared'` is the default and seeds nothing. Only a step that
+   * compiles to a `gate()` honors it.
+   */
   readonly gate?: 'cleared' | 'uncleared'
 }
 
 /**
- * Flat error shape returned per form by `wizard.allErrors[key]`. Each
- * entry carries the formKey + path tuple so consumers can route to the
- * offending field from a wizard-wide error summary.
+ * One error from `wizard.allErrors[key]`. Carries the formKey and path
+ * so a wizard-wide error summary can route to the offending field.
  */
 export type WizardAggregateError = {
   readonly formKey: FormKey
@@ -111,10 +104,9 @@ export type WizardAggregateError = {
 }
 
 /**
- * Mirror of `form.values`' call-or-read pattern, one level deep.
- * Drillable as `wizard.statuses.cargo.valid` (readable), as
- * `wizard.statuses('cargo')` (callable single-key), or as
- * `wizard.statuses()` (callable no-arg returns the whole record).
+ * The per-key `FormStatus` record, readable three ways:
+ * `wizard.statuses.cargo.valid`, `wizard.statuses('cargo')`, or
+ * `wizard.statuses()` for the whole record.
  */
 export type WizardStatusesProxy<S extends Record<string, FormStatus>> = ((
   key?: keyof S
@@ -122,13 +114,9 @@ export type WizardStatusesProxy<S extends Record<string, FormStatus>> = ((
   Readonly<S>
 
 /**
- * One compiled position in the wizard's flow. The wizard surface
- * exposes an ordered array of these as `wizard.steps`, plus a
- * `wizard.forms` record keyed by `step.key` for direct lookup.
- *
- * String slots in the source `steps` array desugar to noop forms
- * before compilation, so every compiled step carries a `form`
- * regardless of source kind.
+ * One compiled position in the flow, as exposed by `wizard.steps`.
+ * String slots desugar to noop forms before compilation, so every
+ * compiled step carries a `form` whatever its source kind.
  */
 export type CompiledStep = {
   readonly key: FormKey
@@ -136,30 +124,25 @@ export type CompiledStep = {
 }
 
 /**
- * Shape of a participating form as seen from inside a function slot's
- * `ctx.forms[key]` lookup. Adds `values` to the structural `AnyForm`
- * minimum so routing decisions can read live form state.
+ * A participating form as seen from a function slot's `ctx.forms[key]`.
+ * Adds `values` to `AnyForm` so routing decisions can read live state.
  *
- * Values are typed loose because the wizard does not generically thread
- * each step's schema through `ctx.forms`. For typed access inside slot
- * bodies, close over the original form ref instead of routing through
- * `ctx.forms`.
+ * Values are loose here. For typed access inside a slot body, close
+ * over the original form ref instead of routing through `ctx.forms`.
  */
 export type WizardCtxForm = AnyForm & {
   readonly values: Readonly<Record<string, unknown>>
 }
 
 /**
- * Context object passed to function slots in the `steps` array. The
- * `forms` record exposes the wizard's statically-known forms (every
- * top-level `AnyForm` slot plus every noop form synthesized for a
- * top-level string slot). `currentKey` mirrors the live wizard step.
+ * Context passed to function slots in the `steps` array. `forms` holds
+ * the statically-known forms: every top-level `AnyForm` slot plus every
+ * noop form synthesized for a top-level string slot.
  *
  * Function slots re-evaluate reactively when the values they read
- * mutate (typically `ctx.forms.<key>.values.<path>`). The `forms`
- * accumulator itself is stable across re-evaluations so the slot's
- * lookup identity stays referentially equal. Effectful slot bodies
- * should be avoided; routing decisions live here.
+ * mutate, typically `ctx.forms.<key>.values.<path>`. The `forms`
+ * accumulator keeps its identity across re-evaluations. Keep slot
+ * bodies free of side effects; they are routing decisions.
  */
 export type WizardCtx = {
   readonly forms: Readonly<Record<FormKey, WizardCtxForm>>
@@ -168,32 +151,30 @@ export type WizardCtx = {
 
 /**
  * What a function slot or a `lazy()` / `gate()` resolver may yield: a
- * participating form, a bare affordance key, a nested `lazy()` / `gate()`
- * wrapper (so the two compose in either order), or `null` / `undefined`
- * to drop the position from the compiled list.
+ * participating form, a bare affordance key, a nested `lazy()` /
+ * `gate()` wrapper (so the two compose in either order), or `null` /
+ * `undefined` to drop the position from the compiled list.
  */
 export type SlotResolution<Ctx = WizardCtx> =
   AnyForm | string | null | undefined | LazyMarker<Ctx> | GateMarker
 
 /**
- * Internal phantom brand for `LazyMarker`. The runtime brand symbol
- * lives in `core/wizard-lazy.ts`; this declaration keeps the marker
- * type unforgeable without circular module imports.
+ * Phantom brand for `LazyMarker`. The runtime brand symbol lives in
+ * `core/wizard-lazy.ts`; this declaration keeps the marker unforgeable
+ * without a circular import.
  */
 declare const _lazyBrand: unique symbol
 
 /**
- * Brand-typed marker returned by `lazy((ctx) => …)`. Wrapping a
- * function slot in `lazy()` gives that slot its own memoization cache:
- * the resolver fires once on the first compile pass, and the result
- * stays cached until one of the resolver's own tracked reactive reads
- * changes (or `wizard.reset()` invalidates the cache). Heavy or
- * one-shot lookups (network-backed factories, expensive derivations)
- * do not re-fire because an unrelated slot's deps changed.
+ * Marker returned by `lazy((ctx) => ...)`, which gives a function slot
+ * its own memoization cache: the resolver fires once on the first
+ * compile pass and stays cached until one of its own tracked reactive
+ * reads changes, or `wizard.reset()` invalidates it. An unrelated
+ * slot's deps changing does not re-fire it, so heavy or one-shot
+ * lookups stay one-shot.
  *
- * Construct via the `lazy()` helper exported from the same entry as
- * `useWizard`. The marker is opaque at the type level; consumers do
- * not assemble it directly.
+ * Construct via the `lazy()` helper exported alongside `useWizard`. The
+ * marker is opaque; consumers do not assemble it directly.
  */
 export type LazyMarker<Ctx = WizardCtx> = {
   readonly [_lazyBrand]: true
@@ -201,29 +182,28 @@ export type LazyMarker<Ctx = WizardCtx> = {
 }
 
 /**
- * Internal phantom brand for `GateMarker`. The runtime brand symbol
- * lives in `core/wizard-gate.ts`; this declaration keeps the marker
- * type unforgeable without circular module imports.
+ * Phantom brand for `GateMarker`. The runtime brand symbol lives in
+ * `core/wizard-gate.ts`; this declaration keeps the marker unforgeable
+ * without a circular import.
  */
 declare const _gateBrand: unique symbol
 
 /**
- * Brand-typed marker returned by `gate(step)`. Wrapping a slot in
- * `gate()` makes it a hard prerequisite: an uncleared gate seals every
- * step positioned after it, and the gate's own form is the only way
- * past. A gate clears on a member form's clean submit (confirmation),
- * never on a value merely going valid (intent), and its form freezes
- * once cleared so a back-navigation is a read-only review.
+ * Marker returned by `gate(step)`, which makes a slot a hard
+ * prerequisite: an uncleared gate seals every step after it, and the
+ * gate's own form is the only way past. A gate clears on a member
+ * form's clean submit (confirmation), never on a value merely going
+ * valid (intent), and its form freezes once cleared so a back
+ * navigation is a read-only review.
  *
- * `Inner` carries the wrapped slot's static type so `gate` stays
+ * `Inner` carries the wrapped slot's static type, so `gate` is
  * transparent to the type machinery: `gate(form)` still contributes the
  * form's key to `wizard.forms` and still counts as a guaranteed step,
  * while `gate(lazy(fn))` stays maybe-absent exactly like the lazy slot
  * it wraps. See {@link UnwrapGate}.
  *
- * Construct via the `gate()` helper exported from the same entry as
- * `useWizard`. The marker is opaque at the type level; consumers do not
- * assemble it directly.
+ * Construct via the `gate()` helper exported alongside `useWizard`. The
+ * marker is opaque; consumers do not assemble it directly.
  */
 export type GateMarker<Inner = unknown> = {
   readonly [_gateBrand]: true
@@ -231,36 +211,30 @@ export type GateMarker<Inner = unknown> = {
 }
 
 /**
- * Strip every `gate()` wrapper off a slot type, exposing the inner
- * slot's static shape. A gate is identity-on-shape — it changes runtime
- * reachability, never the compiled type — so the forms map and the
- * non-empty-tuple predicate both unwrap it before inspecting a slot.
- * Recursive, so a doubly-wrapped `gate(gate(form))` still resolves to
- * `form`. This is what makes `gate(lazy(s))` and `lazy((ctx) => gate(s))`
- * agree at the type level as well as at runtime.
+ * Strip every `gate()` wrapper off a slot type. A gate changes runtime
+ * reachability, never the compiled type, so the forms map and the
+ * non-empty-tuple predicate both unwrap before inspecting a slot.
+ * Recursive, which is what makes `gate(lazy(s))` and
+ * `lazy((ctx) => gate(s))` agree at the type level as they do at
+ * runtime.
  */
 export type UnwrapGate<T> = T extends GateMarker<infer Inner> ? UnwrapGate<Inner> : T
 
 /**
  * One position in the source `useWizard({ steps })` array. Each slot
- * resolves to a compiled `{ key, form }` step, or drops out:
+ * compiles to a `{ key, form }` step, or drops out:
  *
- *  - `AnyForm`         — a form declared via `useForm`. Surfaced as-is.
- *  - `string`          — bare key. The wizard generates a noop form
- *                        under the hood so the external surface stays
- *                        uniform across affordance positions (intro,
- *                        terms, congratulations, review surfaces).
- *  - `null` / `undefined` — a literal absence, dropped from the compiled
- *                        list. Lets a conditional step read inline as
- *                        `cond ? form : null` without pre-filtering the
- *                        array.
- *  - function          — eager slot, re-evaluates reactively. Returns a
- *                        `SlotResolution`, or `null` / `undefined` to
- *                        drop the slot from the compiled list.
- *  - `LazyMarker`      — memoized function slot (see `lazy`).
- *  - `GateMarker`      — hard-prerequisite wrapper (see `gate`). Wraps
- *                        any of the above; transparent to the compiled
- *                        step's type, opaque to reachability.
+ *  - `AnyForm`: a form declared via `useForm`. Surfaced as-is.
+ *  - `string`: a bare key. The wizard generates a noop form so
+ *    affordance positions (intro, terms, review, congratulations) look
+ *    the same from outside as real steps.
+ *  - `null` / `undefined`: dropped from the compiled list, so a
+ *    conditional step reads inline as `cond ? form : null`.
+ *  - function: eager slot, re-evaluated reactively. Returns a
+ *    `SlotResolution`, or nullish to drop the position.
+ *  - `LazyMarker`: memoized function slot, see `lazy`.
+ *  - `GateMarker`: hard-prerequisite wrapper, see `gate`. Wraps any of
+ *    the above.
  */
 export type StepSlot<Ctx = WizardCtx> =
   | AnyForm
@@ -271,178 +245,160 @@ export type StepSlot<Ctx = WizardCtx> =
   | LazyMarker<Ctx>
   | GateMarker
 
-/**
- * Shape returned by the `restore` callback. Carries the active step's
- * key; intentionally open-ended (object form) so future additions land
- * without a callback-signature break.
- */
+/** What the `restore` callback returns: the key of the step to activate. */
 export type WizardRestoreState = {
   readonly step?: FormKey
 }
 
 /**
- * `restore` callback signature. Invoked at construction and watched
- * reactively via `watchEffect` so external state changes (browser
- * back/forward, cross-tab events, route changes) re-apply through the
- * wizard. Returning `undefined` falls through to the first step.
+ * `restore` callback. Invoked at construction and watched reactively,
+ * so browser back/forward, cross-tab events and route changes re-apply
+ * through the wizard. Returning `undefined` falls through to the first
+ * step.
  */
 export type WizardRestoreFn = () => WizardRestoreState | undefined
 
 /**
- * `persist` callback signature. Invoked whenever `wizard.currentStep`
- * changes; the wizard diffs against the last persisted value to break
- * the restore-persist loop, so the callback only fires when the active
- * step actually moves.
+ * `persist` callback. Invoked when `wizard.currentStep` actually moves;
+ * the wizard diffs against the last persisted value to break the
+ * restore-persist loop.
  */
 export type WizardPersistFn = (state: WizardRestoreState) => void
 
 /**
- * Submit context passed to the `onSubmit` callback registered via
- * `wizard.handleSubmit(onSubmit, onError?)`. `handleSubmit` always
- * processes the whole step list, so `values` carries every form's
- * parsed output regardless of which step fired the submit.
- *
- *  - `values` — namespaced aggregate keyed by form key, mirroring
- *               `wizard.allValues`. Reflects parsed output for every
- *               form whose validation has settled; noops contribute an
- *               empty record.
- *  - `get(form)` — typed accessor that reads the parsed output for a
- *               specific form ref. Works across cross-component graphs
- *               because the form ref carries its schema info.
- *  - `currentKey` — key of the step that fired this submission.
- *  - `isFinal`   — `true` when `currentKey` is the last position in
- *               `wizard.steps`. Positional only: it reports where the
- *               submit fired, never what got validated. A user who steps
- *               back, edits, and submits from the middle sees
- *               `isFinal === false`, yet the whole list is still
- *               processed and `done` still latches on success.
+ * Context passed to the `onSubmit` registered via
+ * `wizard.handleSubmit`. That call always processes the whole step
+ * list, so `values` carries every form's parsed output no matter which
+ * step fired the submit.
  */
 export type WizardSubmitContext = {
+  /**
+   * Namespaced aggregate keyed by form key, mirroring
+   * `wizard.allValues`. Noop forms contribute an empty record.
+   */
   readonly values: Readonly<Record<FormKey, unknown>>
+  /**
+   * Typed parsed output for a specific form ref. Works across
+   * cross-component graphs, because the ref carries its own schema.
+   */
   readonly get: <F extends AnyForm>(form: F) => F extends { readonly values: infer V } ? V : unknown
+  /** Key of the step that fired this submission. */
   readonly currentKey: FormKey
+  /**
+   * `true` when `currentKey` is the last position in `wizard.steps`.
+   * Positional only: it reports where the submit fired, never what got
+   * validated. A user who steps back, edits and submits from the middle
+   * sees `false`, yet the whole list is still processed and `done` still
+   * latches on success.
+   */
   readonly isFinal: boolean
 }
 
 /**
- * `onSubmit` callback registered via `wizard.handleSubmit`. Sync or
- * async; the returned promise gates `wizard.submitting`.
+ * `onSubmit` registered via `wizard.handleSubmit`. Sync or async; the
+ * returned promise gates `wizard.submitting`.
  */
 export type WizardOnSubmit = (ctx: WizardSubmitContext) => void | Promise<void>
 
 /**
- * Optional `onError` callback registered via `wizard.handleSubmit`.
- * Receives the aggregate error list spanning EVERY step (handleSubmit
- * validates the whole wizard), so a failed submit surfaces every form's
- * errors at once, not just the active step's. Entries originate from
- * per-form validation, activation failures (`atta:activation-failed`),
- * and a submit callback that left errors on a processed step (the
- * `setErrors(...); return` server-rejection path). Sync or async; the
+ * Optional `onError` registered via `wizard.handleSubmit`. Receives
+ * errors spanning EVERY step, since `handleSubmit` validates the whole
+ * wizard, so a failed submit surfaces every form's errors at once
+ * rather than only the active step's. Entries come from per-form
+ * validation, activation failures (`atta:activation-failed`), and a
+ * submit callback that left errors on a processed step via the
+ * `setErrors(...); return` server-rejection path. Sync or async; the
  * returned promise gates `wizard.submitting`.
  */
 export type WizardOnError = (errors: readonly WizardAggregateError[]) => void | Promise<void>
 
-/**
- * Options for `useWizard({ steps, … })`. `steps` is the only required
- * field; the rest are optional and default sensibly for the common
- * URL-synchronized wizard case.
- */
+/** Options for `useWizard({ steps, ... })`. Only `steps` is required. */
 export type WizardOptions = {
   /**
-   * Ordered list of slots that compile into the wizard's positional
-   * step list. See `StepSlot` for the per-slot shape contract.
+   * Ordered list of slots that compile into the positional step list.
+   * See `StepSlot` for the per-slot contract.
    */
   readonly steps: ReadonlyArray<StepSlot>
   /**
-   * Identifier used to register the wizard handle in the per-app
-   * registry. Descendant components call `injectWizard(key)` to reach
-   * the same wizard without prop-threading. Anonymous wizards (option
-   * omitted) get a synthetic `__atta:anon-wizard:<id>` key resolved
-   * via `useId()` so SSR-rendered and client-hydrated trees agree on
-   * the same registry entry; the synthetic key is opaque and
-   * descendants reach an anonymous wizard via ambient `injectWizard()`
-   * rather than by key.
+   * Identifier this wizard registers under, so descendants reach it
+   * with `injectWizard(key)` instead of prop-threading. Omit it and the
+   * wizard gets a synthetic key from `useId()`, so the server-rendered
+   * and client-hydrated trees agree on one registry entry; that key is
+   * opaque, and descendants reach an anonymous wizard through ambient
+   * `injectWizard()`.
    *
-   * Duplicate-key registration is first-wins-silently (dev-warn on the
-   * second registration) to mirror `useForm`'s shared-key behavior.
-   * The dev-warn fires only for explicit keys — two anonymous wizards
-   * are guaranteed distinct synthetic keys, so the warning never
-   * misfires on independent anonymous wizards on the same page.
+   * Registering a key twice is first-wins, with a dev warning on the
+   * second, mirroring `useForm`. The warning fires only for explicit
+   * keys, since two anonymous wizards are always given distinct keys.
    */
   readonly key?: string
   /**
-   * Seed status payload used while a form is pre-resolved (async
-   * `defaultValues` in flight, or wizard-deferred non-current).
-   * Mirrors `defaultValues`' trichotomy: plain object, sync factory,
+   * Seed statuses used while a form is still pre-resolved: async
+   * `defaultValues` in flight, or a wizard-deferred non-current step.
+   * Mirrors `defaultValues`' trichotomy of plain object, sync factory
    * or async factory.
    *
-   * Status resolution priority per form:
-   *   1. `store.defaultsResolved === true` → derive from `form.meta`
-   *   2. else noop form → built-in always-valid status
-   *   3. else seed value for this key → seed over the pending sentinel
-   *   4. else → pending sentinel
+   * Per form, the first of these that applies wins:
+   *   1. defaults resolved, so derive from `form.meta`
+   *   2. noop form, so the built-in always-valid status
+   *   3. a seed for this key
+   *   4. the pending sentinel
    *
-   * `locked` is never seeded: it is computed live from the wizard's gates
-   * and overlaid on every status read. `gate: 'cleared'` IS honored, but as
-   * a one-shot seed of the gate's cleared latch at construction (an SSR
-   * restore of a confirmed prerequisite), not as a status field echoed on
-   * read — the live `gate` overlay owns the read. Only a step that compiles
-   * to a `gate()` honors it. See `FormStatusSeed`.
+   * `gate: 'cleared'` is honored as a one-shot seed of the gate's
+   * cleared latch at construction, for restoring a confirmed
+   * prerequisite, and only on a step that compiles to a `gate()`. See
+   * `FormStatusSeed` for what the seed does and does not carry.
    *
-   * SSR note: the async factory resolves after hydration (client-only), so
-   * a gate seeded through it clears post-hydration. For a gate that must
-   * render open on the first server byte, use the plain or sync-factory
-   * form (resolve server truth in the page's `setup` await).
+   * SSR note: an async factory resolves after hydration, so a gate
+   * seeded through it clears client-side. For a gate that must render
+   * open on the first server byte, use the plain or sync-factory form
+   * and resolve server truth in the page's `setup` await.
    *
-   * Unknown keys in the seed object dev-warn so a stale resume payload
-   * surfaces at construction.
+   * Unknown keys dev-warn, so a stale resume payload surfaces at
+   * construction.
    */
   readonly defaultStatuses?:
     | Record<string, FormStatusSeed>
     | (() => Record<string, FormStatusSeed>)
     | (() => Promise<Record<string, FormStatusSeed>>)
   /**
-   * Optional progress override. When omitted, the wizard exposes
-   * `progress` as `valid_step_count / count` (normalised to `[0, 1]`).
-   * When provided, the returned number is used as-is — the consumer is
-   * responsible for any normalisation.
+   * Override for `wizard.progress`. Omitted, progress is
+   * `valid_step_count / count`, normalised to `[0, 1]`. Provided, the
+   * returned number is used as-is and normalising it is yours to do.
    *
-   * The override is invoked inside a Vue `computed` so it must be
-   * synchronous and may only read reactive sources.
+   * Invoked inside a `computed`, so it must be synchronous and may only
+   * read reactive sources.
    */
   readonly progress?: (steps: ReadonlyArray<CompiledStep>) => number
   /**
-   * When `wizard.handleSubmit` finds errors, automatically focus the
-   * first failing form: jump to its step and invoke its
-   * `applyInvalidSubmitPolicy()` (which honors that form's own
-   * `focusOnInvalidSubmit` choice). Default `true`; pass `false` to
-   * keep the active step where the user left it and handle navigation
-   * manually in the `onError` callback.
+   * When `wizard.handleSubmit` finds errors, jump to the first failing
+   * form's step and invoke its `applyInvalidSubmitPolicy()`, which
+   * honors that form's own `focusOnInvalidSubmit` choice. Default
+   * `true`. Pass `false` to leave the active step where the user left
+   * it and navigate yourself from `onError`.
    */
   readonly focusFirstError?: boolean
   /**
-   * Source of truth for the active step. Invoked at construction and
-   * re-evaluated reactively via `watchEffect`. Default callback reads
-   * `?step=<key>` from the URL via `wizard-history.ts`; pass `false`
-   * to disable URL sync, or provide a custom callback for non-router
-   * persistence (localStorage, broadcast channel, etc.).
+   * Source of truth for the active step, invoked at construction and
+   * re-evaluated reactively. The default reads `?step=<key>` from the
+   * URL. Pass `false` to disable URL sync, or your own callback for
+   * non-router persistence.
    */
   readonly restore?: WizardRestoreFn | false
   /**
-   * Destination for the active step. Invoked whenever `currentStep`
-   * changes, with a diff check to break the restore-persist loop.
-   * Default callback writes `?step=<key>` via `wizard-history.ts`;
-   * pass `false` to disable persistence, or provide a custom callback
-   * to scope the param name or write to alternate storage.
+   * Destination for the active step, invoked whenever `currentStep`
+   * moves. The default writes `?step=<key>`. Pass `false` to disable
+   * persistence, or your own callback to scope the param name or write
+   * elsewhere.
    */
   readonly persist?: WizardPersistFn | false
 }
 
 /**
- * True when a single slot is guaranteed to contribute exactly one
- * compiled step: a bare form or affordance string that is neither
- * nullish nor a (maybe-absent) function / `lazy()` slot. One of these
- * anywhere in the tuple proves the compiled list is non-empty.
+ * True when a slot is guaranteed to contribute exactly one compiled
+ * step: a bare form or affordance string, neither nullish nor a
+ * maybe-absent function / `lazy()` slot. One of these anywhere in the
+ * tuple proves the compiled list is non-empty.
  */
 type IsGuaranteedStep<T, U = UnwrapGate<T>> = [null] extends [U]
   ? false
@@ -457,17 +413,15 @@ type IsGuaranteedStep<T, U = UnwrapGate<T>> = [null] extends [U]
           : false
 
 /**
- * Predicate: is the steps tuple statically guaranteed to compile to a
- * non-empty list? True when at least one element is a guaranteed step
- * (see `IsGuaranteedStep`). Function / `lazy()` slots may resolve to
- * nothing, and `null` / `undefined` (a literal absence or a
- * `cond ? form : null` union) is an explicit drop, so none of those
- * prove non-emptiness; a tuple of only maybe-absent slots stays
- * honestly `| undefined`.
+ * Is the steps tuple statically guaranteed to compile to a non-empty
+ * list? True when at least one element is an `IsGuaranteedStep`.
+ * Function and `lazy()` slots may resolve to nothing, and nullish slots
+ * are an explicit drop, so a tuple of only those stays honestly
+ * `| undefined`.
  *
- * Used to narrow `currentStep` / `activeForm` to their non-`undefined`
- * shapes in the common-case wizard, while keeping the honest union
- * everywhere a runtime drop is reachable.
+ * This is what narrows `currentStep` and `activeForm` in the
+ * common-case wizard while keeping the union wherever a runtime drop is
+ * reachable.
  */
 export type StaticallyNonEmpty<S> = S extends readonly [infer First, ...infer Rest]
   ? IsGuaranteedStep<First> extends true
@@ -479,13 +433,11 @@ export type StaticallyNonEmpty<S> = S extends readonly [infer First, ...infer Re
 export type CurrentStepOf<S> = StaticallyNonEmpty<S> extends true ? FormKey : FormKey | undefined
 
 /**
- * Active step's form handle, schema-erased to `UseFormReturnType<GenericForm>`
- * and narrowed to non-`undefined` when `S` is statically safe. The runtime
- * value is a live facade over the active step, so reads (`.values`, `.meta`,
- * `.history`) and `.handleSubmit` always target the current step. Values are
- * loose here because the active step's schema is not statically known; reach
- * for the original form ref or `ctx.get(ref)` when you need typed per-step
- * values.
+ * Active step's form handle, schema-erased to
+ * `UseFormReturnType<GenericForm>` and narrowed to non-`undefined` when
+ * `S` is statically safe. Values are loose because the active step's
+ * schema is not statically known; reach for the original form ref or
+ * `ctx.get(ref)` for typed per-step values.
  */
 export type ActiveFormOf<S> =
   StaticallyNonEmpty<S> extends true
@@ -493,12 +445,11 @@ export type ActiveFormOf<S> =
     : UseFormReturnType<GenericForm> | undefined
 
 /**
- * Per-slot contribution to {@link FormsRecordOf}. Unwraps a `gate()`
- * wrapper (transparent to the compiled type) and strips a `null` /
- * `undefined` (a literal absence or a `cond ? form : null` union) off the
- * slot first, so both a conditionally-present form and a `gate(form)`
- * still map to their key and stay concretely typed on `wizard.forms`; a
- * purely nullish slot contributes nothing.
+ * One slot's contribution to {@link FormsRecordOf}. Unwraps `gate()`
+ * and strips nullish off the slot first, so a conditionally-present
+ * form and a `gate(form)` both still map to their key and stay
+ * concretely typed on `wizard.forms`. A purely nullish slot contributes
+ * nothing.
  */
 type SlotRecord<First, U = UnwrapGate<First>, F = Exclude<U, null | undefined>> = [F] extends [
   never,
@@ -511,28 +462,22 @@ type SlotRecord<First, U = UnwrapGate<First>, F = Exclude<U, null | undefined>> 
       : unknown
 
 /**
- * Recursive tuple walk that builds the static portion of
- * `wizard.forms`. Each step slot contributes to the record:
+ * Builds the static portion of `wizard.forms` by walking the steps
+ * tuple. Per slot kind:
  *
- *  - **String slot** (`'review'`): the literal becomes the record key
- *    and the value is `AnyForm` (the noop form synthesized for the
- *    affordance position is opaque at the type level).
- *  - **Form slot** (a `useForm` reference with a literal `key` field):
- *    the form's own `key` becomes the record key, and the value is
- *    the concrete form handle type — so drilling
- *    `wizard.forms.shipping.values.address` carries the schema-derived
- *    field types through. A form kept behind a `cond ? form : null`
- *    conditional still maps to its key.
- *  - **`null` / `undefined` slot**: contributes nothing.
- *  - **Function / `lazy()` slot**: contributes nothing to the static
- *    map. Runtime-resolved forms are still reachable via the
- *    catch-all index signature on `WizardForms` (typed as `AnyForm`).
- *  - **`gate()` slot**: transparent — unwrapped to the slot it wraps, so
- *    `gate(form)` contributes the form's key and `gate(lazy(fn))`
- *    contributes nothing, exactly like the wrapped slot on its own.
- *
- * Recursion is bounded by the tuple length; real-world wizards land
- * well below the TS instantiation budget.
+ *  - **string** (`'review'`): the literal is the record key, and the
+ *    value is `AnyForm`, since the synthesized noop form is opaque at
+ *    the type level.
+ *  - **form**: the form's own `key` is the record key and the value is
+ *    the concrete handle, so `wizard.forms.shipping.values.address`
+ *    carries schema-derived field types through. A form behind a
+ *    `cond ? form : null` still maps to its key.
+ *  - **nullish**: contributes nothing.
+ *  - **function / `lazy()`**: contributes nothing statically.
+ *    Runtime-resolved forms stay reachable as `AnyForm` through the
+ *    catch-all index signature on `WizardForms`.
+ *  - **`gate()`**: unwrapped, so it contributes exactly what the slot
+ *    it wraps would.
  */
 export type FormsRecordOf<S> = S extends readonly [
   infer First,
@@ -542,180 +487,174 @@ export type FormsRecordOf<S> = S extends readonly [
   : unknown
 
 /**
- * `wizard.forms` typed view. Combines the static per-step type map
- * with a catch-all `Record<FormKey, AnyForm>` fallback so:
- *
- *   - Statically known slot keys → concrete form type via `FormsRecordOf`
- *   - Any other string key → `AnyForm` via the index signature
- *
- * The intersection collapses to the concrete form for statically
- * known keys (because the concrete form type extends `AnyForm`) and
- * to `AnyForm` for unknown keys.
+ * `wizard.forms` typed view: the static per-step map, intersected with
+ * a catch-all so a statically known key resolves to its concrete form
+ * type and any other string key resolves to `AnyForm`.
  */
 export type WizardForms<S> = FormsRecordOf<S> & Readonly<Record<FormKey, AnyForm>>
 
 /**
- * Return shape of `useWizard({ steps, … })`. Every reactive read is a
- * plain getter (no `.value`) — `wizard.currentStep`, `wizard.progress`,
- * `wizard.allValues` track inside `computed` / template effects
+ * What `useWizard({ steps, ... })` returns. Every reactive read is a
+ * plain getter, no `.value`, so `wizard.currentStep`, `wizard.progress`
+ * and `wizard.allValues` track inside `computed` and templates
  * directly.
  *
- * Parameterized by the steps tuple `S` so active-position fields
- * (`currentStep`, `activeForm`) narrow to non-undefined for the common
- * case (all positional Form / string slots) and stay as honest unions
- * when a function or `lazy()` slot can drop the compiled position at
- * runtime. The `const` type parameter on `useWizard` preserves literal
- * tuple types without consumer-side `as const`, so the narrowing
- * happens automatically from the call site.
- *
- *  - `currentStep` — key of the active step. Narrows to `string` when
- *                    the steps tuple is statically guaranteed to
- *                    compile to a non-empty list (all positional
- *                    Form / string slots, no function or `lazy()`
- *                    slots). Otherwise reads as `string | undefined`
- *                    so the degenerate case (empty list at runtime)
- *                    surfaces honestly.
- *  - `activeForm`  — a LIVE view of the active step's form. Operating
- *                    through it always targets the current step, so a
- *                    handler captured once at setup
- *                    (`wizard.activeForm.handleSubmit(() =>
- *                    wizard.next())`) retargets as the wizard advances.
- *                    No longer `===` the raw per-step handle; reach for
- *                    `wizard.forms[key]` when you need raw identity.
- *                    Same `undefined` narrowing as `currentStep`. Noop
- *                    forms cover string slots in the normal path.
- *  - `activeIndex` — 0-based position of the active step.
- *  - `isFinalStep` — `true` when `currentStep === steps[count - 1].key`.
- *  - `steps`       — ordered list of compiled `{ key, form }` slots.
- *  - `forms`       — record indexable by step key; the value is the
- *                    full form handle resolved for that slot.
- *  - `count`       — `steps.length`.
- *  - `statuses`    — callable readonly proxy over the per-key
- *                    `FormStatus` record. Noop-form keys always read
- *                    as default-valid.
- *  - `allValues`   — namespaced aggregate of each form's values, keyed
- *                    by step key.
- *  - `allErrors`   — namespaced aggregate of each form's validation
- *                    errors, keyed by step key. Noop forms map to an
- *                    empty list.
- *  - `progress`    — normalised step-validity ratio (or the consumer's
- *                    `progress` override). Forward-looking: noops count
- *                    as always-valid.
- *  - `canAdvance`  — `true` when `activeIndex < count - 1`. Pure
- *                    positional check; navigation never gates on
- *                    validity.
- *  - `canGoBack`   — `true` when `activeIndex > 0`.
- *  - `complete`    — `isFinalStep && every step's form is valid`.
- *                    Forward-looking; reactive to current form
- *                    validity. Gates "Finish button enable" style UI.
- *  - `done`        — monotonic latch: flips `true` the first time a
- *                    `handleSubmit` resolves without throwing AND leaves
- *                    no errors set on any step, and stays `true` through
- *                    subsequent edits or invalidations. A callback that
- *                    calls `setErrors` and returns (the documented
- *                    server-rejection path) is a failed submit, so it
- *                    does not flip `done`. Only `reset()` flips it back.
- *                    Gates "show success card" style UI that should
- *                    reflect submission history rather than current
- *                    validity.
- *  - `submitting`  — `true` while a `wizard.handleSubmit` call is in
- *                    flight. Global re-entrance guard: every
- *                    navigation method also refuses while this is on.
- *  - `submissionAttempts` — count of `wizard.handleSubmit` invocations
- *                    (success or failure). Always bumps, including on
- *                    noop-form steps.
- *  - `submitError` — the error THROWN by the most recent
- *                    `wizard.handleSubmit` callback (or its `onError`),
- *                    coerced to a real `Error`. Mirrors
- *                    `form.meta.submitError`: this is the unexpected-throw
- *                    channel, so an expected rejection handled via
- *                    `setErrors` (no throw) surfaces through the error
- *                    surface and `onError` instead, leaving this `null`.
- *                    Cleared at submit entry and by `reset()`, parked here
- *                    rather than re-thrown, so the handler resolves and
- *                    never manufactures a `window` unhandledrejection.
- *                    `null` on success.
- *  - `visited`     — append-only breadcrumb of navigated step keys.
- *                    `back()` does not pop; the trail is the audit
- *                    log, not the back-stack.
- *  - `next/back/goTo` — pure navigation. Refuses while `submitting`.
- *                    The one exception is `next()` on an UNCLEARED
- *                    `gate()` step, which behaves as `tryNext()` so
- *                    wiring Next straight to it can never skip the
- *                    gate's confirmation. Once that gate clears, `next()`
- *                    is plain navigation again and does not re-submit to
- *                    re-confirm.
- *  - `tryNext()`   — submit the active step, and once that submit
- *                    resolves clean, advance; invalid input keeps the pin
- *                    put under the form's standard error reveal (first
- *                    error focused, display state advanced). The advance
- *                    runs after the submit settles, so a `gate()` on the
- *                    active step clears in a single call. Inline-bindable
- *                    (`@click="wizard.tryNext()"`); resolves to whether
- *                    the pin moved. No-ops to `false` on a degenerate or
- *                    final-step wizard (finish via `handleSubmit`).
- *                    Called while the active step's form already has a
- *                    submit in flight (the usual case being from inside
- *                    that form's own callback), it rides that submit
- *                    rather than starting a second one, so one action
- *                    costs one submission. The pin has not moved by the
- *                    time it resolves, so the answer is `false`; the
- *                    advance lands with the in-flight submit.
- *  - `handleSubmit(onSubmit, onError?)` — always validates the entire
- *                    step list, from any step, and never advances the
- *                    pin: on success it latches `done`; on any error it
- *                    focuses the first failing step and fires `onError`
- *                    with errors spanning every step. To gate advancing
- *                    a step on its own validity, compose with the active
- *                    form's submit: `activeForm.handleSubmit(() =>
- *                    wizard.next())`. Returns an event handler suitable
- *                    for `<form @submit>` or imperative use.
- *  - `reset()`     — zeros wizard lifecycle (`submissionAttempts`,
- *                    `visited`), resets every form, returns
- *                    `currentStep` to `steps[0].key`, and invokes
- *                    `persist` with the cleared state. Re-applies the
- *                    `defaultStatuses` gate seed, so a reboot returns to
- *                    the seeded initial clearance, not fully sealed.
- *  - `relock(key, commit)` — re-seal a cleared gate, contingent on
- *                    `commit`. Awaits `commit` (a server-side revoke) and
- *                    re-seals only if it resolves clean, so the gate reflects
- *                    server-confirmed truth the same way a clearing submit
- *                    does; a thrown `commit` leaves it as-is. Seal-only (never
- *                    opens a gate), so it cannot become the leading-signal
- *                    foot-gun `gate()` exists to prevent. `commit` is required
- *                    (pass `() => {}` for a deliberate client-only re-seal).
- *                    Resolves whether the gate ended up sealed; never rejects.
- *                    Resolves `false` (dev-warn) on a non-gate key.
+ * Parameterized by the steps tuple `S` so the active-position fields
+ * narrow to non-`undefined` when every slot is positional, and stay
+ * honest unions when a function or `lazy()` slot can drop the position
+ * at runtime. `useWizard`'s `const` type parameter preserves the
+ * literal tuple, so that narrowing happens without a consumer-side
+ * `as const`.
  */
 export type UseWizardReturnType<S extends ReadonlyArray<StepSlot> = ReadonlyArray<StepSlot>> = {
   readonly key: string
+  /**
+   * Key of the active step. Narrows to `string` when the steps tuple is
+   * statically guaranteed non-empty; otherwise `string | undefined`, so
+   * an empty compiled list surfaces honestly.
+   */
   readonly currentStep: CurrentStepOf<S>
+  /**
+   * A live view of the active step's form, so operating through it
+   * always targets the current step: a handler captured once at setup
+   * (`wizard.activeForm.handleSubmit(() => wizard.next())`) retargets as
+   * the wizard advances. It is a facade, not the raw per-step handle;
+   * reach for `wizard.forms[key]` when you need identity. Same
+   * `undefined` narrowing as `currentStep`.
+   */
   readonly activeForm: ActiveFormOf<S>
+  /** 0-based position of the active step. */
   readonly activeIndex: number
+  /** `true` when `currentStep` is the last compiled step. */
   readonly isFinalStep: boolean
+  /** The ordered compiled `{ key, form }` slots. */
   readonly steps: ReadonlyArray<CompiledStep>
+  /** Every step's form, indexable by step key. */
   readonly forms: WizardForms<S>
+  /** `steps.length`. */
   readonly count: number
+  /**
+   * Callable readonly proxy over the per-key `FormStatus` record.
+   * Noop-form keys always read as default-valid.
+   */
   readonly statuses: WizardStatusesProxy<Record<string, FormStatus>>
+  /** Each form's values, keyed by step key. */
   readonly allValues: Readonly<Record<FormKey, unknown>>
+  /** Each form's validation errors, keyed by step key. Noop forms map to an empty list. */
   readonly allErrors: Readonly<Record<FormKey, readonly WizardAggregateError[]>>
+  /**
+   * Normalised step-validity ratio, or the `progress` override's
+   * return. Forward-looking: noop steps count as valid.
+   */
   readonly progress: number
+  /**
+   * `true` when `activeIndex < count - 1`. Purely positional;
+   * navigation never gates on validity.
+   */
   readonly canAdvance: boolean
+  /** `true` when `activeIndex > 0`. */
   readonly canGoBack: boolean
+  /**
+   * `isFinalStep` and every step's form valid. Reactive to current
+   * validity, so this is the "enable the Finish button" signal.
+   */
   readonly complete: boolean
+  /**
+   * Monotonic latch: `true` the first time a `handleSubmit` resolves
+   * without throwing AND leaves no errors on any step, and stays `true`
+   * through later edits. A callback that calls `setErrors` and returns
+   * is a failed submit, so it does not flip this. Only `reset()` clears
+   * it. Gates success UI that should reflect submission history rather
+   * than current validity.
+   */
   readonly done: boolean
+  /**
+   * `true` while a `wizard.handleSubmit` call is in flight. Every
+   * navigation method refuses while it is on.
+   */
   readonly submitting: boolean
+  /** `wizard.handleSubmit` invocations, success or failure. */
   readonly submissionAttempts: number
+  /**
+   * The error THROWN by the most recent `handleSubmit` callback or its
+   * `onError`, coerced to a real `Error`, and `null` on success. Like
+   * `form.meta.submitError`, this is the unexpected-throw channel: an
+   * expected rejection handled through `setErrors` surfaces on the
+   * error surface and in `onError` instead, leaving this `null`. It is
+   * parked here rather than re-thrown, so the handler always resolves
+   * and never manufactures an unhandled rejection. Cleared at submit
+   * entry and by `reset()`.
+   */
   readonly submitError: Error | null
+  /**
+   * Append-only breadcrumb of navigated step keys. `back()` does not
+   * pop: the trail is an audit log, not a back-stack.
+   */
   readonly visited: readonly FormKey[]
+  /**
+   * Advance one step. Refuses while `submitting`. On an UNCLEARED
+   * `gate()` step it behaves as `tryNext()`, so wiring a Next button
+   * straight to it can never skip the gate's confirmation; once that
+   * gate clears it is plain navigation again and does not re-submit.
+   */
   readonly next: () => Promise<void>
+  /** Go back one step. Refuses while `submitting`. */
   readonly back: () => void
+  /** Jump to a step by key. Refuses while `submitting`. */
   readonly goTo: (key: string) => void
+  /**
+   * Submit the active step, and advance once that submit resolves
+   * clean. Invalid input keeps the pin put under the form's standard
+   * error reveal, with the first error focused and display state
+   * advanced. The advance runs after the submit settles, so a `gate()`
+   * on the active step clears in a single call.
+   *
+   * Inline-bindable (`@click="wizard.tryNext()"`), and resolves to
+   * whether the pin moved. `false` on a degenerate or final-step wizard;
+   * finish through `handleSubmit` instead.
+   *
+   * Called while the active step already has a submit in flight, the
+   * usual case being from inside that form's own callback, it rides
+   * that submit rather than starting a second one, so one action costs
+   * one submission. The pin has not moved by the time it resolves, so
+   * the answer is `false` and the advance lands with the in-flight
+   * submit.
+   */
   readonly tryNext: () => Promise<boolean>
+  /**
+   * Validate the entire step list, from any step, and never advance the
+   * pin. On success `done` latches; on any error the first failing step
+   * is focused and `onError` fires with errors spanning every step.
+   *
+   * To gate advancing a step on its own validity, compose with the
+   * active form's submit instead:
+   * `activeForm.handleSubmit(() => wizard.next())`.
+   *
+   * Returns a handler for `<form @submit>` or for imperative use.
+   */
   readonly handleSubmit: (
     onSubmit: WizardOnSubmit,
     onError?: WizardOnError
   ) => (event?: Event) => Promise<void>
+  /**
+   * Zero the wizard lifecycle (`submissionAttempts`, `visited`, `done`),
+   * reset every form, return to `steps[0].key`, and invoke `persist`
+   * with the cleared state. Re-applies the `defaultStatuses` gate seed,
+   * so a reboot returns to the seeded clearance rather than fully
+   * sealed.
+   */
   readonly reset: () => void
+  /**
+   * Re-seal a cleared gate, contingent on `commit`. Awaits `commit`, a
+   * server-side revoke, and re-seals only if it resolves clean, so the
+   * gate reflects server-confirmed truth the same way a clearing submit
+   * does; a thrown `commit` leaves the gate as-is.
+   *
+   * Seal-only, so it can never become the leading-signal foot-gun
+   * `gate()` exists to prevent. `commit` is required: pass `() => {}`
+   * for a deliberate client-only re-seal. Resolves whether the gate
+   * ended up sealed and never rejects; resolves `false` with a dev
+   * warning on a non-gate key.
+   */
   readonly relock: (key: FormKey, commit: () => void | Promise<void>) => Promise<boolean>
 }

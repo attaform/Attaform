@@ -1,13 +1,13 @@
 import type { Unset } from '../core/unset'
 
 /**
- * The minimum shape any form value satisfies — a plain record. Use
- * as a constraint for composables that work generically across forms
- * (e.g. a custom hook that takes any form's `useForm` return).
+ * The minimum shape any form value satisfies, a plain record. Use it as
+ * a constraint for composables that work generically across forms, such
+ * as a custom hook taking any form's `useForm` return.
  */
 export type GenericForm = Record<string, unknown>
 
-/** Internal helper — `true` when `T` is an object or array. */
+/** `true` when `T` is an object or array. */
 export type IsObjectOrArray<T> = T extends GenericForm
   ? true
   : T extends Array<unknown>
@@ -15,25 +15,18 @@ export type IsObjectOrArray<T> = T extends GenericForm
     : false
 
 /**
- * Shared recursion body backing `PartialFlatPath` and `RegisterFlatPath`.
- * One walk over `Form`; `Mode` controls whether intermediate container
- * paths are emitted alongside their reachable leaves.
+ * Shared recursion body backing `PartialFlatPath` and
+ * `RegisterFlatPath`. One walk over `Form`, with `Mode` deciding
+ * whether container paths are emitted alongside their reachable leaves.
  *
- * - `'partial'`: emit every container path (object containers, nested-
- *   object array roots, array-of-object element containers). Used by
- *   `setValue` / `form.values.<path>` / every read-side API that needs
- *   to address a container.
- * - `'register'`: skip container paths. `v-register` binds onto a
- *   leaf-backing native element (`<input>`, `<select>`, `<textarea>`),
- *   so container paths aren't registrable. Primitive arrays still
- *   admit the array-root path under both modes (multi-select and
- *   grouped-checkbox bindings register onto the array itself).
- *
- * Both walkers were independent recursions before; threading `Mode`
- * through one body keeps the surface guarded by a single source of
- * truth, and `PartialFlatPath` / `RegisterFlatPath` stay byte-
- * identical to the prior hand-written walks (see
- * `test/types/flat-path-walker.test.ts`).
+ * - `'partial'`: emit every container path (object containers,
+ *   nested-object array roots, array-of-object element containers).
+ *   Used by `setValue`, `form.values.<path>`, and every read-side API
+ *   that can address a container.
+ * - `'register'`: skip container paths, since `v-register` binds onto a
+ *   leaf-backing native element. Primitive arrays still admit the
+ *   array-root path under both modes, because multi-select and
+ *   grouped-checkbox bindings register onto the array itself.
  */
 export type FlatPathBuilder<
   Form,
@@ -72,66 +65,57 @@ export type FlatPathBuilder<
     : never
 
 /**
- * Implementation detail backing `FlatPath` in its default
- * (partial-path) mode. Exported so `rollup-plugin-dts` preserves it
- * as a named alias in the bundled `.d.ts` rather than inlining the
- * full template-literal recursion body at every reference site
- * (`FlatPath`, `RegisterFlatPath`, every path-addressed API method).
- * Inlining at consumer call sites compounds into TS2589 territory
- * when multiple complex forms share a scope. Consumers should reach
- * for `FlatPath` instead; this alias is not part of the stable surface.
+ * Backs `FlatPath` in its default partial-path mode. Reach for
+ * `FlatPath`; this alias is not part of the stable surface.
+ *
+ * It is exported so `rollup-plugin-dts` keeps it as a named alias in
+ * the bundled `.d.ts` rather than inlining the full template-literal
+ * recursion at every reference site. Inlined, it compounds into TS2589
+ * territory once several complex forms share a scope.
  *
  * The `Form extends unknown` wrapper distributes over a top-level
- * union so each member contributes its OWN `keyof` — a discriminated-
- * union root (`z.discriminatedUnion`) thus exposes every variant's
- * keys as addressable paths, not just the discriminator that naked
- * `keyof (A | B)` would intersect to. For a single object / array /
- * record `Form` it is a one-member no-op and stays byte-identical to
- * the prior walk. Interior unions already distribute inside
- * `FlatPathBuilder` via its `infer Value` step.
+ * union so each member contributes its OWN `keyof`. That is what makes
+ * a `z.discriminatedUnion` root expose every variant's keys as
+ * addressable paths, rather than the intersection that naked
+ * `keyof (A | B)` collapses to. Interior unions already distribute
+ * inside `FlatPathBuilder` at its `infer Value` step.
  */
 export type PartialFlatPath<Form> = Form extends unknown ? FlatPathBuilder<Form, 'partial'> : never
 
-// FlatPath Generic Gotchas:
+// Two TypeScript behaviours shape what FlatPath can offer:
 //
-// 1. Typescript collapses paths like `something.${string}` | `something.${string}.deeper`
-// into `something.${string}` because `${string}.deeper` is a subtype of string. This hurts type
-// inference, but is currently outside our control. You can avoid this inference issue by not using
-// records in schemas (which we recommend anyway, because static keys are safer than dynamic keys)
-// whenever practical. Thus, using records will not result in warnings, but fewer paths may be suggested.
+// 1. `something.${string}` | `something.${string}.deeper` collapses to
+// `something.${string}`, because `${string}.deeper` is a subtype of string. Records in a schema
+// therefore suggest fewer paths. Nothing warns; prefer static keys where practical.
 //
-// 2. In Javascript, numbers with trailing decimals are valid (eg. 42. is valid). This means
-// paths like `something.${number}` can resolve to 'something.42.' . It also means paths like
-// `something.${number}.deeper` can resolve to 'something.42..deeper' -- one trailing decimal point
-// for the number, and a second for the separator. We guard against this in useForm by stripping all
-// trailing decimals when processing paths at runtime
+// 2. Trailing decimals are valid JS numbers (`42.`), so `something.${number}` admits
+// 'something.42.' and `something.${number}.deeper` admits 'something.42..deeper'. useForm strips
+// trailing decimals when processing paths at runtime.
 /**
- * Union of dotted-string paths reachable inside `Form`, e.g. for
+ * Union of dotted-string paths reachable inside `Form`. For
  * `{ user: { email: string }, items: string[] }`:
  *
- *   `'user' | 'user.email' | 'items' | 'items.0' | 'items.1' | …`
+ *   `'user' | 'user.email' | 'items' | 'items.0' | 'items.1' | ...`
  *
- * Used by every path-addressed API (`setValue(path, value)`,
- * `register(path)`, `toRef(path)`, etc.) so paths autocomplete in
- * the IDE and typos compile-error.
+ * Every path-addressed API (`setValue(path, value)`, `register(path)`,
+ * `toRef(path)`) takes one, so paths autocomplete and typos are
+ * compile errors.
  */
 export type FlatPath<Form> = PartialFlatPath<Form>
 
 /**
  * Convert a tuple of path segments to its dotted-string equivalent.
  *
- *   `JoinSegments<['cargo', 'items', 0, 'sku']>` → `'cargo.items.0.sku'`
+ *   `JoinSegments<['cargo', 'items', 0, 'sku']>` is `'cargo.items.0.sku'`
  *
- * Recursion depth is bounded by the tuple length (typically 3–4),
- * not by form depth — the cost does not scale with `FlatPath<Form>`.
- * Template literal types distribute over union members, so segments
- * containing unions like `'pickup' | 'delivery'` propagate through
- * to the joined path's union: `JoinSegments<['pickup' | 'delivery', 'line1']>`
- * → `'pickup.line1' | 'delivery.line1'`. This is what makes
- * tuple-form path APIs work cleanly inside `v-for` over a prefix
- * variable: the joined result is checked against `FlatPath<Form>` /
- * `RegisterFlatPath<Form>` (which already exist), so we don't
- * enumerate a separate tuple-path union.
+ * Depth is bounded by the tuple length, typically 3 or 4, so the cost
+ * does not scale with `FlatPath<Form>`. Template literal types
+ * distribute over unions, so a segment union propagates into the joined
+ * path: `JoinSegments<['pickup' | 'delivery', 'line1']>` is
+ * `'pickup.line1' | 'delivery.line1'`. That is what makes tuple-form
+ * path APIs work inside a `v-for` over a prefix variable, since the
+ * joined result is checked against the existing `FlatPath<Form>` /
+ * `RegisterFlatPath<Form>` unions instead of a separate enumeration.
  */
 export type JoinSegments<
   S extends ReadonlyArray<string | number>,
@@ -149,13 +133,12 @@ export type JoinSegments<
  * The advice half of a segment-array rejection, used when `S` never
  * inferred a tuple at all.
  *
- * A caller who passes a plain `string` reaches this branch, because
- * inference falls back to the constraint and `JoinSegments` of a
- * non-tuple array is `''`. Naming a path would be a lie there, so the
- * message names the remedies instead. This is the case behind #568: a
- * row component received its path prefix as an untyped `string` prop,
- * every concatenation widened to `string`, and the only signal was
- * `segments: never`.
+ * A caller passing a plain `string` lands here: inference falls back to
+ * the constraint, and `JoinSegments` of a non-tuple array is `''`.
+ * Naming a path would be a lie, so the message names the remedies
+ * instead. This is the shape behind #568, where a row component
+ * received its path prefix as an untyped `string` prop and every
+ * concatenation widened to `string`.
  */
 type PlainStringAdvice =
   'attaform: a plain string cannot be checked against the schema. Pass a literal path, type the dynamic prefix, or use the segment-array form.'
@@ -164,11 +147,12 @@ type PlainStringAdvice =
  * Why a segment array was rejected, as a type the compiler prints.
  *
  * Every segment-array overload brands its parameter
- * `S & (<joined path is valid> ? unknown : <this>)`. The brand used to
- * be `never`, and `S & never` is `never`, so TypeScript reported the
- * parameter as `never` and said nothing about what was wrong. A string
- * literal intersects without collapsing, so the sentence survives into
- * the diagnostic and the argument keeps its inferred tuple type:
+ * `S & (<joined path is valid> ? unknown : <this>)`. The brand must
+ * stay a string literal: `S & never` is `never`, which makes TypeScript
+ * report the parameter as `never` and say nothing about what was wrong,
+ * while a string literal intersects without collapsing, so the sentence
+ * survives into the diagnostic and the argument keeps its inferred
+ * tuple type:
  *
  * ```
  * Argument of type '["boxes", 3, "nope"]' is not assignable to parameter
@@ -176,8 +160,8 @@ type PlainStringAdvice =
  *   "attaform: 'boxes.3.nope' is not a path in this form's schema"'.
  * ```
  *
- * Nothing can satisfy the brand, so a wrong path is still a compile
- * error; only the message changes.
+ * Nothing can satisfy the brand, so a wrong path stays a compile error;
+ * only the message changes.
  */
 export type SegmentPathRejection<Joined extends string> = [Joined] extends ['']
   ? PlainStringAdvice
@@ -187,44 +171,42 @@ export type SegmentPathRejection<Joined extends string> = [Joined] extends ['']
  * `SegmentPathRejection` for `register`, whose accepted set is
  * `RegisterFlatPath` rather than `FlatPath`.
  *
- * The distinction is worth its own sentence: a container path is in the
- * schema and still not registrable, so "not a path in this form's
- * schema" would be false where it is most likely to be read.
+ * Worth its own sentence: a container path is in the schema and still
+ * not registrable, so "not a path in this form's schema" would be false
+ * exactly where it is most likely to be read.
  */
 export type SegmentRegisterRejection<Joined extends string> = [Joined] extends ['']
   ? PlainStringAdvice
   : `attaform: '${Joined}' is not a registrable path. v-register binds a leaf input, so container paths are excluded.`
 
 /**
- * `true` when `T` is a union (multiple members), `false` when it's a
- * single type. Used to gate non-homomorphic mapped-type forms so
- * single-object types retain their homomorphic `[K in keyof T]`
- * lookup (preserving literal keys instead of widening to an index
- * signature).
+ * `true` when `T` is a union, `false` for a single type. Gates
+ * non-homomorphic mapped-type forms so a single object type keeps its
+ * homomorphic `[K in keyof T]` lookup, preserving literal keys instead
+ * of widening to an index signature.
  */
 export type IsUnion<T, U = T> = T extends T ? ([U] extends [T] ? false : true) : never
 
 /**
- * Union of all keys across all members of `T`. For a single object
- * type this equals `keyof T`; for a discriminated union `A | B`, it
- * produces `keyof A | keyof B` (whereas naked `keyof (A | B)` would
- * intersect to common keys only).
+ * Union of all keys across all members of `T`. For a single object type
+ * this equals `keyof T`; for `A | B` it produces `keyof A | keyof B`,
+ * where naked `keyof (A | B)` would intersect to common keys only.
  *
- * Paired with `ValueOfUnion` to merge variant key sets in chained
- * metadata proxies (`form.fields`, `form.errors`) so per-variant
- * leaves are addressable through one chained-access shape, regardless
- * of which discriminant is currently active.
+ * Paired with `ValueOfUnion` to merge variant key sets in the chained
+ * metadata proxies (`form.fields`, `form.errors`), so per-variant
+ * leaves stay addressable through one shape whichever discriminant is
+ * active.
  */
 export type KeyofUnion<T> = T extends unknown ? keyof T : never
 
 /**
- * Value at key `K` across union members of `T`. Members containing
- * `K` contribute `T[K]`; members lacking `K` contribute `undefined`.
+ * Value at key `K` across union members of `T`. Members holding `K`
+ * contribute `T[K]`; members lacking it contribute `undefined`.
  *
- * The resulting union mirrors the runtime semantics of metadata
- * proxies: chained access works at every union member, with the leaf
- * carrying `T | undefined` to reflect that the key is absent in some
- * variants and the runtime returns a stable stub there.
+ * That mirrors the metadata proxies at runtime: chained access works at
+ * every union member, and the leaf carries `T | undefined` because the
+ * key is absent in some variants, where the runtime returns a stable
+ * stub.
  */
 export type ValueOfUnion<T, K extends PropertyKey> = T extends unknown
   ? K extends keyof T
@@ -234,17 +216,16 @@ export type ValueOfUnion<T, K extends PropertyKey> = T extends unknown
 
 /**
  * Value at key `K` across union members of `T`, dropping members that
- * LACK `K` entirely (they contribute `never`, not `undefined`). The
- * counterpart to `ValueOfUnion`: where that injects a SYNTHETIC
- * `undefined` for absent-variant keys (so chained reads stay safe),
- * this yields only the PRESENT value type.
+ * LACK `K` entirely: they contribute `never`, not `undefined`. The
+ * counterpart to `ValueOfUnion`, which injects a synthetic `undefined`
+ * for absent-variant keys so chained reads stay safe.
  *
  * `form.fields` uses it at discriminated-union keys so a variant-only
- * field types as node-optional `FieldState<X> | undefined` (the node is
- * absent when its variant isn't active) rather than value-optional
- * `FieldState<X | undefined>` (which would falsely promise a readable
- * node). A genuine `undefined` from an OPTIONAL declaration survives —
- * only the synthetic absent-variant `undefined` is stripped.
+ * field types as node-optional `FieldState<X> | undefined`, the node
+ * being absent when its variant is not active, rather than
+ * value-optional `FieldState<X | undefined>`, which would falsely
+ * promise a readable node. A genuine `undefined` from an OPTIONAL
+ * declaration survives; only the synthetic one is stripped.
  */
 export type PresentValueOfUnion<T, K extends PropertyKey> = T extends unknown
   ? K extends keyof T
@@ -253,26 +234,18 @@ export type PresentValueOfUnion<T, K extends PropertyKey> = T extends unknown
   : never
 
 /**
- * Apply the discriminated-union "lift" to a value shape (i.e., a
- * shape carrying actual values, not metadata leaves like
- * `FieldState`). Single-object types map homomorphically;
- * discriminated unions of objects merge keys via
- * `KeyofUnion` / `ValueOfUnion` so per-variant fields are reachable
- * through one chained-access shape.
+ * Apply the discriminated-union key merge to a shape carrying values
+ * rather than metadata leaves. Single object types map homomorphically;
+ * unions of objects merge keys via `KeyofUnion` / `ValueOfUnion` so
+ * per-variant fields are reachable through one chained-access shape.
  *
- * Used by `ValuesSurface` to make `form.values.cargo.permitNumber`
- * (oversized-only) typecheck regardless of the active variant —
- * matching the runtime, where plain JS object access on a missing
- * variant key returns `undefined` rather than throwing.
+ * `ValuesSurface` uses it to make an oversized-only
+ * `form.values.cargo.permitNumber` typecheck whichever variant is
+ * active, matching the runtime, where plain JS access on a missing key
+ * returns `undefined` rather than throwing.
  *
- * Distinct from `FieldStateMapEntry`: that variant carries
- * `FieldState<T>` at the leaf; this one carries the leaf VALUE
- * directly. They share the same union-merging logic but differ in
- * what the recursion bottoms out at.
- *
- * Date / Map / Set / RegExp / function leaves stay opaque (not
- * recursed into) — value reads of those types should preserve the
- * platform shape unchanged.
+ * Date / Map / Set / RegExp / function leaves stay opaque, since a
+ * value read of those should preserve the platform shape.
  */
 export type LiftedValueShape<T> = [T] extends [
   string | number | boolean | bigint | symbol | null | undefined,
@@ -291,43 +264,37 @@ export type LiftedValueShape<T> = [T] extends [
         : T
 
 /**
- * Recursive `Partial` — every property at every depth is optional.
- * Used as the parameter type of `defaultValues` and `reset()` so
- * partial overrides at any nesting level are valid.
+ * Recursive `Partial`: every property at every depth is optional, so a
+ * partial override at any nesting level is valid.
  */
-export type DeepPartial<T> = T extends Primitive // Base case for primitive types
+export type DeepPartial<T> = T extends Primitive
   ? T
-  : T extends Array<infer ArrayItem> // Recursively process arrays
+  : T extends Array<infer ArrayItem>
     ? DeepPartial<ArrayItem>[]
-    : T extends object // Handle objects and apply DeepPartial recursively
+    : T extends object
       ? {
           [Key in keyof T]?: DeepPartial<T[Key]>
         }
       : T
 
 /**
- * Shared descent body backing `NestedType` and `NestedReadType`. The
- * recursion is identical — segment-by-segment, distributing over
- * union members via `KeyofUnion` / `ValueOfUnion`. The two walkers
- * diverge only at the leaf:
+ * Shared descent body backing `NestedType` and `NestedReadType`. Both
+ * walk segment by segment, distributing over union members via
+ * `KeyofUnion` / `ValueOfUnion`, and diverge only at the leaf:
  *
- * - `TaintArrayCrossings extends false` (`NestedType` mode): leaves
- *   are returned untouched. Used by strict write-side APIs that need
- *   the exact resolved type (`setValue`'s value parameter,
- *   `form.fields.<path>`'s state map).
- * - `TaintArrayCrossings extends true` (`NestedReadType` mode): leaves
- *   are widened with `| undefined` whenever any segment in the walk
- *   was numeric (array index). Reflects the runtime possibility of an
- *   out-of-bounds read.
+ * - `TaintArrayCrossings extends false` (`NestedType`): leaves are
+ *   returned untouched, which is what the strict write-side APIs need
+ *   (`setValue`'s value parameter, `form.fields.<path>`).
+ * - `TaintArrayCrossings extends true` (`NestedReadType`): leaves widen
+ *   with `| undefined` once any segment in the walk was an array index,
+ *   reflecting an out-of-bounds read at runtime.
  *
- * `_Tainted` propagates the array-crossing under taint mode; under
- * strict mode it stays `false` through every recursion arm. Both
- * arms strip nullishness at the root (`_RootValue = NonNullable<…>`)
- * — the prior `NestedType.FilterOutNullishTypesDuringRecursion` flag
- * was vestigial, never overridden from the outside.
+ * `_Tainted` carries the array crossing under taint mode and stays
+ * `false` through every arm under strict mode. Both strip nullishness
+ * at the root.
  *
- * Not part of the stable consumer surface — reach for `NestedType` or
- * `NestedReadType` directly.
+ * Reach for `NestedType` or `NestedReadType`; this is not part of the
+ * stable surface.
  */
 export type NestedTypeBuilder<
   RootValue,
@@ -379,26 +346,20 @@ export type NestedTypeBuilder<
           : never
 
 /**
- * Resolve the type at a dotted-string path inside `RootValue`. Used
- * by the strict (write-side) APIs to derive the type at a path:
+ * Resolve the type at a dotted-string path inside `RootValue`, for the
+ * strict write-side APIs:
  *
- *   `NestedType<{ user: { email: string } }, 'user.email'>` → `string`
+ *   `NestedType<{ user: { email: string } }, 'user.email'>` is `string`
  *
- * On discriminated-union descents (e.g. `cargo` is `A | B | C`), uses
- * `KeyofUnion` / `ValueOfUnion` so per-variant keys resolve to
- * `T | undefined` instead of `never`. This keeps NestedType in lockstep
- * with `FlatPath`: any path FlatPath says is reachable resolves to a
- * useful value type (vs. silently collapsing to `never` because
- * `keyof (A|B|C)` would be the intersection of all variants' keys).
+ * On a discriminated-union descent it uses `KeyofUnion` /
+ * `ValueOfUnion`, so a per-variant key resolves to `T | undefined`
+ * rather than `never`. That keeps `NestedType` in lockstep with
+ * `FlatPath`: every path `FlatPath` says is reachable resolves to a
+ * useful value type, instead of collapsing to the intersection of all
+ * variants' keys.
  *
- * Composed over `NestedTypeBuilder` with array-crossing tainting OFF,
- * so leaves return their exact resolved type. The companion
- * `NestedReadType` shares the same recursion body but enables
- * tainting for read-side APIs.
- *
- * TypeScript caps conditional-type recursion at around 50 levels;
- * paths deeper than that resolve to `never`. Real form schemas
- * never reach this depth.
+ * TypeScript caps conditional-type recursion near 50 levels, so paths
+ * deeper than that resolve to `never`. Real schemas do not reach it.
  */
 export type NestedType<RootValue, FlattenedPath extends string> = NestedTypeBuilder<
   RootValue,
@@ -407,37 +368,30 @@ export type NestedType<RootValue, FlattenedPath extends string> = NestedTypeBuil
 >
 
 /**
- * Implementation-detail primitive-leaf marker used by `DeepPartial`
- * and sibling structural walkers. Exported so the bundled `.d.ts`
+ * Primitive-leaf marker used by `DeepPartial` and the sibling
+ * structural walkers. Reach for `DeepPartial`; this is not part of the
+ * stable surface, and is exported only so the bundled `.d.ts`
  * references one alias instead of re-emitting the union at every
- * recursion branch of every walker that depends on it. Not part of
- * the stable consumer-facing surface — reach for `DeepPartial`
- * instead.
+ * recursion branch of every walker.
  */
 export type Primitive = string | number | boolean | symbol | bigint | null | undefined
 
 /**
- * Distinguish a tuple from a regular array.
+ * Distinguish a tuple from a regular array, for write-side helpers that
+ * must preserve tuple positions instead of widening to
+ * `Array<element>`.
  *
- *   `IsTuple<[string, number]>` → `true`
- *   `IsTuple<string[]>` → `false`
- *
- * Useful for write-side helpers that need to preserve tuple
- * positions instead of widening to `Array<element>`.
+ *   `IsTuple<[string, number]>` is `true`
+ *   `IsTuple<string[]>` is `false`
  */
 export type IsTuple<T extends readonly unknown[]> = number extends T['length'] ? false : true
 
 /**
- * Path-resolved type for read-side APIs. Like `NestedType`, but once
- * the walk crosses an array index segment the resulting type is
- * tagged `| undefined` (the runtime can return undefined for
- * out-of-bounds reads). Discriminated-union descents follow the same
- * `KeyofUnion`/`ValueOfUnion` rule as `NestedType` — per-variant
- * keys resolve to `T | undefined`, agreeing with `FlatPath`.
- *
- * Used by `form.values.<path>` reads, `form.toRef(path)`, and
- * `register(path).innerRef` so the compile-time type honours the
- * runtime possibility of a missing array position.
+ * Path-resolved type for the read-side APIs (`form.values.<path>`,
+ * `form.toRef(path)`, `register(path).innerRef`). Like `NestedType`,
+ * except that once the walk crosses an array index the result is tagged
+ * `| undefined`, honouring the out-of-bounds read the runtime allows.
+ * Discriminated-union descents follow the same rule as `NestedType`.
  */
 export type NestedReadType<RootValue, FlattenedPath extends string> = NestedTypeBuilder<
   RootValue,
@@ -451,25 +405,21 @@ export type NestedReadType<RootValue, FlattenedPath extends string> = NestedType
  * (membership) and `ArrayItem` (element type) so the filter and the
  * extractor cannot disagree about what counts as one.
  *
- * The strip is the load-bearing part. `Form` is the schema's INPUT
- * shape, so `z.array(row).default([])` resolves to `row[] | undefined`,
- * and `NestedType` tags a discriminated union's per-variant keys the
- * same way on purpose: that tagging is what keeps `NestedType` in
- * lockstep with `FlatPath`, so every path `FlatPath` offers resolves to
- * a useful value type. A bare `extends readonly unknown[]` predicate
- * read the tag as "not an array", which is how every optional,
- * defaulted, nullable, and DU-variant array fell out of the field-array
- * helpers while the runtime went on accepting all of them (#541).
+ * The strip is load-bearing. `Form` is the schema's INPUT shape, so
+ * `z.array(row).default([])` resolves to `row[] | undefined`, and
+ * `NestedType` tags a discriminated union's per-variant keys the same
+ * way on purpose. A bare `extends readonly unknown[]` predicate reads
+ * that tag as "not an array", which is how every optional, defaulted,
+ * nullable and DU-variant array fell out of the field-array helpers
+ * while the runtime went on accepting all of them (#541).
  *
  * `extends infer Leaf` binds the stripped leaf once so the guards below
  * do not re-instantiate `NestedType`, and the tuple wraps suppress
  * distribution so a union leaf is judged whole: `A[] | B[]` is an
  * array, `A[] | string` is not.
  *
- * Exported so `rollup-plugin-dts` keeps it as a named alias in the
- * bundled `.d.ts` instead of inlining the body at every reference.
- * Consumers reach for `ArrayPath` / `ArrayItem`; this alias is not part
- * of the stable surface.
+ * Reach for `ArrayPath` / `ArrayItem`; this alias exists so
+ * `rollup-plugin-dts` keeps one named reference in the bundled `.d.ts`.
  */
 export type ArrayLeafOf<Form, P extends string> =
   Exclude<NestedType<Form, P>, undefined | null> extends infer Leaf
@@ -481,17 +431,16 @@ export type ArrayLeafOf<Form, P extends string> =
     : never
 
 /**
- * Filter FlatPath<Form> down to the subset of paths whose resolved leaf
- * is an array. Used by the typed field-array helpers (append / remove /
- * swap / ...) so those helpers only accept paths that actually address
- * an array — calling `append('email', ...)` on a `{ email: string }`
- * is a compile error. Optionality is not a disqualifier; see
- * `ArrayLeafOf` for what "is an array" means here.
+ * `FlatPath<Form>` narrowed to the paths whose leaf is an array, so the
+ * typed field-array helpers (append, remove, swap) accept only paths
+ * that address one: `append('email', ...)` on a `{ email: string }` is
+ * a compile error. Optionality is not a disqualifier; see `ArrayLeafOf`
+ * for what counts as an array here.
  *
  * `P extends string` re-triggers distribution over the `FlatPath<Form>`
- * union so the conditional evaluates per member. Without it, the
- * branch would reduce against the union as a whole and collapse to
- * `never` whenever a single member failed the predicate.
+ * union so the conditional evaluates per member. Without it the branch
+ * reduces against the union as a whole and collapses to `never` as soon
+ * as one member fails the predicate.
  */
 export type ArrayPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P extends string
   ? [ArrayLeafOf<Form, P>] extends [never]
@@ -500,10 +449,11 @@ export type ArrayPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P exten
   : never
 
 /**
- * Extract the element type of the array addressed by `Path`. Callers
- * constrain `Path extends ArrayPath<Form>` so this is always well-defined.
- * Rides on `ArrayLeafOf`, the same alias `ArrayPath` admits the path
- * with, so an accepted path never hands its helper a `never` value slot.
+ * Element type of the array addressed by `Path`. Callers constrain
+ * `Path extends ArrayPath<Form>`, so this is always well-defined. It
+ * rides on `ArrayLeafOf`, the same alias `ArrayPath` admits the path
+ * with, so an accepted path never hands its helper a `never` value
+ * slot.
  */
 export type ArrayItem<Form, Path extends ArrayPath<Form>> =
   ArrayLeafOf<Form, Path> extends ReadonlyArray<infer Item> ? Item : never
@@ -513,18 +463,19 @@ export type ArrayItem<Form, Path extends ArrayPath<Form>> =
  * when the path does not address one. Shared by `RecordPath`
  * (membership) and `RecordValue` (value type).
  *
- * `string extends keyof Leaf` is the index-signature probe: it holds for
- * `Record<string, V>` (`keyof` is `string`) and fails for a fixed object
- * (`keyof` is the literal key union). The leading array guard keeps
- * arrays (which also satisfy the object check) out of the record set.
+ * `string extends keyof Leaf` is the index-signature probe: it holds
+ * for `Record<string, V>`, whose `keyof` is `string`, and fails for a
+ * fixed object, whose `keyof` is a literal key union. The leading array
+ * guard keeps arrays, which also satisfy the object check, out of the
+ * record set.
  *
  * Nullish is stripped first for the reason `ArrayLeafOf` gives, with an
  * extra bite here: `keyof (Record<string, V> | undefined)` is `never`,
  * so on a `.default({})` or `.optional()` record the probe could not
  * fire at all and `form.record(path)` rejected the path (#541).
  *
- * Exported for the same `.d.ts` reason as `ArrayLeafOf`, and equally
- * not part of the stable surface.
+ * Reach for `RecordPath` / `RecordValue`; exported for the same `.d.ts`
+ * reason as `ArrayLeafOf`.
  */
 export type RecordLeafOf<Form, P extends string> =
   Exclude<NestedType<Form, P>, undefined | null> extends infer Leaf
@@ -540,11 +491,11 @@ export type RecordLeafOf<Form, P extends string> =
     : never
 
 /**
- * Companion to `ArrayPath`: filter `FlatPath<Form>` down to the subset
- * of paths whose resolved leaf is a record (an object with an open
- * string-keyed index signature, e.g. `z.record(z.string(), V)`). A
- * fixed-shape object (`z.object({ ... })`) is excluded — its keys are
- * statically known, so it has no `string` index signature.
+ * Companion to `ArrayPath`: `FlatPath<Form>` narrowed to the paths
+ * whose leaf is a record, meaning an object with an open string-keyed
+ * index signature such as `z.record(z.string(), V)`. A fixed-shape
+ * `z.object({ ... })` is excluded, since its keys are statically known
+ * and it has no `string` index signature.
  */
 export type RecordPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P extends string
   ? [RecordLeafOf<Form, P>] extends [never]
@@ -553,55 +504,46 @@ export type RecordPath<Form, P extends FlatPath<Form> = FlatPath<Form>> = P exte
   : never
 
 /**
- * Value type of the record addressed by `Path` — the `V` in a
- * `Record<string, V>`. Callers constrain `Path extends RecordPath<Form>`,
- * so the leaf is always an open string-keyed record and this is
- * well-defined. Rides on `RecordLeafOf`, the same alias `RecordPath`
- * admits the path with, so the two cannot disagree.
+ * Value type of the record addressed by `Path`, the `V` in a
+ * `Record<string, V>`. Callers constrain `Path extends
+ * RecordPath<Form>`, so the leaf is always an open string-keyed record.
+ * It rides on `RecordLeafOf`, the same alias `RecordPath` admits the
+ * path with, so the two cannot disagree.
  */
 export type RecordValue<Form, Path extends RecordPath<Form>> =
   RecordLeafOf<Form, Path> extends Record<string, infer Value> ? Value : never
 
 /**
- * Widens primitive-literal leaves to their primitive supertype to
- * match the runtime "slim-primitive write contract."
+ * Widens primitive-literal leaves to their primitive supertype, to
+ * match the runtime's slim-primitive write contract.
  *
  *   WriteShape<{ color: 'red' | 'green' }>
- *     // → { color: string }
- *   WriteShape<{ kind: 'on' }>
- *     // → { kind: string }
+ *     // { color: string }
  *   WriteShape<{ count: 42 }>
- *     // → { count: number }
+ *     // { count: number }
  *
- * The runtime gate accepts any value at a path whose primitive type
- * matches the schema's slim primitive set at that path. Refinement-
- * level constraints (enum membership, literal equality, format
- * checks, length / range bounds, regex, custom predicates) are NOT
- * enforced at write time — they surface via field-level validation.
- * The type widening here mirrors that runtime behaviour, so
+ * The runtime write gate accepts any value whose primitive type matches
+ * the schema's slim primitive set at that path. Refinement-level
+ * constraints (enum membership, literal equality, format checks, length
+ * and range bounds, regex, custom predicates) are not enforced at write
+ * time; they surface through field-level validation. So
  * `setValue('color', 'magenta')` and `defaultValues: { color: 'teal' }`
- * are not TS errors despite being out-of-enum at the validation
+ * are not type errors despite being out-of-enum at the validation
  * layer.
  *
- * Tuple positions preserve their literal types via the homomorphic
- * mapped form (`{ [K in keyof T]: ... }` over a readonly tuple
- * preserves the position labels), so `[string, number]` stays a
- * 2-tuple of widened primitives instead of collapsing to
- * `Array<string | number>`.
+ * Tuple positions keep their literal types through the homomorphic
+ * mapped form, so `[string, number]` stays a 2-tuple of widened
+ * primitives instead of collapsing to `Array<string | number>`, and
+ * tuple detection runs before the array branch so positionally-typed
+ * literals survive. Date / RegExp / Map / Set / function instances pass
+ * through unchanged, since the runtime accepts them as their own slim
+ * kinds.
  *
- * Date / RegExp / Map / Set / function instances pass through
- * unchanged — those aren't "primitive literals" and the runtime
- * accepts them as their own slim kinds. Tuple-detection runs before
- * the array-recursion branch so positionally-typed array literals
- * survive intact.
- *
- * `WriteShape<T>` stays STRICT — no `| Unset` widening. It's used for
- * the callback's prev-value argument in `setValue(path, prev => ...)`
- * (which always receives a real value, never the sentinel), for
- * read-side types where consumers expect a structural form shape, and
- * by internal types like `FieldStateMap<T>`. The consumer-facing
- * write-value type is `DefaultValuesShape<T>` (composed via
- * `SetValuePayload`), which adds `| Unset` at every recursable
+ * This stays STRICT, with no `| Unset` widening, because it types the
+ * prev-value argument of `setValue(path, prev => ...)`, which always
+ * receives a real value, plus read-side types and internals like
+ * `FieldStateMap<T>`. The consumer-facing write-value type is
+ * `DefaultValuesShape<T>`, which adds `| Unset` at every recursable
  * position.
  */
 export type WriteShape<T> = T extends string | number | boolean | bigint | symbol | null | undefined
@@ -629,19 +571,19 @@ export type WriteShape<T> = T extends string | number | boolean | bigint | symbo
           : T
 
 /**
- * Walk `T` and add `| Unset` at every primitive leaf (except symbol /
- * null / undefined), every opaque leaf (`Date`, `RegExp`, `Map`,
- * `Set`, functions), and every container position (object, tuple,
- * array). The recursion topology mirrors `WriteShape<T>` exactly —
- * `DefaultValuesShape<T>` is then a 1-line composition.
+ * Walk `T` and add `| Unset` at every primitive leaf except symbol,
+ * null and undefined, at every opaque leaf (`Date`, `RegExp`, `Map`,
+ * `Set`, functions), and at every container position. The recursion
+ * topology mirrors `WriteShape<T>`, which is what lets
+ * `DefaultValuesShape<T>` be a one-line composition.
  *
- * Symbol / null / undefined leaves pass through untouched so the
- * runtime sentinel doesn't pollute leaf semantics it has no business
- * carrying. Container positions widen so a single `unset` at any
- * level recursively marks every descendant primitive blank.
+ * Symbol / null / undefined leaves pass through untouched, so the
+ * runtime sentinel does not pollute leaf semantics it has no business
+ * carrying. Container positions widen so a single `unset` at any level
+ * recursively marks every descendant primitive blank.
  *
- * Not part of the stable consumer-facing surface — reach for
- * `DefaultValuesShape` instead.
+ * Reach for `DefaultValuesShape`; this is not part of the stable
+ * surface.
  */
 export type AugmentWithUnset<T> = T extends string | number | boolean | bigint
   ? T | Unset
@@ -660,56 +602,36 @@ export type AugmentWithUnset<T> = T extends string | number | boolean | bigint
             : T
 
 /**
- * Like `WriteShape<T>`, but additionally widens every primitive leaf
- * (`string`, `number`, `boolean`, `bigint`) to admit `Unset` — the
- * brand-typed sentinel consumers pass to indicate "this leaf starts
- * displayed-empty" in `defaultValues`, `setValue`, and `reset`.
+ * `WriteShape<T>` plus `Unset`, the brand-typed sentinel that marks a
+ * leaf as starting displayed-empty in `defaultValues`, `setValue` and
+ * `reset`.
  *
- * `Unset` is admitted at every position — primitive leaves, opaque
+ * `Unset` is admitted at every position: primitive leaves, opaque
  * leaves (`Date`, `RegExp`, `Map`, `Set`, functions), and containers
- * (objects, arrays, tuples, records, DUs, optional / nullable
- * wrappers). A container `unset` recursively marks every primitive
- * descendant blank, so `defaultValues: { profile: unset }` and
- * `setValue('cargo', unset)` typecheck cleanly.
- *
- * Composed as `AugmentWithUnset<WriteShape<T>>`: stage 1 widens
- * primitive literals, stage 2 adds `| Unset` everywhere — the prior
- * inline walker hand-synced this in a single body. The composition
- * stays compatible at every nested position; tuple positions,
- * unbounded arrays, and nested records all flow through unchanged.
- *
- * Example:
+ * (objects, arrays, tuples, records, discriminated unions, optional and
+ * nullable wrappers). A container `unset` recursively marks every
+ * primitive descendant blank, so `defaultValues: { profile: unset }`
+ * and `setValue('cargo', unset)` typecheck cleanly.
  *
  *   DefaultValuesShape<{ income: number; name: string; age: 21 }>
- *     // → { income: number | Unset; name: string | Unset; age: number | Unset } | Unset
- *
- * Used by `UseFormConfiguration.defaultValues`, `setValue`'s value
- * parameter, and `reset`'s parameter.
+ *     // { income: number | Unset; name: string | Unset; age: number | Unset } | Unset
  */
 export type DefaultValuesShape<T> = AugmentWithUnset<WriteShape<T>>
 
 /**
- * Single-walker fusion of `DeepPartial` and `DefaultValuesShape` — the
- * type accepted at `defaultValues`, `reset()`'s parameter, and every
- * partial-shape consumer. Every level is optional and every position
- * — primitive leaf, opaque leaf, or container — admits `| Unset`, in
- * one tree walk where the prior `DeepPartial<DefaultValuesShape<F>>`
- * composition walked twice.
+ * The type accepted at `defaultValues` and at `reset()`'s parameter:
+ * `DeepPartial` and `DefaultValuesShape` fused into a single walk, so
+ * every level is optional and every position, primitive leaf, opaque
+ * leaf or container, admits `| Unset`.
  *
- * Both passes had identical topology (object → mapped, tuple →
- * positional, array → recurse, primitive → terminal) — the doubled
- * recursion exhausted the depth budget at consumer call sites that
- * wire multiple complex forms into one scope. Collapsing them buys
- * back the headroom plus a side fix: opaque leaves (`Date`, `Map`,
- * `Set`, `RegExp`, functions) now stay intact when their containing
- * property is optional, rather than getting structurally destructured
- * by `DeepPartial`'s pass.
- *
- * Tuple positions, array elements, and discriminated-union variants
- * all flow through unchanged from the prior semantics. Container
- * positions widen with `| Unset` so `defaultValues: { profile: unset }`
- * and `reset({ cargo: unset })` typecheck — the runtime recursively
- * marks every primitive descendant blank.
+ * The fusion is deliberate and should not be re-split into
+ * `DeepPartial<DefaultValuesShape<F>>`. Both passes have identical
+ * topology (object to mapped, tuple to positional, array to recurse,
+ * primitive to terminal), and walking twice exhausts the depth budget
+ * at call sites wiring several complex forms into one scope. One walk
+ * also keeps opaque leaves (`Date`, `Map`, `Set`, `RegExp`, functions)
+ * intact when their containing property is optional, where
+ * `DeepPartial`'s pass would structurally destructure them.
  *
  * ```ts
  * type T = DefaultValuesInput<{
@@ -755,37 +677,35 @@ export type DefaultValuesInput<T> = T extends string
 
 /**
  * The type accepted at a `useForm` overload's `defaultValues` slot.
+ * `Form` is the schema's input projection; `SchemaInput` is the
+ * schema's own `z.input<Schema>`. A value is one of:
  *
- * `Form` is the schema's input projection; `SchemaInput` is the schema's
- * own input type (`z.input<Schema>`). A `defaultValues` value is one of:
- *  - `DefaultValuesInput<Form>` — the partial, `Unset`-widened in-progress
- *    shape. `defaultValues` deliberately accepts a form mid-completion: a
- *    leaf may be blank or hold a not-yet-valid value (a `z.email()` field
- *    accepts any `string`, not only valid emails). Sharp, fully-validated
- *    types are produced only at `handleSubmit`.
- *  - `SchemaInput` — the schema's full input shape.
- *  - a sync or async factory returning either of the above.
+ *  - `DefaultValuesInput<Form>`, the partial, `Unset`-widened
+ *    in-progress shape. `defaultValues` deliberately accepts a form
+ *    mid-completion: a leaf may be blank or hold a not-yet-valid value,
+ *    so a `z.email()` field accepts any `string`. Sharp, fully
+ *    validated types are produced only at `handleSubmit`.
+ *  - `SchemaInput`, the schema's full input shape.
+ *  - a sync or async factory returning either.
  *
- * `SchemaInput` is REDUNDANT at a concrete call site: a schema's input is
- * always assignable to its own `DefaultValuesInput`, so this arm adds
- * nothing a concrete caller could not already pass and does not weaken the
- * per-field checking (`number` is still rejected where `string` is
- * expected). It earns its place for the generic form-wrapper case (#422):
- * when the schema is a free type parameter `S`, a forwarded `z.input<S>`
- * is REFLEXIVELY assignable to the `SchemaInput` arm — a relation TS can
- * decide even under a generic — whereas `DefaultValuesInput<Form>` alone
- * stays a deferred conditional cascade that is not provably assignable,
- * tripping TS2589 / TS2769. No runtime effect; the slot only governs what
- * the type checker accepts.
+ * The `SchemaInput` arm is redundant at a concrete call site, since a
+ * schema's input is always assignable to its own `DefaultValuesInput`,
+ * and it does not weaken per-field checking (`number` is still rejected
+ * where `string` is expected). It earns its place in the generic
+ * form-wrapper case (#422): when the schema is a free type parameter
+ * `S`, a forwarded `z.input<S>` is REFLEXIVELY assignable to that arm,
+ * a relation TypeScript can decide even under a generic, whereas
+ * `DefaultValuesInput<Form>` alone stays a deferred conditional cascade
+ * that is not provably assignable and trips TS2589 / TS2769. No runtime
+ * effect; the slot only governs what the type checker accepts.
  *
- * `DefaultValuesInput<Form>` is computed ONCE — passed as the `DVI` type
- * argument to `AcceptableDefaultsOf` and referenced across the value and
- * factory arms — rather than inlined in each arm, which would
- * re-instantiate the (deep) cascade three times per overload and, across
- * the unified entry's two overloads at a concrete call site, tip the
- * bundled `.d.ts` into TS2589. The arms stay a DIRECT union (not a
- * conditional over the cascade) so the `SchemaInput` arm remains
- * reflexively matchable under a generic.
+ * `DefaultValuesInput<Form>` is computed ONCE, as the `DVI` argument to
+ * `AcceptableDefaultsOf`, rather than inlined in each arm, which would
+ * re-instantiate the deep cascade three times per overload and, across
+ * the unified entry's two overloads, tip the bundled `.d.ts` into
+ * TS2589. The arms stay a DIRECT union rather than a conditional over
+ * the cascade, so the `SchemaInput` arm remains reflexively matchable
+ * under a generic.
  */
 export type AcceptableDefaults<Form, SchemaInput> = AcceptableDefaultsOf<
   DefaultValuesInput<Form>,

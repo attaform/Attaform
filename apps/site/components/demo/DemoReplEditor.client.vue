@@ -7,7 +7,7 @@
   // The shipment demo lives in repl-demos/shipment-demo.vue so vue-tsc +
   // eslint review it as a real SFC. We import its source text via
   // Vite's `?raw` query and ship that string to @vue/repl. The same
-  // source is both type-checked at build time AND served to users —
+  // source is both type-checked at build time AND served to users:
   // no extraction step, no drift.
   //
   // The shipment demo is also the *default* seed: the homepage REPL
@@ -70,12 +70,12 @@
   // Sandbox-iframe race documented at the top of `<DemoRepl>` can't
   // fire here.
 
-  // Worker URL override — runs once at module load on the client.
+  // Worker URL override, runs once at module load on the client.
   //
   // The Monaco preset bundles its workers and spawns them via
   // `new Worker(new URL("assets/<chunk>.js", import.meta.url), { type: 'module' })`.
   // In dev, Vite injects its `@vite/client` HMR bootstrap into those
-  // worker files — and @vite/client's module-level WebSocket setup
+  // worker files, and @vite/client's module-level WebSocket setup
   // fails to handshake from a worker context, killing every worker
   // at startup. The `bundle-repl-deps.mjs` script copies clean
   // copies of those worker chunks to `/lib/repl-workers/`, served
@@ -85,7 +85,7 @@
   // @vue/repl bundle's getWorker does a non-trivial init handshake
   // for the Vue worker (postMessage of resourceLinks, tsVersion,
   // etc.) that our override would have to reimplement against the
-  // store. Instead, monkey-patch the `Worker` constructor itself —
+  // store. Instead, monkey-patch the `Worker` constructor itself:
   // intercept only the `assets/(editor|vue).worker-*.js` URLs and
   // rewrite them to the static copies, leaving every other Worker
   // construction alone. The init handshake then runs unchanged
@@ -115,8 +115,8 @@
   // allow-popups allow-same-origin allow-scripts
   // allow-top-navigation-by-user-activation) and exposes no hook to
   // extend. It omits `allow-downloads`, so a demo that triggers a file
-  // download — the async-transforms file demo's "Download a sample
-  // links.txt" button — is silently blocked in the playground. (It works
+  // download, the async-transforms file demo's "Download a sample
+  // links.txt" button, is silently blocked in the playground. (It works
   // in the inline <DocsDemo>, which renders the SFC compiled, not in an
   // iframe.) Patching after the fact can't help: @vue/repl sets the
   // sandbox on a detached iframe and appends it, so by the time a
@@ -127,7 +127,7 @@
   // Same monkey-patch shape as the Worker override above: install once
   // per window, guarded by a marker. Intercept `setAttribute` and, when
   // @vue/repl sets a script-allowing sandbox, append `allow-downloads`
-  // BEFORE the iframe is appended and first loads — so the permission is
+  // BEFORE the iframe is appended and first loads, so the permission is
   // in force from the start. Scoped tightly: only a `sandbox` attribute
   // that already grants `allow-scripts` (the preview iframe's signature)
   // is touched, and nothing beyond user-activated downloads is loosened.
@@ -150,8 +150,8 @@
   // Monaco uses a `CancellationError` (name=Canceled, message=Canceled)
   // as a sentinel to abort pending Delayers when disposing model-bound
   // contributions like `WordHighlighter`. The error is functionally
-  // harmless — it's the documented way Monaco signals "this delayed
-  // job is no longer needed" — but Monaco doesn't always attach a
+  // harmless: it's the documented way Monaco signals "this delayed
+  // job is no longer needed", but Monaco doesn't always attach a
   // `.catch()` to the disposer's promise, so the rejection bubbles up
   // as an "Uncaught (in promise) Canceled: Canceled" line on every
   // file-create / file-switch / editor-unmount. Same monkey-patch
@@ -180,7 +180,7 @@
   // bundles `bundle-repl-deps.mjs` emits under `/lib/` (reka-ui as a
   // single barrel; PrimeVue code-split so config + components share one
   // styling singleton). They cost nothing for demos that don't import
-  // them — the iframe only fetches a module when a demo actually
+  // them: the iframe only fetches a module when a demo actually
   // references the specifier. `vue` stays the single shared instance all
   // of them externalize against.
   const importMap = {
@@ -201,7 +201,7 @@
   }
 
   // @vue/repl auto-creates the Vue app and mounts it from `mainFile`. To
-  // install our plugin we use previewOptions.customCode — `importCode`
+  // install our plugin we use previewOptions.customCode: `importCode`
   // appends to the iframe's import block, `useCode` runs after
   // `const app = createApp(AppComponent)` and before `app.mount('#app')`.
   // Without this the REPL boots a bare Vue app and `useForm()` throws
@@ -212,7 +212,7 @@
   // description: values })` and the shim postMessages to the parent
   // docs page, where a `vue-sonner` `<Toaster>` (mounted in
   // `<DemoRepl>`) renders the toast in the docs viewport. Demos
-  // don't import anything — `toast` is exposed as a playground
+  // don't import anything, `toast` is exposed as a playground
   // convenience global, matching the "framework helper" feel real
   // Vue apps wire up via plugins.
   //
@@ -319,7 +319,7 @@
       // the playground compiles SFCs in the browser (no bundler plugin),
       // so v-register resolves at render time against the app registry.
       // vRegister rides the barrel, which the REPL's import map already
-      // serves — no extra subpath bundle needed.
+      // serves: no extra subpath bundle needed.
       importCode:
         `import { createAttaform, vRegister } from 'attaform'` +
         (usesPrimeVue
@@ -393,7 +393,7 @@
   // Volar (via @vue/repl's Monaco bundle) needs THREE callbacks wired up
   // on `resourceLinks` for self-hosted type bundles to work. Missing any
   // one of them silently falls back to unpkg, which doesn't have our
-  // pre-release attaform — so symbols resolve to nothing.
+  // pre-release attaform, so symbols resolve to nothing.
   //
   //   - pkgFileTextUrl: returns the URL for a single file inside the
   //     package (`<pkg>/<path>`). The LSP fetches package.json, .d.ts
@@ -401,7 +401,7 @@
   //   - pkgDirUrl: returns the URL for a JSON directory listing of the
   //     package (the file is `meta.json`, format `{ files: [...] }`,
   //     mimicking unpkg's `?meta` endpoint). Volar's worker uses this
-  //     for EVERY file-existence check via _stat — without it, the LSP
+  //     for EVERY file-existence check via _stat: without it, the LSP
   //     can't confirm `attaform/zod.d.ts` exists and resolution fails.
   //   - pkgLatestVersionUrl: returns a URL whose JSON exposes a
   //     `version` field. Defaults to unpkg's "@latest/package.json".
@@ -419,7 +419,7 @@
   //   1. Must be an arrow function (or function expression). The worker
   //      reconstructs via `Function('return ' + str)()` (vue.worker.js
   //      `createFunc`). Method-shorthand `name(...) { ... }` gives
-  //      `return name(...) { ... }` — a syntax error.
+  //      `return name(...) { ... }`, a syntax error.
   //   2. No closure over outer scope. The reconstructed function runs
   //      in the worker's global scope; module-scoped consts become
   //      ReferenceErrors. Inline the package allowlist in each body.
@@ -480,7 +480,7 @@
   // populated in nuxt.config.ts by reading attaform's, vue's, and
   // zod's actual package.json files. That way a `pnpm version` bump
   // updates everything in lockstep, including what `bundle-repl-deps.mjs`
-  // writes into each virtual package.json — no hard-coded literal
+  // writes into each virtual package.json: no hard-coded literal
   // here to forget about when the lib promotes from -rc.x to stable.
   const { replDependencyVersion } = useRuntimeConfig().public
   const dependencyVersion = ref(replDependencyVersion)
@@ -503,7 +503,7 @@
   // Monaco preset internally maps that to Shiki's bundled
   // `light-plus` / `dark-plus` and re-applies on change via
   // `editor.updateOptions`. Don't set `theme` in `monacoOptions`
-  // here — it spreads AFTER the prop-derived default at construct
+  // here: it spreads AFTER the prop-derived default at construct
   // time and would never change again because the preset's watcher
   // only listens on the `<Repl>` prop.
   const colorMode = useColorMode()
@@ -518,7 +518,7 @@
     renderLineHighlight: 'gutter' as const,
     smoothScrolling: true,
     // By default Monaco's scrollbar consumes every wheel event over its
-    // viewport — even when the editor is pinned at its top or bottom
+    // viewport, even when the editor is pinned at its top or bottom
     // extreme. In a docs page that ends well below the REPL, that traps
     // the reader inside the editor pane; they have to move the cursor
     // off the editor before they can keep scrolling the page. Setting
@@ -572,11 +572,11 @@
   // Seed a tsconfig alongside the demo source. @vue/repl ships its
   // own default tsconfig but doesn't include the unused-locals /
   // parameters checks, so a `const c = 1` in the playground only
-  // surfaces a hover hint — no inline strikethrough or squiggle.
+  // surfaces a hover hint: no inline strikethrough or squiggle.
   // The fields below match @vue/repl's defaults; we add the two
   // unused-identifier flags on top so Volar's TS service surfaces
   // them as real diagnostics. `:show-tsconfig="false"` on the
-  // <Repl> prop above keeps this file out of the tab strip — it's
+  // <Repl> prop above keeps this file out of the tab strip; it's
   // configuration, not editable surface.
   //
   // `lib` is set explicitly because Volar's in-worker TS service
@@ -609,22 +609,21 @@
   // this, demos that call `toast(...)` get a red squiggle saying
   // "Cannot find name 'toast'" even though the call works.
   //
-  // Volar's in-Monaco service has its own type universe — it fetches
+  // Volar's in-Monaco service has its own type universe: it fetches
   // package declarations through @vue/repl's `pkgFileTextUrl`
   // callback and only loads types for packages explicitly imported
   // in the demo. The host-side `apps/site/types/playground-globals
   // .d.ts` only covers vue-tsc on the build server; the in-iframe TS
   // service needs the declaration as a file in its own project.
   //
-  // The declaration MUST go through the initial `setFiles` payload —
-  // not a follow-up `addFile`. @vue/repl's `setFiles` is async
-  // (`await compileFile` per file) and ends with `store.files = files`
-  // — a wholesale replacement of the reactive map (see
-  // `chunks/core-CFIh3kZc.js:20096-20108`). Any `addFile` interleaved
+  // The declaration MUST go through the initial `setFiles` payload, not a
+  // follow-up `addFile`. @vue/repl's `setFiles` is async (`await
+  // compileFile` per file) and ends with `store.files = files`, a
+  // wholesale replacement of the reactive map. Any `addFile` interleaved
   // with a pending `setFiles` mutates the *previous* map and gets
   // discarded when setFiles' overwrite lands. Volar's worker reads
-  // URIs via `Object.keys(store.files)` (`monaco-editor.js:149987`),
-  // so a dropped file means a missing project member.
+  // URIs via `Object.keys(store.files)`, so a dropped file means a
+  // missing project member.
   //
   // The tab is then hidden post-resolution by flipping
   // `file.hidden = true` on the File instance setFiles created.
@@ -1014,17 +1013,16 @@ declare module '@primeuix/themes/aura';
   }
 
   // Replace @vue/repl's native `confirm(...)` prompt on file deletion
-  // with a styled modal. The store's `deleteFile` (defined in
-  // @vue/repl's core at `chunks/core-CFIh3kZc.js:20016`) fires
+  // with a styled modal. The store's `deleteFile` fires
   // `confirm("Are you sure you want to delete <name>?")` and returns
-  // early on cancel; this browser-native dialog looks foreign next to
-  // the docs surface and clips behind the editor floats on Safari.
+  // early on cancel; that browser-native dialog looks foreign next to the
+  // docs surface and clips behind the editor floats on Safari.
   //
   // Strategy: monkey-patch `store.deleteFile` to queue the filename
   // for our modal instead of calling the native confirm path. When
   // the user confirms via our buttons, we temporarily stub
   // `window.confirm` to return `true` and call the ORIGINAL
-  // deleteFile — that keeps @vue/repl's actual deletion logic
+  // deleteFile: that keeps @vue/repl's actual deletion logic
   // (`if (activeFilename === filename) activeFilename = mainFile;
   // delete files[filename]`) as the single source of truth. If
   // @vue/repl's deleteFile body grows extra cleanup steps in a
@@ -1050,7 +1048,7 @@ declare module '@primeuix/themes/aura';
       return window.sessionStorage.getItem(SKIP_CONFIRM_KEY) === '1'
     } catch {
       // Private-mode Safari throws on sessionStorage access. If we
-      // can't read the preference, default to asking — the safer
+      // can't read the preference, default to asking: the safer
       // direction.
       return false
     }
@@ -1059,7 +1057,7 @@ declare module '@primeuix/themes/aura';
     try {
       window.sessionStorage.setItem(SKIP_CONFIRM_KEY, '1')
     } catch {
-      // Same caveat as hasSkipConsent — silent on private-mode
+      // Same caveat as hasSkipConsent, silent on private-mode
       // storage failures rather than crashing the delete flow.
     }
   }
@@ -1070,14 +1068,14 @@ declare module '@primeuix/themes/aura';
 
   // Refs for the dialog's three focusable elements, populated via the
   // `:ref="bind..."` callback bindings on each element in the
-  // template. Callback refs fire reliably on every mount — including
+  // template. Callback refs fire reliably on every mount, including
   // re-mounts through Teleport, where `useTemplateRef` + Transition
   // hooks lose the timing race on second-and-subsequent opens
   // (the @after-enter event silently doesn't fire when Vue reuses
   // the teleported node, and `nextTick` runs before the node is in
   // the DOM tree). The callback approach moves the auto-focus into
   // the Cancel button's own mount cycle, so the focus call lands at
-  // the exact moment the element becomes focusable — no polling,
+  // the exact moment the element becomes focusable: no polling,
   // no race.
   const checkboxRef = shallowRef<HTMLInputElement | null>(null)
   const cancelButtonRef = shallowRef<HTMLButtonElement | null>(null)
@@ -1114,7 +1112,7 @@ declare module '@primeuix/themes/aura';
   // position rather than getting dumped at the top of the document.
   let previousActiveElement: Element | null = null
   // Body-level scroll lock state. While the dialog is open the
-  // surrounding page should feel inert — the user is being asked to
+  // surrounding page should feel inert: the user is being asked to
   // decide about a specific file and any scroll happening behind the
   // backdrop just adds visual noise. We save and restore `body.style
   // .overflow` rather than always assuming the default so existing
@@ -1155,7 +1153,7 @@ declare module '@primeuix/themes/aura';
     performDelete(filename)
   }
   function cancelPendingDelete() {
-    // Cancel does NOT persist the checkbox state — opting out of
+    // Cancel does NOT persist the checkbox state: opting out of
     // confirmation should require the user to actually go through
     // with a deletion, not just back out while having ticked the box.
     pendingDelete.value = null
@@ -1164,7 +1162,7 @@ declare module '@primeuix/themes/aura';
   // cycle between the three focusable elements (Checkbox, Cancel,
   // Delete) so focus can't leave the dialog. Attach + detach the
   // listener as the dialog opens / closes rather than mounting a
-  // persistent one — the editor itself uses Tab for indentation and
+  // persistent one: the editor itself uses Tab for indentation and
   // we don't want to interfere with that the rest of the time.
   watch(pendingDelete, (current, previous) => {
     if (current && !previous) {
@@ -1173,7 +1171,7 @@ declare module '@primeuix/themes/aura';
       previousBodyOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
       window.addEventListener('keydown', handleDialogKeydown)
-      // Initial focus lands inside `bindCancelButton` above — the
+      // Initial focus lands inside `bindCancelButton` above: the
       // `:ref` callback fires on every mount of the Cancel button,
       // so the focus call rides the element's own lifecycle instead
       // of guessing at Teleport/Transition timing from out here.

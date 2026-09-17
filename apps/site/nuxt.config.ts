@@ -9,65 +9,41 @@ import type { Logger, LogOptions, Plugin as VitePlugin } from 'vite'
 import attaformPkg from '../../package.json'
 import vuePkg from 'vue/package.json'
 import zodPkg from 'zod/package.json'
-// `zod-v3` is an npm-aliased package — pnpm installs zod@3.x under
-// the directory name `zod-v3` (see root package.json:
-// `"zod-v3": "npm:zod@^3.24"`). The aliased path resolves to its
-// own package.json, whose version field is the v3.x release.
+// `zod-v3` is an npm alias: pnpm installs zod@3.x under that directory
+// name (root package.json, `"zod-v3": "npm:zod@^3.24"`), so this path
+// resolves to its own package.json and a v3.x version field.
 import zodV3Pkg from 'zod-v3/package.json'
-// Build-time demo-style construction: composes each folder demo's gitignored
-// `styles.css` from the shared fragment registry + its `styles.json`. Imported
-// here for the dev-server plugin below; build/generate run it via the
-// `codegen:demo-styles` package script before typecheck. See
-// `scripts/demo-styles/`.
+// Composes each folder demo's gitignored `styles.css` from the shared
+// fragment registry plus its `styles.json`. Imported here for the
+// dev-server plugin below; build and generate run it through the
+// `codegen:demo-styles` package script before typecheck.
 import { generateAll, generateOne } from './scripts/demo-styles/codegen.mjs'
 
-// Compute the on-disk path to the monorepo root (two levels up from
-// `apps/site`). Used to broaden Vite's `server.fs.allow` so the
-// dev server can stream files from the workspace's hoisted
-// `node_modules/.pnpm/...` tree (see the `vite.server.fs.allow`
-// block below for the full rationale).
+// The monorepo root, two levels up. Broadens Vite's `server.fs.allow` so
+// the dev server can stream files from the workspace's hoisted
+// `node_modules/.pnpm/...` tree; see `vite.server.fs.allow` below.
 const monorepoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 // Replace Vite's `vite:asset-import-meta-url` plugin filter with a
-// linear-time substring check. The built-in filter shape (verified at
-// `vite@7.3.3/dist/node/chunks/config.js:27704`) is:
-//
-//   transform: {
-//     filter: {
-//       id: { exclude: [...] },
-//       code: /new\s+URL.+import\.meta\.url/s
-//     }
-//   }
-//
-// The `.+` between `new\s+URL` and `import\.meta\.url`, combined with
-// the `s` (dotAll) flag, catastrophic-backtracks on dense minified
-// content >5 MB. V8's regex engine blows its internal stack and
-// throws `Maximum call stack size exceeded` from `pattern.test`.
-// Concrete trip-wire: `@vue/repl/monaco-editor`'s 7.2 MB prebundle,
+// linear-time substring check. Its built-in code filter is
+// `/new\s+URL.+import\.meta\.url/s`, and that `.+` under the dotAll flag
+// catastrophic-backtracks on dense minified content over 5 MB: V8 blows
+// its regex stack and `pattern.test` throws `Maximum call stack size
+// exceeded`. `@vue/repl/monaco-editor`'s 7.2 MB prebundle trips it,
 // surfacing as an `Internal server error` on the first `/demos/<slug>`
-// page load. Captured via filter-trace instrumentation as
-// `[filter-trace] THREW plugin=vite:asset-import-meta-url`.
+// load.
 //
-// The handler does its own precise position-aware matching inside via
-// a more specific regex (`assetImportMetaUrlRE`), so the filter only
-// needs to gate the broad "could this contain such a pattern" check.
-// Replacing the regex with the literal string `'import.meta.url'`
-// triggers `String.prototype.includes` (linear-time, no backtracking)
-// in Vite's `patternToCodeFilter`. Files that have `import.meta.url`
-// but not `new URL(...)` will reach the handler, do their own regex
-// match, find nothing, and return undefined — a no-op transform that
-// costs O(file-length) per occurrence but never overflows.
+// The filter only has to answer "could this contain such a pattern",
+// since the handler re-matches precisely with `assetImportMetaUrlRE`.
+// The literal string routes Vite's `patternToCodeFilter` through
+// `String.prototype.includes`, which cannot backtrack. A file holding
+// `import.meta.url` without `new URL(...)` now reaches the handler,
+// finds nothing and returns undefined.
 //
-// Caching note: Vite caches filters per plugin in a WeakMap keyed by
-// the plugin object identity, built lazily on first transform call.
-// Mutating `plugin.transform.filter.code` at `configResolved` time
-// happens before any transform fires, so Vite reads the patched
-// filter on first cache fill. `enforce: 'post'` ensures this runs
-// after all upstream plugins have been resolved into the config.
-//
-// An upstream fix to Vite's regex would benefit every consumer with
-// a megabyte-class dep in their graph; this local patch is the
-// version that lands today.
+// Patching at `configResolved` is what makes the mutation stick: Vite
+// caches filters per plugin in a WeakMap built lazily on the first
+// transform, which is after this runs. `enforce: 'post'` puts it after
+// every upstream plugin has resolved into the config.
 const fixViteAssetImportMetaUrlFilter: VitePlugin = {
   name: 'attaform:fix-vite-asset-import-meta-url-filter',
   enforce: 'post',
@@ -79,24 +55,19 @@ const fixViteAssetImportMetaUrlFilter: VitePlugin = {
   },
 }
 
-// `pages/demos/[slug].vue`, `pages/demos/index.vue`, and
-// `components/content/DocsDemo.vue` each discover every demo SFC
-// via `import.meta.glob('../../docs-demos/*.vue')`. The glob's key set
-// is resolved once at module-eval time, eager or lazy. When a
-// new SFC lands inside `docs-demos/` after a consumer module has
-// already compiled, Vite's default invalidation is best-effort: the
-// file watcher fires, but the consumer's transform cache does not
-// always rerun before the next SSR render. The symptom is a 404
-// from `/demos/<new-slug>` (the demos routes) or an in-page
-// `[DocsDemo] no demo found for slug "..."` throw (the inline
-// embed used in docs pages).
+// Three modules discover every demo SFC through
+// `import.meta.glob('../../docs-demos/*.vue')`, and a glob's key set is
+// resolved once at module-eval time. When an SFC lands in `docs-demos/`
+// after a consumer has compiled, Vite's invalidation is best-effort: the
+// watcher fires, but the consumer's transform cache does not reliably
+// rerun before the next SSR render. That shows up as a 404 from
+// `/demos/<new-slug>`, or an in-page `[DocsDemo] no demo found for slug`
+// throw on the inline embed.
 //
-// This plugin watches `apps/site/docs-demos/` for `add` and `unlink`
-// events. On either, it invalidates every glob consumer in the
-// dev server's module graph and broadcasts a full reload, so the
-// next render sees the fresh glob keys. Modify events are left
-// alone — they invalidate the touched SFC via Vite's normal HMR
-// path, which the consumer module already proxies.
+// So on `add` and `unlink` under `docs-demos/`, invalidate every glob
+// consumer in the dev server's module graph and broadcast a full reload.
+// Modify events are deliberately left alone: those invalidate the touched
+// SFC through normal HMR, which the consumer already proxies.
 const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
   name: 'attaform:invalidate-demo-glob-consumers-on-demo-change',
   apply: 'serve',
@@ -126,16 +97,12 @@ const invalidateDemoGlobConsumersOnDemoChange: VitePlugin = {
   },
 }
 
-// Demo styles are generated, not authored: each demo's `styles.css` is
-// composed from `scripts/demo-styles/registry.mjs` plus the demo's
-// `styles.json` manifest. The files are gitignored, so the dev server must
-// materialize them. `configureServer` runs once at startup (before any module
-// is transformed, so App.vue's `import './styles.css'` and the playground's
-// `?raw` glob both resolve) and again on every Nuxt config restart. The
-// watcher regenerates on the fly: edit a `styles.json` and only that demo
-// re-emits; edit the registry and every demo re-emits. The resulting CSS
-// change rides Vite's normal HMR for the inline `<DocsDemo>`; the standalone
-// playground picks it up on reload.
+// Demo styles are generated, not authored, and gitignored, so the dev
+// server has to materialize them. `configureServer` runs at startup
+// before any module is transformed, which is what makes both App.vue's
+// `import './styles.css'` and the playground's `?raw` glob resolve, and
+// again on every Nuxt config restart. Editing a `styles.json` re-emits
+// that demo alone; editing the registry re-emits all of them.
 const generateDemoStylesOnServe: VitePlugin = {
   name: 'attaform:generate-demo-styles-on-serve',
   apply: 'serve',
@@ -160,21 +127,18 @@ const generateDemoStylesOnServe: VitePlugin = {
   },
 }
 
-// The playground page (`pages/demos/[slug].vue`) seeds the REPL by importing
-// every folder-demo file as raw text, each demo's generated `styles.css`
-// included, via `import.meta.glob(..., { query: '?raw' })`. That glob is
-// evaluated during SSR (the page renders server-side), and Vite's `css-post`
-// plugin treats any id whose path ends in `.css` as a style request even with
-// `?raw` — appending `?inline&used`. The result is the malformed id
-// `styles.css?raw?inline&used`, which Rollup then parses as JavaScript and
-// rejects at the first `.demo {` ("Expression expected"). The client build
-// tolerates raw CSS; the SSR build does not.
+// The playground page seeds the REPL by importing every folder-demo file
+// as raw text, generated `styles.css` included, and that glob is evaluated
+// during SSR. Vite's `css-post` plugin treats any id ending in `.css` as a
+// style request even under `?raw`, appending `?inline&used`, so the id
+// becomes `styles.css?raw?inline&used`; Rollup then parses it as
+// JavaScript and rejects the first `.demo {` with "Expression expected".
+// The client build tolerates raw CSS, the SSR build does not.
 //
-// This `pre` plugin claims those raw-CSS imports first: it maps each demo
-// `styles.css?raw` to an opaque virtual id that carries no `.css` in its path,
-// so `css-post` ignores it, and loads it as a default-exported string. The REPL
-// still receives the exact bytes `App.vue` imports — readable and unminified —
-// on both the inline and playground render paths.
+// Claiming those imports first maps each `styles.css?raw` to an opaque
+// virtual id with no `.css` in its path, which `css-post` ignores, and
+// loads it as a default-exported string. The REPL still receives the exact
+// bytes `App.vue` imports on both render paths.
 const DEMO_RAW_CSS_RE = /docs-demos[\\/][^\\/]+[\\/]styles\.css\?raw$/
 const DEMO_RAW_CSS_PREFIX = '\0demo-raw-css:'
 const demoRawCssFiles = new Map<string, string>()
@@ -196,55 +160,44 @@ const serveDemoRawCss: VitePlugin = {
   },
 }
 
-// Two warning families fire on every build, are not ours to fix,
-// and add nothing actionable for a maintainer reading the logs:
+// Four warning families fire on every build, are not ours to fix, and
+// give a maintainer reading the logs nothing to act on. Each filter is
+// matched narrowly, so an unrelated warning of the same family still
+// surfaces.
 //
-//   1. "Sourcemap is likely to be incorrect: a plugin (…) was used
-//      to transform files, but didn't generate a sourcemap for the
-//      transformation."
-//      — Tailwind v4's vite plugin and Nuxt's module-preload-polyfill
-//      transform without emitting sourcemaps. Rollup walks the chain
-//      and warns ~17×/build that the resulting maps would be lossy.
-//      We've disabled sourcemap output anyway (vite.build.sourcemap
-//      = false), so the maps don't ship — the warnings are stale.
+//   1. "Sourcemap is likely to be incorrect: a plugin (…) was used to
+//      transform files, but didn't generate a sourcemap."
+//      Tailwind v4's Vite plugin and Nuxt's module-preload-polyfill
+//      transform without emitting sourcemaps, and Rollup warns about
+//      17 times a build that the resulting maps would be lossy. Nothing
+//      ships them: `vite.build.sourcemap` is false.
 //
-//   2. "new URL(\"assets/(editor|vue).worker-…\", import.meta.url)
-//      doesn't exist at build time, it will remain unchanged to be
-//      resolved at runtime."
-//      — @vue/repl's Monaco preset constructs its worker URLs via
-//      dynamic strings; Vite's static analyser can't resolve them
-//      and warns. That warning is exactly the trigger condition for
-//      the Worker-constructor Proxy in DemoReplEditor.client.vue,
-//      which intercepts the runtime resolution and reroutes to
-//      /lib/repl-workers/* (the static copies bundle:repl emits).
-//      Filtered narrowly to the editor + vue worker filenames; any
-//      other "URL doesn't exist at build time" warning still surfaces.
+//   2. "new URL(\"assets/(editor|vue).worker-…\", import.meta.url) doesn't
+//      exist at build time, it will remain unchanged to be resolved at
+//      runtime."
+//      @vue/repl's Monaco preset builds its worker URLs from dynamic
+//      strings that Vite's static analyser cannot resolve. That runtime
+//      resolution is exactly what the Worker-constructor Proxy in
+//      DemoReplEditor.client.vue intercepts, rerouting to the static
+//      copies `bundle:repl` emits under /lib/repl-workers/.
 //
 //   3. "Unresolvable optimizeDeps.include entries: @nuxtjs/mdc > …"
-//      — @nuxtjs/mdc (pulled in transitively by @nuxt/content) declares
-//      its own remark/rehype/unified sub-deps in its Vite optimizeDeps
-//      manifest. Under pnpm's strict hoist, those sub-deps live deep
-//      in the workspace store; Vite's resolver (rooted at apps/site)
-//      can't reach them via the `parent > child` traversal because
-//      @nuxtjs/mdc itself isn't surfaced at apps/site/node_modules.
-//      The warning is harmless — Nuxt's own machinery re-resolves the
-//      deps through @nuxt/content's pipeline at module-load time —
-//      and listing the entries explicitly in our config doesn't help
-//      (they'd just add their own unresolvable copies). Filtered
-//      narrowly to the @nuxtjs/mdc prefix.
+//      @nuxtjs/mdc, transitive through @nuxt/content, declares its own
+//      remark/rehype/unified sub-deps in its Vite optimizeDeps manifest.
+//      Under pnpm's strict hoist those live deep in the workspace store,
+//      and Vite's resolver, rooted at apps/site, cannot reach them by
+//      `parent > child` traversal because @nuxtjs/mdc is not surfaced at
+//      apps/site/node_modules. Harmless: Nuxt re-resolves them through
+//      @nuxt/content's pipeline at module-load time. Listing the entries
+//      here does not help, since they would add unresolvable copies of
+//      their own.
 //
-//   4. "Payload extraction is recommended for full-static output. You can
-//      enable it by setting experimental.payloadExtraction to true or
-//      'client'."
-//      — Fires during `nuxi dev` because we INTENTIONALLY disable payload
-//      extraction in development to dodge the ENOTDIR Nitro cache collision
-//      documented in the `experimental:` block below. The warning is correct
-//      for production (we DO want payload extraction in static output), but
-//      our `experimental.payloadExtraction` gate already does the right thing
-//      based on NODE_ENV — the warning fires in dev anyway because Nitro
-//      reads `nitro.static: true` and assumes the warning applies regardless
-//      of mode. Filter narrowly to the exact string so any unrelated payload
-//      warning still surfaces.
+//   4. "Payload extraction is recommended for full-static output."
+//      Fires under `nuxi dev` because payload extraction is deliberately
+//      off in development, to dodge the ENOTDIR Nitro cache collision
+//      documented in the `experimental:` block below. The advice is right
+//      for production, where the gate does enable it; Nitro reads
+//      `nitro.static: true` and warns regardless of mode.
 function isFilteredBuildWarning(msg: string): boolean {
   if (msg.includes('Sourcemap is likely to be incorrect')) return true
   if (
@@ -266,9 +219,9 @@ function isFilteredBuildWarning(msg: string): boolean {
 // Nuxt vite-builder's "Unresolvable optimizeDeps.include entries"
 // warning (emitted via `logger.warn(...)` from inside the optimizer
 // poll) flows through our filter. The Vite-side `customLogger` wrap
-// further down doesn't catch this — vite-builder constructs a fresh
-// Vite logger AND also calls into the kit Consola directly for the
-// optimize-deps callback, so we need both layers.
+// further down does not catch it: vite-builder constructs a fresh Vite
+// logger AND calls into the kit Consola directly for the optimize-deps
+// callback, so both layers are needed.
 {
   const origWarn = nuxtKitLogger.warn.bind(nuxtKitLogger)
   nuxtKitLogger.warn = ((...args: unknown[]) => {
@@ -278,25 +231,19 @@ function isFilteredBuildWarning(msg: string): boolean {
   }) as typeof nuxtKitLogger.warn
 }
 
-// `console.warn` self-healing guard. Background: under Nuxt 4.4 +
-// Vite 7 + consola 3.4, the SSR bundle pass calls
-// `Consola.wrapAll() → wrapConsole()`, which writes `console[type] =
-// this[type].raw` for every type. For the SSR-targeted consola
-// instance, `this.warn.raw` resolves to `undefined` (the .raw
-// property is set up only on the rich Node consola, not the
-// browser-shimmed one Vite produces when `node:tty` is externalized).
-// `console.warn` then becomes `undefined` — and the next time
-// Rollup's `defaultPrintLog` tries to surface a warning during
-// prerender, it crashes with `TypeError: console.warn is not a
-// function`.
+// `console.warn` self-healing guard. Under Nuxt 4.4, Vite 7 and consola
+// 3.4, the SSR bundle pass calls `Consola.wrapAll()`, which writes
+// `console[type] = this[type].raw` for every type. On the SSR-targeted
+// consola instance `this.warn.raw` is `undefined`, since `.raw` exists
+// only on the rich Node consola and not on the browser-shimmed one Vite
+// produces once `node:tty` is externalized. `console.warn` becomes
+// undefined, and the next Rollup warning during prerender crashes
+// `defaultPrintLog` with `TypeError: console.warn is not a function`.
+// `nuxi build` then exits non-zero on a warning nobody ever sees.
 //
-// The downstream symptom is that `nuxi build` / `nuxi generate` exit
-// non-zero on a hidden Rollup warning rather than completing the
-// prerender. The fix lives at the boundary where the bug lands:
-// reject any non-function assignment to `console.warn` and quietly
-// fall back to the original. The override survives the swap but the
-// global `console.warn` keeps working, so Rollup's warning printer
-// stays alive long enough for prerender to finish.
+// Rejecting any non-function assignment and falling back to the original
+// lets the override land while keeping the global callable, so Rollup's
+// warning printer survives to the end of the prerender.
 {
   const realWarn = console.warn.bind(console)
   let current: typeof console.warn = realWarn
@@ -312,35 +259,28 @@ function isFilteredBuildWarning(msg: string): boolean {
 }
 
 export default defineNuxtConfig({
-  // `@nuxt/fonts` was here previously to proxy Inter + JetBrains Mono
-  // through Google Fonts at dev time and build time. Removing it
-  // because that proxy was a single-point-of-failure: an
-  // intermittently slow `fonts.gstatic.com` 500'd the dev server
-  // (the page renderer can't resolve fonts → Nitro returns 500) and
-  // — separately — failed CI on the bad-luck day. The .woff2 files
-  // now live committed under `public/fonts/` and are referenced by
-  // the @font-face block in `assets/css/fonts.css` (imported by
-  // `tailwind.css`). `nuxt-og-image` still pulls Satori fonts from
-  // Google at build time, but a build-time failure there is loud
-  // and fixable — not a user-facing 500.
+  // Deliberately no font module. Inter and JetBrains Mono are committed
+  // as .woff2 under `public/fonts/` and referenced by the @font-face
+  // block in `assets/css/fonts.css`, because proxying them through
+  // Google Fonts made `fonts.gstatic.com` a single point of failure: a
+  // slow response left the page renderer unable to resolve a font and
+  // Nitro returned 500, in dev and in CI alike. `nuxt-og-image` still
+  // fetches Satori fonts at build time, where a failure is loud and
+  // fixable rather than user-facing. `pnpm fonts:refresh` re-fetches the
+  // committed .woff2 files when a weight or version changes.
   modules: [attaformModule, '@nuxt/content', '@nuxtjs/color-mode', '@nuxtjs/seo'],
-  // Source-alias attaform subpath imports for vue-tsc as well, not
-  // just Vite and Nitro. Without a tsconfig-level alias, vue-tsc
-  // resolves `attaform`, `attaform/zod`, etc. through the package
-  // `exports` map to `dist/*.d.mts`. The generated
-  // `.nuxt/types/plugins.d.ts` references the runtime plugin via a
-  // relative `../../../../src/runtime/plugins/attaform` path (Nuxt
-  // resolves the addPlugin src against the workspace), so src also
-  // enters the project graph. Result: TWO `pathKeyBrand: unique
-  // symbol` declarations — one inside dist's bundled .d.ts, one
-  // inside src's paths.ts — and TS treats them as distinct nominal
-  // brands. The `v-register` directive's expected payload type
-  // (from the merged GlobalDirectives augmentations) ends up
-  // checking dist-branded values against src-branded slots, and
-  // shipment-demo's checkbox `register('termsAccepted')` calls
-  // light up red. Aliasing in tsconfig collapses every consumer
-  // import back to src, giving the project a single PathKey
-  // identity and matching the runtime aliases below.
+  // Source-alias the attaform subpaths for vue-tsc too, not just Vite and
+  // Nitro. Without a tsconfig-level alias, vue-tsc resolves them through
+  // the package `exports` map to `dist/*.d.mts`, while the generated
+  // `.nuxt/types/plugins.d.ts` reaches the runtime plugin by a relative
+  // `../../../../src/runtime/plugins/attaform` path. Both trees then sit
+  // in the project graph, carrying two `pathKeyBrand: unique symbol`
+  // declarations that TypeScript treats as distinct nominal brands. The
+  // `v-register` payload type from the merged GlobalDirectives
+  // augmentations ends up checking dist-branded values against
+  // src-branded slots, and a `register('termsAccepted')` call goes red.
+  // Aliasing here collapses every import back to src, so the project
+  // holds one PathKey identity and matches the runtime aliases below.
   alias: {
     attaform: resolve(monorepoRoot, 'src/index.ts'),
     'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
@@ -352,46 +292,27 @@ export default defineNuxtConfig({
     'attaform/vite': resolve(monorepoRoot, 'src/vite.ts'),
     'attaform/transforms': resolve(monorepoRoot, 'src/transforms.ts'),
   },
-  // @nuxtjs/seo is the umbrella that wires sitemap.xml + robots.txt +
-  // per-page canonical links + nuxt-og-image (per-route social cards)
-  // + nuxt-schema-org (JSON-LD) + nuxt-link-checker behind one module.
-  // The auto-generated sitemap walks the prerendered routes set;
-  // canonicals + OG meta + structured-data URLs all resolve against
-  // `site.url`.
+  // @nuxtjs/seo wires sitemap.xml, robots.txt, per-page canonicals,
+  // nuxt-og-image, nuxt-schema-org and nuxt-link-checker behind one
+  // module. The sitemap walks the prerendered routes set, and canonicals,
+  // OG meta and structured-data URLs all resolve against `site.url`.
   //
-  // Pin to the apex host. `attaform.dev` is the canonical origin;
-  // `www.attaform.dev` and both `attaform.com` hosts 301 to it at the
-  // Vercel layer. Emitting sitemap entries (and canonicals, and og:url)
-  // on the apex means the crawler reaches the canonical URL with no
-  // redirect hop, so no crawl budget is wasted and no duplicate-content
-  // signal is sent. Everything we ship points at the apex.
+  // `site.url` pins the apex. `attaform.dev` is the canonical origin, and
+  // `www.attaform.dev` plus both `attaform.com` hosts 301 to it at the
+  // Vercel layer, so emitting on the apex means a crawler reaches the
+  // canonical URL with no redirect hop and no duplicate-content signal.
   //
-  // `indexable` gates the ENTIRE SEO-discovery surface on a single
-  // env flag — same gate the IndexNow ping uses
-  // (`scripts/indexnow-ping.mjs`). When `false`:
+  // `indexable` gates the entire SEO-discovery surface on one flag, the
+  // same one `scripts/indexnow-ping.mjs` reads. When false, robots.txt
+  // becomes `Disallow: /`, the sitemap route is suppressed, and every
+  // page emits `<meta name="robots" content="noindex, nofollow">`.
   //
-  //   - `robots.txt` flips to `User-agent: * \n Disallow: /`
-  //   - The sitemap.xml route is suppressed
-  //   - Every page emits `<meta name="robots" content="noindex, nofollow">`
-  //   - Schema.org JSON-LD `url` resolution stays internally consistent
-  //     but crawlers honoring the meta tag won't follow.
-  //
-  // Default posture is `false` — sandboxed branches, preview deploys,
-  // local builds, and CI all produce non-indexable output. Only a
-  // Vercel **production** deploy (`VERCEL_ENV === 'production'`) flips
-  // to `true`. There is intentionally no force-override flag: the
-  // production gate is the single source of truth, matching the
-  // IndexNow script's posture. If you need to manually test the
-  // indexable variant locally, set `VERCEL_ENV=production` explicitly
-  // on the `pnpm build` command line.
-  //
-  // Belt + suspenders: the static output may still be reachable at
-  // its deploy URL, but search engines that respect `robots.txt` AND
-  // the `noindex` meta tag will skip it. Bing's IndexNow endpoint is
-  // never pinged (separate gate in the index:bing script). The
-  // attack surface for "sandbox URL appears in Google" collapses to
-  // direct backlinks from indexable pages — which production never
-  // emits to preview hostnames.
+  // It defaults to false, so sandboxed branches, preview deploys, local
+  // builds and CI all produce non-indexable output, and only a Vercel
+  // production deploy flips it. There is deliberately no force-override:
+  // the production gate is the single source of truth, matching the
+  // IndexNow script. To see the indexable variant locally, set
+  // `VERCEL_ENV=production` on the `pnpm build` command line.
   site: {
     url: 'https://attaform.dev',
     name: 'Attaform',
@@ -399,52 +320,38 @@ export default defineNuxtConfig({
     defaultLocale: 'en',
     indexable: process.env.VERCEL_ENV === 'production',
   },
-  // nuxt-og-image renders Vue components to 1200×630 PNGs at build
-  // time via Satori. We're on the generic Nitro `static` preset
-  // (rather than the platform-specific `vercel-static`) for
-  // portability — the resulting `dist/` is servable anywhere. The
-  // og-image module reads `nitro.static` (set in the `nitro:` block
-  // below) to detect SSG and route to its `nitro-prerender`
-  // compatibility profile.
+  // nuxt-og-image renders Vue components to 1200x630 PNGs at build time
+  // through Satori. The generic Nitro `static` preset is chosen over the
+  // platform-specific `vercel-static` for portability, so the resulting
+  // `dist/` is servable anywhere. The module reads `nitro.static`, set in
+  // the `nitro:` block below, to detect SSG and route to its
+  // `nitro-prerender` compatibility profile.
   //
-  // `zeroRuntime: true` disables dynamic image generation entirely —
-  // every OG image is prerendered at build time, no runtime image
-  // generation endpoint is served. Two effects:
-  //   1. The "OG image URLs are not signed. Anyone can craft arbitrary
-  //      image generation requests" warning goes away. Pure SSG: there
-  //      IS no runtime to sign requests against.
-  //   2. The static output excludes the dynamic-generation entry, so the
-  //      attack surface (request forgery → free CPU on a server we
-  //      don't have) collapses to nothing.
-  // Setting a NUXT_OG_IMAGE_SECRET would also silence the warning, but
-  // we'd be paying for a runtime we don't ship.
+  // `zeroRuntime: true` prerenders every OG image at build time and
+  // serves no runtime generation endpoint. That removes both the "OG
+  // image URLs are not signed" warning, which has no purchase on pure
+  // SSG, and the request-forgery surface it warns about. A
+  // NUXT_OG_IMAGE_SECRET would silence the warning too, but at the price
+  // of a runtime this site does not ship.
+  //
+  // No `fonts:` block on purpose: nuxt-og-image v6 dropped it in favour
+  // of reading a font module or falling back to its `fontless` resolver,
+  // and that resolver fetches font bytes at build time only, where a
+  // Google CDN hiccup is a build failure rather than a dev-server 500.
+  // The cards use Inter alone (`components/OgImage/Default.satori.vue`),
+  // so the resolver narrows to that family at render time.
   ogImage: { zeroRuntime: true },
+  // nuxt-link-checker probes every <a>, canonical and og:url on every
+  // prerendered page. `failOnError` exits the build non-zero on a broken
+  // internal link, the same gate `nitro.prerender.failOnError` applies to
+  // 500s. External URLs stay out of the loop by default, so an upstream
+  // tool retiring its domain cannot fail CI; link rot on the wider web is
+  // a manual cleanup task in exchange.
   //
-  // No `fonts:` block here on purpose. nuxt-og-image v6 dropped
-  // that field in favour of reading from `@nuxt/fonts` (now gone
-  // in this app — see the `modules:` comment) or falling back to
-  // its `fontless` resolver. The fontless resolver fetches font
-  // bytes at PREVIEW / BUILD time only, so a Google CDN hiccup
-  // there is a build failure (loud, fixable in CI) rather than a
-  // user-facing dev-server 500. The OG cards themselves only ever
-  // use Inter (see `components/OgImage/Default.satori.vue`), so
-  // the resolver narrows to that family at render time.
-  // nuxt-link-checker walks every prerendered HTML page and probes
-  // each <a> + canonical / og:url for resolvability. With
-  // `failOnError: true`, a broken internal link exits the build
-  // non-zero — the same gate that `nitro.prerender.failOnError` uses
-  // for 500s, applied at the link layer. `fetchRemoteUrls: false`
-  // (the default) keeps external URLs out of the loop: an upstream
-  // dev tool retiring its domain shouldn't fail our CI. The trade-
-  // off is real internal breakage gets caught in CI, while link rot
-  // on the wider web stays a manual cleanup task.
-  //
-  // `strictNuxtContentPaths: true` tells the inspector that our
-  // markdown source paths map 1:1 to live URLs (docs/foo.md ↔
-  // /docs/foo). That sharpens detection for relative refs inside
-  // markdown (a `[label](other-doc.md)` resolves through the same
-  // path map @nuxt/content uses, instead of being treated as a raw
-  // file fetch).
+  // `strictNuxtContentPaths` tells the inspector that markdown source
+  // paths map 1:1 to live URLs, so a relative `[label](other-doc.md)`
+  // resolves through @nuxt/content's own path map instead of being read
+  // as a raw file fetch.
   linkChecker: {
     failOnError: true,
     strictNuxtContentPaths: true,
@@ -456,11 +363,10 @@ export default defineNuxtConfig({
     // (not replacing) the module's default excludeLinks regexes.
     excludeLinks: [/^\/docs\/.*\.md$/],
   },
-  // @nuxt/content's Shiki integration. Pinning the themes and lang
-  // set here is intentional — the default theme set is broad and
-  // bundles ~50 grammars we don't need; whitelisting brings the
-  // build smaller and faster. Light / dark theme pair flips with the
-  // `.dark` selector through Shiki's css-variables theme mode.
+  // @nuxt/content's Shiki integration. The theme and language sets are
+  // pinned deliberately: the default bundles about 50 grammars this site
+  // never renders. The light/dark pair flips on the `.dark` selector
+  // through Shiki's css-variables theme mode.
   content: {
     build: {
       markdown: {
@@ -485,21 +391,16 @@ export default defineNuxtConfig({
             'md',
             'diff',
           ],
-          // Twoslash adds inline TS type information to opt-in code
-          // blocks (` ```ts twoslash` or ` ```vue twoslash`). With
-          // explicitTrigger true, every other code block renders
-          // unchanged — Twoslash only kicks in when a doc page asks
-          // for it. `rendererRich()` returns the standard Twoslash
-          // popover UI; passing the string `'rich'` (an older API
-          // shape) silently breaks at runtime because the transformer
-          // expects a renderer object.
+          // Twoslash adds inline type information to opt-in code blocks
+          // (` ```ts twoslash`). Under `explicitTrigger` every other
+          // block renders unchanged. `rendererRich()` must be the
+          // renderer object; the older string form `'rich'` breaks
+          // silently at runtime.
           //
-          // @ts-expect-error @nuxt/content v3.13's highlight type
-          // omits `transformers` even though the runtime forwards
-          // the array straight to Shiki, which does accept it. The
-          // upstream type fix is tracked at
-          // https://github.com/nuxt/content/issues — when @nuxt/content
-          // tightens this, drop the directive.
+          // @ts-expect-error @nuxt/content v3.13's highlight type omits
+          // `transformers`, though the runtime forwards the array
+          // straight to Shiki, which accepts it. Drop the directive when
+          // @nuxt/content tightens the type.
           transformers: [
             transformerTwoslash({
               explicitTrigger: true,
@@ -511,24 +412,16 @@ export default defineNuxtConfig({
       },
     },
   },
-  // Webfonts are committed to the repo (no runtime / build-time
-  // dependency on Google). The .woff2 binaries live under
-  // `public/fonts/` and the @font-face declarations are in
-  // `assets/css/fonts.css` (imported by `tailwind.css`). Run
-  // `pnpm fonts:refresh` to re-fetch from Google when adding a
-  // weight or bumping the font version.
   devtools: { enabled: true },
   compatibilityDate: '2025-01-28',
-  // Public runtimeConfig values are read at build time from the actual
-  // package.json files and surfaced to the client via
-  // useRuntimeConfig(). One source of truth per concern — `pnpm
-  // version` is the only place to bump.
+  // Read at build time from the real package.json files, so `pnpm
+  // version` stays the only place a version is bumped.
   //
-  //   - attaformVersion: shown in the homepage release pill and the
-  //     footer brand block. Reads from attaform's root package.json.
+  //   - attaformVersion: the homepage release pill and the footer brand
+  //     block.
   //   - replDependencyVersion: pinned on the @vue/repl store's
-  //     dependencyVersion so Volar skips the (slow + unpkg-bound)
-  //     latest-version lookup. Reads from each package's package.json.
+  //     `dependencyVersion` so Volar skips its slow, unpkg-bound
+  //     latest-version lookup.
   runtimeConfig: {
     public: {
       attaformVersion: attaformPkg.version,
@@ -540,41 +433,28 @@ export default defineNuxtConfig({
       },
     },
   },
-  // Payload extraction strategy: ON in build (full-static output
-  // benefits from prefetched `_payload.json` per route — SPA-style
-  // nav speed at zero runtime cost), OFF in dev.
+  // On in build, where a prefetched `_payload.json` per route buys
+  // SPA-speed navigation at no runtime cost. Off in dev, because Nitro's
+  // `payloadCache` writes one fs entry per rendered route and unstorage
+  // normalizes the root route's key to an empty string: the fs driver
+  // then writes a bare `payload` FILE where the directory belongs, and
+  // every subsequent route 500s with `ENOTDIR: ... payload/docs-<hash>`.
+  // Production prerendering writes `_payload.json` straight into
+  // `.output/public/<route>/` through a different path, untouched by the
+  // dev cache.
   //
-  // Why dev is excluded: Nitro's `payloadCache` (mounted under
-  // `cache:nuxt:payload` with an fs base of `.nuxt/cache/nuxt/payload`)
-  // writes one cache entry per rendered route. For the root route `/`,
-  // unstorage normalizes the key down to an empty string, which the
-  // fs driver writes as a bare `payload` *file* at the cache base —
-  // collision with the directory it's supposed to be. Every
-  // subsequent route then 500s with `ENOTDIR: ... payload/docs-<hash>`
-  // when its payload tries to write to `payload/<safe-key>`.
-  // Production prerendering writes `_payload.json` files directly to
-  // `.output/public/<route>/` via a different code path that doesn't
-  // touch the dev cache, so the static build is unaffected.
-  //
-  // The detection: `process.env.NODE_ENV` is read at config-eval time.
-  // `nuxi dev` runs with `NODE_ENV=development` (Vite dev server), so
-  // the gate evaluates to `false`. `nuxi build` doesn't pre-set
-  // NODE_ENV — package.json's `build` / `generate` scripts pin it to
-  // `production` explicitly so this gate (and any other `NODE_ENV`
-  // probes upstream) sees the right value. Without that prefix, Nuxt
-  // emits a "Payload extraction is recommended for full-static output"
-  // warning at every build.
+  // `NODE_ENV` is read at config-eval time. `nuxi dev` sets it to
+  // `development`, but `nuxi build` sets nothing, so package.json's
+  // `build` and `generate` scripts pin `production` explicitly for this
+  // gate and any upstream probe.
   experimental: {
     payloadExtraction: process.env.NODE_ENV === 'production',
   },
-  // 301 redirects for the pre-rebuild URL tree. The old docs lived
-  // under `/docs/api/*` and `/docs/recipes/*`; the new IA splits them
-  // by concept (`getting-started`, `reading-the-form`, `validation`,
-  // `devtools-and-debugging`, etc.). Specific routes
-  // win over wildcards in Nuxt's route specificity, so each known
-  // pre-rebuild URL maps directly to its natural successor; the
-  // catch-alls at the bottom catch anything missed and land it on
-  // the docs spine rather than 404.
+  // 301s for the pre-rebuild URL tree, which lived under `/docs/api/*`
+  // and `/docs/recipes/*` before the docs were organized by concept.
+  // Specific routes beat wildcards in Nuxt's precedence, so each known
+  // old URL maps to its successor and the catch-alls at the bottom land
+  // anything missed on the docs spine rather than a 404.
   routeRules: {
     // The AI tooling section split the single `ai-agents` page into
     // focused pages (skill + the two machine-readable exports); the old
@@ -596,8 +476,7 @@ export default defineNuxtConfig({
       redirect: { to: '/docs/server-and-ssr/performance', statusCode: 301 },
     },
 
-    // `/docs/api/*` — every per-entry-point page collapsed into the
-    // single Reference category in the new IA.
+    // Every per-entry-point page collapsed into one Reference category.
     '/docs/api/core': {
       redirect: { to: '/docs/reference/entry-points', statusCode: 301 },
     },
@@ -626,8 +505,7 @@ export default defineNuxtConfig({
       redirect: { to: '/docs/reading-the-form/the-form', statusCode: 301 },
     },
 
-    // `/docs/recipes/*` — task-shaped pages folded into the matching
-    // concept page (the concept-per-page rebuild's whole point).
+    // Task-shaped pages folded into the matching concept page.
     '/docs/recipes/async-validation': {
       redirect: { to: '/docs/validation/async-refinements', statusCode: 301 },
     },
@@ -680,8 +558,7 @@ export default defineNuxtConfig({
       redirect: { to: '/docs/cross-cutting-state/undo-redo', statusCode: 301 },
     },
 
-    // Catch-alls for anything not covered above. Specific routes win
-    // over these globs in Nuxt's route-rule precedence.
+    // Catch-alls. Specific routes above win over these globs.
     '/docs/api/**': {
       redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
     },
@@ -689,56 +566,38 @@ export default defineNuxtConfig({
       redirect: { to: '/docs/getting-started/introduction', statusCode: 301 },
     },
   },
-  // Bind to all interfaces so the docker-compose port mapping
-  // (3000:3000) reaches the dev server. Local-only dev still works —
-  // 0.0.0.0 includes localhost.
+  // Bind to all interfaces so the docker-compose 3000:3000 mapping
+  // reaches the dev server. 0.0.0.0 includes localhost, so host-only dev
+  // is unaffected.
   devServer: { host: '0.0.0.0' },
   // The module emits a blocking inline <script> in <head> that resolves
-  // the user's preference (localStorage → system → fallback) and sets
-  // <html class="…"> before first paint. classSuffix: '' makes the class
-  // bare (`.dark` instead of `.dark-mode`), matching our @variant dark
-  // selector in tailwind.css.
+  // the preference and sets `<html class>` before first paint. An empty
+  // `classSuffix` keeps the class bare (`.dark`, not `.dark-mode`), which
+  // is what the @variant dark selector in tailwind.css matches.
   colorMode: {
     classSuffix: '',
     preference: 'system',
     fallback: 'light',
     storageKey: 'attaform-color-mode',
   },
-  // Mount components/content/ without a path prefix so files in there
-  // (e.g. ProseA.vue overriding the default <a> renderer in MDC content)
-  // resolve under their bare names — the convention Nuxt Content's
-  // prose-override system expects.
+  // Mount components/content/ without a path prefix, so a file like
+  // ProseA.vue resolves under its bare name. That is the convention Nuxt
+  // Content's prose-override system expects.
   components: [{ path: '~/components/content', pathPrefix: false, global: true }, '~/components'],
-  // Nitropack's built-in /_vfs dev handler (powering Nuxt DevTools'
-  // Virtual Files panel) hard-checks the request IP against ::1 / 127.*
-  // and 403s anything else as "Forbidden IP". In Docker our requests
-  // arrive from the bridge IP, so the panel breaks. There's no config
-  // knob — register a dev pre-handler on the same /_vfs prefix that
-  // shadows socket.remoteAddress to 127.0.0.1 and falls through (no
-  // response) to the real VFS handler that runs after it. Dev-only via
-  // devHandlers.
   nitro: {
-    // Source-alias attaform subpath imports to `src/*.ts` on the
-    // server side too. Without this, Nitro (Vue SSR) resolves
-    // `attaform/zod` to `dist/zod.mjs` — a `jiti --stub` shim
-    // whose top-level `await jiti.import('/app/src/zod.ts')` runs
-    // ONCE per process and caches the result. Edits to `src/`
-    // after Nitro's startup never propagate to SSR output, so a
-    // page rendered server-side ships stale form state into
-    // hydration and the client inherits it (even though the
-    // client itself has fresh `src/` via the Vite alias below).
-    // Observed when `count: unset` against `z.number().default(10)`
-    // SSR'd as `10` while the playground (which uses the rebuilt
-    // browser bundle) showed `0`. See the matching comment on
-    // `vite.resolve.alias` for the browser side and the jiti
-    // staleness story.
+    // The server half of the source-alias map; `vite.resolve.alias` below
+    // carries the full explanation. Nitro resolves `attaform/zod` for
+    // every page render and the jiti hop caches per process, so without
+    // these entries a `src/` edit after Nitro boots never reaches SSR
+    // output: the inline `<DocsDemo>` ships stale form state into
+    // hydration while the playground, on the freshly bundled
+    // `/lib/attaform.js`, shows current behaviour.
     //
-    // Limited to subpaths actually imported in apps/site (bare
-    // `attaform` and `attaform/zod`); the others are listed for
-    // symmetry with Vite and to harden against future demo
-    // additions that reach for them. Prefix-matching is safe:
-    // `attaform/zod` does NOT match `attaform/zod-v3` because the
-    // matcher requires `/` or end-of-string after the key.
+    // Only bare `attaform` and `attaform/zod` are imported in apps/site
+    // today; the rest are listed for symmetry with Vite and to cover a
+    // future demo reaching for one. Prefix-matching is safe here, since
+    // the matcher requires `/` or end-of-string after the key, so
+    // `attaform/zod` does not swallow `attaform/zod-v3`.
     alias: {
       attaform: resolve(monorepoRoot, 'src/index.ts'),
       'attaform/abstract': resolve(monorepoRoot, 'src/abstract.ts'),
@@ -750,82 +609,65 @@ export default defineNuxtConfig({
       'attaform/vite': resolve(monorepoRoot, 'src/vite.ts'),
       'attaform/transforms': resolve(monorepoRoot, 'src/transforms.ts'),
     },
-    // Mount the REPL pipeline's output (`apps/site/.repl-cache/`)
-    // at the `/lib/` URL prefix. This keeps the bundled REPL
-    // artifacts (runtime JS, worker copies, type declaration
-    // bundles, package manifests) out of `apps/site/public/` while
-    // continuing to serve them from the same URLs DemoRepl's import
-    // map and Volar callbacks expect.
+    // Serve the REPL pipeline's output from `/lib/`, the URLs DemoRepl's
+    // import map and Volar callbacks expect, while the artifacts
+    // themselves live outside `apps/site/public/`.
     //
-    // Why this matters: the type bundles re-emit `declare global {
-    // interface Window { [DEVTOOLS_WINDOW_KEY]?: ... } }` from
-    // attaform's runtime sources. Inside `public/`, those bundles
-    // landed in vue-tsc's project graph (`include: ["../**/*"]`)
-    // and collided with the runtime declaration in
-    // `src/runtime/core/devtools-shared.ts` (TS2717 "subsequent
-    // property declarations"). The collision only fired locally
-    // after a dev session populated the public bundle — CI builds
-    // run `typecheck` before `bundle:repl`, so the public-side file
-    // didn't exist yet. Moving the artifacts to `.repl-cache/`
-    // (outside `apps/site/**/*`) gets vue-tsc out of the picture
-    // entirely; Nitro's publicAssets pipeline doesn't apply the
-    // Nuxt project-tree ignore filters either, so `.d.ts` files
-    // ship straight through to `.output/public/lib/types/` on prod
-    // builds.
+    // They have to: the type bundles re-emit `declare global { interface
+    // Window { [DEVTOOLS_WINDOW_KEY]?: ... } }` from Attaform's runtime
+    // sources. Under `public/` they entered vue-tsc's project graph and
+    // collided with the declaration in `src/runtime/core/devtools-shared.ts`
+    // as TS2717. It only ever fired locally, since CI runs `typecheck`
+    // before `bundle:repl` and the file did not exist yet. `.repl-cache/`
+    // sits outside `apps/site/**/*`, so vue-tsc never sees it, and Nitro's
+    // publicAssets pipeline applies no project-tree ignore filters, so the
+    // `.d.ts` files still ship to `.output/public/lib/types/`.
     publicAssets: [
       {
         dir: resolve(monorepoRoot, 'apps/site/.repl-cache'),
         baseURL: '/lib',
       },
     ],
-    // Pure SSG. The `static` preset tells Nitro to emit only
-    // prerendered HTML + assets — no serverless runtime, no Node
-    // server. Vercel deploys the result as a CDN-only site (zero
-    // serverless function quota used). Same effect as `nuxi
-    // generate`; declaring it here means `nuxi build`, `nuxi
-    // generate`, and Vercel's auto-detected build path all produce
-    // the same static output.
+    // Pure SSG: prerendered HTML and assets, no serverless runtime and no
+    // Node server, so Vercel deploys it CDN-only and burns no function
+    // quota. Declaring the preset here means `nuxi build`, `nuxi generate`
+    // and Vercel's auto-detected build path all produce the same output.
+    // Pagefind depends on it too: `pnpm index:search` walks
+    // `.output/public` for HTML, and without prerendering it finds only
+    // assets and `_payload.json` and exits with "did not find any html
+    // files".
     //
-    // The Pagefind step (`pnpm index:search` after build) walks
-    // `.output/public` for HTML files; without prerendering the
-    // directory holds only assets and `_payload.json`, and
-    // Pagefind exits with "did not find any html files." With the
-    // static preset, every reachable route lands as HTML.
+    // `crawlLinks` follows internal `<a href>` and NuxtLink targets, so
+    // only the entry points need listing. `/docs` links into every doc
+    // page; `/` and `/demos` cover the rest of the public surface.
     //
-    // `crawlLinks: true` follows internal `<a href>` and NuxtLink
-    // targets from the seed routes, so we only have to list the
-    // entry points. `/docs` is the index page that links into every
-    // doc; `/demos` and `/` round out the rest of the public
-    // surface.
-    //
-    // `failOnError: true` gates the build on prerender 500s — a Vue
-    // mustache leaking through a markdown code fence and binding to
-    // an undefined variable (see the post-mortem on the {{{ payload }}}
-    // ssr-hydration bug), an unhandled rejection inside an async
-    // setup, that class of bug. It does NOT fail the build on
-    // prerender 404s — `createError({ statusCode: 404 })` and
-    // `setResponseStatus(404)` both log a fatal-error line and let
-    // the prerender keep going. That's deliberate; 404 catching is
-    // nuxt-link-checker's job (see the `linkChecker:` block earlier
-    // in this file, where `failOnError: true` makes a single broken
-    // internal link exit the build non-zero). Together they cover
-    // both edge classes — 500s gated here, missing-target links
-    // gated by the checker.
+    // `failOnError` gates the build on prerender 500s: a Vue mustache
+    // leaking through a markdown code fence onto an undefined variable, an
+    // unhandled rejection in an async setup. It deliberately does NOT gate
+    // on 404s, since `createError({ statusCode: 404 })` and
+    // `setResponseStatus(404)` both log and let the prerender continue.
+    // Missing targets are nuxt-link-checker's job, in the `linkChecker:`
+    // block above.
     preset: 'static',
-    // `static: true` is the SSG flag a few modules read to detect
-    // "this build emits HTML at prerender time, no runtime server."
-    // nuxt-og-image specifically uses it (its `resolveOgImagePreset`
-    // returns `'nitro-prerender'` for `nitro.static`), which puts it
-    // on a known preset and silences the "Unknown Nitro preset
-    // 'static'" warning. Setting `preset: 'static'` alone doesn't
-    // flip this flag — Nitro's `static` preset and the `static`
-    // boolean are sibling concerns rather than one-implies-the-other.
+    // The flag a few modules read to detect "this build emits HTML at
+    // prerender time, no runtime server". nuxt-og-image's
+    // `resolveOgImagePreset` returns `'nitro-prerender'` for it, which
+    // silences the "Unknown Nitro preset 'static'" warning. `preset:
+    // 'static'` does not imply it: the preset and the boolean are sibling
+    // concerns.
     static: true,
     prerender: {
       crawlLinks: true,
       routes: ['/', '/docs', '/demos'],
       failOnError: true,
     },
+    // Nitropack's built-in /_vfs dev handler, behind Nuxt DevTools'
+    // Virtual Files panel, hard-checks the request IP against ::1 and
+    // 127.* and 403s everything else as "Forbidden IP". Under Docker the
+    // request arrives from the bridge IP, so the panel breaks, and there
+    // is no config knob. This pre-handler shares the /_vfs prefix,
+    // shadows `socket.remoteAddress` to 127.0.0.1, and returns nothing,
+    // so the real VFS handler runs after it.
     devHandlers: [
       {
         route: '/_vfs',
@@ -854,71 +696,41 @@ export default defineNuxtConfig({
       generateDemoStylesOnServe,
       serveDemoRawCss,
     ],
-    // Source-resolve the workspace `attaform` package for the docs
-    // site's Vite environments. Without these aliases, every
-    // `import { useForm } from 'attaform/zod'` (and every other
-    // `attaform/*` subpath) resolves via the package's `exports`
-    // map to `dist/zod.mjs` — which, under the monorepo's
-    // `pnpm dev:prepare` flow, is an `unbuild --stub` jiti shim:
+    // Source-resolve the workspace `attaform` package for the docs site's
+    // Vite environments. Without these aliases every `attaform/*` import
+    // resolves through the package `exports` map to `dist/*.mjs`, which
+    // under `pnpm dev:prepare` is an `unbuild --stub` jiti shim.
     //
-    //   import { createJiti } from "../node_modules/.pnpm/jiti@2.6.1/.../jiti.mjs"
-    //   const jiti = createJiti(import.meta.url, { … })
-    //   const _module = await jiti.import("/app/src/zod.ts")
-    //   export const useForm = _module.useForm
-    //   …
+    // That shim works in Node, where jiti's `node:module` runtime is real,
+    // and fails in the browser on the very first import: Vite serves the
+    // relative `lib/jiti.mjs`, runs its CJS-to-ESM lexer over the
+    // webpack-bundled `dist/jiti.cjs`, and the missing `default` export
+    // throws a `SyntaxError` up through `MDCRenderer`'s
+    // `resolveContentComponents(...)`. Every docs-page nav after the
+    // homepage hard-crashes client-side.
     //
-    // The shim works in Node (where jiti's `node:module` /
-    // `createRequire` runtime is real) but fails in the browser
-    // at the very first import: Vite serves the relative-path
-    // `lib/jiti.mjs`, runs its CJS-to-ESM lexer over webpack-bundled
-    // `dist/jiti.cjs`, and the missing `default` export trips a
-    // `SyntaxError` that propagates up through `MDCRenderer`'s
-    // `await resolveContentComponents(...)` — visible as every
-    // docs-page nav after the homepage hard-crashing client-side.
+    // Aliasing each subpath to its `src/*.ts` file routes every consumer
+    // through Vite and @vitejs/plugin-vue's normal TS compilation instead.
+    // Live-reload is unaffected, since `src/` is already inside the dev
+    // server's `fs.allow` root.
     //
-    // Aliasing each subpath to the corresponding `src/*.ts` file
-    // routes the docs-demos and every other `attaform/*` consumer
-    // through Vite + @vitejs/plugin-vue's normal TS compilation
-    // path. No jiti hop, no CJS-to-ESM analyzer in the loop, and
-    // live-reload works exactly the same — Vite already watches
-    // `src/` because it's inside the dev server's `fs.allow` root.
-    //
-    // SSR-runtime caveats:
-    //
-    //   - `attaform/nuxt` is consumed by Nuxt's `modules:` array,
-    //     which Nuxt evaluates with its OWN jiti process before
-    //     Vite ever boots. That path loads `dist/nuxt.mjs` directly
-    //     via jiti at module-init time, which is fine because the
-    //     module's setup work runs once and doesn't span post-edit
-    //     boundaries.
-    //
-    //   - Nitro's Vue SSR side is a different story: it resolves
-    //     `attaform/zod` for every page render, and the dist/jiti
-    //     hop caches per process. Edits to `src/` after Nitro
-    //     boots NEVER reach those imports. That's why the parallel
-    //     `nitro.alias` block above mirrors these entries on the
-    //     server side; without it, the inline `<DocsDemo>` SSR
-    //     ships stale form state while the client-only playground
-    //     (which uses the freshly bundled `/lib/attaform.js`) shows
-    //     the current behavior. The two aliases together keep
-    //     browser and server in lockstep on src/.
-    //
-    //   - `attaform/devtools-panel` resolves to a `.vue` file
-    //     via the package exports' `"default"` condition. The
-    //     consumer site never imports it from a `.ts` / `.vue`
-    //     file; the Nuxt DevTools overlay loads it directly. No
-    //     alias needed.
+    // Two paths deliberately have no alias. `attaform/nuxt` is consumed by
+    // Nuxt's `modules:` array, which Nuxt evaluates with its own jiti
+    // process before Vite boots; its setup work runs once and never spans
+    // a post-edit boundary. `attaform/devtools-panel` resolves to a `.vue`
+    // file through the exports map's `"default"` condition and is loaded
+    // by the DevTools overlay, never imported from site code.
     resolve: {
       alias: [
         { find: /^attaform$/, replacement: resolve(monorepoRoot, 'src/index.ts') },
         { find: /^attaform\/abstract$/, replacement: resolve(monorepoRoot, 'src/abstract.ts') },
-        // directive + history need their own exact rules: without one, the
-        // import falls through to the top-level `alias:` block's bare
-        // `attaform` STRING alias, whose rollup-style matcher prefix-matches
-        // any `attaform/*` specifier and rewrites it to `src/index.ts/<sub>`
-        // (the compile-time v-register rewrite injects `attaform/directive`
-        // into every demo that uses the directive, so this is load-bearing
-        // for the whole docs build, not just one demo).
+        // directive and history need their own exact rules. Without one,
+        // the import falls through to the top-level `alias:` block's bare
+        // `attaform` STRING alias, whose rollup-style matcher
+        // prefix-matches any `attaform/*` specifier and rewrites it to
+        // `src/index.ts/<sub>`. Load-bearing for the whole docs build:
+        // the compile-time v-register rewrite injects `attaform/directive`
+        // into every demo that uses the directive.
         { find: /^attaform\/directive$/, replacement: resolve(monorepoRoot, 'src/directive.ts') },
         { find: /^attaform\/history$/, replacement: resolve(monorepoRoot, 'src/history.ts') },
         { find: /^attaform\/zod$/, replacement: resolve(monorepoRoot, 'src/zod.ts') },
@@ -928,123 +740,90 @@ export default defineNuxtConfig({
         { find: /^attaform\/transforms$/, replacement: resolve(monorepoRoot, 'src/transforms.ts') },
       ],
     },
-    // Mirror Nuxt's devServer.host into Vite's server.host so
-    // @vitejs/devtools (which reads viteDevServer.config.server.host
-    // directly when picking its WebSocket bind) lands on 0.0.0.0
-    // instead of localhost. Without this, devtools' RPC server binds
-    // to ::1 inside the container and the docker port forward can't
-    // reach it. Nuxt's typing of `vite.server` Omits `host` (it
-    // expects you to use the top-level `devServer.host`), but Vite
-    // itself accepts the value and devtools needs it set on Vite's
-    // own config, so we suppress the type error.
+    // Mirror `devServer.host` onto Vite's own `server.host`, because
+    // @vitejs/devtools reads `viteDevServer.config.server.host` directly
+    // when picking its WebSocket bind. Without it the RPC server binds to
+    // ::1 inside the container and the docker port forward cannot reach
+    // it. Nuxt's type for `vite.server` omits `host`, expecting the
+    // top-level `devServer.host`, but Vite accepts the value and devtools
+    // needs it here.
     server: {
-      // @ts-expect-error Nuxt's `vite.server` type Omits `host`; the
-      // runtime accepts it (see comment above for why devtools needs
-      // this set on Vite's own config).
+      // @ts-expect-error Nuxt's `vite.server` type omits `host`; the
+      // runtime accepts it. See above for why devtools needs it here.
       host: '0.0.0.0',
-      // Vite's strict `fs.allow` defaults to the workspace root, but
-      // requests to `/@fs/app/node_modules/.pnpm/...` for modules in
-      // `optimizeDeps.exclude` arrive BEFORE the importer is analyzed
-      // — so the target file never lands in `config.safeModulePaths`
-      // via the import-analysis pass, and `fs.allow` is the only gate
-      // that lets the static-serve middleware emit the file. The
-      // symptom is a 404 on `@vue/repl/monaco-editor` (7.2 MB) on
-      // first page load while smaller siblings in the same directory
-      // (already-analyzed) serve cleanly. Explicitly listing the
-      // monorepo root (two levels up from `apps/site`) here makes the
-      // allowance unambiguous and survives any Vite-detected-root
-      // drift across pnpm-workspace layouts.
+      // A request to `/@fs/app/node_modules/.pnpm/...` for a module in
+      // `optimizeDeps.exclude` arrives BEFORE its importer is analyzed, so
+      // the file never reaches `config.safeModulePaths` through the
+      // import-analysis pass and `fs.allow` is the only gate that lets the
+      // static-serve middleware emit it. The symptom is a 404 on
+      // `@vue/repl/monaco-editor` on first page load while its
+      // already-analyzed siblings serve cleanly. Naming the monorepo root
+      // explicitly makes the allowance unambiguous and survives
+      // Vite-detected-root drift across pnpm-workspace layouts.
       fs: {
         allow: [monorepoRoot],
       },
-      // Force chokidar to poll for file changes inside the Docker
-      // bind mount. macOS host fsevents don't always propagate
-      // through Docker's mount layer to the Linux container, so
-      // chokidar's native watcher misses edits to monorepo-root
-      // paths (anywhere under `/app/src/**`) AFTER the dev server
-      // starts. Native works for the apps/site project root (Vite's
-      // own scan boots that watcher with the bind mount's first
-      // pass), but src/ edits silently no-op: HMR never fires, the
-      // in-memory Vite transform graph stays frozen at boot, and
-      // SSR keeps reusing whatever `src/runtime/**` looked like
-      // when Nuxt started.
+      // Force chokidar to poll inside the Docker bind mount. macOS host
+      // fsevents do not reliably propagate through the mount layer to the
+      // Linux container, so the native watcher misses edits under
+      // `/app/src/**` after the dev server starts. It works for the
+      // apps/site project root, which Vite's own scan boots with the bind
+      // mount's first pass, but a src/ edit silently no-ops: HMR never
+      // fires, the transform graph stays frozen at boot, and SSR keeps
+      // replaying whatever `src/runtime/**` was when Nuxt started.
       //
-      // The symptom: edit `src/runtime/core/unset-walker.ts`, hard-
-      // reload `/docs/schemas/defaults`, see no change. The
-      // playground at `/demos/schema-defaults` updates because
-      // `bundle-repl-deps.mjs --watch` uses esbuild's watcher,
-      // which IS bind-mount-reliable. Two parallel watchers, one
-      // working, one not — invisible until a src/ edit fails to
-      // land in a Vite-resolved consumer.
+      // It hides well, because the playground at `/demos/<slug>` DOES
+      // update: `bundle-repl-deps.mjs --watch` runs esbuild's watcher,
+      // which is bind-mount-reliable. Two parallel watchers, one working,
+      // and nothing looks wrong until a src/ edit fails to reach a
+      // Vite-resolved consumer.
       //
-      // `usePolling: true` switches chokidar to a poll loop. The
-      // poll interval below (300 ms) is the conventional Docker
-      // setting — fast enough that HMR feels instant, slow enough
-      // to keep CPU quiet on a busy laptop. `binaryInterval`
-      // governs binary-file polling separately; we set it equal to
-      // `interval` so dist/* tarball-like artifacts (jiti shims,
-      // .repl-cache bundles) invalidate at the same cadence as the
-      // .ts/.vue sources they're built from.
+      // 300 ms is the conventional Docker interval, fast enough that HMR
+      // feels instant and slow enough to keep CPU quiet. `binaryInterval`
+      // matches it so built artifacts (jiti shims, .repl-cache bundles)
+      // invalidate at the same cadence as the sources behind them.
       watch: {
         usePolling: true,
         interval: 300,
         binaryInterval: 300,
       },
     },
-    // Vite's startup crawl scans index.html + statically discoverable
-    // imports; it misses imports inside `.client.vue` components (which
-    // SSR skips) and inside Nuxt's lazy page chunks. When those land
-    // mid-session, Vite re-bundles and broadcasts an "Outdated Optimize
-    // Dep" 504 to in-flight requests — visible as the once-per-cold-
-    // boot vue-router 504 that breaks the first navigation. Pre-
-    // declaring the heavy site-only deps here makes the boot crawl
-    // comprehensive, so first-paint requests resolve cleanly.
+    // Vite's startup crawl scans index.html and statically discoverable
+    // imports, missing anything inside a `.client.vue` component, which
+    // SSR skips, or inside a lazy page chunk. When one of those surfaces
+    // mid-session Vite re-bundles and broadcasts an "Outdated Optimize
+    // Dep" 504 to in-flight requests, which is the once-per-cold-boot
+    // vue-router 504 that breaks the first navigation. Pre-declaring the
+    // heavy site-only deps makes the boot crawl comprehensive.
     optimizeDeps: {
-      // Hold every dev-server request until the dep crawl finishes
-      // its FULL scan — both the static pre-bundle pass and the
-      // runtime-discovery follow-up. Without this gate, Vite's
-      // default behavior is to start serving as soon as the static
-      // scan completes, then quietly re-bundle when new deps surface
-      // mid-session (e.g. a `.client.vue` file's imports that SSR
-      // skipped, a dynamic `import('shiki')` inside a deeply-nested
-      // component). Every re-bundle rotates `browserHash`, deletes
-      // the previous prebundle files, and 404s any in-flight asset
-      // fetch keyed to the old hash — visible as the "monaco-editor.js?v=<old>"
-      // 404 cascade documented in `make up`'s comment block.
+      // Hold every dev-server request until the crawl finishes its FULL
+      // scan, the static pre-bundle pass and the runtime-discovery
+      // follow-up alike. By default Vite serves as soon as the static
+      // scan completes and re-bundles quietly when a new dep surfaces,
+      // and every re-bundle rotates `browserHash`, deletes the previous
+      // prebundle files, and 404s any in-flight fetch keyed to the old
+      // hash: the `monaco-editor.js?v=<old>` cascade `make up` documents.
       //
-      // `holdUntilCrawlEnd: true` makes the boot deterministic at
-      // the cost of a slower cold start (the first request waits
-      // for the crawl to settle). The trade-off is exactly what we
-      // want in dev: race-free serves over fast first-paint. Vite
-      // 5.1 introduced this option; defaults vary by version and
-      // by the dev-server environment shape, so pinning it
-      // explicitly is the only way to guarantee the race window
-      // closes regardless of upstream changes.
+      // The cost is a slower cold start, since the first request waits for
+      // the crawl to settle. Race-free serves are worth more than fast
+      // first paint in dev. Pinned explicitly because the default varies
+      // by Vite version and by dev-server environment shape.
       holdUntilCrawlEnd: true,
-      // `@vue/repl` + `@vue/repl/monaco-editor` are prebundled together
-      // so Vite's boot crawl finds them even though the editor wrapper
-      // itself only mounts inside a `.client.vue` component (which the
-      // SSR scan skips). Without pre-declaring, the first `/demos/<slug>`
-      // navigation discovers the deps mid-session, the optimizer
-      // rebundles, the browser hash flips, and any in-flight
-      // prebundled-dep request 504s with "Outdated Optimize Dep".
+      // `@vue/repl` and `@vue/repl/monaco-editor` are prebundled together
+      // because the editor wrapper mounts only inside a `.client.vue`
+      // component, which the SSR scan skips, so the boot crawl would
+      // otherwise miss them and the first `/demos/<slug>` navigation would
+      // trigger the mid-session rebundle described above.
       //
-      // Pinning both into one prebundle batch keeps a single vue
-      // identity across the editor wrapper, the Monaco preset, and the
-      // docs site itself — `EditorContainer.provide(propsKey, …)` and
-      // `MonacoEditor.inject(propsKey)` need referentially-equal
+      // One batch also keeps a single vue identity across the editor
+      // wrapper, the Monaco preset and the docs site:
+      // `EditorContainer.provide(propsKey, …)` and
+      // `MonacoEditor.inject(propsKey)` need referentially equal
       // InjectionKey symbols across module boundaries.
       //
-      // The 7.2 MB minified Monaco preset previously blew V8's regex
-      // stack inside Vite's built-in `vite:asset-import-meta-url`
-      // plugin filter (`/new\s+URL.+import\.meta\.url/s`). The
-      // `fixViteAssetImportMetaUrlFilter` plugin declared above
-      // replaces that regex with a linear-time string check at
-      // `configResolved` time, so any megabyte-class prebundle stays
-      // safe through Vite's filter pass. The original Vite intent
-      // (gate the handler on files that could contain
-      // `new URL(..., import.meta.url)`) is preserved — the handler
-      // still does precise matching internally.
+      // The Monaco preset is the 7.2 MB prebundle that trips Vite's
+      // `vite:asset-import-meta-url` filter; see
+      // `fixViteAssetImportMetaUrlFilter` at the top of this file.
       include: [
         'lucide-vue-next',
         '@vue/repl',
@@ -1054,43 +833,32 @@ export default defineNuxtConfig({
         // that ship through the docs-demos/*.vue glob.
         'shiki',
         'zod',
-        // `zod-v3` is npm-aliased to `zod@3.x` (see root package.json's
-        // `"zod-v3": "npm:zod@^3.24"`). It surfaces in the docs-site
-        // dep graph because `apps/site` aliases `attaform/zod` to the
-        // workspace `src/zod.ts`, whose unified adapter
-        // (`src/runtime/adapters/unified/use-form.ts`) statically
-        // imports both the v3 and v4 adapters so its runtime-dispatch
-        // can pick the right shape per schema. Without `zod-v3` in
-        // this list, Vite's boot crawl misses it; the first docs-demo
-        // mount discovers the dep mid-session, the optimizer rebundles,
-        // the browser hash flips, and any in-flight prebundled-dep
-        // request (e.g. shiki.js) 504s with "Outdated Optimize Dep".
-        // Pre-declaring it keeps the boot crawl comprehensive.
+        // In the dep graph because `apps/site` aliases `attaform/zod` to
+        // the workspace `src/zod.ts`, whose unified adapter statically
+        // imports both adapters so runtime dispatch can pick per schema.
+        // The boot crawl misses it otherwise.
         'zod-v3',
-        // `lodash-es` is a transitive of one of the @nuxtjs/seo
-        // sub-modules (the schema-org or sitemap chain). Same
-        // motivation: pre-declaring it here means the boot crawl
-        // catches it once, so a mid-session discovery doesn't
-        // re-trigger an Outdated-Optimize-Dep rebundle.
+        // A transitive of one of the @nuxtjs/seo sub-modules, the
+        // schema-org or sitemap chain. Same reason as the entries above.
         'lodash-es',
       ],
-      // The remark/rehype/unified cluster is excluded for a different
-      // reason: @nuxtjs/mdc (transitive via @nuxt/content) pushes these
-      // specifiers into Vite's `optimizeDeps.include` list via its own
-      // module manifest, but under pnpm's strict hoist they don't
-      // surface at apps/site/node_modules and Vite can't resolve them
-      // through the `parent > child` traversal. On a cold container
-      // (`make up` after `docker compose down` clears Vite's dep
-      // cache), the scanner re-enters resolution on every unresolvable
-      // entry and stack-overflows the plugin pipeline on the first
-      // transform request — visible as `Internal server error: Maximum
-      // call stack size exceeded` from `EnvironmentPluginContainer.transform`.
-      // Listing them as `exclude` short-circuits the scanner and tells
-      // Vite "Nuxt's machinery already resolves these at module-load
-      // time, don't pre-bundle them." The warning filter in
-      // `isFilteredBuildWarning` (top of this file) suppresses the
-      // residual log noise; this `exclude` block prevents the actual
-      // overflow on cold start.
+      // The remark/rehype/unified cluster is excluded for the opposite
+      // reason. @nuxtjs/mdc, transitive through @nuxt/content, pushes
+      // these specifiers into Vite's include list from its own module
+      // manifest, but under pnpm's strict hoist they do not surface at
+      // apps/site/node_modules and Vite cannot resolve them by
+      // `parent > child` traversal. On a cold container the scanner
+      // re-enters resolution on every unresolvable entry and
+      // stack-overflows the plugin pipeline on the first transform
+      // request: `Internal server error: Maximum call stack size
+      // exceeded` from `EnvironmentPluginContainer.transform`. Excluding
+      // them short-circuits the scanner, since Nuxt's own machinery
+      // resolves them at module-load time. This block prevents the
+      // overflow; `isFilteredBuildWarning` above only hides the residual
+      // log noise.
+      //
+      // Dev-only workaround, not a fix: it papers over a pnpm-hoist and
+      // Vite resolution mismatch rather than resolving it.
       exclude: [
         'remark-gfm',
         'remark-emoji',
@@ -1105,21 +873,17 @@ export default defineNuxtConfig({
       ],
     },
     build: {
-      // Production sourcemaps are pure overhead for a docs site —
-      // every chunk would ship a .map sidecar, and several plugins
-      // in the build chain (Tailwind v4's vite plugin, the
-      // module-preload-polyfill) don't emit accurate maps anyway.
+      // Pure overhead for a docs site: every chunk would ship a .map
+      // sidecar, and Tailwind v4's Vite plugin and the
+      // module-preload-polyfill emit inaccurate maps anyway.
       sourcemap: false,
-      // The @vue/repl Monaco preset bundles Monaco + the Vue/TS
-      // language services into one chunk weighing ~5.4 MB minified
-      // (~1.3 MB gzipped). Vite's default 500 KB threshold flags it
-      // every build with no actionable remediation — the chunk is
-      // already dynamically loaded behind `<DemoReplEditor>` (a
-      // `.client.vue` component) so it never blocks first paint, and
-      // splitting it further isn't possible without forking
-      // @vue/repl. Bumping the threshold to 6000 (6 MB) silences
-      // the existing warning while still catching any unrelated
-      // chunk that grows past Monaco's size.
+      // The @vue/repl Monaco preset bundles Monaco and the Vue/TS
+      // language services into one chunk of roughly 5.4 MB minified. The
+      // default 500 KB threshold flags it every build with nothing to act
+      // on: the chunk already loads dynamically behind the `.client.vue`
+      // `<DemoReplEditor>`, so it never blocks first paint, and splitting
+      // it further would mean forking @vue/repl. 6 MB still catches an
+      // unrelated chunk growing past Monaco.
       chunkSizeWarningLimit: 6000,
     },
   },
@@ -1127,14 +891,12 @@ export default defineNuxtConfig({
     // Strip the Shiki/Twoslash transformers from public runtimeConfig
     // before Nitro's serializer runs. @nuxt/content copies the whole
     // `content.build.markdown.highlight` block into
-    // `runtimeConfig.public.mdc` so client-side MDC rendering can
-    // read it — but the Twoslash transformer carries function
-    // callbacks (`preprocess`, `tokens`, `pre`, `code`) that don't
-    // survive JSON serialization, producing "may not be able to be
-    // serialized" warnings during build. Build-time markdown parsing
-    // reads transformers directly from `nuxt.options.content` (not
-    // from runtimeConfig), so removing them here is harmless — the
-    // functions only run during prerender anyway.
+    // `runtimeConfig.public.mdc` for client-side MDC rendering, but the
+    // Twoslash transformer carries function callbacks that do not survive
+    // JSON serialization, and the build warns about each. Harmless to
+    // remove: build-time markdown parsing reads transformers from
+    // `nuxt.options.content`, and the callbacks only run during
+    // prerender.
     'nitro:config'(nitroConfig) {
       const mdc = (nitroConfig.runtimeConfig as { public?: { mdc?: unknown } } | undefined)?.public
         ?.mdc as { highlight?: { transformers?: unknown[] } } | undefined
@@ -1142,24 +904,18 @@ export default defineNuxtConfig({
         delete mdc.highlight.transformers
       }
 
-      // Allow `.d.ts` / `.d.cts` / `.d.mts` files in the REPL
-      // publicAssets directory (`.repl-cache/`, mounted at `/lib/`)
-      // to ship in the static output. Nuxt's `@nuxt/schema` ships
-      // `**/*.d.{cts,mts,ts}` in the default `ignore` array on the
-      // assumption that declaration files aren't meant for the
-      // browser; Nitro inherits this and applies it to every
-      // publicAssets globby pass, stripping our REPL type bundles
-      // from `.output/public/lib/types/`. Without those files, Volar
-      // (via @vue/repl's `pkgFileTextUrl` callback) 404s on
-      // `attaform`/`attaform/zod`/`vue`/`zod` declaration fetches
-      // and intellisense degrades to "any" in production.
+      // Let the REPL type bundles under `.repl-cache/` ship in the static
+      // output. `@nuxt/schema` puts `**/*.d.{cts,mts,ts}` in the default
+      // `ignore` array, assuming declaration files are not for the
+      // browser, and Nitro applies it to every publicAssets globby pass,
+      // stripping them from `.output/public/lib/types/`. Without them
+      // Volar 404s on its declaration fetches through @vue/repl's
+      // `pkgFileTextUrl` callback and intellisense degrades to `any` in
+      // production.
       //
-      // We strip the .d.ts ignore pattern from Nitro's options only.
-      // Nuxt's own component / layout scanners read from
-      // `nuxt.options.ignore` directly (not `nitroConfig.ignore`),
-      // so their behaviour is unaffected — they keep skipping
-      // ambient `.d.ts` files outside the publicAssets pipeline
-      // exactly as before.
+      // Only Nitro's copy is filtered. Nuxt's component and layout
+      // scanners read `nuxt.options.ignore` directly, so they go on
+      // skipping ambient `.d.ts` files outside the publicAssets pipeline.
       const declRe = /\bd\.\{?(cts|mts|ts|c|m)/
       if (Array.isArray(nitroConfig.ignore)) {
         nitroConfig.ignore = nitroConfig.ignore.filter(
@@ -1167,15 +923,13 @@ export default defineNuxtConfig({
         )
       }
     },
-    // Wrap Vite's logger to filter the two warning families documented
-    // at the top of the file. Nuxt's vite-builder installs its own
-    // `customLogger` (which forwards to Consola); user-supplied
-    // `vite.customLogger` gets clobbered during the Nuxt config
-    // merge. By the time `vite:configResolved` fires, Nuxt's logger
-    // is on the resolved config as `customLogger` — wrap its `warn` /
-    // `warnOnce` in place so every Vite-emitted warning passes
-    // through our filter before reaching Consola. Fires twice (once
-    // per Vite build: client + server); both loggers get wrapped.
+    // Wrap Vite's logger to filter the warning families documented at the
+    // top of this file. Nuxt's vite-builder installs its own
+    // `customLogger` forwarding to Consola, and a user-supplied
+    // `vite.customLogger` is clobbered during the config merge, so the
+    // only reliable seam is `vite:configResolved`, where Nuxt's logger is
+    // already on the resolved config. Fires once per Vite build, client
+    // and server, and wraps both.
     'vite:configResolved'(config) {
       const lg = (config as { customLogger?: Logger }).customLogger
       if (!lg) return

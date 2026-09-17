@@ -1219,27 +1219,21 @@ export type UseFormConfiguration<
   disabled?: MaybeRefOrGetter<boolean | undefined>
 
   /**
-   * When per-field VALIDATION runs (the directive's listener controls
-   * how often storage commits — per keystroke by default, per blur
-   * with `.lazy`). Default `'change'`. See `ValidateOn` for mode
-   * semantics.
+   * When per-field validation runs. Default `'change'`. See
+   * `ValidateOn` for mode semantics.
    *
-   * The strict public `useForm` signature wraps this type in an
-   * intersection with `ValidateOnConfig`, which enforces that
-   * `debounceMs` is only allowed under `'change'`. Internal callers
-   * (adapters, hydration paths) work with the loose form below.
+   * This sets validation timing only. How often a value commits to
+   * storage is the directive's concern: per keystroke for
+   * `<input v-register>`, per blur for `<input v-register.lazy>`.
    */
   validateOn?: ValidateOn
   /**
-   * Milliseconds to wait after the last committed write before
-   * running validation. Default `0` (validation fires synchronously
-   * after the write; no `setTimeout`). Set to a positive number to
-   * coalesce rapid bursts. Ignored under `validateOn: 'blur'` and
-   * `'submit'`.
+   * Milliseconds to wait after the last committed write before running
+   * validation, to coalesce rapid bursts. Default `0`: validation runs
+   * synchronously after the write, with no `setTimeout`.
    *
-   * This is purely a VALIDATION debounce — storage commits are the
-   * directive's concern (per keystroke for `<input v-register>`,
-   * per blur for `<input v-register.lazy>`).
+   * Only accepted under `validateOn: 'change'`. Passing it with
+   * `'blur'` or `'submit'` is a type error.
    */
   debounceMs?: number
 

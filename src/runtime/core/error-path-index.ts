@@ -2,41 +2,24 @@
  * The error stores, indexed by path prefix.
  *
  * `aggregateErrorsAt(state, prefix)` answers "every active error at or
- * under this path", and it used to answer it by walking every entry in
- * all three error stores, resolving each key back to segments and
- * testing the prefix. That is fine for one call. A table asks for one
- * per row: `form.list('rows')` on 400 rows with 800 errors did 320,000
- * of those tests, and a keystroke in any single row re-did all of them,
- * costing a quarter of a second per character typed.
+ * under this path". Scanning all three stores per call makes a table's
+ * reads O(rows x errors) where the answer is O(errors), so keys are
+ * collected once per change, resolved to segments once and sorted, and
+ * a query binary-searches its own window.
  *
- * The cost is structural, not incidental: the work is O(rows x errors)
- * where the answer is O(errors). So the keys are collected ONCE per
- * change to the stores, resolved to segments once, and sorted, and a
- * query binary-searches its own window instead of scanning.
+ * A `PathKey` is `JSON.stringify(segments)`, which is what makes a
+ * sorted array enough. Every key under `["rows",0]` begins
+ * `["rows",0,`: the parent's key minus its closing bracket, plus a
+ * comma. Call that the marker. Every descendant is >= the marker, and
+ * every descendant is <= the parent's own key, because the two agree
+ * up to the last character and `,` (0x2C) sorts before `]` (0x5D). So
+ * `[marker, parentKey]` is a contiguous window holding every
+ * descendant and the parent itself.
  *
- * ## Why a sorted key array is the right index
- *
- * A `PathKey` is `JSON.stringify(segments)`, so a path's descendants
- * all begin with the parent's key minus its closing bracket, plus a
- * comma: every key under `["rows",0]` begins `["rows",0,`. Call that
- * the marker. Two facts make a sorted array enough:
- *
- *  - every descendant key is >= the marker, since it begins with it;
- *  - every descendant key is <= the parent's own key, since the two
- *    agree up to the last character, where `,` (0x2C) sorts before
- *    `]` (0x5D).
- *
- * So `[marker, parentKey]` is a contiguous window containing every
- * descendant and the parent itself. It is a SUPERSET, not an exact
- * answer, and the caller still applies `isPathPrefix` to what comes
- * back: the window narrows the scan, it does not decide membership.
- * That split is deliberate. Membership stays where it already was, so
- * the encoding argument above cannot quietly become the definition of
- * a prefix.
- *
- * The root prefix has no marker (`[]` minus its bracket plus a comma is
- * `[,`, which nothing begins with), and the root matches everything
- * anyway, so it is answered by handing back the whole index.
+ * The window is a SUPERSET: callers still apply `isPathPrefix`, so this
+ * encoding argument cannot quietly become the definition of a prefix.
+ * The root has no marker (`[,` begins nothing) and matches everything,
+ * so it is answered with the whole index.
  */
 import type { ValidationError } from '../types/types-api'
 import { keyForSegments, segmentsForPathKey, type Path, type PathKey } from './paths'

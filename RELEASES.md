@@ -1,5 +1,15 @@
 # Releases
 
+## v0.30.0 — 2026-09-16
+
+## What's Changed
+* perf(core)!: the efficiency program, eager -3.8%, heap -22%, form.list() 38x by @ozzyfromspace in https://github.com/attaform/Attaform/pull/643
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.29.0...v0.30.0
+
+---
+
 ## v0.29.0 — 2026-09-15
 
 ## What's Changed

@@ -437,6 +437,21 @@ export function assertZodVersion(schema: unknown): void {
   }
 }
 
+// Every descendable `def.*` child slot, as data: single sub-schemas,
+// record-shaped maps of sub-schemas, and list-shaped option/item arrays.
+const DESCEND_SINGLE = [
+  'innerType',
+  'element',
+  'in',
+  'out',
+  'left',
+  'right',
+  'keyType',
+  'valueType',
+] as const
+const DESCEND_RECORD = ['shape', 'entries'] as const
+const DESCEND_LIST = ['options', 'items'] as const
+
 /**
  * Generalized depth-first walk over Zod v4's schema tree. The visitor
  * decides per-node whether the predicate fires; this walker handles
@@ -456,21 +471,6 @@ export function assertZodVersion(schema: unknown): void {
  * "walk the tree, short-circuit on first hit" — the walker hosts that
  * shape once, the predicates contribute only the per-node test.
  */
-// Every descendable `def.*` child slot, as data: single sub-schemas,
-// record-shaped maps of sub-schemas, and list-shaped option/item arrays.
-const DESCEND_SINGLE = [
-  'innerType',
-  'element',
-  'in',
-  'out',
-  'left',
-  'right',
-  'keyType',
-  'valueType',
-] as const
-const DESCEND_RECORD = ['shape', 'entries'] as const
-const DESCEND_LIST = ['options', 'items'] as const
-
 function walkSchemaTree(
   schema: z.ZodType,
   visit: (node: z.ZodType) => boolean,

@@ -635,30 +635,6 @@ function unwrapToDiscriminatedUnion(
   return undefined
 }
 
-/**
- * Resolve the field metadata for the schema node at `path` against
- * the user's ORIGINAL schema (not the stripped / slim derivative —
- * stripping creates new schema instances which would lose registry
- * entries keyed by reference identity). Reads the WeakMap-backed
- * `fieldMeta` shim and applies the same precedence rules as the v4
- * adapter:
- *
- *   - label: registry → humanize(lastSegment)
- *   - description: registry → schema.description (.describe()) → undefined
- *   - placeholder: registry → undefined
- *   - meta: registry payload (frozen) — empty object when absent
- *
- * For schemas registered at multiple paths (shared instance — e.g.
- * `fieldMeta.add(addr, A); fieldMeta.add(addr, B); z.object({a: addr, b: addr})`),
- * consults a per-rootSchema path → payload map (`getPathMetaMapV3`)
- * built by walking the schema tree once, counting per-schema visits,
- * and pairing them with the registration list in declaration order.
- * Falls back to the schema-keyed registry for paths the walker can't
- * statically enumerate (dynamic discriminated-union sub-paths,
- * record-value paths beyond the canonical '*' slot). Mirrors v4's
- * `walkForMeta` / `getPathMetaMap` / `consumePayload`
- * (`adapter.ts:773-989`).
- */
 // Peel every transparent wrapper around a schema to expose its
 // structural inner — Optional / Nullable / Default / Readonly / Catch
 // (catch matters here so registrations on the inner under `.catch(...)`
@@ -717,6 +693,30 @@ function getDefaultValuesFromZodSchema<
   return deriveDefaultWalk(formSchema, useDefaultSchemaValues, V3_INTROSPECTOR, 64) as Form
 }
 
+/**
+ * Resolve the field metadata for the schema node at `path` against
+ * the user's ORIGINAL schema (not the stripped / slim derivative —
+ * stripping creates new schema instances which would lose registry
+ * entries keyed by reference identity). Reads the WeakMap-backed
+ * `fieldMeta` shim and applies the same precedence rules as the v4
+ * adapter:
+ *
+ *   - label: registry → humanize(lastSegment)
+ *   - description: registry → schema.description (.describe()) → undefined
+ *   - placeholder: registry → undefined
+ *   - meta: registry payload (frozen) — empty object when absent
+ *
+ * For schemas registered at multiple paths (shared instance — e.g.
+ * `fieldMeta.add(addr, A); fieldMeta.add(addr, B); z.object({a: addr, b: addr})`),
+ * consults a per-rootSchema path → payload map (`getPathMetaMapV3`)
+ * built by walking the schema tree once, counting per-schema visits,
+ * and pairing them with the registration list in declaration order.
+ * Falls back to the schema-keyed registry for paths the walker can't
+ * statically enumerate (dynamic discriminated-union sub-paths,
+ * record-value paths beyond the canonical '*' slot). Mirrors v4's
+ * `walkForMeta` / `getPathMetaMap` / `consumePayload`
+ * (`adapter.ts:773-989`).
+ */
 function resolveFieldMetaAtPathV3(
   rootSchema: z.ZodSchema,
   path: Path,

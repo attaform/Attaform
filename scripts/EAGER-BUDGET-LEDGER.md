@@ -695,3 +695,87 @@ real change. Re-running that suite alone at 7 rounds reproduced all of
 them in the same direction (+13.2% / +17.9% / +11.2%), which noise does
 not do. The `untracked proxy` arms did not move: the per-level trap
 cost dominates there and swamps the walk.
+
+## Phase C Spends Bytes: per-prefix error windows, 2026-09-16
+
+Phase C SPENDS BYTES: 33,009 -> 33,204 measured (+195), in two
+commits, and the budget does NOT move. `33_320` absorbs it with
+0.11 kB headroom, so this is a trade priced inside a ceiling that was
+already set rather than a raise.
+
+What it buys is the defect A2 surfaced, on both surfaces that carried
+it. A form that mounts holding errors used to pay one extra render per
+UNRELATED container on its first write, exactly n-1, linear in
+container count:
+
+| sibling renders, write 1 | n=2 | n=10 | n=50 | n=200 |
+| ------------------------ | --: | ---: | ---: | ----: |
+| `form.errors('gN')`, was |   1 |    9 |   49 |   199 |
+| `form.errors('gN')`, now |   0 |    0 |    0 |     0 |
+| `form.errors.gN`, was    |     |    9 |   49 |       |
+| `form.errors.gN`, now    |     |    0 |    0 |       |
+
+Both adapters. Steady state was already isolated; this is the one-shot
+fan-out on the first write, and it rides the ASYNC validation pass, so
+a probe that settles with `nextTick()` alone measures ZERO and reads
+as already-fixed. Settle with `wait(20)` then two `nextTick`s.
+
+`2f975b21` (+183 B) gives each prefix its own memoised window over the
+sorted error index. `3eaae90d` (+12 B) reads the errors TREE through
+the same window; it was still scanning the whole store in three passes
+per read, so it was global by construction rather than by accident.
+
+The mechanism is Vue's own, verified by a standalone probe before
+anything was built on it: a `computed` that hands back its previous
+value stops propagation through a CHAIN, computed -> computed ->
+render effect. The plan had scoped per-prefix invalidation EPOCHS
+instead. Enumerating those found 20 mutation sites across 5 files, and
+a missed bump is a stale index, which is wrong errors. Wrong errors is
+a worse failure than the extra render it was fixing. Vue keeps owning
+invalidation here, so there is no new protocol to get wrong, and
+bounding came free from the #617 liveness sweep rather than a second
+`MEMO_CAP` clone.
+
+Where the 195 B went: the per-prefix memo, its `isSameWindow` key
+comparison, and the ordinal ordering the tree surface needed. The tree
+rewrite itself SAVED 64 B, since three whole-store passes,
+`cellEntriesFor` and a merge duplicated three times all died with it.
+The ordering machinery spent that back.
+
+The ordering was not cosmetic. Driving the tree from a sorted window
+re-sorted it, and no test caught that, because the order it replaced
+was not arbitrary insertion order: it MATCHED `meta.errors`
+schema-declaration order. Placing by `ensurePathOrdinal` in both
+readers restored parity and fixed a shuffle that was already shipping.
+Measured on the OLD code, `JSON.stringify(form.errors)` went
+`email,password` -> `password,email` after clearing and re-breaking
+one field, because the store's delete-then-set moves the key to the
+end. That is the exact churn `pathOrdinals` was introduced to absorb
+for `meta.errors` on 2026-07-18, which the tree surface never got.
+
+Both surfaces are pinned, and both pins fail against the previous
+commit.
+
+Whole branch against `main` (`cd4d4f7c`, v0.29.0):
+
+|          |     main |   branch |                 delta |
+| -------- | -------: | -------: | --------------------: |
+| eager gz | 34,509 B | 33,204 B | **-1,305 B (-3.78%)** |
+| async gz |  1,377 B |      0 B |              -1,377 B |
+
+### Runtime A/B, 7 interleaved rounds
+
+`BENCH_ROUNDS=7 node scripts/bench-delta.mjs` against `cd4d4f7c`, run
+at HEAD `3eaae90d`, 23 scenarios. **Nothing slower.** Six moved by 5%
+or more, all faster:
+
+- field-array remove+append rotation on a 500-item array **+90.5%**
+- `reset()` full baseline rebuild **+54.1%**
+- untracked raw `getAtPath` walk **+18.5%** at L=4, **+11.5%** at L=1
+- tracked token+raw walk **+11.5%** at L=4, **+5.2%** at L=16, the
+  second of those harness-flagged noisy
+
+This phase touches the store's hot path, so the whole-branch A/B was
+mandatory rather than optional. The rotation and `reset()` rows are
+pass 2's win set holding at the same magnitudes with the per-prefix
+windows in place.

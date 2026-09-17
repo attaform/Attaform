@@ -158,7 +158,7 @@ describe.each(adapters)(
   }
 )
 
-describe('hostModelValue — blank-aware :modelValue presentation', () => {
+describe('hostModelValue: blank-aware :modelValue presentation', () => {
   function numericHost(defaultValues: GenericForm) {
     const formKey = `host-model-${Math.random().toString(36).slice(2)}`
     const abstract = zodAdapterV4(z.object({ n: z.number() }))(formKey, { maxRecursionDepth: 64 })

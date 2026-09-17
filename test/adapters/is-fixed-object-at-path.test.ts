@@ -35,7 +35,7 @@ const adapters = [
   { name: 'v3', adapter: zodAdapterV3(build(zV3) as never)('f', { maxRecursionDepth: 64 }) },
 ] as const
 
-describe.each(adapters)('isFixedObjectAtPath — $name', ({ adapter }) => {
+describe.each(adapters)('isFixedObjectAtPath: $name', ({ adapter }) => {
   it('the root form is a fixed object', () => {
     expect(adapter.isFixedObjectAtPath([])).toBe(true)
   })

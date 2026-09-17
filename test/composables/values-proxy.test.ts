@@ -60,7 +60,7 @@ function mountForm(): {
   }
 }
 
-describe('form.values — readonly reactive proxy', () => {
+describe('form.values: readonly reactive proxy', () => {
   it('reads primitive leaves directly with no .value', () => {
     const { api, unmount } = mountForm()
     try {
@@ -151,7 +151,7 @@ describe('form.values — readonly reactive proxy', () => {
     }
   })
 
-  it('survives reset() — produces a fresh readonly proxy keyed to the new target', async () => {
+  it('survives reset(): produces a fresh readonly proxy keyed to the new target', async () => {
     const { api, unmount } = mountForm()
     try {
       api.setValue('email', 'pre-reset@x.com')
@@ -216,7 +216,7 @@ describe('form.values — readonly reactive proxy', () => {
   })
 })
 
-describe('form.errors — readonly proxy over the form error map', () => {
+describe('form.errors: readonly proxy over the form error map', () => {
   it('reflects user-injected errors on dotted-key access', () => {
     const { api, unmount } = mountForm()
     try {
@@ -236,7 +236,7 @@ describe('form.errors — readonly proxy over the form error map', () => {
   })
 })
 
-describe('form.toRef — escape hatch for ref-shaped interop', () => {
+describe('form.toRef: escape hatch for ref-shaped interop', () => {
   it('returns a Readonly<Ref<T>> matching the path value', () => {
     const { api, unmount } = mountForm()
     try {

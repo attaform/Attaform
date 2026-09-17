@@ -15,7 +15,7 @@ import type { DefaultValuesInput, Unset } from '../../src'
  * call-site inference without needing a Vue app.
  */
 
-describe('DefaultValuesInput — type-level parity tests', () => {
+describe('DefaultValuesInput: type-level parity tests', () => {
   describe('primitive leaves accept value, unset, and optional', () => {
     it('accepts string', () => {
       function _neverInvoked() {

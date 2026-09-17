@@ -103,7 +103,7 @@ function mount(a: Adapter): any {
 }
 
 describe.each(ADAPTERS)(
-  'reactivity contract — ancestor identity stable on leaf write [$tag]',
+  'reactivity contract: ancestor identity stable on leaf write [$tag]',
   (a) => {
     it('a descendant-leaf write does NOT fire a by-ref watch on its container; deep + leaf watches DO', async () => {
       const form = mount(a)
@@ -623,7 +623,7 @@ describe.each(ADAPTERS)(
  * API can't reach (a real schema never flips an object to an array at a key
  * mid-write, but the in-place recurse must still degrade safely if it ever did).
  */
-describe('applyChangedKeys — reconcile gate (unit)', () => {
+describe('applyChangedKeys: reconcile gate (unit)', () => {
   // applyChangedKeys consumes the caller's single content diff instead of
   // re-walking; the unit calls build that list the same way the write
   // funnel does.

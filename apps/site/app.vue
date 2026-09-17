@@ -23,7 +23,7 @@
   useHead({
     htmlAttrs: { lang: 'en' },
     titleTemplate: (title) =>
-      title ? `${title} · Attaform` : 'Attaform — Type-safe forms for Vue 3 and Nuxt',
+      title ? `${title} · Attaform` : 'Attaform: Type-safe forms for Vue 3 and Nuxt',
     link: [
       // SVG favicon, modern evergreen browsers render it crisply at
       // every tab size and adapt to high-DPI without a fallback PNG.
@@ -52,12 +52,12 @@
 
   useSeoMeta({
     description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
-    ogTitle: 'Attaform — Type-safe forms for Vue 3 and Nuxt',
+    ogTitle: 'Attaform: Type-safe forms for Vue 3 and Nuxt',
     ogDescription: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
     ogType: 'website',
     ogSiteName: 'Attaform',
     twitterCard: 'summary_large_image',
-    twitterTitle: 'Attaform — Type-safe forms for Vue 3 and Nuxt',
+    twitterTitle: 'Attaform: Type-safe forms for Vue 3 and Nuxt',
     twitterDescription: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
   })
 
@@ -77,7 +77,7 @@
          `.page-leave-active`, etc.) so the styling reads from the
          same motion vocabulary as the rest of the site. mode="out-in"
          means the leaving page completes its fade before the entering
-         page starts — no overlap, no layout flash from absolutely-
+         page starts: no overlap, no layout flash from absolutely-
          positioned siblings. Anything heavier than this (slides,
          scales) implies directionality the user didn't ask for and
          gets in the way of dense docs reading. -->

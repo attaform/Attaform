@@ -121,7 +121,7 @@ const adapters = [
 
 const INVALID = 'async-invalid'
 
-describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useForm }) => {
+describe.each(adapters)('P1 validation-cancel equivalence: $name', ({ z, useForm }) => {
   const apps: App[] = []
   let keySeq = 0
   afterEach(() => {

@@ -3303,8 +3303,8 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
       // invariant broke.
       console.error(
         __DEV__
-          ? `[attaform] resetField: leaf write rejected for path '${targetKey}' — ` +
-              `originals contain a value that doesn't satisfy the slim primitive shape. ` +
+          ? `[attaform] resetField: leaf write rejected for path '${targetKey}'. ` +
+              `Originals contain a value that doesn't satisfy the slim primitive shape. ` +
               `This is a bug in the construction pipeline.`
           : `[attaform] AF11 attaform.dev/e/af11 '${targetKey}'`
       )
@@ -3336,8 +3336,8 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
       if (!wroteSubtree) {
         console.error(
           __DEV__
-            ? `[attaform] resetField: subtree write rejected at path '${targetKey}' — ` +
-                `originals contain values that don't satisfy the slim primitive shape. ` +
+            ? `[attaform] resetField: subtree write rejected at path '${targetKey}'. ` +
+                `Originals contain values that don't satisfy the slim primitive shape. ` +
                 `This is a bug in the construction pipeline.`
             : `[attaform] AF12 attaform.dev/e/af12 '${targetKey}'`
         )

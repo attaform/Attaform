@@ -30,7 +30,7 @@ const schema = z.object({
   note: z.string(),
 })
 
-describe('<select multiple v-register> — Cmd+click adds selection', () => {
+describe('<select multiple v-register>: Cmd+click adds selection', () => {
   let app: App | undefined
 
   afterEach(() => {

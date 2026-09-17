@@ -34,7 +34,7 @@ const adapters = [
 
 let keySeq = 0
 
-describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
+describe.each(adapters)('async .refine parity: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -72,7 +72,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
     return handle.api
   }
 
-  describe('parse({ commit: true }) — whole form', () => {
+  describe('parse({ commit: true }): whole form', () => {
     it('resolves success when the async refine passes', async () => {
       const api = mountForm()
       api.setValue('username', 'free')
@@ -95,7 +95,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
     })
   })
 
-  describe('parse(path, { commit: true }) — per-field subtree (the autosave gate)', () => {
+  describe('parse(path, { commit: true }): per-field subtree (the autosave gate)', () => {
     it('resolves success for a valid field even when a sibling is invalid', async () => {
       const api = mountForm()
       api.setValue('username', 'free')
@@ -117,7 +117,7 @@ describe.each(adapters)('async .refine parity — $name', ({ useForm, z }) => {
     })
   })
 
-  describe('handleSubmit — awaits the async refine before dispatch', () => {
+  describe('handleSubmit: awaits the async refine before dispatch', () => {
     it('dispatches to onSubmit when the async refine passes', async () => {
       const api = mountForm()
       api.setValue('username', 'free')

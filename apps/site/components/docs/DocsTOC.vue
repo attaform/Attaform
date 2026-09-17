@@ -172,7 +172,7 @@
 </template>
 
 <style scoped>
-  /* Same animated indicator pattern as the sidebar — a pseudo-element
+  /* Same animated indicator pattern as the sidebar: a pseudo-element
      bar that scales in from center on activate. The TOC also nudges
      active links 0.125rem to the right so the scrollspy firing reads
      as a small visual cue (the link "steps forward" as the heading

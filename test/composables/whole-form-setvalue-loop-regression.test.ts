@@ -80,7 +80,7 @@ describe('whole-form setValue from inside a deep watch', () => {
         // Bound the runaway: if the loop reappears, fail the test
         // before the browser would freeze rather than time out.
         if (handlerFires > 50) {
-          throw new Error('infinite loop detected — handler fired >50 times')
+          throw new Error('infinite loop detected: handler fired >50 times')
         }
         api.setValue((v) => ({ ...v, delivery: v.pickup }))
       },
@@ -110,7 +110,7 @@ describe('whole-form setValue from inside a deep watch', () => {
       () => {
         handlerFires++
         if (handlerFires > 50) {
-          throw new Error('infinite loop detected — handler fired >50 times')
+          throw new Error('infinite loop detected: handler fired >50 times')
         }
         // Path-form setValue at the sibling, does this loop?
         api.setValue('delivery', { ...api.values.pickup })

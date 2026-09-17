@@ -49,7 +49,7 @@
   --tw-prose-td-borders: var(--color-border);
 
   /* Drop body text from the typography plugin's 16px default to
-     15px — one notch above the 14px sidebar / nav scale, so the
+     15px: one notch above the 14px sidebar / nav scale, so the
      hierarchy reads "controls (14) → content (15) → headings
      (display)" rather than "controls (14) → wall of 16". The
      typography plugin sizes most prose elements (headings, lists,
@@ -84,11 +84,11 @@
 
 /* Heading permalinks. Nuxt Content already wraps each heading's
    content in an `<a href="#slug">` (you can see it in the rendered
-   HTML), so we don't have to inject a separate link node — we just
+   HTML), so we don't have to inject a separate link node: we just
    style the existing anchor's ::after with a hash glyph that fades
    in on heading hover. The whole heading is clickable; the hash is
    the visible affordance signaling "you can grab a deep link
-   here". h1 omitted because it's the article title — the URL
+   here". h1 omitted because it's the article title: the URL
    already addresses it. */
 .docs-prose :where(h2, h3, h4) > a[href^='#'] {
   color: inherit;
@@ -126,7 +126,7 @@
   animation: reveal-fade var(--duration-deliberate) var(--ease-out-quart) both;
 }
 
-/* Inline code chip — the typography plugin's default leans muted
+/* Inline code chip: the typography plugin's default leans muted
    gray-on-gray, which doesn't read as "code" to the eye when
    surrounded by prose. Tinted bg + monospace + thin border makes
    it scan as a code reference at a glance. */
@@ -140,7 +140,7 @@
   font-weight: 500;
 }
 /* Strip the typography plugin's default backtick quotes around
-   inline code — they're added via ::before / ::after pseudo-element
+   inline code: they're added via ::before / ::after pseudo-element
    content so the rule has to explicitly clear it everywhere code
    can appear, not just in the chip-styled p/li/td/th contexts.
    Without the heading branch (h1–h6), every inline-code span inside
@@ -150,7 +150,7 @@
   content: '';
 }
 
-/* Code block — the typography plugin's default has a subtle dark
+/* Code block: the typography plugin's default has a subtle dark
    pre with light syntax. Bumping the radius to xl (12px) to match
    our card chrome and adding a 1px border helps it sit on the
    page rather than floating.
@@ -170,7 +170,7 @@
   max-width: 100%;
 }
 
-/* Blockquotes as Untitled UI callouts — accent border-left + the
+/* Blockquotes as Untitled UI callouts: accent border-left + the
    accent-soft tint pair. Strips the default italic font-style;
    callouts read as "this is important", not "this is a quote". */
 .docs-prose blockquote {
@@ -200,7 +200,7 @@
   color: var(--color-accent-fg);
 }
 
-/* Tables — Untitled UI compact striping pattern. Header row gets
+/* Tables: Untitled UI compact striping pattern. Header row gets
    a subtle surface tint; row borders use our border token so they
    pick up the dark-mode flip automatically.
    `display: block` + `overflow-x: auto` makes the table itself a
@@ -225,9 +225,9 @@
   color: var(--color-fg);
 }
 
-/* Long unbreakable identifiers in inline code — function signatures
+/* Long unbreakable identifiers in inline code: function signatures
    like `useForm<Schema>(options): UseFormReturnType<Schema>` or
-   long type names — would otherwise force the heading / paragraph
+   long type names: would otherwise force the heading / paragraph
    to be at least as wide as the longest identifier. `overflow-wrap:
    anywhere` lets the browser break inside identifiers as a last
    resort, so the article column controls the layout instead of
@@ -245,7 +245,7 @@
   overflow-wrap: anywhere;
 }
 
-/* Docs breadcrumb — stagger entrance + connected-chevron hover.
+/* Docs breadcrumb: stagger entrance + connected-chevron hover.
  * Moved out of `DocsBreadcrumb.vue`'s `<style scoped>` for the same
  * dev-mode JS-injection reason `.docs-prose` lives here. The class
  * names (`.crumb-step`, `.crumb-chevron`, `.crumb-link`) are unique

@@ -44,7 +44,7 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('forwards validateOn / debounceMs — live field errors populate without submit', async () => {
+  it('forwards validateOn / debounceMs: live field errors populate without submit', async () => {
     const strictSchema = z.object({
       email: z.string().email('bad email'),
       password: z.string().min(8, 'min 8 chars'),

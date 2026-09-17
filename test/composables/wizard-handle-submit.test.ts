@@ -58,7 +58,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — handleSubmit on the final step', () => {
+describe('useWizard: handleSubmit on the final step', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -516,7 +516,7 @@ describe('useWizard — handleSubmit on the final step', () => {
   })
 })
 
-describe('useWizard — handleSubmit lifecycle signals', () => {
+describe('useWizard: handleSubmit lifecycle signals', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -677,7 +677,7 @@ describe('useWizard — handleSubmit lifecycle signals', () => {
   })
 })
 
-describe('useWizard — handleSubmit on string slots (noop forms)', () => {
+describe('useWizard: handleSubmit on string slots (noop forms)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -759,7 +759,7 @@ describe('useWizard — handleSubmit on string slots (noop forms)', () => {
  * `getFirstErrorElement` returns `null` and the focus policy
  * silently no-ops.
  */
-describe('useWizard — focusFirstError lands focus through v-if step swap', () => {
+describe('useWizard: focusFirstError lands focus through v-if step swap', () => {
   const apps: App[] = []
   let focusSpy: ReturnType<typeof vi.spyOn>
   let offsetParentDescriptor: PropertyDescriptor | undefined

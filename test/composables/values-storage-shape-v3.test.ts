@@ -62,7 +62,7 @@ const defaultsSchema = z.object({
   tags: z.array(z.string()).default([]),
 })
 
-describe('v3 — ZodDefault peels `| undefined`, runtime resolves the default', () => {
+describe('v3: ZodDefault peels `| undefined`, runtime resolves the default', () => {
   it('z.boolean().default(true) → boolean / runtime true', () => {
     const { api, unmount } = mountWith(() =>
       useForm({ schema: defaultsSchema, key: uniqueKey('zd-bool') })
@@ -136,8 +136,8 @@ const bareRequiredSchema = z.object({
   arr: z.array(z.string()),
 })
 
-describe('v3 — Bare-required fields resolve to a falsy concrete value', () => {
-  it('plain primitives — type + runtime', () => {
+describe('v3: Bare-required fields resolve to a falsy concrete value', () => {
+  it('plain primitives: type + runtime', () => {
     const { api, unmount } = mountWith(() =>
       useForm({ schema: bareRequiredSchema, key: uniqueKey('bare') })
     )
@@ -165,7 +165,7 @@ const nestedSchema = z.object({
   }),
 })
 
-describe('v3 — Nested object descent (one level)', () => {
+describe('v3: Nested object descent (one level)', () => {
   it('nested leaves keep their peeled types and resolve at runtime', () => {
     const { api, unmount } = mountWith(() =>
       useForm({ schema: nestedSchema, key: uniqueKey('nested') })
@@ -183,7 +183,7 @@ describe('v3 — Nested object descent (one level)', () => {
 
 // Genuinely uncertain, invariant does NOT promise to peel.
 
-describe('v3 — Genuinely uncertain edges', () => {
+describe('v3: Genuinely uncertain edges', () => {
   it('z.string().optional() keeps `| undefined`', () => {
     const schema = z.object({ bio: z.string().optional() })
     const { api, unmount } = mountWith(() => useForm({ schema, key: uniqueKey('opt') }))
@@ -213,8 +213,8 @@ describe('v3 — Genuinely uncertain edges', () => {
 // storage-shape via the discriminating dispatch in
 // `src/runtime/adapters/unified/types-storage-shape.ts`.
 
-describe('Unified entry — v3 schema inference (Friction 1 regression)', () => {
-  it('boolean.default + array — form.values resolves concretely, not never', () => {
+describe('Unified entry: v3 schema inference (Friction 1 regression)', () => {
+  it('boolean.default + array: form.values resolves concretely, not never', () => {
     const schema = z.object({
       flag: z.boolean().default(true),
       items: z.array(z.string()),
@@ -260,7 +260,7 @@ describe('Unified entry — v3 schema inference (Friction 1 regression)', () => 
 // canary: if instantiation depth ever explodes through the unified
 // entry's v3 branch, this is where it surfaces first.
 
-describe('Depth pressure — multi-step booking schema (unified entry + v3)', () => {
+describe('Depth pressure: multi-step booking schema (unified entry + v3)', () => {
   const COUNTRIES = ['US', 'CA', 'MX', 'GB', 'DE', 'FR', 'JP', 'CN', 'AU'] as const
   const HAZARD_CLASSES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const
   const TRUCK_TYPES = ['box', 'flatbed', 'reefer', 'tanker'] as const
@@ -399,8 +399,8 @@ describe('Depth pressure — multi-step booking schema (unified entry + v3)', ()
 // surfacing `(T | undefined)[]` for any array leaf post-parse: a
 // type-lie at the most consumer-facing surface in the v3 path.
 
-describe('v3 — handleSubmit callback data matches z.output<Schema> (Friction 2 regression)', () => {
-  it('z.array(z.string().transform(...)) — data is string[], not (string | undefined)[]', () => {
+describe('v3: handleSubmit callback data matches z.output<Schema> (Friction 2 regression)', () => {
+  it('z.array(z.string().transform(...)): data is string[], not (string | undefined)[]', () => {
     const schema = z.object({
       urls: z
         .array(
@@ -423,7 +423,7 @@ describe('v3 — handleSubmit callback data matches z.output<Schema> (Friction 2
     }
   })
 
-  it('nested record / array combinations — data matches z.output, no `| undefined` widening', () => {
+  it('nested record / array combinations: data matches z.output, no `| undefined` widening', () => {
     const schema = z.object({
       tags: z.array(z.string()),
       meta: z.record(z.string(), z.number()),

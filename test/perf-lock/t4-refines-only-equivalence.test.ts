@@ -645,7 +645,7 @@ function fuzzSample(rnd: () => number): Record<string, unknown> {
   }
 }
 
-describe('T4 decomposition equivalence — seeded fuzz (flat, both adapters)', () => {
+describe('T4 decomposition equivalence: seeded fuzz (flat, both adapters)', () => {
   for (const a of ADAPTERS) {
     it(`[${a.tag}] 400 randomized samples reconstruct the whole-form verdict`, () => {
       const v = variants(a.z, fuzzFlatSpec())

@@ -17,7 +17,7 @@ import type { RegisterFlatPath } from '../../src/runtime/types/types-api'
  * `${number}` distribution that makes raw `toEqualTypeOf` brittle.
  */
 
-describe('PartialFlatPath — container + array-root + leaf enumeration', () => {
+describe('PartialFlatPath: container + array-root + leaf enumeration', () => {
   it('emits container + leaf for nested object', () => {
     type Form = { user: { email: string } }
     type Paths = PartialFlatPath<Form>
@@ -74,7 +74,7 @@ describe('PartialFlatPath — container + array-root + leaf enumeration', () => 
   })
 })
 
-describe('RegisterFlatPath — leaf-only enumeration (no containers)', () => {
+describe('RegisterFlatPath: leaf-only enumeration (no containers)', () => {
   it('skips container for nested object, emits only the leaf', () => {
     type Form = { user: { email: string } }
     type Paths = RegisterFlatPath<Form>

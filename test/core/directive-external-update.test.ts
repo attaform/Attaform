@@ -179,7 +179,7 @@ function selectedValues(select: HTMLSelectElement): string[] {
     .map((o: HTMLOptionElement) => o.value)
 }
 
-describe('v-register — external store updates reach the DOM without a re-render', () => {
+describe('v-register: external store updates reach the DOM without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -228,7 +228,7 @@ describe('v-register — external store updates reach the DOM without a re-rende
   })
 })
 
-describe('v-register checkbox — external updates without a re-render', () => {
+describe('v-register checkbox: external updates without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -265,7 +265,7 @@ describe('v-register checkbox — external updates without a re-render', () => {
   })
 })
 
-describe('v-register radio — external updates without a re-render', () => {
+describe('v-register radio: external updates without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -294,7 +294,7 @@ describe('v-register radio — external updates without a re-render', () => {
   })
 })
 
-describe('v-register select — external updates without a re-render', () => {
+describe('v-register select: external updates without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })

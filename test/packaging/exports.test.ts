@@ -72,7 +72,7 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
   })
 
   for (const [subpath, entry] of Object.entries(pkg.exports)) {
-    it(`subpath "${subpath}" — every declared artifact exists`, () => {
+    it(`subpath "${subpath}": every declared artifact exists`, () => {
       // A direct string target (e.g. "./package.json": "./package.json")
       // resolves as-is. Guard it explicitly: `Object.entries` on a string
       // walks its characters, which would check `existsSync('p')` and fail.

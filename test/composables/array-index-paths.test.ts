@@ -37,7 +37,7 @@ function setupForm<F extends z.ZodObject<Record<string, z.ZodType>>>(
   return { app, form: captured }
 }
 
-describe('z.array(z.string()) — integer-keyed paths', () => {
+describe('z.array(z.string()): integer-keyed paths', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -77,7 +77,7 @@ describe('z.array(z.string()) — integer-keyed paths', () => {
     expect(form.values.tags[1]).toBe('y')
   })
 
-  it('setValue(`tags.1`, …) updates only that index — siblings preserved', () => {
+  it('setValue(`tags.1`, …) updates only that index: siblings preserved', () => {
     const { app, form } = setupForm(z.object({ tags: z.array(z.string()) }), {
       tags: ['a', 'b', 'c'],
     })
@@ -135,7 +135,7 @@ describe('z.array(z.string()) — integer-keyed paths', () => {
     expect(form.values.tags).toEqual(['a', 'b', 'c'])
   })
 
-  it('nested object inside array — `posts.0.title` resolves a deep leaf', () => {
+  it('nested object inside array: `posts.0.title` resolves a deep leaf', () => {
     const schema = z.object({
       posts: z.array(z.object({ title: z.string(), views: z.number() })),
     })

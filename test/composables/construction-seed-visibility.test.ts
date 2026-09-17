@@ -88,7 +88,7 @@ const asyncFreeTwin = () =>
     code: z.string(),
   })
 
-describe('construction-time sync-check seeds — first-paint visibility', () => {
+describe('construction-time sync-check seeds: first-paint visibility', () => {
   it('seeds the sync violation and the seed is meta-visible', () => {
     const api = mount(asyncFreeTwin(), 'seed-sync')
     expect(api.meta.valid).toBe(false)

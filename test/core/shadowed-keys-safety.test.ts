@@ -37,7 +37,7 @@ afterEach(() => {
   }
 })
 
-describe('shadowed-key safety — path-walker primitives', () => {
+describe('shadowed-key safety: path-walker primitives', () => {
   it('isShadowedKey flags exactly the Object.prototype member names', () => {
     for (const k of SHADOWED) expect(isShadowedKey(k)).toBe(true)
     for (const k of ['email', 'city', 'wrap', '0', 'tags', 'value', 'dirty']) {
@@ -76,7 +76,7 @@ describe('shadowed-key safety — path-walker primitives', () => {
   })
 })
 
-describe('shadowed-key safety — no prototype pollution', () => {
+describe('shadowed-key safety: no prototype pollution', () => {
   it('a __proto__ write lands as own data, never on Object.prototype', () => {
     const tree = setAtPath({}, ['evil', '__proto__'], { polluted: true })
     // Own data property at the literal key: not the prototype.
@@ -111,7 +111,7 @@ describe('shadowed-key safety — no prototype pollution', () => {
   })
 })
 
-describe('shadowed-key safety — live form surfaces', () => {
+describe('shadowed-key safety: live form surfaces', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

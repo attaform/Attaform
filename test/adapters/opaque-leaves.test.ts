@@ -111,7 +111,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('opaque leaves — $name', (adapter) => {
+describe.each(ADAPTERS)('opaque leaves: $name', (adapter) => {
   // ── 1. the construction gate ──────────────────────────────────────
 
   it('mounts a schema whose leaf is z.instanceof(File)', () => {

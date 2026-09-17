@@ -64,7 +64,7 @@ function errorsAt(form: { errors: unknown }): ErrorAtPath {
   return form.errors as unknown as ErrorAtPath
 }
 
-describe('Ancestor container refine — clears/re-fires on descendant change', () => {
+describe('Ancestor container refine: clears/re-fires on descendant change', () => {
   it('container refine clears when a descendant change makes it pass', async () => {
     const schema = z.object({
       profile: z

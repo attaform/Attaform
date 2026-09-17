@@ -58,7 +58,7 @@ const noop = (): void => {}
 export const SCENARIOS: Scenario[] = [
   {
     id: 's0-tiny',
-    title: 'tiny — 5 flat scalars, depth 1',
+    title: 'tiny: 5 flat scalars, depth 1',
     makeSchema: (z) =>
       z.object({
         a: z.string().min(2),
@@ -88,7 +88,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 's1-nested',
-    title: 'medium — nested objects, depth 2',
+    title: 'medium: nested objects, depth 2',
     makeSchema: (z) =>
       z.object({
         profile: z.object({ first: z.string().min(2), last: z.string() }),
@@ -117,7 +117,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 's4-array',
-    title: 'wide-array — list/key identity across mutations (small N; dashboard runs N=1000)',
+    title: 'wide-array: list/key identity across mutations (small N; dashboard runs N=1000)',
     makeSchema: (z) =>
       z.object({
         rows: z.array(z.object({ name: z.string().min(2), qty: z.number() })),
@@ -155,7 +155,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 's5-discriminated-union',
-    title: 'DU-heavy — variant switching (exercises the T1 cross-variant guard)',
+    title: 'DU-heavy: variant switching (exercises the T1 cross-variant guard)',
     makeSchema: (z) =>
       z.object({
         payment: z.discriminatedUnion('kind', [

@@ -49,7 +49,7 @@
 
 <template>
   <div class="lg:hidden">
-    <!-- Trigger — uses the same `secondary` button language as the
+    <!-- Trigger: uses the same `secondary` button language as the
          marketing CTAs (border + bg + shadow-xs) so it reads as a
          deliberate affordance rather than a plain link. -->
     <button

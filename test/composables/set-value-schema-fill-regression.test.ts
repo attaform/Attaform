@@ -66,7 +66,7 @@ function harness(initialPeople: Form['people']) {
   return { app, form: captured }
 }
 
-describe('setValue — intermediate array slots fill with schema element defaults', () => {
+describe('setValue: intermediate array slots fill with schema element defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -127,7 +127,7 @@ describe('setValue — intermediate array slots fill with schema element default
   })
 })
 
-describe('setValue — path-form callback `prev` is the schema element default when the slot is missing', () => {
+describe('setValue: path-form callback `prev` is the schema element default when the slot is missing', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -235,7 +235,7 @@ function profileHarness(initial: Partial<ProfileForm['user']>) {
   return { app, form: captured }
 }
 
-describe('setValue — intermediate object gaps fill with schema defaults', () => {
+describe('setValue: intermediate object gaps fill with schema defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -330,7 +330,7 @@ function addressHarness(initialPeople: AddressForm['address']['people']) {
   return { app, form: captured }
 }
 
-describe('setValue — combined: object + array intermediate fill via callback', () => {
+describe('setValue: combined: object + array intermediate fill via callback', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -418,7 +418,7 @@ function cascadeHarness() {
   return { app, form: captured }
 }
 
-describe('setValue — deep cascade fills every traversed slot completely', () => {
+describe('setValue: deep cascade fills every traversed slot completely', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -538,7 +538,7 @@ function tupleHarness(initial: TupleForm['coords']) {
   return { app, form: captured }
 }
 
-describe('setValue — tuple intermediate positions fill with schema position defaults', () => {
+describe('setValue: tuple intermediate positions fill with schema position defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -563,7 +563,7 @@ describe('setValue — tuple intermediate positions fill with schema position de
  * any future churn that bypasses the schema-default pipeline regresses
  * a test rather than slipping through.
  */
-describe('reset / resetField — structural completeness preserved', () => {
+describe('reset / resetField: structural completeness preserved', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -608,7 +608,7 @@ describe('reset / resetField — structural completeness preserved', () => {
   })
 })
 
-describe('setValue — partial value writes are filled with schema defaults', () => {
+describe('setValue: partial value writes are filled with schema defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

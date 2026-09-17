@@ -426,7 +426,7 @@ function lcg(seed: number): () => number {
   }
 }
 
-describe('bookkeeping equivalence — seeded fuzz edit sequences (both adapters)', () => {
+describe('bookkeeping equivalence: seeded fuzz edit sequences (both adapters)', () => {
   const spec = obj({ a: L.min(3), b: L.min(3), c: L.str(), d: L.abortingMin(2) }, [
     eqRefine('a', 'b', 'a==b', ['b']),
     { type: 'refine', fn: (o: any) => o?.c !== o?.a, message: 'c!=a', path: ['c'] },

@@ -53,7 +53,7 @@ function mountNumeric(): { app: App; api: NumericApi } {
   return { app, api: handle.api as NumericApi }
 }
 
-describe('derivedBlankErrors — auto-mark fires for numeric primitives', () => {
+describe('derivedBlankErrors: auto-mark fires for numeric primitives', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -125,7 +125,7 @@ describe('derivedBlankErrors — auto-mark fires for numeric primitives', () => 
   })
 })
 
-describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () => {
+describe('derivedBlankErrors: string / boolean leaves do NOT auto-mark', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -272,7 +272,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
   })
 })
 
-describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
+describe('derivedBlankErrors: schema modifiers gate the synthesis', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -357,7 +357,7 @@ describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
   })
 })
 
-describe('derivedBlankErrors — independent of imperative writers', () => {
+describe('derivedBlankErrors: independent of imperative writers', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -427,7 +427,7 @@ describe('derivedBlankErrors — independent of imperative writers', () => {
   })
 })
 
-describe('derivedBlankErrors — lifecycle integration', () => {
+describe('derivedBlankErrors: lifecycle integration', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

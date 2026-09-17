@@ -57,7 +57,7 @@ async function redundantWarnsFromRender(build: (form: Form) => () => VNode): Pro
   return warns.filter((w) => w.includes('redundant beside v-register'))
 }
 
-describe('v-register runtime redundant-binding warn — state bindings warn', () => {
+describe('v-register runtime redundant-binding warn: state bindings warn', () => {
   it('warns on a native text input with v-model beside v-register', async () => {
     // Native v-model desugars to an `onUpdate:modelValue` prop; that key
     // is the author-only signal (the transforms never emit it).
@@ -106,7 +106,7 @@ describe('v-register runtime redundant-binding warn — state bindings warn', ()
   })
 })
 
-describe('v-register runtime redundant-binding warn — identity carve-out stays silent', () => {
+describe('v-register runtime redundant-binding warn: identity carve-out stays silent', () => {
   it('is silent on a radio with :value (radio identity)', async () => {
     const warns = await redundantWarnsFromRender((form) => {
       const rv = form.register('fruit')
@@ -124,7 +124,7 @@ describe('v-register runtime redundant-binding warn — identity carve-out stays
   })
 })
 
-describe('v-register runtime redundant-binding warn — dedupe and stand-down', () => {
+describe('v-register runtime redundant-binding warn: dedupe and stand-down', () => {
   it('warns once for a v-for of identical redundant text inputs', async () => {
     // Five distinct elements, one shared misuse signature (input::value):
     // the coarse dedupe collapses a field-array footgun to a single line.

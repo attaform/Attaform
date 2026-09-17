@@ -20,14 +20,14 @@
 #   check" below).
 #
 # Sibling check:
-#   `.size-limit.js` tracks the JS bundle byte budget — what consumers
+#   `.size-limit.js` tracks the JS bundle byte budget: what consumers
 #   actually parse and execute at runtime. This file tracks the total
-#   npm tarball byte count — what travels over the network and lands
+#   npm tarball byte count: what travels over the network and lands
 #   on consumers' disks. Different surfaces, both worth fencing.
 #
 # Current anchor:
 #   v0.18.1's packed tarball measures ~1.46 MB (1456639 bytes). The
-#   1887436-byte budget below is ~1.29× of that — tight enough to flag
+#   1887436-byte budget below is ~1.29× of that: tight enough to flag
 #   an accidental publish-surface leak (a stray apps/site/ embed would
 #   be an order of magnitude over, easily caught), loose enough that
 #   ordinary feature work lands without triggering the gate.

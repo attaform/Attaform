@@ -15,7 +15,7 @@ function makeForm(opts: { ssr: boolean }) {
   return { state, register: buildRegister(state, 'test:inst') }
 }
 
-describe('optimistic connected — FormStore.markConnectedOptimistically', () => {
+describe('optimistic connected: FormStore.markConnectedOptimistically', () => {
   it('flips connected: true for the path when ssr is true', () => {
     const { state } = makeForm({ ssr: true })
     expect(state.getFieldRecord(['email'])?.connected).toBe(false)
@@ -32,7 +32,7 @@ describe('optimistic connected — FormStore.markConnectedOptimistically', () =>
     expect(state.getFieldRecord(['email'])?.connected).toBe(false)
   })
 
-  it('is idempotent — repeat calls keep connected: true without touching unrelated fields', () => {
+  it('is idempotent: repeat calls keep connected: true without touching unrelated fields', () => {
     const { state } = makeForm({ ssr: true })
     state.markConnectedOptimistically(['email'])
     state.markConnectedOptimistically(['email'])
@@ -54,7 +54,7 @@ describe('optimistic connected — FormStore.markConnectedOptimistically', () =>
   })
 })
 
-describe('optimistic connected — RegisterValue.markConnectedOptimistically', () => {
+describe('optimistic connected: RegisterValue.markConnectedOptimistically', () => {
   it('flips the path it was built for, not other paths', () => {
     const { state, register } = makeForm({ ssr: true })
     const rv = register(['email'])

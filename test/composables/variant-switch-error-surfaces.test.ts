@@ -60,7 +60,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('error surfaces across a variant switch — $name', (adapter) => {
+describe.each(ADAPTERS)('error surfaces across a variant switch: $name', (adapter) => {
   it('drops the outgoing variant’s schema errors from the aggregate', async () => {
     const { api } = makeMounter(adapter.useForm, adapter.schema(), {})()
     api.setValue('notify.channel', 'sms')

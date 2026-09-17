@@ -67,7 +67,7 @@ describe('injectForm SSR prefetch coordination', () => {
     expect(entry?.[1].form).toMatchObject({ email: 'server@example.com', name: 'Ada' })
   })
 
-  it('descendant without __ssrAccessed does not enqueue — parent stays dormant', async () => {
+  it('descendant without __ssrAccessed does not enqueue: parent stays dormant', async () => {
     let calls = 0
     const Child = defineComponent({
       setup() {
@@ -96,7 +96,7 @@ describe('injectForm SSR prefetch coordination', () => {
     expect(entry?.[1].form).toEqual({ email: '', name: '' })
   })
 
-  it('string-form injectForm("key") preserved — no SSR mark, no enqueue', async () => {
+  it('string-form injectForm("key") preserved: no SSR mark, no enqueue', async () => {
     let calls = 0
     const Child = defineComponent({
       setup() {
@@ -155,7 +155,7 @@ describe('injectForm SSR prefetch coordination', () => {
   })
 })
 
-describe('injectForm signature — type-level union', () => {
+describe('injectForm signature: type-level union', () => {
   it('accepts FormKey string shortcut as before', () => {
     expect(typeof injectForm).toBe('function')
     // The string-form preserves shape: no runtime assertion possible

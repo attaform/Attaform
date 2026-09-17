@@ -76,7 +76,7 @@ const form: Form = (() => {
   return proxy as Form
 })()
 
-describe('useForm type inference — factory signature', () => {
+describe('useForm type inference: factory signature', () => {
   it('accepts `key` as optional for anonymous forms', () => {
     // Post-0.8.3: `key` is optional. Omitted keys resolve to a
     // collision-free synthetic id via Vue's `useId()` at runtime, so
@@ -109,7 +109,7 @@ describe('useForm type inference — factory signature', () => {
   })
 })
 
-describe('useForm type inference — form.values', () => {
+describe('useForm type inference: form.values', () => {
   it('scalar leaf is the leaf type directly (no Ref)', () => {
     expectTypeOf(form.values.email).toEqualTypeOf<string>()
     expectTypeOf(form.values.age).toEqualTypeOf<number>()
@@ -139,7 +139,7 @@ describe('useForm type inference — form.values', () => {
   })
 })
 
-describe('useForm type inference — setValue', () => {
+describe('useForm type inference: setValue', () => {
   it('accepts values that match the path leaf type', () => {
     form.setValue('email', 'alice@example.com')
     form.setValue('age', 30)
@@ -186,8 +186,8 @@ describe('useForm type inference — setValue', () => {
   })
 })
 
-describe('useForm type inference — register', () => {
-  it('non-array paths are STRICT — register returns the leaf type without taint', () => {
+describe('useForm type inference: register', () => {
+  it('non-array paths are STRICT: register returns the leaf type without taint', () => {
     // Phase 4: register read shape is now `NestedReadType<Form, Path>`.
     // Paths that don't cross a numeric segment stay strict, runtime
     // structural-completeness guarantees the slot is populated.
@@ -236,7 +236,7 @@ describe('Phase 4: strict SetValuePayload', () => {
     })
   })
 
-  it('value form is STRICT — drops DeepPartial', () => {
+  it('value form is STRICT: drops DeepPartial', () => {
     // Phase 4 dropped `DeepPartial<Payload>` from `SetValuePayload`. A
     // partial object at a strict path is now a TYPE ERROR; consumers
     // either provide the complete shape or use the callback form. The
@@ -247,7 +247,7 @@ describe('Phase 4: strict SetValuePayload', () => {
     form.setValue('profile', { unknown: 'field' })
   })
 
-  it('register read shape uses NestedReadType — taint after numeric segment', () => {
+  it('register read shape uses NestedReadType: taint after numeric segment', () => {
     // Path doesn't cross a numeric segment.
     expectTypeOf(form.register('email').innerRef.value).toEqualTypeOf<string>()
     // Path crosses a numeric segment ('0').
@@ -257,7 +257,7 @@ describe('Phase 4: strict SetValuePayload', () => {
   })
 })
 
-describe('useForm type inference — primitive-array register paths', () => {
+describe('useForm type inference: primitive-array register paths', () => {
   // Multi-select / multi-checkbox bindings register at the array root.
   // The directive accepts arrays of any slim primitive (string, number,
   // boolean, bigint), so the type must allow root registration on each.
@@ -297,7 +297,7 @@ describe('useForm type inference — primitive-array register paths', () => {
   })
 })
 
-describe('useForm type inference — setValue tuple-segment overload', () => {
+describe('useForm type inference: setValue tuple-segment overload', () => {
   it('segment-array form accepts the same value as the dotted-string form', () => {
     form.setValue(['email'], 'a@b.c')
     form.setValue(['profile', 'name'], 'alice')
@@ -315,7 +315,7 @@ describe('useForm type inference — setValue tuple-segment overload', () => {
   })
 })
 
-describe('useForm type inference — fields() callable tuple form', () => {
+describe('useForm type inference: fields() callable tuple form', () => {
   it('literal tuple resolves to a typed FieldState', () => {
     const f = form.fields(['email'])
     expectTypeOf(f.value).toEqualTypeOf<string>()
@@ -339,7 +339,7 @@ describe('useForm type inference — fields() callable tuple form', () => {
   })
 })
 
-describe('useForm type inference — fields() string call-form (precise + invalid→undefined)', () => {
+describe('useForm type inference: fields() string call-form (precise + invalid→undefined)', () => {
   it('a valid literal leaf resolves to its precise FieldState, no guard', () => {
     // No `?.`: a schema-declared path is never undefined, and the value
     // type is precise.
@@ -359,7 +359,7 @@ describe('useForm type inference — fields() string call-form (precise + invali
   })
 })
 
-describe('useForm type inference — errors() callable tuple form', () => {
+describe('useForm type inference: errors() callable tuple form', () => {
   it('literal tuple returns ValidationError[] | undefined', () => {
     const errs = form.errors(['email'])
     // Match shape (the public ValidationError type is exported, but
@@ -375,7 +375,7 @@ describe('useForm type inference — errors() callable tuple form', () => {
   })
 })
 
-describe('useForm type inference — toRef tuple-segment overload', () => {
+describe('useForm type inference: toRef tuple-segment overload', () => {
   it('segment-array form returns a Readonly<Ref<T>> matching the dotted form', () => {
     expectTypeOf(form.toRef(['email']).value).toEqualTypeOf<string>()
     expectTypeOf(form.toRef(['profile', 'name']).value).toEqualTypeOf<string>()
@@ -388,7 +388,7 @@ describe('useForm type inference — toRef tuple-segment overload', () => {
   })
 })
 
-describe('useForm type inference — register tuple-segment overload', () => {
+describe('useForm type inference: register tuple-segment overload', () => {
   it('segment-array form resolves to the same value type as dotted-string', () => {
     expectTypeOf(form.register(['email']).innerRef.value).toEqualTypeOf<string>()
     expectTypeOf(form.register(['profile', 'name']).innerRef.value).toEqualTypeOf<string>()
@@ -421,7 +421,7 @@ describe('useForm type inference — register tuple-segment overload', () => {
   })
 })
 
-describe('useForm type inference — handleSubmit', () => {
+describe('useForm type inference: handleSubmit', () => {
   it('callback `values` parameter is the fully inferred Form', () => {
     form.handleSubmit((values) => {
       expectTypeOf(values).toEqualTypeOf<ExpectedForm>()
@@ -441,7 +441,7 @@ describe('useForm type inference — handleSubmit', () => {
   })
 })
 
-describe('useForm type inference — setValue at honest-input paths', () => {
+describe('useForm type inference: setValue at honest-input paths', () => {
   // Three schema shapes produce a non-strict leaf at the write side:
   // `z.any()`, `z.unknown()`, and `z.preprocess(fn, X)`. Each maps to
   // a distinct setValue callback `prev` typing:
@@ -546,12 +546,12 @@ describe('useForm type inference — setValue at honest-input paths', () => {
   })
 })
 
-describe('useForm type inference — fields + errors', () => {
+describe('useForm type inference: fields + errors', () => {
   it('form.fields exposes a typed errors array on each path', () => {
     expectTypeOf(form.fields.email.errors).toMatchTypeOf<ReadonlyArray<{ message: string }>>()
   })
 
-  it('form.errors is a FormErrorsSurface<Form> — leaf-aware drillable callable Proxy', () => {
+  it('form.errors is a FormErrorsSurface<Form>: leaf-aware drillable callable Proxy', () => {
     // Public type is a callable proxy; `(path)` returns a leaf array,
     // dot-access returns leaf array OR sub-shape depending on the path.
     expectTypeOf(form.errors.email).toMatchTypeOf<readonly { message: string }[]>()
@@ -573,7 +573,7 @@ describe('useForm type inference — fields + errors', () => {
   })
 })
 
-describe('useForm type inference — form-level state bundle', () => {
+describe('useForm type inference: form-level state bundle', () => {
   it('`state` matches the exported `FormMeta` shape exactly', () => {
     // Pins the whole-bundle contract: any future refactor that drops a
     // field, re-widens a type, or loses the auto-unwrap (re-exposing a
@@ -610,7 +610,7 @@ describe('useForm type inference — form-level state bundle', () => {
   })
 })
 
-describe('useForm type inference — field array helpers', () => {
+describe('useForm type inference: field array helpers', () => {
   it('append accepts only array paths with a matching item shape', () => {
     form.append('tags', 'a-tag')
     form.append('posts', { title: 't', views: 1 })
@@ -648,7 +648,7 @@ describe('useForm type inference — field array helpers', () => {
   })
 })
 
-describe('useForm type inference — reset / resetField', () => {
+describe('useForm type inference: reset / resetField', () => {
   it('reset accepts no args or a DeepPartial<Form>', () => {
     form.reset()
     form.reset({})

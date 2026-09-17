@@ -56,7 +56,7 @@ function mount(): { app: App; api: Api } {
 const formLevel = (errors: readonly ValidationError[]): readonly ValidationError[] =>
   errors.filter((e) => e.path.length === 0)
 
-describe('setErrors — global / form-level errors at []', () => {
+describe('setErrors: global / form-level errors at []', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

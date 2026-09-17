@@ -23,7 +23,7 @@ const schema = z.object({
   note: z.string(),
 })
 
-describe('<input type="radio" v-register> — sibling re-render mid-click', () => {
+describe('<input type="radio" v-register>: sibling re-render mid-click', () => {
   let app: App | undefined
 
   afterEach(() => {

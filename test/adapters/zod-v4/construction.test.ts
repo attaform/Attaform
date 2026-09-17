@@ -14,7 +14,7 @@ import { deriveDefault } from '../../../src/runtime/adapters/zod-v4/default-valu
  * majors, lives in `test/adapters/every-zod-kind.test.ts`. This file
  * pins construction.
  */
-describe('zod-v4 adapter — construction accepts every kind', () => {
+describe('zod-v4 adapter: construction accepts every kind', () => {
   it.each([
     ['z.promise', () => z.object({ pending: z.promise(z.number()) })],
     ['z.templateLiteral', () => z.object({ greeting: z.templateLiteral(['hello ', z.string()]) })],
@@ -41,7 +41,7 @@ describe('zod-v4 adapter — construction accepts every kind', () => {
     expect(() => zodV4Adapter(make())('test', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
-  it('recursive z.lazy() mounts without throwing — adapter walks cap descent via maxRecursionDepth', () => {
+  it('recursive z.lazy() mounts without throwing: adapter walks cap descent via maxRecursionDepth', () => {
     // Classic self-referential: getter resolves back to the same lazy.
     // Pre-B2 this threw at construction; post-B2 the adapter constructs
     // and the runtime walks cap their descent via `maxRecursionDepth`.
@@ -67,7 +67,7 @@ describe('zod-v4 adapter — construction accepts every kind', () => {
   })
 })
 
-describe('zod-v4 adapter — supported variants of lazy/intersection/catch', () => {
+describe('zod-v4 adapter: supported variants of lazy/intersection/catch', () => {
   it('non-recursive z.lazy(() => z.object(...)) works', () => {
     const inner = z.object({ x: z.number() })
     const schema = z.object({ wrap: z.lazy(() => inner) })
@@ -114,7 +114,7 @@ describe('zod-v4 adapter — supported variants of lazy/intersection/catch', () 
   })
 })
 
-describe('zod-v4 adapter — deriveDefault per kind', () => {
+describe('zod-v4 adapter: deriveDefault per kind', () => {
   it('returns the kind blank for map and template-literal', () => {
     // `new Map()` is as honest a blank as `[]` is for an array, and a
     // template literal parses strings so `''` is its blank: the
@@ -133,7 +133,7 @@ describe('zod-v4 adapter — deriveDefault per kind', () => {
     expect(deriveDefault(z.function(), false, 64)).toBeUndefined()
   })
 
-  it('returns undefined on opaque leaves — no shape is declared to derive from', () => {
+  it('returns undefined on opaque leaves: no shape is declared to derive from', () => {
     // `custom` is the kind `z.instanceof(X)` and `z.custom<T>()` both
     // compile to (#542); `undefined` is its real answer, not a
     // fallback, exactly as for `z.unknown()`.

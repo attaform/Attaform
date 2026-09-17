@@ -58,7 +58,7 @@ function compileTemplateWithoutTransforms(template: string): (...args: unknown[]
   return new Function('Vue', code)(VueRuntime) as (...args: unknown[]) => unknown
 }
 
-describe('useRegister — works without attaform compile-time transforms', () => {
+describe('useRegister: works without attaform compile-time transforms', () => {
   let app: App | undefined
 
   afterEach(() => {

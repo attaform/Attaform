@@ -48,7 +48,7 @@ const settle = async (): Promise<void> => {
 const accountSchema = z.object({ email: z.string().min(3, 'too short') })
 const noteSchema = z.object({ note: z.string().min(1, 'note required') })
 
-describe('useWizard — what a whole-wizard submit writes', () => {
+describe('useWizard: what a whole-wizard submit writes', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

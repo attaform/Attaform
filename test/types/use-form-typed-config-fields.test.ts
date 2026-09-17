@@ -32,7 +32,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 const schemaV4 = z.object({ email: z.string() })
 const schemaV3 = zV3.object({ email: zV3.string() })
 
-describe('useForm — typed-config field surface (SF2)', () => {
+describe('useForm: typed-config field surface (SF2)', () => {
   describe('attaform/zod-v3', () => {
     it('accepts disabled', () => {
       function _neverInvoked() {

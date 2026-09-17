@@ -248,7 +248,7 @@ describe('form.blankPaths bulk accessor', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('returns a readonly snapshot — consumers cannot mutate', () => {
+  it('returns a readonly snapshot: consumers cannot mutate', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }), { count: unset })
     apps.push(app)
     const snapshot = form.blankPaths.value
@@ -525,7 +525,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
  * with it.
  */
 
-describe('defaultValues with container `unset` — bare object', () => {
+describe('defaultValues with container `unset`: bare object', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -607,7 +607,7 @@ describe('defaultValues with container `unset` — bare object', () => {
   })
 })
 
-describe('defaultValues with container `unset` — discriminated union', () => {
+describe('defaultValues with container `unset`: discriminated union', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -638,7 +638,7 @@ describe('defaultValues with container `unset` — discriminated union', () => {
   })
 })
 
-describe('defaultValues with container `unset` — array / tuple / record', () => {
+describe('defaultValues with container `unset`: array / tuple / record', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -673,7 +673,7 @@ describe('defaultValues with container `unset` — array / tuple / record', () =
   })
 })
 
-describe('defaultValues with container `unset` — wrappers', () => {
+describe('defaultValues with container `unset`: wrappers', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -12,17 +12,17 @@ on:
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref. When a follow-up commit
-# lands while CI is still running, the older run is killed — only
+# lands while CI is still running, the older run is killed: only
 # the latest commit's status matters for review. Saves wasted
 # compute on force-push / rapid push cycles.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Job topology — designed for parallelism, no redundant work:
+# Job topology: designed for parallelism, no redundant work:
 #   - Version-agnostic checks (lint, typecheck, size, bench, coverage,
 #     build-site) each run ONCE on a single Node version, in parallel.
-#     They have no Node-version sensitivity — running them on a matrix
+#     They have no Node-version sensitivity: running them on a matrix
 #     would 3× the compute for no signal.
 #   - Cross-Node coverage lives in the `test` matrix: it runs ONLY
 #     `pnpm test`, on `lts/*` (the auto-rotating current LTS, 22.x
@@ -39,19 +39,19 @@ concurrency:
 # job here. `pnpm check` stays the single source-of-truth command
 # for local dev; CI fans the same set out into independent jobs.
 #
-# Cache strategy — every job uses `actions/cache/restore` (read-only)
+# Cache strategy: every job uses `actions/cache/restore` (read-only)
 # + `actions/cache/save` (write, main-push only). Three things matter:
 #
 #   1. The unified `actions/cache` action saves on every run. PR runs
 #      saving to a key shared with `main` would let a malicious PR
-#      poison the cache that subsequent `main` runs restore — a
+#      poison the cache that subsequent `main` runs restore: a
 #      variant of the cross-ref cache poisoning vector that hit
 #      TanStack Router (2026-05-11). Splitting restore/save and
 #      gating save on `github.ref == 'refs/heads/main'` closes that.
 #
 #   2. `restore-keys:` (prefix fallback) is deliberately absent.
 #      Prefix-fallback restore is the other half of the poisoning
-#      vector — if a stale `main` cache exists under a partial-match
+#      vector: if a stale `main` cache exists under a partial-match
 #      key, it would be restored into a PR run that didn't pin the
 #      lockfile-hash exact key. Exact-key-only restore means a
 #      lockfile change always cold-installs. PR-CI runs that bump
@@ -170,7 +170,7 @@ jobs:
 
     strategy:
       matrix:
-        # Node 20 dropped after its 2026-04-30 EOL — concurrent with
+        # Node 20 dropped after its 2026-04-30 EOL: concurrent with
         # the pnpm 10 → 11 bump, which itself requires Node 22+ to
         # run. The package's `engines.node` was raised to >=22.0.0
         # in the same change.
@@ -279,7 +279,7 @@ jobs:
       # Non-gating attribution, not a gate: `check:eager` below is the
       # gate. This writes the per-PR eager delta against the merge base
       # to the run summary, because the budget alone only ever showed the
-      # cost in aggregate — the closure grew ~2 kB gz a month across PRs
+      # cost in aggregate: the closure grew ~2 kB gz a month across PRs
       # that each looked free. Needs real history for the merge base, so
       # it re-fetches with depth 0; `continue-on-error` keeps a shallow
       # or detached checkout from failing the job.
@@ -298,7 +298,7 @@ jobs:
 
       # Verifies the published `.d.ts` shape compiles a representative
       # 4-form `useStepper` pattern under `tsc`. Acceptance test for
-      # the type-system depth-efficiency refactor — if this fails,
+      # the type-system depth-efficiency refactor: if this fails,
       # consumers wiring multiple forms in one scope will trip
       # TS2589 ("Type instantiation is excessively deep").
       - name: Check bundled types
@@ -360,8 +360,8 @@ jobs:
         run: pnpm check:bench
 
       # Non-gating attribution. `check:bench` above gates only the groups
-      # that pair an `old:` bench with a `new:` one — three of fifteen
-      # files — and compares each revision against a baseline in the same
+      # that pair an `old:` bench with a `new:` one: three of fifteen
+      # files: and compares each revision against a baseline in the same
       # file rather than against the previous commit, so both arms move
       # together and the ratio holds through a real regression. This
       # measures HEAD against the merge base directly, interleaved, and
@@ -377,7 +377,7 @@ jobs:
   build-site:
     name: Build docs site
     runs-on: ubuntu-latest
-    # The docs site is a downstream consumer of attaform — building
+    # The docs site is a downstream consumer of attaform: building
     # it catches site-level regressions (broken markdown link, REPL
     # bundler choke on a src/ change) at PR time. Node-version
     # agnostic: a single LTS run is enough; the test matrix covers
@@ -430,7 +430,7 @@ jobs:
   coverage-artifact:
     name: Publish coverage HTML artifact
     runs-on: ubuntu-latest
-    # Independent of the test matrix — this exists so PR reviewers
+    # Independent of the test matrix: this exists so PR reviewers
     # can open the coverage report in a browser without checking out
     # the branch and running the suite locally. Uses
     # `pnpm check:coverage` (vitest with coverage instrumentation),

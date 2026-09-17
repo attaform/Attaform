@@ -114,12 +114,12 @@ describe('mergeStructural', () => {
       expect(mergeStructural(schema, ['name'], false)).toBe(false)
     })
 
-    it('treats undefined consumer as missing — falls back to default', () => {
+    it('treats undefined consumer as missing: falls back to default', () => {
       const schema = buildSchema({ name: 'fallback' })
       expect(mergeStructural(schema, ['name'], undefined)).toBe('fallback')
     })
 
-    it('treats null consumer as a deliberate value — null wins', () => {
+    it('treats null consumer as a deliberate value: null wins', () => {
       const schema = buildSchema({ name: '' })
       expect(mergeStructural(schema, ['name'], null)).toBeNull()
     })
@@ -140,7 +140,7 @@ describe('mergeStructural', () => {
       expect(result).toEqual({ user: { name: 'alice', extra: 'foo' } })
     })
 
-    it('idempotent short-circuit — returns input ref when no fills needed', () => {
+    it('idempotent short-circuit: returns input ref when no fills needed', () => {
       const schema = buildSchema({ user: { name: '' } })
       const consumer = { user: { name: 'alice' } }
       const result = mergeStructural(schema, [], consumer)
@@ -160,7 +160,7 @@ describe('mergeStructural', () => {
     })
   })
 
-  describe('arrays — unbounded (array-like)', () => {
+  describe('arrays: unbounded (array-like)', () => {
     it('uses consumer length, fills nothing beyond it', () => {
       const schema = buildSchema({ arr: [] }, { arrayElementDefault: 'def' })
       const result = mergeStructural(schema, ['arr'], ['a', 'b'])
@@ -175,7 +175,7 @@ describe('mergeStructural', () => {
     })
   })
 
-  describe('arrays — tuple-like (fixed length)', () => {
+  describe('arrays: tuple-like (fixed length)', () => {
     it('pads consumer up to tuple length with position defaults', () => {
       const schema = buildSchema({}, { tupleAt: { coords: [0, 0, 0] } })
       const result = mergeStructural(schema, ['coords'], [42])

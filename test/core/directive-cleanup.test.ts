@@ -129,7 +129,7 @@ function installListenerSpies(el: Element): { added: number; removed: number; re
   }
 }
 
-describe('v-register directive — listener teardown on unmount', () => {
+describe('v-register directive: listener teardown on unmount', () => {
   let input: HTMLInputElement
 
   beforeEach(() => {
@@ -272,7 +272,7 @@ describe('v-register directive — listener teardown on unmount', () => {
   })
 })
 
-describe('v-register directive — D2 unsupported-element warning', () => {
+describe('v-register directive: D2 unsupported-element warning', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -345,7 +345,7 @@ describe('v-register directive — D2 unsupported-element warning', () => {
  * already warned at the call site, no listener attachment that would
  * later read off a stale `undefined` value).
  */
-describe('v-register directive — undefined binding (inert)', () => {
+describe('v-register directive: undefined binding (inert)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -422,7 +422,7 @@ describe('v-register directive — undefined binding (inert)', () => {
  *    `deregisterElement` on the prior RV (so a stale opt-in
  *    doesn't keep the element pinned in the form's element map).
  */
-describe('v-register directive — runtime value swap', () => {
+describe('v-register directive: runtime value swap', () => {
   function makeBindingWithOld<T>(
     rv: RegisterValue<T> | undefined,
     oldRv: RegisterValue<T> | undefined

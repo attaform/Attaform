@@ -46,7 +46,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — default URL sync via ?step=<key>', () => {
+describe('useWizard: default URL sync via ?step=<key>', () => {
   const apps: App[] = []
 
   beforeEach(() => {

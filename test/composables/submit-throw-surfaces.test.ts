@@ -36,7 +36,7 @@ const adapters = [
 
 let keySeq = 0
 
-describe.each(adapters)('handleSubmit throw surfacing — $name', ({ useForm, z }) => {
+describe.each(adapters)('handleSubmit throw surfacing: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

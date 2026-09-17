@@ -157,7 +157,7 @@ const ADAPTERS: ReadonlyArray<{ name: string; makeForm: MakeForm }> = [
 ]
 
 for (const { name, makeForm } of ADAPTERS) {
-  describe(`form.interact — ${name} adapter`, () => {
+  describe(`form.interact: ${name} adapter`, () => {
     it('reveals a leaf that form.touch() leaves idle', async () => {
       const touchOnly = makeForm()
       touchOnly.touch('email')
@@ -248,7 +248,7 @@ for (const { name, makeForm } of ADAPTERS) {
       expect(form.fields('email').blurredAfterInteraction).toBe(true)
     })
 
-    it('recovery stays live — fixing the value returns to idle', async () => {
+    it('recovery stays live: fixing the value returns to idle', async () => {
       const form = makeForm()
       await form.interact('email')
       expect(form.fields('email').showErrors).toBe(true)
@@ -295,7 +295,7 @@ for (const { name, makeForm } of ADAPTERS) {
 
 // Earned success, engagement, not net value change
 
-describe('form.interact — a valid subtree earns its success check', () => {
+describe('form.interact: a valid subtree earns its success check', () => {
   const schema = zV4.object({
     team: zV4.string().min(1, 'Name your team'),
     members: zV4.array(zV4.object({ name: zV4.string().min(1), email: zV4.string().email() })),
@@ -358,7 +358,7 @@ describe('form.interact — a valid subtree earns its success check', () => {
   })
 })
 
-describe('earned success — a real user who edits and reverts', () => {
+describe('earned success: a real user who edits and reverts', () => {
   const schema = zV4.object({ email: zV4.string().email('Enter a valid email') })
 
   it('greens on a net-unchanged edit, because engagement is what is rewarded', async () => {
@@ -406,7 +406,7 @@ describe('earned success — a real user who edits and reverts', () => {
 
 // Disabled forms
 
-describe('form.interact — disabled form', () => {
+describe('form.interact: disabled form', () => {
   const schema = zV4.object({ email: zV4.string().email() })
 
   it('is a no-op while the form is frozen', async () => {
@@ -445,7 +445,7 @@ describe('form.interact — disabled form', () => {
 
 // Stickiness across unmount: the field-array-row-in-a-modal case
 
-describe('form.interact — survives unmount', () => {
+describe('form.interact: survives unmount', () => {
   const schema = zV4.object({ email: zV4.string().email('Enter a valid email') })
 
   it('a subtree interacted with while mounted stays revealed after it remounts', async () => {

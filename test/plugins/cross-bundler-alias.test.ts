@@ -184,7 +184,7 @@ interface RollupResolveCtx {
 // without a real resolver.
 const rollupCtx = (): RollupResolveCtx => ({ resolve: async (id) => ({ id, external: false }) })
 
-describe('attaform/rollup — resolveId rewrite', () => {
+describe('attaform/rollup: resolveId rewrite', () => {
   it('rewrites attaform/zod to the v4 subpath when zod@4 is installed', async () => {
     const plugin = rollupAttaform({ root: zodV4Root })
     plugin.buildStart()
@@ -266,7 +266,7 @@ function makeEsbuildBuild(): {
   return { build, getCallback: () => cb, getFilter: () => filter }
 }
 
-describe('attaform/esbuild — onResolve rewrite', () => {
+describe('attaform/esbuild: onResolve rewrite', () => {
   it('re-resolves attaform/zod through the v4 subpath when zod@4 is installed', async () => {
     const { build, getCallback } = makeEsbuildBuild()
     esbuildAttaform({ root: zodV4Root }).setup(build)
@@ -355,7 +355,7 @@ const webpackFamily: ReadonlyArray<readonly [string, typeof webpackAttaform]> = 
   ['attaform/rspack', rspackAttaform],
 ]
 
-describe.each(webpackFamily)('%s — beforeResolve rewrite', (tag, factory) => {
+describe.each(webpackFamily)('%s: beforeResolve rewrite', (tag, factory) => {
   it('rewrites the attaform/zod request to the v4 subpath when zod@4 is installed', () => {
     const { compiler, getBeforeResolve } = makeWebpackCompiler(zodV4Root)
     factory({ root: zodV4Root }).apply(compiler)

@@ -136,7 +136,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
       form.setErrors([{ path: [...path], message, code: 'test' }])
     }
 
-    describe('default heuristic — leaf', () => {
+    describe('default heuristic: leaf', () => {
       it('errors present, untouched, submissionAttempts=0 → idle (gate closed)', () => {
         const form = makeForm()
         injectError(form, ['email'], 'email required')
@@ -210,7 +210,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
       })
     })
 
-    describe('default heuristic — container (descendant rollup)', () => {
+    describe('default heuristic: container (descendant rollup)', () => {
       it('an ungated descendant error keeps the container idle though invalid', async () => {
         const form = makeForm()
         injectError(form, ['users', 0, 'label'], 'label required')
@@ -324,7 +324,7 @@ const v3Defaults = {
   users: [{ label: '' }],
 }
 
-describeAdapter('displayState — zod-v3 adapter', () =>
+describeAdapter('displayState: zod-v3 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV3({
@@ -349,7 +349,7 @@ const v4Defaults = {
   users: [{ label: '' }],
 }
 
-describeAdapter('displayState — zod-v4 adapter', () =>
+describeAdapter('displayState: zod-v4 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV4({
@@ -363,7 +363,7 @@ describeAdapter('displayState — zod-v4 adapter', () =>
 
 // Cross-cutting: omit'd args, public default heuristic, runtime safety
 
-describe('the display reducer — cross-cutting', () => {
+describe('the display reducer: cross-cutting', () => {
   it('defaultDisplayState is a (prev, ctx) reducer', () => {
     expect(typeof defaultDisplayState).toBe('function')
     expect(defaultDisplayState.length).toBe(2)
@@ -958,7 +958,7 @@ describe('anti-flash spinner timing (integration)', () => {
   })
 })
 
-describe('resetField — in-flight validation teardown', () => {
+describe('resetField: in-flight validation teardown', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
@@ -1035,7 +1035,7 @@ describe('resetField — in-flight validation teardown', () => {
   })
 })
 
-describe('display timing — focus-out collapses the show-delay', () => {
+describe('display timing: focus-out collapses the show-delay', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
@@ -1100,7 +1100,7 @@ describe('display timing — focus-out collapses the show-delay', () => {
   })
 })
 
-describe('display verdict — success is earned (dirty + non-blank)', () => {
+describe('display verdict: success is earned (dirty + non-blank)', () => {
   /**
    * The green check only fires for a field the user filled with valid
    * content themselves. A pre-filled field left untouched, an empty
@@ -1150,7 +1150,7 @@ describe('display verdict — success is earned (dirty + non-blank)', () => {
   })
 })
 
-describe('display verdict — reward early, punish late (DOM gate)', () => {
+describe('display verdict: reward early, punish late (DOM gate)', () => {
   const gateSchema = zV4.object({ email: zV4.string().email('Enter a valid email') })
 
   function mountInput(): { api: FormLike; input: HTMLInputElement } {
@@ -1239,7 +1239,7 @@ describe('display verdict — reward early, punish late (DOM gate)', () => {
   })
 })
 
-describe('container & form.meta rollup — gated, DOM-driven', () => {
+describe('container & form.meta rollup: gated, DOM-driven', () => {
   function mountRegistered(
     schema: unknown,
     paths: readonly string[],
@@ -1416,7 +1416,7 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
   })
 })
 
-describe('DisplayCtx — type-level guards', () => {
+describe('DisplayCtx: type-level guards', () => {
   it('ctx.field / ctx.formMeta omit the derived display keys; reducer returns a DisplayMachine', () => {
     type Field = DisplayCtx['field']
     type Meta = DisplayCtx['formMeta']

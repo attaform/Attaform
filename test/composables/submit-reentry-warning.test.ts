@@ -31,7 +31,7 @@ const adapters = [
 
 const REENTRY = 'already in flight'
 
-describe.each(adapters)('handleSubmit re-entry guard — $name', ({ useForm, z }) => {
+describe.each(adapters)('handleSubmit re-entry guard: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     for (const app of apps.splice(0)) app.unmount()

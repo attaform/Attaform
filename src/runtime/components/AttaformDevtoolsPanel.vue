@@ -624,7 +624,7 @@
 <style scoped>
   /*
    * Self-contained styling. The panel runs in an iframe inside the Nuxt
-   * DevTools overlay — CSS custom properties from the host don't cross
+   * DevTools overlay: CSS custom properties from the host don't cross
    * the iframe boundary, so we ship our own palette here. Dark by
    * default, light via prefers-color-scheme so the panel adapts to the
    * user's OS theme without further wiring.

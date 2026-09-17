@@ -39,7 +39,7 @@ function typeInto(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-describe('interacted — sticky value-mutation signal', () => {
+describe('interacted: sticky value-mutation signal', () => {
   let mounted: Mounted | undefined
   afterEach(() => {
     mounted?.app.unmount()
@@ -94,7 +94,7 @@ describe('interacted — sticky value-mutation signal', () => {
   })
 })
 
-describe('blurredAfterInteraction — sticky edited-then-left signal', () => {
+describe('blurredAfterInteraction: sticky edited-then-left signal', () => {
   let mounted: Mounted | undefined
   afterEach(() => {
     mounted?.app.unmount()

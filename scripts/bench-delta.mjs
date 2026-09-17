@@ -221,7 +221,7 @@ if (moved.length === 0) {
   lines.push('| scenario | base | PR | change | |', '| --- | ---: | ---: | ---: | --- |')
   for (const r of moved) {
     const direction = r.pct > 0 ? 'faster' : 'slower'
-    const note = r.noisy ? "noisy — within this scenario's own run-to-run spread" : ''
+    const note = r.noisy ? "noisy (within this scenario's own run-to-run spread)" : ''
     lines.push(
       `| ${r.name} | ${fmt(r.base)} hz | ${fmt(r.head)} hz | **${Math.abs(r.pct).toFixed(1)}% ${direction}** | ${note} |`
     )

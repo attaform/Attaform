@@ -107,7 +107,7 @@ describe('inputTextAreaNodeTransform', () => {
   })
 
   describe('fail-safe', () => {
-    it('does not throw on malformed templates — errors are logged, AST untouched', () => {
+    it('does not throw on malformed templates: errors are logged, AST untouched', () => {
       // A valid-enough template that would previously have caused the
       // transform to take a crash path. Just proves the try/catch wrapper
       // is in place; if the transform throws, the compile call also throws.

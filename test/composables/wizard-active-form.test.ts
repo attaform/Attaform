@@ -39,7 +39,7 @@ function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — activeForm + activeIndex', () => {
+describe('useWizard: activeForm + activeIndex', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

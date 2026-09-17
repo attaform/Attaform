@@ -1,5 +1,5 @@
 name: Publish to NPM
-# For push triggers (the normal release path — release-pr.yml merges
+# For push triggers (the normal release path: release-pr.yml merges
 # its bump commit and the push fires this workflow), the run-name
 # pulls the head commit's headline directly. `release-pr.yml` shapes
 # that headline as `chore(release/<bump_type>): vX.Y.Z`, so the
@@ -30,11 +30,11 @@ run-name: >-
 #   3. `should_release` (true iff `gh release view v<version>` returns
 #      non-zero) gates the GitHub Release create + attestation attach.
 #
-# Re-dispatching the workflow after a successful publish is safe — all
+# Re-dispatching the workflow after a successful publish is safe: all
 # three gates flip to false and the publish job's job-level `if:` skips
 # the entire environment-scoped block (no deployment log noise).
 #
-# Audit-chain invariant — DO NOT BREAK in future edits:
+# Audit-chain invariant: DO NOT BREAK in future edits:
 #
 #   merge commit SHA on main
 #     == `github.sha` for this workflow run
@@ -58,10 +58,10 @@ on:
     # against the npm registry); this filter just avoids spinning up the
     # runner when there's structurally nothing to look at. Dependabot
     # bumps + scripts edits still trigger the workflow and hit the
-    # precheck noop in seconds — acceptable cost vs. missing a real
+    # precheck noop in seconds: acceptable cost vs. missing a real
     # release.
     paths: [package.json]
-  # Manual re-run / recovery / off-latest-hotfix dispatch. No inputs —
+  # Manual re-run / recovery / off-latest-hotfix dispatch. No inputs:
   # the version + dist-tag come from `package.json` on the dispatching
   # ref. For off-latest hotfixes (publish `0.1.2@v0` while main is on
   # `4.2.0`), dispatch this workflow from the hotfix branch after the
@@ -85,7 +85,7 @@ concurrency:
   group: publish-npm
   cancel-in-progress: false
 
-# Job topology — `precheck` (no environment, read-only) + `publish`
+# Job topology: `precheck` (no environment, read-only) + `publish`
 # (`Production (NPM)` environment, OIDC + attestations + GPG):
 #
 #   precheck:
@@ -134,7 +134,7 @@ jobs:
           # snapshot, which is fine for push triggers but unreliable for
           # workflow_dispatch from a ref that hasn't been re-fetched).
           fetch-depth: 0
-          # No push from this job — drop GITHUB_TOKEN from .git/config
+          # No push from this job: drop GITHUB_TOKEN from .git/config
           # after checkout to minimise ambient authority during the
           # `npm view` / `gh release view` calls below.
           persist-credentials: false
@@ -143,7 +143,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          # No `pnpm install` happens in this job — `npm view` ships with
+          # No `pnpm install` happens in this job: `npm view` ships with
           # Node, and the package.json reads are pure-Node `require`.
           package-manager-cache: false
 
@@ -154,11 +154,11 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           DIST_TAG=$(node -p "require('./package.json').publishConfig && require('./package.json').publishConfig.tag")
           if [ -z "$VERSION" ] || [ "$VERSION" = "undefined" ]; then
-            echo "::error::Could not read package.json#version on $GITHUB_REF — abort."
+            echo "::error::Could not read package.json#version on $GITHUB_REF; abort."
             exit 1
           fi
           if [ -z "$DIST_TAG" ] || [ "$DIST_TAG" = "undefined" ]; then
-            echo "::error::Could not read package.json#publishConfig.tag on $GITHUB_REF — abort. release-pr.yml is responsible for setting publishConfig.tag on every release commit."
+            echo "::error::Could not read package.json#publishConfig.tag on $GITHUB_REF; abort. release-pr.yml is responsible for setting publishConfig.tag on every release commit."
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -210,7 +210,7 @@ jobs:
             ANYTHING=false
           fi
 
-          echo "::notice title=Idempotency::v$VERSION — npm $PUBLISH_STATE; tag $TAG_STATE; release $RELEASE_STATE"
+          echo "::notice title=Idempotency::v$VERSION: npm $PUBLISH_STATE; tag $TAG_STATE; release $RELEASE_STATE"
 
           echo "should_publish=$SHOULD_PUBLISH" >> "$GITHUB_OUTPUT"
           echo "should_tag=$SHOULD_TAG" >> "$GITHUB_OUTPUT"
@@ -230,7 +230,7 @@ jobs:
     #      under repo → Deployments.
     #   2. Branch restriction: the environment's "Deployment branches
     #      and tags" rules gate which refs can read GPG_PRIVATE_KEY +
-    #      GPG_PASSPHRASE. Currently includes `main` + `hotfix/v*` —
+    #      GPG_PASSPHRASE. Currently includes `main` + `hotfix/v*`:
     #      the latter is required for off-latest-hotfix dispatches.
     #   3. Optional reviewer gate (configured in the repo's settings,
     #      not here).
@@ -238,7 +238,7 @@ jobs:
       name: 'Production (NPM)'
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Push the GPG-signed `v<version>` tag (NOT the branch — branch updates always go through a release PR).
+      contents: write # Push the GPG-signed `v<version>` tag (NOT the branch: branch updates always go through a release PR).
       id-token: write # Mint an ephemeral npm publish credential from this run's GitHub OIDC token under Trusted Publishing, AND request the Sigstore audience for `actions/attest-build-provenance` below.
       attestations: write # Write the SLSA build-provenance attestation produced by `actions/attest-build-provenance` to GitHub Attestations.
     steps:
@@ -296,7 +296,7 @@ jobs:
           # Disable setup-node's package-manager-cache auto-detection.
           # By default, setup-node honours `package.json#packageManager`
           # and mounts the pnpm cache into the job. That cache surface
-          # is shared across workflow runs — a poisoned entry from an
+          # is shared across workflow runs: a poisoned entry from an
           # earlier run could ride `--frozen-lockfile`'s integrity check
           # (pnpm rejects mismatched hashes, but defence-in-depth wins
           # here) and reach the publish artifact. This job eats the
@@ -309,7 +309,7 @@ jobs:
         # `--filter attaform... --frozen-lockfile` scopes the install
         # to the published `attaform` workspace and its workspace
         # dependencies (currently none). apps/site's deps and the bench
-        # tooling are NOT installed on this runner — minimising the
+        # tooling are NOT installed on this runner: minimising the
         # install-script vector available to the OIDC publish credential.
         run: pnpm install --filter attaform... --frozen-lockfile
 
@@ -322,7 +322,7 @@ jobs:
       # The key's matching public key must be uploaded to the GitHub
       # account whose email is in the key's UID.
       #
-      # `git_commit_gpgsign: false` — the publish job no longer creates
+      # `git_commit_gpgsign: false`: the publish job no longer creates
       # commits. The bump commit was made server-side by
       # `release-pr.yml`'s `createCommitOnBranch` GraphQL call, which
       # web-flow-signs the commit on `release/v<version>` at the moment
@@ -393,7 +393,7 @@ jobs:
       # Release below via the `files:` input of `softprops/action-gh-release`,
       # which is what OpenSSF Scorecard's `Signed-Releases` check looks
       # for. On the recovery path (publish noop, release create only),
-      # the bundle is intentionally absent — see the action invocation
+      # the bundle is intentionally absent: see the action invocation
       # below for the conditional.
       - name: Attest build provenance
         id: attest
@@ -404,7 +404,7 @@ jobs:
 
       - name: Publish to npm
         if: needs.precheck.outputs.should_publish == 'true'
-        # No `--tag` flag — pnpm honours `publishConfig.tag` from
+        # No `--tag` flag: pnpm honours `publishConfig.tag` from
         # `package.json` (set by release-pr.yml on the bump commit).
         # Resolution order in release-pr.yml was: explicit dist_tag
         # input → prerelease_id → "latest". Reading from package.json
@@ -445,7 +445,7 @@ jobs:
       # template-injection footprint than a multi-line `with:` value).
       #
       # The body's commit-metadata block resolves the SHA from the tag
-      # when the tag already exists on origin (the recovery path —
+      # when the tag already exists on origin (the recovery path:
       # tag points to an earlier orphan SHA, not HEAD). For normal
       # releases the tag was just created locally in the Push tag step
       # above, so `git rev-parse v<version>` resolves to HEAD anyway.
@@ -478,7 +478,7 @@ jobs:
           SHORT_SHA="${COMMIT_SHA:0:12}"
           REPO_URL="${GH_SERVER_URL}/${GH_REPOSITORY}"
 
-          # Auto-generated PR-grouped notes — follows `.github/release.yml`
+          # Auto-generated PR-grouped notes: follows `.github/release.yml`
           # if present, otherwise GitHub's default categorisation.
           AUTO_NOTES=$(gh api \
             --method POST \
@@ -489,7 +489,7 @@ jobs:
           {
             echo "**Version** \`$VERSION\` • **Released** $COMMIT_DATE_ISO"
             echo ""
-            echo "- Commit: [\`$SHORT_SHA\`]($REPO_URL/commit/$COMMIT_SHA) — $COMMIT_TITLE"
+            echo "- Commit: [\`$SHORT_SHA\`]($REPO_URL/commit/$COMMIT_SHA): $COMMIT_TITLE"
             echo "- Author: **$COMMIT_AUTHOR_NAME** <$COMMIT_AUTHOR_EMAIL>"
             echo "- Published via: [workflow run]($REPO_URL/actions/runs/${GH_RUN_ID})"
             echo "- npm: [\`attaform@$VERSION\`](https://www.npmjs.com/package/attaform/v/$VERSION)"
@@ -544,7 +544,7 @@ jobs:
       #                              the release.
       #   should_publish == false → files = '',
       #                              fail_on_unmatched_files = false.
-      #                              Recovery path (e.g. v0.20.1) —
+      #                              Recovery path (e.g. v0.20.1):
       #                              npm publish was a noop, so no
       #                              attestation bundle exists on the
       #                              runner. The Sigstore attestation
@@ -555,7 +555,7 @@ jobs:
       #                              `gh attestation verify` against the
       #                              npm tarball still validates.
       #
-      # `continue-on-error: false` for the recovery path — the whole
+      # `continue-on-error: false` for the recovery path: the whole
       # point of running the publish job on a publish noop is to fill in
       # the missing release. A silent failure here would defeat the
       # recovery.
@@ -567,7 +567,7 @@ jobs:
         # matches the runner image itself), so this removes one
         # supply-chain dependency from the publish path. The mapping
         # to the GitHub Releases REST API is the same one
-        # `softprops/action-gh-release` was performing under the hood —
+        # `softprops/action-gh-release` was performing under the hood:
         # we just call it directly.
         #
         # `--latest` / `--latest=false` is passed explicitly so the
@@ -600,14 +600,14 @@ jobs:
             # (PRERELEASE=false, MAKE_LATEST=false). Prereleases pass
             # --prerelease above and GitHub forbids prereleases from
             # being marked latest, so the --latest=false here is a
-            # no-op for that branch — still safe to send.
+            # no-op for that branch: still safe to send.
             args+=(--latest=false)
           fi
 
           if [ "$SHOULD_PUBLISH" = "true" ]; then
             # Attach the Sigstore attestation bundle freshly minted by
             # the `Attest build provenance` step above. `gh release
-            # create` errors on missing files by default — that
+            # create` errors on missing files by default: that
             # replaces the `fail_on_unmatched_files: true` input the
             # third-party action had, with no special flag needed.
             args+=("$BUNDLE_PATH")

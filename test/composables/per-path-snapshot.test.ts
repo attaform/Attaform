@@ -76,7 +76,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, build: buildV3 },
 ] as const
 
-describe.each(adapters)('per-path snapshot — $name', ({ useForm, build }) => {
+describe.each(adapters)('per-path snapshot: $name', ({ useForm, build }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

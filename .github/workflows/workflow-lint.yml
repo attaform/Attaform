@@ -12,7 +12,7 @@ name: Workflow Security Lint
 # Why pedantic persona:
 #   The plan that introduced this workflow already SHA-pinned every `uses:`
 #   line and removed every `pull_request_target` trigger. The `pedantic`
-#   persona's strict-by-default rules are what hold that ground over time —
+#   persona's strict-by-default rules are what hold that ground over time:
 #   any future workflow change that backslides (e.g. a copy-pasted snippet
 #   landing `uses: foo/bar@v3` without a SHA) fails CI here.
 #
@@ -23,7 +23,7 @@ name: Workflow Security Lint
 #
 # Suppression policy:
 #   If a finding ever becomes load-bearing noise, suppress it per-rule via
-#   a committed `.github/zizmor.yml` config — do NOT downgrade the persona.
+#   a committed `.github/zizmor.yml` config: do NOT downgrade the persona.
 
 on:
   push:
@@ -36,7 +36,7 @@ permissions:
   contents: read
 
 # Cancel superseded runs on the same ref. New commits supersede the
-# prior lint result — only the latest commit's findings matter for the
+# prior lint result: only the latest commit's findings matter for the
 # PR check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,8 +57,8 @@ jobs:
         with:
           # `persist-credentials: false` drops the GITHUB_TOKEN from the
           # local git config after checkout. zizmor only reads workflow
-          # files from disk — it never needs to push or fetch private
-          # refs — so leaving the token attached would be unnecessary
+          # files from disk: it never needs to push or fetch private
+          # refs: so leaving the token attached would be unnecessary
           # ambient authority. Same rationale as the scorecard workflow.
           persist-credentials: false
 

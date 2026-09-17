@@ -87,7 +87,7 @@ function typeInto(input: HTMLInputElement, value: string): void {
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
-describe('validateOn: blur — skip revalidation when nothing changed', () => {
+describe('validateOn: blur: skip revalidation when nothing changed', () => {
   it('a focus/blur cycle with no edit does not re-run the validation pipeline', async () => {
     const { api, input, runs } = mountCounted()
 

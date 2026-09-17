@@ -106,7 +106,7 @@ type Mounted = {
   bumpTick: () => void
 }
 
-describe.each(adapters)('async file transforms — $name', ({ useForm, z }) => {
+describe.each(adapters)('async file transforms: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -418,7 +418,7 @@ describe.each(adapters)('async file transforms — $name', ({ useForm, z }) => {
   })
 })
 
-describe.each(adapters)('async file transform — gated display ($name)', ({ useForm, z }) => {
+describe.each(adapters)('async file transform: gated display ($name)', ({ useForm, z }) => {
   const apps: App[] = []
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => {

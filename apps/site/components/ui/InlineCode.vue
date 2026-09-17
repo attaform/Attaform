@@ -1,5 +1,5 @@
 <!--
-  Inline-code chip — `<UiInlineCode>useForm</UiInlineCode>`.
+  Inline-code chip: `<UiInlineCode>useForm</UiInlineCode>`.
 
   Pairs with the `inline-code` utility in `tailwind.css` (single
   source of truth for the chip's visual styling), which non-slot call

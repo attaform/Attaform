@@ -58,7 +58,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('form.meta.errors — schema-declaration ordinal sort', () => {
+describe('form.meta.errors: schema-declaration ordinal sort', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

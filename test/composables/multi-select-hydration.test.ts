@@ -42,7 +42,7 @@ const Parent = defineComponent({
   },
 })
 
-describe('<select multiple v-register> — SSR + hydration', () => {
+describe('<select multiple v-register>: SSR + hydration', () => {
   let app: App | undefined
 
   afterEach(() => {

@@ -31,7 +31,7 @@ import type { UseFormReturn } from '../../src/zod'
  * output. See /docs/reading-the-form/type-safety.
  */
 
-describe('IsUnion / KeyofUnion / ValueOfUnion — utility behavior', () => {
+describe('IsUnion / KeyofUnion / ValueOfUnion: utility behavior', () => {
   it('IsUnion<T> distinguishes unions from single types', () => {
     expectTypeOf<IsUnion<{ a: 1 }>>().toEqualTypeOf<false>()
     expectTypeOf<IsUnion<{ a: 1 } | { b: 2 }>>().toEqualTypeOf<true>()
@@ -59,7 +59,7 @@ describe('IsUnion / KeyofUnion / ValueOfUnion — utility behavior', () => {
   })
 })
 
-describe('FieldStateMapEntry — discriminated-union lift (synthetic fixtures)', () => {
+describe('FieldStateMapEntry: discriminated-union lift (synthetic fixtures)', () => {
   type Cargo =
     | { type: 'dry'; items: ReadonlyArray<{ sku: string }>; fragile: boolean }
     | {
@@ -160,7 +160,7 @@ const form: CargoForm = (() => {
   return proxy as CargoForm
 })()
 
-describe('useForm — chained access on form.fields with cargo schema', () => {
+describe('useForm: chained access on form.fields with cargo schema', () => {
   it('per-variant fields are reachable via `?.` regardless of active variant', () => {
     // The node is optional (absent when its variant is inactive), so the
     // read chains through `?.`; the resolved value type stays precise.
@@ -178,7 +178,7 @@ describe('useForm — chained access on form.fields with cargo schema', () => {
   })
 })
 
-describe('useForm — chained access on form.errors with cargo schema', () => {
+describe('useForm: chained access on form.errors with cargo schema', () => {
   it('per-variant errors are reachable; leaf is ValidationError[] | undefined', () => {
     expectTypeOf(form.errors.cargo.tempMinC).toEqualTypeOf<readonly ValidationError[] | undefined>()
     expectTypeOf(form.errors.cargo.fragile).toEqualTypeOf<readonly ValidationError[] | undefined>()
@@ -191,7 +191,7 @@ describe('useForm — chained access on form.errors with cargo schema', () => {
   })
 })
 
-describe('useForm — discriminator literals widen to string by design (in-flight types)', () => {
+describe('useForm: discriminator literals widen to string by design (in-flight types)', () => {
   // form.values models what the form is actually holding right now,
   // not what the schema will accept at submit time. A user might not
   // have picked a variant yet, might be rehydrating a half-filled

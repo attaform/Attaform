@@ -103,7 +103,7 @@
          over the cell, so switching pnpm ↔ npm (different command
          widths) never resizes the row.
          Inlined as Tailwind utilities rather than a `<style scoped>`
-         block — scoped CSS in `.vue` files is JS-injected on mount
+         block: scoped CSS in `.vue` files is JS-injected on mount
          in Vite dev, which flashed the 4 invisible-cmds as visible
          text on every back/forward before the rule landed. -->
     <div class="flex items-center gap-3 px-4 py-3 font-mono text-sm">
@@ -123,7 +123,7 @@
       <UiCopyButton :text="command" label="Copy install command" />
     </div>
 
-    <!-- Quick-start link below — the "now what?" affordance for
+    <!-- Quick-start link below: the "now what?" affordance for
          readers who copied the command and want the next step.
          Opt-out via `:show-quick-start="false"` on pages that
          already have their own quick-start CTA next to the card. -->

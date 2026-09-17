@@ -42,8 +42,8 @@ function compileWith(template: string, transforms: NodeTransformList): string {
   return baseCompile(template, { nodeTransforms: transforms, mode: 'module' }).code
 }
 
-describe('v-register on Vue components — AST behaviour', () => {
-  describe('vRegisterHintTransform — wraps component bindings (works ✓)', () => {
+describe('v-register on Vue components: AST behaviour', () => {
+  describe('vRegisterHintTransform: wraps component bindings (works ✓)', () => {
     it('wraps <MyInput v-register="form.register(\'email\')">', () => {
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         vRegisterHintTransform,
@@ -67,7 +67,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('vRegisterPreambleTransform — captures component bindings (works ✓)', () => {
+  describe('vRegisterPreambleTransform: captures component bindings (works ✓)', () => {
     it('hoists a component binding into :data-atta-pre-mark on the first root element', () => {
       const code = compileWith(
         `<div>
@@ -106,7 +106,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('inputTextAreaNodeTransform — early-returns on components (works ✓)', () => {
+  describe('inputTextAreaNodeTransform: early-returns on components (works ✓)', () => {
     it('emits no synthetic :value binding when only this transform runs', () => {
       // The transform's tag check is `node.tag === 'input' || 'textarea'`,
       // component tags are NEITHER. Result: this transform contributes
@@ -130,7 +130,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('componentBridgeTransform — fires on EVERY component with v-register (value channel: v-model for plain hosts, :value for select-like)', () => {
+  describe('componentBridgeTransform: fires on EVERY component with v-register (value channel: v-model for plain hosts, :value for select-like)', () => {
     it('injects the v-model pair (modelValue/hostModelValue + onUpdate:modelValue/setValueFromHost) + registerValue on a plain component host', () => {
       // The transform's branch `node.tagType === ElementTypes.COMPONENT`
       // makes ANY component with v-register a transform target, even
@@ -155,7 +155,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       expect(code).not.toContain('displayValue')
     })
 
-    it('recurses into slot children — option-tagged slot content gets :selected (#394)', () => {
+    it('recurses into slot children: option-tagged slot content gets :selected (#394)', () => {
       // #394: a `v-register` on a component wrapper projects its <option>s as
       // parent-authored slot content, which is still present in the host's
       // node.children at transform time. Those options now receive the same
@@ -243,7 +243,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('full pipeline — interaction across transforms', () => {
+  describe('full pipeline: interaction across transforms', () => {
     it('compiles a component-bound v-register without throwing', () => {
       // Smoke test: the canonical pipeline order doesn't blow up on a
       // component-only template.

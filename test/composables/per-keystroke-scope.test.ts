@@ -112,7 +112,7 @@ const refineAdapters = [
 ] as const
 
 describe.each(flatAdapters)(
-  'per-keystroke scope — flat schema (leaf-only refine) — $name',
+  'per-keystroke scope: flat schema (leaf-only refine): $name',
   ({ useForm, build }) => {
     const apps: App[] = []
     afterEach(() => {
@@ -192,7 +192,7 @@ describe.each(flatAdapters)(
 )
 
 describe.each(refineAdapters)(
-  'per-keystroke scope — container refine forces whole-form — $name',
+  'per-keystroke scope: container refine forces whole-form: $name',
   ({ useForm, build }) => {
     const apps: App[] = []
     afterEach(() => {

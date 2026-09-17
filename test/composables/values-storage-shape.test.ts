@@ -82,7 +82,7 @@ const defaultsSchema = z.object({
     .default({ enabled: true, label: 'default-label' }),
 })
 
-describe('ZodDefault — type peels `| undefined`, runtime resolves the default', () => {
+describe('ZodDefault: type peels `| undefined`, runtime resolves the default', () => {
   type Form = UseFormReturn<typeof defaultsSchema>
   const formT = makeFormProxy<Form>()
 
@@ -146,11 +146,11 @@ describe('ZodDefault — type peels `| undefined`, runtime resolves the default'
     }
   })
 
-  it('nested ZodDefault — type resolves inner shape', () => {
+  it('nested ZodDefault: type resolves inner shape', () => {
     expectTypeOf(formT.values.config).toEqualTypeOf<{ enabled: boolean; label: string }>()
     expectTypeOf(formT.values.config.enabled).toEqualTypeOf<boolean>()
   })
-  it('nested ZodDefault — runtime resolves the inner shape', () => {
+  it('nested ZodDefault: runtime resolves the inner shape', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: defaultsSchema, key: uniqueKey('zd-obj') })
     )
@@ -187,7 +187,7 @@ const bareRequiredSchema = z.object({
   arr: z.array(z.string()),
 })
 
-describe('Synthesis — bare-required fields resolve to a falsy concrete value', () => {
+describe('Synthesis: bare-required fields resolve to a falsy concrete value', () => {
   type Form = UseFormReturn<typeof bareRequiredSchema>
   const formT = makeFormProxy<Form>()
 
@@ -270,15 +270,15 @@ const deepSchema = z.object({
   }),
 })
 
-describe('Synthesis — deep nested objects resolve recursively', () => {
+describe('Synthesis: deep nested objects resolve recursively', () => {
   type Form = UseFormReturn<typeof deepSchema>
   const formT = makeFormProxy<Form>()
 
-  it('two-level descent — type stays strict', () => {
+  it('two-level descent: type stays strict', () => {
     expectTypeOf(formT.values.user.name).toEqualTypeOf<string>()
     expectTypeOf(formT.values.user.profile.bio).toEqualTypeOf<string>()
   })
-  it('two-level descent — every leaf falsy-concrete at runtime', () => {
+  it('two-level descent: every leaf falsy-concrete at runtime', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: deepSchema, key: uniqueKey('deep-2') })
     )
@@ -292,7 +292,7 @@ describe('Synthesis — deep nested objects resolve recursively', () => {
     }
   })
 
-  it('four-level descent — type stays strict', () => {
+  it('four-level descent: type stays strict', () => {
     expectTypeOf(formT.values.a.b.c.d).toEqualTypeOf<string>()
   })
   it('four-level descent does not short-circuit to undefined', () => {
@@ -317,7 +317,7 @@ const duSchema = z.object({
   ]),
 })
 
-describe('Discriminated union — stub state before discriminator chosen', () => {
+describe('Discriminated union: stub state before discriminator chosen', () => {
   it('discriminator path is readable and falls in the literal union at runtime', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: duSchema, key: uniqueKey('du-stub') })
@@ -356,13 +356,13 @@ const optionalSchema = z.object({ bio: z.string().optional() })
 const nullableSchema = z.object({ ref: z.string().nullable() })
 const arrSchema = z.object({ tags: z.array(z.string()) })
 
-describe('Genuinely uncertain — invariant does NOT promise to peel', () => {
+describe('Genuinely uncertain: invariant does NOT promise to peel', () => {
   it('z.string().optional() keeps `| undefined` at the type level', () => {
     type Form = UseFormReturn<typeof optionalSchema>
     const formT = makeFormProxy<Form>()
     expectTypeOf(formT.values.bio).toEqualTypeOf<string | undefined>()
   })
-  it('z.string().optional() — runtime behaviour documented', () => {
+  it('z.string().optional(): runtime behaviour documented', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: optionalSchema, key: uniqueKey('opt') })
     )
@@ -382,7 +382,7 @@ describe('Genuinely uncertain — invariant does NOT promise to peel', () => {
     const formT = makeFormProxy<Form>()
     expectTypeOf(formT.values.ref).toEqualTypeOf<string | null>()
   })
-  it('z.string().nullable() — runtime behaviour documented', () => {
+  it('z.string().nullable(): runtime behaviour documented', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: nullableSchema, key: uniqueKey('nul') })
     )
@@ -397,12 +397,12 @@ describe('Genuinely uncertain — invariant does NOT promise to peel', () => {
     }
   })
 
-  it('array element past length is `T | undefined` — noUncheckedIndexedAccess, not storage', () => {
+  it('array element past length is `T | undefined`: noUncheckedIndexedAccess, not storage', () => {
     type Form = UseFormReturn<typeof arrSchema>
     const formT = makeFormProxy<Form>()
     expectTypeOf(formT.values.tags[0]).toEqualTypeOf<string | undefined>()
   })
-  it('array element past length — runtime is undefined (just the indexing edge)', () => {
+  it('array element past length: runtime is undefined (just the indexing edge)', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: arrSchema, key: uniqueKey('arr-edge') })
     )
@@ -425,14 +425,14 @@ const transformSchema = z.object({
   letterCount: z.string().transform((s) => s.length),
 })
 
-describe('preprocess / transform — write-boundary vs parse-time semantics', () => {
-  it('z.preprocess(fn, z.string()) — type collapses to unknown (input contract)', () => {
+describe('preprocess / transform: write-boundary vs parse-time semantics', () => {
+  it('z.preprocess(fn, z.string()): type collapses to unknown (input contract)', () => {
     type Form = UseFormReturn<typeof preprocessSchema>
     const formT = makeFormProxy<Form>()
     expectTypeOf(formT.values.trimmed).toEqualTypeOf<unknown>()
   })
 
-  it('z.preprocess(fn, z.string()) — mount storage defaults to undefined', () => {
+  it('z.preprocess(fn, z.string()): mount storage defaults to undefined', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: preprocessSchema, key: uniqueKey('pre-synth') })
     )
@@ -470,7 +470,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
     }
   })
 
-  it('z.string().transform(fn) — storage holds PRE-transform input (existing rationale)', () => {
+  it('z.string().transform(fn): storage holds PRE-transform input (existing rationale)', () => {
     type Form = UseFormReturn<typeof transformSchema>
     const formT = makeFormProxy<Form>()
     // Transforms run at parse, not at write. The storage view stays the
@@ -479,7 +479,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
     expectTypeOf(formT.values.letterCount).toEqualTypeOf<string>()
   })
 
-  it('z.string().transform(fn) — runtime stores the pre-transform string', () => {
+  it('z.string().transform(fn): runtime stores the pre-transform string', () => {
     const { api, unmount } = mountForm(() =>
       useForm({ schema: transformSchema, key: uniqueKey('tx') })
     )
@@ -494,7 +494,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
   // still peel to `T` (not `T | undefined`). StorageShape recurses
   // through the non-transform side of the pipe so the inner shape
   // gets the same per-key storage treatment as the top level.
-  it('z.object({…}).transform(fn) — inner defaulted leaf peels to T', () => {
+  it('z.object({…}).transform(fn): inner defaulted leaf peels to T', () => {
     const _schema = z.object({
       meta: z
         .object({
@@ -514,7 +514,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
   // consumer's raw input, so the read view can't promise inner-key
   // peeling. This is the deliberate asymmetry with `.transform()`
   // (case above), where the input side stays typed.
-  it('z.preprocess(fn, z.object({…})) — whole subtree collapses to unknown', () => {
+  it('z.preprocess(fn, z.object({…})): whole subtree collapses to unknown', () => {
     const _schema = z.object({
       meta: z.preprocess(
         (v) => v,
@@ -537,7 +537,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
 // objects, two address sub-objects, and several enums in one shape
 // is the bar this probe holds.
 
-describe('Depth pressure — multi-step booking schema (shipment-demo shape)', () => {
+describe('Depth pressure: multi-step booking schema (shipment-demo shape)', () => {
   const COUNTRIES = ['US', 'CA', 'MX', 'GB', 'DE', 'FR', 'JP', 'CN', 'AU'] as const
   const HAZARD_CLASSES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const
   const TRUCK_TYPES = ['box', 'flatbed', 'reefer', 'tanker'] as const

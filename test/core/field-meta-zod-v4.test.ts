@@ -6,7 +6,7 @@ import {
 } from '../../src/runtime/core/field-meta-store'
 import { fieldMeta, withMeta } from '../../src/runtime/adapters/zod-v4/field-meta'
 
-describe('Zod 4 — fieldMeta registry + withMeta helper', () => {
+describe('Zod 4: fieldMeta registry + withMeta helper', () => {
   it('round-trips a payload via the native schema.register chain', () => {
     const schema = z.string().register(fieldMeta, { label: 'Email', placeholder: 'you@…' })
     expect(getFieldMeta(schema)).toEqual({ label: 'Email', placeholder: 'you@…' })
@@ -54,7 +54,7 @@ describe('Zod 4 — fieldMeta registry + withMeta helper', () => {
   })
 })
 
-describe('Zod 4 — fieldMeta tracks every registration on a shared schema', () => {
+describe('Zod 4: fieldMeta tracks every registration on a shared schema', () => {
   // The native `.register()` chain returns the original schema (not a
   // clone), so two registrations on the same instance both end up
   // pointing at the same registry slot from the consumer's view.
@@ -79,7 +79,7 @@ describe('Zod 4 — fieldMeta tracks every registration on a shared schema', () 
   })
 })
 
-describe('Zod 4 — coexistence with .describe()', () => {
+describe('Zod 4: coexistence with .describe()', () => {
   it('keeps schema.description independent of registry payload', () => {
     const schema = withMeta(z.string().describe('legacy desc'), { description: 'fresh' })
     expect(schema.description).toBe('legacy desc')

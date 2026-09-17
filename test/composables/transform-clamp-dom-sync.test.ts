@@ -29,7 +29,7 @@ function clamp0to100(value: unknown): unknown {
   return Math.max(0, Math.min(100, value))
 }
 
-describe('spike 18c — `<input type="number">` + clamp transform DOM/storage parity', () => {
+describe('spike 18c: `<input type="number">` + clamp transform DOM/storage parity', () => {
   let app: App | undefined
 
   afterEach(() => {

@@ -106,7 +106,7 @@ async function mountWithChild(
   const rootEl = root.firstElementChild as HTMLElement | null
   if (handle.api === undefined) throw new Error('mountWithChild: api never set')
   if (rootEl === null)
-    throw new Error('mountWithChild: no firstElementChild — multi-root or empty render')
+    throw new Error('mountWithChild: no firstElementChild: multi-root or empty render')
   if (options?.installAssigner) options.installAssigner(rootEl)
   return { app, api: handle.api, rootEl, warnings }
 }
@@ -120,7 +120,7 @@ describe('pattern 1: v-register on a component whose root is <input>', () => {
     document.body.innerHTML = ''
   })
 
-  it('the directive sees the inner <input> as `el` — typing dispatches a write', async () => {
+  it('the directive sees the inner <input> as `el`: typing dispatches a write', async () => {
     const ChildInput = defineComponent({
       name: 'ChildInput',
       inheritAttrs: false,
@@ -298,7 +298,7 @@ describe('non-pattern: v-register on a non-form root WITHOUT useRegister/assignK
     expect(matched.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('does NOT clobber the seeded form value — no listeners attached to the div root', async () => {
+  it('does NOT clobber the seeded form value: no listeners attached to the div root', async () => {
     mounted = await mountWithChild(PlainDivChild)
     mounted.api.setValue('email', 'seed@example.com')
     expect(mounted.api.values.email).toBe('seed@example.com')
@@ -539,7 +539,7 @@ describe('pattern 3: @update:registerValue prop on a component', () => {
   })
 })
 
-describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
+describe('register({ transforms: [...] }): sync user-input pipeline', () => {
   let mounted: MountReturn | undefined
 
   afterEach(() => {
@@ -609,7 +609,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     expect(mounted.api.values.email).toBe('untouched')
   })
 
-  it('6. transform throws — caught, logged, write aborted, listener still works', async () => {
+  it('6. transform throws: caught, logged, write aborted, listener still works', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const throwTransform = (_: unknown): unknown => {
       throw new Error('boom')
@@ -640,7 +640,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('7. throw mid-pipeline — subsequent transforms do not run', async () => {
+  it('7. throw mid-pipeline: subsequent transforms do not run', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const calls: string[] = []
     const t1 = (v: unknown): unknown => {
@@ -668,7 +668,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('9. Promise return — defers and commits the resolved value (no console)', async () => {
+  it('9. Promise return: defers and commits the resolved value (no console)', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const asyncTransform = (v: unknown): unknown => Promise.resolve(String(v).toUpperCase())
     mounted = await mountWithChild(ChildInput, { transforms: [asyncTransform] })
@@ -686,7 +686,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('11. failure isolation — one path throwing does not affect others', async () => {
+  it('11. failure isolation: one path throwing does not affect others', async () => {
     // Mount a parent with two RegisterValue bindings; one throws, one normalizes.
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const handle: { api?: UseFormReturn<typeof schema> } = {}
@@ -735,7 +735,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('12. per-binding isolation — same path, two register() call sites, only the typed-in binding runs its pipeline', async () => {
+  it('12. per-binding isolation: same path, two register() call sites, only the typed-in binding runs its pipeline', async () => {
     // Two inputs bound to the SAME path 'email'. One register() call passes
     // transforms: [upper], the other passes no transforms. Each input must
     // run its OWN pipeline when the user types into it, typing in A runs
@@ -803,7 +803,7 @@ describe('v-register="undefined" is a graceful no-op (invariant 4)', () => {
     document.body.innerHTML = ''
   })
 
-  it('mounts cleanly with no warn — directive installs a no-op assigner across updates', async () => {
+  it('mounts cleanly with no warn: directive installs a no-op assigner across updates', async () => {
     const warnings: string[] = []
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map((a) => String(a)).join(' '))
@@ -962,7 +962,7 @@ describe('listener teardown on component unmount (works ✓)', () => {
   })
 })
 
-describe("multi-root component — directive lands on Vue's placeholder ⚠", () => {
+describe("multi-root component: directive lands on Vue's placeholder ⚠", () => {
   let originalConsoleWarn: typeof console.warn
   beforeEach(() => {
     originalConsoleWarn = console.warn

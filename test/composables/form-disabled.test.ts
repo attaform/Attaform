@@ -32,7 +32,7 @@ const adapters: ReadonlyArray<{ name: string; useForm: AnyUseForm; schema: unkno
   { name: 'v3', useForm: useFormV3, schema: schemaV3 },
 ]
 
-describe.each(adapters)('useForm({ disabled }) — $name', ({ useForm, schema }) => {
+describe.each(adapters)('useForm({ disabled }): $name', ({ useForm, schema }) => {
   let warnings: string[]
   let warnSpy: ReturnType<typeof vi.spyOn>
   const mounted: App[] = []

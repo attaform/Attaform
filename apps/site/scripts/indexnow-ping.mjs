@@ -96,7 +96,7 @@ async function main() {
   }
 
   if (process.env.INDEXNOW_DRY_RUN === '1') {
-    console.log(`[indexnow] dry run — payload (${urls.length} URLs):`)
+    console.log(`[indexnow] dry run: payload (${urls.length} URLs):`)
     console.log(JSON.stringify(payload, null, 2))
     return
   }
@@ -123,7 +123,7 @@ async function main() {
   }
 
   const body = await response.text().catch(() => '<failed to read body>')
-  console.warn(`[indexnow] non-OK response: ${response.status} ${response.statusText} — ${body}`)
+  console.warn(`[indexnow] non-OK response: ${response.status} ${response.statusText}: ${body}`)
 }
 
 main().catch((error) => {

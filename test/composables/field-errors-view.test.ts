@@ -49,7 +49,7 @@ function mount(): { app: App; api: Api } {
   return { app, api: handle.api as Api }
 }
 
-describe('form.errors — leaf-aware drillable proxy', () => {
+describe('form.errors: leaf-aware drillable proxy', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -101,7 +101,7 @@ describe('form.errors — leaf-aware drillable proxy', () => {
   })
 })
 
-describe('form.errors — callable form', () => {
+describe('form.errors: callable form', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -141,7 +141,7 @@ describe('form.errors — callable form', () => {
   })
 })
 
-describe('form.errors — readonly contract', () => {
+describe('form.errors: readonly contract', () => {
   const apps: App[] = []
 
   afterEach(() => {
@@ -182,7 +182,7 @@ describe('form.errors — readonly contract', () => {
   })
 })
 
-describe('form.errors — reactivity in render scope', () => {
+describe('form.errors: reactivity in render scope', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

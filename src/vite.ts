@@ -212,7 +212,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
 
       // The panel runs inside Nuxt DevTools' overlay iframe, which itself
       // is nested in the consumer's main page. \`window.parent\` only
-      // crosses one frame boundary — the overlay UI — which doesn't have
+      // crosses one frame boundary (the overlay UI), which doesn't have
       // the bridge attached. The bridge lives on the consumer's main
       // page, which sits at the top of the frame hierarchy. Walk the
       // chain checking each ancestor frame so the same code works whether

@@ -154,7 +154,7 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
     fields: flatFields({ path: 'a', label: 'a', role: 'isolated' }),
     edit: { label: 'a', path: 'a', value: 'Ada' },
     validateOn: 'change',
-    note: 'granular control — register tracks own value + own blank only',
+    note: 'granular control: register tracks own value + own blank only',
   },
   // VECTOR 1 (structural), validation off, every field pre-dirtied to a
   // non-blank value, then "a" re-edited to ANOTHER non-blank value. No blank
@@ -175,7 +175,7 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
       { path: 'd', value: 'dee' },
       { path: 'e', value: 'eee' },
     ],
-    note: 'structural — isolates the formMeta rollup dep from blank/validation',
+    note: 'structural: isolates the formMeta rollup dep from blank/validation',
   },
   // VECTORS 1 + 2 (default mode): the everyday keystroke: validateOn:'change',
   // editing "a" from blank to non-blank. Drops "a" from blankPaths (vector 2)
@@ -395,7 +395,7 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
     expect(renders.get('contact(container)') ?? 0).toBe(0)
   })
 
-  it.each(SCENARIOS)('$id — $note', async (scenario) => {
+  it.each(SCENARIOS)('$id: $note', async (scenario) => {
     const counts = await drive(scenario)
 
     // The edited field re-renders (sanity: the write landed and was observed).

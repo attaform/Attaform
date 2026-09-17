@@ -46,7 +46,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('useForm — function-form defaultValues', () => {
+describe('useForm: function-form defaultValues', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

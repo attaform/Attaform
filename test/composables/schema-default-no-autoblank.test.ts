@@ -42,7 +42,7 @@ type AnyFormReturn = UseFormReturnType<Record<string, unknown>>
  * field renders their value.
  */
 
-describe('bare useForm + z.number().default(10) — no auto-mark, input renders 10', () => {
+describe('bare useForm + z.number().default(10): no auto-mark, input renders 10', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -107,7 +107,7 @@ describe('bare useForm + z.number().default(10) — no auto-mark, input renders 
     expect(form.blankPaths.value.has('count')).toBe(false)
   })
 
-  it('storage = 0 (the slim) DOES auto-mark — bare z.number() with no .default()', async () => {
+  it('storage = 0 (the slim) DOES auto-mark: bare z.number() with no .default()', async () => {
     // Anchor the other side of the contract. With no .default(),
     // storage holds the slim 0 and the side-channel kicks in:
     // the path is in blankPaths and the input renders "".

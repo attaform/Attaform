@@ -73,7 +73,7 @@ function mountAgeInput(): {
   return { app, input: inputRef.el, form: captured }
 }
 
-describe('age: unset on z.number() — initial render shows blank input', () => {
+describe('age: unset on z.number(): initial render shows blank input', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

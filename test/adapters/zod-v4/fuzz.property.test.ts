@@ -17,7 +17,7 @@ import { buildZodRootObjectArbitrary } from '../../utils/zod-arbitraries'
 
 const arbRootSchema = buildZodRootObjectArbitrary(z, 3, (inner) => z.record(z.string(), inner))
 
-describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
+describe('zod v4 adapter: fuzz over arbitrary supported schemas', () => {
   test.prop([arbRootSchema])('adapter construction never throws on supported schemas', (schema) => {
     expect(() => zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })).not.toThrow()
   })

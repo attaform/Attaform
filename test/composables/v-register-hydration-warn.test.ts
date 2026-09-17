@@ -132,7 +132,7 @@ async function hydrate(AppComponent: Component): Promise<App> {
   return app
 }
 
-describe('v-register no-op warn — SSR async hydration (marker-timing race)', () => {
+describe('v-register no-op warn: SSR async hydration (marker-timing race)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
   let warnings: string[]
   let app: App | undefined

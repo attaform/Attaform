@@ -155,12 +155,12 @@
 
 <template>
   <div class="flex gap-12">
-    <!-- Article — capped at max-w-3xl (768px) for comfortable reading
+    <!-- Article: capped at max-w-3xl (768px) for comfortable reading
          line length. min-w-0 prevents overflow from wide code blocks
          pushing the TOC off-screen. flex-1 lets it grow into available
          space when the TOC is hidden (lg-xl viewports).
          The whole article fades in on first paint (`docs-article-enter`
-         class — keyframe just below `docs-prose`) so the prose lands
+         class: keyframe just below `docs-prose`) so the prose lands
          deliberately rather than popping. The breadcrumb is excluded
          from this since it has its own segment-stagger animation. -->
     <article class="min-w-0 max-w-3xl flex-1">
@@ -178,7 +178,7 @@
           <ContentRenderer :value="page" />
         </div>
 
-        <!-- Edit link sits between prose and pager — same visual weight
+        <!-- Edit link sits between prose and pager: same visual weight
              as a footer note (text-sm, fg-muted) so it doesn't compete
              with the article body but stays discoverable for someone
              who'd file a PR. Hidden on the not-found branch below;
@@ -244,13 +244,14 @@
           </li>
           <li>
             <strong>Remove the link.</strong> If nothing should point here, grep for the source link
-            and drop it. Link-checker only flags paths something else links to — orphan paths don't
-            fail the build.
+            and drop it. Link-checker only flags paths something else links to, so orphan paths
+            don't fail the build.
           </li>
         </ol>
         <p class="text-xs opacity-80">
-          This callout renders only in dev. Production builds get a graceful visitor message instead
-          — but they shouldn't get there in the first place, because CI will have stopped the build.
+          This callout renders only in dev. Production builds get a graceful visitor message
+          instead, but they shouldn't get there in the first place, because CI will have stopped the
+          build.
         </p>
       </div>
 
@@ -265,10 +266,8 @@
       >
         <h1>This page hasn't landed here yet</h1>
         <p>
-          No docs page exists at
-          <code>{{ route.path }}</code>
-          — the URL might be a typo, a stale link from before the docs got their current shape, or a
-          section still on the way.
+          The URL <code>{{ route.path }}</code> might be a typo, a stale link from before the docs
+          got their current shape, or a section still on the way. No page lives there yet.
         </p>
         <p>
           Head back to the

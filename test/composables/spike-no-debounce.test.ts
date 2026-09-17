@@ -27,7 +27,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('spike — debounceMs: 0 disables the debounce timer', () => {
+describe('spike: debounceMs: 0 disables the debounce timer', () => {
   const schema = z.object({
     email: z.string().email('Enter a valid email.'),
   })
@@ -82,7 +82,7 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     expect(handle.api?.errors.email?.[0]?.message).toBe('Enter a valid email.')
   })
 
-  it('debounceMs: 0: errors surface on the next microtask — no timer wait', async () => {
+  it('debounceMs: 0, errors surface on the next microtask with no timer wait', async () => {
     const handle: { api?: UseFormReturn<typeof schema> } = {}
     const Parent = defineComponent({
       setup() {

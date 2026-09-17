@@ -29,7 +29,7 @@ import { fakeSchema } from '../utils/fake-schema'
 type Form = { name: string }
 const defaults: Form = { name: '' }
 
-describe('anonymous useForm — independent state per setup call', () => {
+describe('anonymous useForm: independent state per setup call', () => {
   it('two sibling components get distinct FormStores', async () => {
     type Api = ReturnType<typeof useForm<Form>>
     const captured: { a?: Api; b?: Api } = {}
@@ -70,7 +70,7 @@ describe('anonymous useForm — independent state per setup call', () => {
   })
 })
 
-describe('anonymous useForm — ambient injectForm access', () => {
+describe('anonymous useForm: ambient injectForm access', () => {
   it('descendant composable reads the same FormStore via provide/inject', async () => {
     type Api = ReturnType<typeof useForm<Form>>
     const captured: { owner?: Api; consumer?: Api | null } = {}
@@ -105,7 +105,7 @@ describe('anonymous useForm — ambient injectForm access', () => {
   })
 })
 
-describe('anonymous useForm — ambient-overwrite dev warning', () => {
+describe('anonymous useForm: ambient-overwrite dev warning', () => {
   // Two useForm calls in the same component overwrite each other's
   // ambient provide (Vue's provide/inject semantics, last write
   // wins). Under the optional-key contract the path of least resistance
@@ -367,7 +367,7 @@ describe('anonymous useForm — ambient-overwrite dev warning', () => {
   })
 })
 
-describe('anonymous useForm — SSR determinism', () => {
+describe('anonymous useForm: SSR determinism', () => {
   it('server and client mounts allocate the same synthetic key', async () => {
     type Api = ReturnType<typeof useForm<Form>>
     let serverApi: Api | undefined

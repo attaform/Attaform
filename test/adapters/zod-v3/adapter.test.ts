@@ -8,7 +8,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * shared Zod behaviour surfaces without a full Nuxt build.
  */
 
-describe('zod v3 adapter — getDefaultValues', () => {
+describe('zod v3 adapter: getDefaultValues', () => {
   it('produces defaults for a basic object schema', () => {
     const schema = z.object({
       email: z.string(),
@@ -244,7 +244,7 @@ describe('zod v3 adapter — getDefaultValues', () => {
   })
 })
 
-describe('zod v3 adapter — validateAtPath', () => {
+describe('zod v3 adapter: validateAtPath', () => {
   it('returns success for a valid full-form value', async () => {
     const schema = z.object({ email: z.string().email() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -282,7 +282,7 @@ describe('zod v3 adapter — validateAtPath', () => {
   })
 })
 
-describe('zod v3 adapter — getSchemasAtPath', () => {
+describe('zod v3 adapter: getSchemasAtPath', () => {
   it('resolves a nested path', async () => {
     const schema = z.object({
       user: z.object({ email: z.string() }),
@@ -308,7 +308,7 @@ describe('zod v3 adapter — getSchemasAtPath', () => {
   })
 })
 
-describe('zod v3 adapter — validator error paths (refine / superRefine / transform / pipe)', () => {
+describe('zod v3 adapter: validator error paths (refine / superRefine / transform / pipe)', () => {
   it('leaf .refine emits error at the leaf path', async () => {
     const schema = z.object({
       username: z.string().refine((v) => v.length > 3, 'too short'),
@@ -385,7 +385,7 @@ describe('zod v3 adapter — validator error paths (refine / superRefine / trans
   })
 })
 
-describe('zod v3 adapter — discriminated union routing', () => {
+describe('zod v3 adapter: discriminated union routing', () => {
   it('routes per-branch refinement errors to the active branch', async () => {
     const schema = z.object({
       event: z.discriminatedUnion('kind', [
@@ -424,7 +424,7 @@ describe('zod v3 adapter — discriminated union routing', () => {
 // the real schema, so the verdict is an honest failure at that leaf.
 // The walk descending and the refinement failing are separate facts,
 // and both are pinned.
-describe('zod v3 adapter — stripRefinements', () => {
+describe('zod v3 adapter: stripRefinements', () => {
   it('descends into z.tuple element refinements', () => {
     const schema = z.object({
       pair: z.tuple([z.string().email(), z.number().min(10)]),
@@ -513,7 +513,7 @@ describe('zod v3 adapter — stripRefinements', () => {
   })
 })
 
-describe('zod v3 adapter — construction accepts every kind', () => {
+describe('zod v3 adapter: construction accepts every kind', () => {
   it.each([
     ['z.promise', () => z.object({ pending: z.promise(z.string()) })],
     ['z.function', () => z.object({ cb: z.function() })],
@@ -523,7 +523,7 @@ describe('zod v3 adapter — construction accepts every kind', () => {
     expect(() => zodAdapter(make())('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
-  it('mounts a self-referencing z.lazy(...) — runtime walks cap descent via maxRecursionDepth', () => {
+  it('mounts a self-referencing z.lazy(...): runtime walks cap descent via maxRecursionDepth', () => {
     // Pre-B2 this threw at construction. Post-B2 recursive
     // schemas are supported; v3's downstream walks already carry their
     // own `MAX_UNWRAP_STEPS` cap, so depth is bounded regardless.

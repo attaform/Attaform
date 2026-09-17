@@ -182,7 +182,7 @@ describe("option expressions are resolved in the option's own scope", () => {
 
 // ── generated code: no option may reference a sibling's scope ────────
 
-describe('option `:selected` binding scopes — generated code', () => {
+describe('option `:selected` binding scopes: generated code', () => {
   // The reported repro, read at the level the issue pinned it to.
   it('two sibling `<option v-for>`s each reference only their own alias', () => {
     const code = compileModule(
@@ -267,7 +267,7 @@ describe('option `:selected` binding scopes — generated code', () => {
 
 // ── rendering: the templates above actually mount and select ─────────
 
-describe.each(ADAPTERS)('option `:selected` binding scopes — SSR ($name)', (adapter) => {
+describe.each(ADAPTERS)('option `:selected` binding scopes: SSR ($name)', (adapter) => {
   function ssr(
     template: string,
     makeForm: () => unknown,

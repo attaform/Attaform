@@ -70,7 +70,7 @@ function mountWithSnapshotter(): { app: App; api: ProfileApi; snapshots: string[
   return { app, api: handle.api as ProfileApi, snapshots }
 }
 
-describe('DU variant switch — error materialisation flicker', () => {
+describe('DU variant switch: error materialisation flicker', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -28,7 +28,7 @@ function countSelectedBindings(code: string): number {
   return (code.match(/\bselected:/g) ?? []).length
 }
 
-describe('componentBridgeTransform — `:value` injection on the select element', () => {
+describe('componentBridgeTransform: `:value` injection on the select element', () => {
   // Patching `select.value` on a `<select multiple>` runs the spec's
   // value-setter loop and DESELECTS every option whose value isn't
   // case-equal to the new string. Our `displayValue.value` for an
@@ -69,7 +69,7 @@ describe('componentBridgeTransform — `:value` injection on the select element'
   })
 })
 
-describe('componentBridgeTransform — option value fallback (D3)', () => {
+describe('componentBridgeTransform: option value fallback (D3)', () => {
   it('binds :selected on options that already have an explicit value=', () => {
     const code = compileWithTransform(
       `<select v-register="fruit"><option value="apple">Apple</option></select>`
@@ -137,7 +137,7 @@ describe('componentBridgeTransform — option value fallback (D3)', () => {
   })
 })
 
-describe('componentBridgeTransform — E1 source-location fidelity', () => {
+describe('componentBridgeTransform: E1 source-location fidelity', () => {
   it('preserves a non-zero source location on the injected :value binding', () => {
     // Pad the template so the <select> doesn't sit at line/column 0:
     // this lets us assert that the injected directive's loc matches
@@ -165,7 +165,7 @@ describe('componentBridgeTransform — E1 source-location fidelity', () => {
   })
 })
 
-describe('componentBridgeTransform — slotted options on a component host (#394)', () => {
+describe('componentBridgeTransform: slotted options on a component host (#394)', () => {
   // A `v-register` on a component wrapper (e.g. a styled `<CustomSelect>`
   // whose template is `<select><slot/></select>`) projects its `<option>`s
   // as parent-authored slot content. Those options are still present in the
@@ -237,7 +237,7 @@ describe('componentBridgeTransform — slotted options on a component host (#394
   })
 })
 
-describe('componentBridgeTransform — :disabled freeze bind', () => {
+describe('componentBridgeTransform: :disabled freeze bind', () => {
   it('injects :disabled on a plain component host', () => {
     const code = compileWithTransform(`<MyInput v-register="form.register('email')" />`)
     expect(code).toContain('disabled?.value')

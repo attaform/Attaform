@@ -48,7 +48,7 @@ function harness(initial?: Partial<SignupForm>) {
   return { app, form: captured }
 }
 
-describe('useForm — dirty / valid form-level aggregates', () => {
+describe('useForm: dirty / valid form-level aggregates', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -93,7 +93,7 @@ describe('useForm — dirty / valid form-level aggregates', () => {
     expect(form.meta.valid).toBe(true)
   })
 
-  it('dirty and valid are independent — dirty-but-valid is a real state', async () => {
+  it('dirty and valid are independent: dirty-but-valid is a real state', async () => {
     const { app, form } = harness()
     apps.push(app)
     form.setValue('email', 'a@b')

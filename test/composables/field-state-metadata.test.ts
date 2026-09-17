@@ -47,7 +47,7 @@ function mountWithApp<T>(setup: () => T): T {
   return captured
 }
 
-describe('FieldState metadata — Zod 4 adapter', () => {
+describe('FieldState metadata: Zod 4 adapter', () => {
   it('reads registered label, description, placeholder via fields proxy', () => {
     const schema = zV4.object({
       reference: withMetaV4(zV4.string().min(1), {
@@ -327,7 +327,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
   })
 })
 
-describe('FieldState metadata — Zod 3 adapter', () => {
+describe('FieldState metadata: Zod 3 adapter', () => {
   it('reads registered label, description, placeholder via fields proxy', () => {
     const schema = zV3.object({
       reference: withMetaV3(zV3.string().min(1), {
@@ -397,7 +397,7 @@ describe('FieldState metadata — Zod 3 adapter', () => {
   })
 })
 
-describe('FieldState metadata — wrapper registrations resolve symmetrically', () => {
+describe('FieldState metadata: wrapper registrations resolve symmetrically', () => {
   // The path walker returns the wrapper at terminal positions and
   // peels at intermediate descent. The adapter's two-stage lookup
   // (target schema first, peeled inner as fallback) means BOTH

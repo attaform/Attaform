@@ -22,7 +22,7 @@ run-name: ${{ github.event.inputs.exact_version != '' && format('Prepare v{0} re
 #      GraphQL mutation, not `git commit && git push`. The resulting
 #      commit is signed by `github-actions[bot]`'s web-flow key
 #      (GitHub's server-side signing identity), which `required_signatures`
-#      rulesets accept — no GPG key in this workflow.
+#      rulesets accept: no GPG key in this workflow.
 #   4. The release PR itself is opened with a GitHub App installation
 #      token, NOT the default `GITHUB_TOKEN`. GitHub Actions suppresses
 #      cascading workflow runs when a `pull_request: opened` event is
@@ -31,7 +31,7 @@ run-name: ${{ github.event.inputs.exact_version != '' && format('Prepare v{0} re
 #      credentials live in the `Production (Release PR)` deployment
 #      environment (zizmor `secrets-outside-env` rule); the token is
 #      minted per workflow run with `permission-pull-requests: write`
-#      ONLY — even if the App's installation grants broader perms,
+#      ONLY: even if the App's installation grants broader perms,
 #      this token slice gets just enough to call `gh pr create`
 #      (zizmor `github-app` rule). The action's built-in post-job
 #      step revokes the token at end-of-job; combined with the API's
@@ -53,7 +53,7 @@ on:
         required: false
         default: ''
       dist_tag:
-        description: 'npm dist-tag override. Leave EMPTY in normal flows — the workflow derives `latest` for stable releases and the preid for prereleases. Set this when publishing an off-latest version (e.g. "v1" for a v1.x hotfix while 2.x is current) so `npm install attaform` still resolves to the current major.'
+        description: 'npm dist-tag override. Leave EMPTY in normal flows; the workflow derives `latest` for stable releases and the preid for prereleases. Set this when publishing an off-latest version (e.g. "v1" for a v1.x hotfix while 2.x is current) so `npm install attaform` still resolves to the current major.'
         required: false
         default: ''
       target_branch:
@@ -64,7 +64,7 @@ on:
 # Workflow-level default: read-only. The `prepare` job below upgrades
 # to `contents: write` + `pull-requests: write` for the createCommitOnBranch
 # call + PR open. No `id-token`, no `attestations`, no environment
-# scope — `release-pr.yml` runs without access to the GPG signing key
+# scope: `release-pr.yml` runs without access to the GPG signing key
 # or npm OIDC credential.
 permissions:
   contents: read
@@ -117,7 +117,7 @@ jobs:
         # `gh pr create` below MUST be called with a GitHub App
         # installation token, not `GITHUB_TOKEN`. GitHub Actions
         # suppresses cascading workflow runs when an event is triggered
-        # by the default `GITHUB_TOKEN` — a PR opened with that token
+        # by the default `GITHUB_TOKEN`: a PR opened with that token
         # fires the `pull_request: opened` event, but none of the
         # workflows listed under `on: pull_request` actually run for it.
         # The `main protection` ruleset requires 10 status checks;
@@ -132,7 +132,7 @@ jobs:
         # tokens are short-lived (~1 hour), scoped to only the repos
         # the App is installed on, and carry a non-human service
         # identity. A PAT would be long-lived, tied to a human account,
-        # and easily over-scoped — exactly the smells the rest of this
+        # and easily over-scoped: exactly the smells the rest of this
         # repo's release surface is built to avoid.
         #
         # Failing here, before any state on origin is mutated, keeps
@@ -180,7 +180,7 @@ jobs:
           # existence + orphan-SHA reads also go through `gh api`
           # (see the Classify step). The working tree never needs an
           # attached credential, so the token in `.git/config` would
-          # be unnecessary ambient authority — zizmor flags this under
+          # be unnecessary ambient authority: zizmor flags this under
           # the `artipacked` rule.
           persist-credentials: false
 
@@ -192,7 +192,7 @@ jobs:
         with:
           node-version: 22
           # Disable setup-node's package-manager-cache. We never run
-          # `pnpm install` in this workflow — `pnpm version` only edits
+          # `pnpm install` in this workflow: `pnpm version` only edits
           # package.json and runs the `version` lifecycle hook (which
           # calls pure-Node scripts). No node_modules surface to cache.
           package-manager-cache: false
@@ -201,7 +201,7 @@ jobs:
         id: calculate-next-version
         env:
           # Bind the inputs into env vars so the `run:` block references
-          # them as ordinary shell variables — eliminates the GitHub
+          # them as ordinary shell variables: eliminates the GitHub
           # Actions template-injection footprint without a suppression
           # comment.
           VERSION_TYPE: ${{ github.event.inputs.version_type }}
@@ -240,7 +240,7 @@ jobs:
             fi
             CURRENT=$(node -p "require('./package.json').version")
             if [ "$EXACT_VERSION" = "$CURRENT" ]; then
-              echo "::error::exact_version='$EXACT_VERSION' matches the current package.json version — pnpm version would reject the bump. Pick a distinct version or use a regular bump path."
+              echo "::error::exact_version='$EXACT_VERSION' matches the current package.json version, so pnpm version would reject the bump. Pick a distinct version or use a regular bump path."
               exit 1
             fi
             echo "next_version=$EXACT_VERSION" >> "$GITHUB_OUTPUT"
@@ -328,12 +328,12 @@ jobs:
         # (promote-changelog.mjs + generate-release-notes.mjs +
         # sync-doc-versions.mjs + a `git add` of CHANGELOG.md, RELEASES.md,
         # and the version-stamped scorecard doc). The `--no-git-tag-version`
-        # flag suppresses the auto-commit AND the auto-tag — the staged
+        # flag suppresses the auto-commit AND the auto-tag: the staged
         # files stay in the index, where the Stage bump step finalizes
         # the index for createCommitOnBranch consumption.
         #
         # RELEASE_NOTES_TARGET_REF is consumed by generate-release-notes.mjs
-        # when calling `gh api .../generate-notes` — for hotfix releases
+        # when calling `gh api .../generate-notes`: for hotfix releases
         # against a non-main branch, this drives the PR-range correctly.
         env:
           NEXT_VERSION: ${{ steps.calculate-next-version.outputs.next_version }}
@@ -361,7 +361,7 @@ jobs:
             const tag = process.env.DIST_TAG;
             const match = src.match(/("publishConfig"\s*:\s*\{[^}]*?"tag"\s*:\s*")[^"]*(")/);
             if (!match) {
-              console.error("Could not locate publishConfig.tag in package.json — abort.");
+              console.error("Could not locate publishConfig.tag in package.json; abort.");
               process.exit(1);
             }
             const updated = src.replace(match[0], `${match[1]}${tag}${match[2]}`);
@@ -445,7 +445,7 @@ jobs:
         #       ever publishes a tree it computed itself. The earlier
         #       "byte-match or fail" design refused to publish on a tree
         #       mismatch, but that path required the user to delete the
-        #       branch by hand on every divergence — including benign
+        #       branch by hand on every divergence: including benign
         #       cases like the GitHub auto-notes API returning slightly
         #       different markdown between runs.
         #
@@ -457,7 +457,7 @@ jobs:
         # `base_sha` is captured for the createCommitOnBranch
         # `expectedHeadOid` field below. HEAD has not moved since
         # checkout (no local commit), so it is target_branch's tip at
-        # the moment the workflow started — the right parent for the
+        # the moment the workflow started: the right parent for the
         # signed bump commit.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -556,7 +556,7 @@ jobs:
         # `github-actions[bot]` via GitHub's server-side web-flow key.
         # The resulting commit is "Verified" in the GitHub UI and
         # satisfies the `main protection` ruleset's `required_signatures`
-        # rule on merge — no GPG key in this workflow.
+        # rule on merge: no GPG key in this workflow.
         #
         # The mutation requires its target branch to already exist, so
         # the branch ref is created first (pointing at the
@@ -666,7 +666,7 @@ jobs:
       - name: Build PR body
         if: steps.classify.outputs.mode != 'noop'
         # Build the PR body to a file via Node (no shell interpolation)
-        # rather than a heredoc with dispatch-input interpolation —
+        # rather than a heredoc with dispatch-input interpolation:
         # eliminates the template-injection footprint that a heredoc
         # `<<EOF` block with `$DIST_TAG` / `$NEXT_VERSION` would
         # carry. The body is read by `gh pr create --body-file` below.
@@ -759,7 +759,7 @@ jobs:
         # restriction.
         #
         # `permission-pull-requests: write` is the only permission the
-        # token is scoped to — the App on install may hold broader
+        # token is scoped to: the App on install may hold broader
         # permissions, but this token slice gets just enough to call
         # `gh pr create` (zizmor `github-app` rule: do not inherit
         # blanket installation permissions).
@@ -774,7 +774,7 @@ jobs:
         # GH_TOKEN here is the App installation token from the previous
         # step, NOT `secrets.GITHUB_TOKEN`. PRs opened via `GITHUB_TOKEN`
         # do not cascade workflow runs, so the 10 required status checks
-        # would never fire — see the `Validate release-PR app
+        # would never fire: see the `Validate release-PR app
         # credentials` step at the top of this job for the rationale.
         # Everything else in this workflow (branch ref creation, signed
         # bump commit, label bootstrap) runs on the lower-privilege

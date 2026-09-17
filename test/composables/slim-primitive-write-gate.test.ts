@@ -38,7 +38,7 @@ function makeMounter<S extends z.ZodObject>(schema: S) {
   }
 }
 
-describe('slim-primitive write gate — accepted writes (slim type matches)', () => {
+describe('slim-primitive write gate: accepted writes (slim type matches)', () => {
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -115,7 +115,7 @@ describe('slim-primitive write gate — accepted writes (slim type matches)', ()
   })
 })
 
-describe('slim-primitive write gate — rejected writes (wrong primitive)', () => {
+describe('slim-primitive write gate: rejected writes (wrong primitive)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -228,7 +228,7 @@ describe('slim-primitive write gate — rejected writes (wrong primitive)', () =
   })
 })
 
-describe('slim-primitive write gate — subtree writes', () => {
+describe('slim-primitive write gate: subtree writes', () => {
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -305,7 +305,7 @@ describe('slim-primitive write gate — subtree writes', () => {
   })
 })
 
-describe('slim-primitive write gate — non-form-key permissive shapes', () => {
+describe('slim-primitive write gate: non-form-key permissive shapes', () => {
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -344,7 +344,7 @@ describe('slim-primitive write gate — non-form-key permissive shapes', () => {
  * creates a bogus `address.salary` slot in the form on first
  * keystroke, breaking the structural-completeness invariant.
  */
-describe('slim-primitive write gate — unknown schema paths', () => {
+describe('slim-primitive write gate: unknown schema paths', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 

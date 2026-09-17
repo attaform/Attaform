@@ -60,7 +60,7 @@ const dirtySeed: FormStatusSeed = {
   errorCount: 1,
 }
 
-describe('useWizard — defaultStatuses', () => {
+describe('useWizard: defaultStatuses', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -103,7 +103,7 @@ describe('hasAtPath', () => {
   })
 })
 
-describe('hasAtPath — reactive coupling', () => {
+describe('hasAtPath: reactive coupling', () => {
   it('an array-index lookup tracks the index, never the array length', () => {
     // The active-path gate (errors-proxy, field-state-api's orphan check) runs
     // `hasAtPath` against the live reactive form value. An existence check at an

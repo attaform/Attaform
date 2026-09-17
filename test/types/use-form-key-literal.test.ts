@@ -27,7 +27,7 @@ import type { FormKey } from '../../src'
 const schemaV4 = z.object({ email: z.string() })
 const schemaV3 = zV3.object({ email: zV3.string() })
 
-describe('useForm — form.key literal preservation', () => {
+describe('useForm: form.key literal preservation', () => {
   describe('attaform/zod (unified)', () => {
     it('captures literal key string', () => {
       function _neverInvoked() {

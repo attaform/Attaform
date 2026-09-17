@@ -52,7 +52,7 @@ function mountWith<S extends z.ZodObject>(
   return { api: captured.api as UseFormReturnV4<S>, app }
 }
 
-describe('slim-primitive defaults — refinement-invalid passes through', () => {
+describe('slim-primitive defaults: refinement-invalid passes through', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -87,7 +87,7 @@ describe('slim-primitive defaults — refinement-invalid passes through', () => 
   })
 })
 
-describe('slim-primitive defaults — wrong-primitive fixed to schema default', () => {
+describe('slim-primitive defaults: wrong-primitive fixed to schema default', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -124,7 +124,7 @@ describe('slim-primitive defaults — wrong-primitive fixed to schema default', 
   })
 })
 
-describe('slim-primitive defaults — refinement errors surface at construction', () => {
+describe('slim-primitive defaults: refinement errors surface at construction', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

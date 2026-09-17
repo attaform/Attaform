@@ -56,7 +56,7 @@ describe('numeric scalar coercion', () => {
     expect(fn('25.5')).toBe(25.5)
   })
 
-  it("'' → '' (NOT 0 — empty string passthrough)", () => {
+  it("'' → '' (NOT 0: empty string passthrough)", () => {
     expect(fn('')).toBe('')
   })
 

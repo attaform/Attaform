@@ -54,7 +54,7 @@ function harness(initial?: Partial<SignupForm>) {
   return { app, form: captured }
 }
 
-describe('useForm — reset()', () => {
+describe('useForm: reset()', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -133,7 +133,7 @@ describe('useForm — reset()', () => {
   })
 })
 
-describe('useForm — resetField(path)', () => {
+describe('useForm: resetField(path)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -214,7 +214,7 @@ describe('useForm — resetField(path)', () => {
   })
 })
 
-describe('useForm — reset() re-derives schema errors against the post-reset state', () => {
+describe('useForm: reset() re-derives schema errors against the post-reset state', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -468,7 +468,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     expect(form.meta.errors.length).toBe(mountedErrorCount)
   })
 
-  it('reset() restores the firstValidationDone gate — no `valid: true` flash on async-refining schemas', async () => {
+  it('reset() restores the firstValidationDone gate: no `valid: true` flash on async-refining schemas', async () => {
     // Live-demo bug surface (confirmed by JSON-stringified diagnostic
     // dump):
     //

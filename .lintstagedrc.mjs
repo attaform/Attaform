@@ -13,7 +13,7 @@
  * The vue-tsc pass routes through Docker (`docker compose exec -T
  * attaform ...`) rather than running on the host. The bundled
  * `dist/*.d.mts` stubs are absolute-path `unbuild --stub` output and
- * point at whichever filesystem most-recently regenerated them —
+ * point at whichever filesystem most-recently regenerated them,
  * usually the container, since `make install` runs `pnpm dev:prepare`
  * inside the container. Host-side vue-tsc against container-path
  * stubs surfaces every `attaform` import as "no exported member" and
@@ -23,7 +23,7 @@
 export default {
   './src/**/*.{ts,vue}': 'eslint',
   './apps/site/**/*.{ts,vue}': (files) => {
-    // Per-file eslint, then one whole-project vue-tsc pass — the
+    // Per-file eslint, then one whole-project vue-tsc pass: the
     // typecheck arg is ignored if `files` is empty (lint-staged
     // wouldn't have invoked us in that case). The function form
     // suppresses lint-staged's default behaviour of appending the

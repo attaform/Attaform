@@ -1,6 +1,6 @@
 # Releases
 
-## v0.30.0 — 2026-09-16
+## v0.30.0 (2026-09-16)
 
 ## What's Changed
 * perf(core)!: the efficiency program, eager -3.8%, heap -22%, form.list() 38x by @ozzyfromspace in https://github.com/attaform/Attaform/pull/643
@@ -10,7 +10,7 @@
 
 ---
 
-## v0.29.0 — 2026-09-15
+## v0.29.0 (2026-09-15)
 
 ## What's Changed
 * chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/565
@@ -61,7 +61,7 @@
 
 ---
 
-## v0.28.0 — 2026-08-24
+## v0.28.0 (2026-08-24)
 
 ## What's Changed
 * chore(deps): clear 26 Dependabot alerts, dedupe the dev tree by @ozzyfromspace in https://github.com/attaform/Attaform/pull/555
@@ -73,7 +73,7 @@
 
 ---
 
-## v0.27.6 — 2026-07-21
+## v0.27.6 (2026-07-21)
 
 ## What's Changed
 * feat(display): form.interact(path?) to reveal a subtree's errors by @ozzyfromspace in https://github.com/attaform/Attaform/pull/545
@@ -83,7 +83,7 @@
 
 ---
 
-## v0.27.5 — 2026-07-18
+## v0.27.5 (2026-07-18)
 
 ## What's Changed
 * fix(v-register): invalid-submit focus lands on no-latch component hosts by @ozzyfromspace in https://github.com/attaform/Attaform/pull/539
@@ -93,7 +93,7 @@
 
 ---
 
-## v0.27.4 — 2026-07-17
+## v0.27.4 (2026-07-17)
 
 ## What's Changed
 * chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/527
@@ -106,7 +106,7 @@
 
 ---
 
-## v0.27.3 — 2026-07-17
+## v0.27.3 (2026-07-17)
 
 ## What's Changed
 * feat(use-wizard): expose gate role on wizard.statuses[key].gate by @ozzyfromspace in https://github.com/attaform/Attaform/pull/532
@@ -116,7 +116,7 @@
 
 ---
 
-## v0.27.2 — 2026-07-16
+## v0.27.2 (2026-07-16)
 
 ## What's Changed
 * fix(v-register): numeric component host clears to blank (#518) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/519
@@ -129,7 +129,7 @@
 
 ---
 
-## v0.27.1 — 2026-07-08
+## v0.27.1 (2026-07-08)
 
 ## What's Changed
 * chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/509
@@ -141,7 +141,7 @@
 
 ---
 
-## v0.27.0 — 2026-07-04
+## v0.27.0 (2026-07-04)
 
 ## What's Changed
 * chore(deps): pin security floors for dev-only transitive deps by @ozzyfromspace in https://github.com/attaform/Attaform/pull/493
@@ -163,7 +163,7 @@
 
 ---
 
-## v0.26.0 — 2026-07-03
+## v0.26.0 (2026-07-03)
 
 ## What's Changed
 * Add ownErrors / firstOwnError exact-path error accessors; regularize errors([]) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/491
@@ -174,7 +174,7 @@
 
 ---
 
-## v0.25.0 — 2026-07-02
+## v0.25.0 (2026-07-02)
 
 ## What's Changed
 * fix(demos): isolate per-demo CSS and playground source across SPA navigation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/461
@@ -193,7 +193,7 @@
 
 ---
 
-## v0.24.4 — 2026-06-20
+## v0.24.4 (2026-06-20)
 
 ## What's Changed
 * chore(ci): bump github/codeql-action from 4.36.0 to 4.36.2 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/428
@@ -211,7 +211,7 @@
 
 ---
 
-## v0.24.3 — 2026-06-17
+## v0.24.3 (2026-06-17)
 
 ## What's Changed
 * chore: migrate canonical domain to attaform.dev by @ozzyfromspace in https://github.com/attaform/Attaform/pull/450
@@ -221,7 +221,7 @@
 
 ---
 
-## v0.24.2 — 2026-06-15
+## v0.24.2 (2026-06-15)
 
 ## What's Changed
 * chore(size): tree-shaking tripwires proving useForm drops useWizard by @ozzyfromspace in https://github.com/attaform/Attaform/pull/442
@@ -236,7 +236,7 @@
 
 ---
 
-## v0.24.1 — 2026-06-15
+## v0.24.1 (2026-06-15)
 
 ## What's Changed
 * chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/436
@@ -248,7 +248,7 @@
 
 ---
 
-## v0.24.0 — 2026-06-15
+## v0.24.0 (2026-06-15)
 
 ## What's Changed
 * feat(form): z.record schema roots (dictionary forms) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/421
@@ -262,7 +262,7 @@
 
 ---
 
-## v0.23.0 — 2026-06-14
+## v0.23.0 (2026-06-14)
 
 ## What's Changed
 * refactor(multitab)!: remove multi-tab sync and its BroadcastChannel engine by @ozzyfromspace in https://github.com/attaform/Attaform/pull/415
@@ -275,7 +275,7 @@
 
 ---
 
-## v0.22.0 — 2026-06-14
+## v0.22.0 (2026-06-14)
 
 ## What's Changed
 * perf: land the runtime-performance program (byte-identical wins + analysis) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/379
@@ -312,7 +312,7 @@
 
 ---
 
-## v0.21.2 — 2026-06-08
+## v0.21.2 (2026-06-08)
 
 ## What's Changed
 * chore: add fallow code-intelligence (non-gating) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/368
@@ -329,7 +329,7 @@
 
 ---
 
-## v0.21.1 — 2026-06-05
+## v0.21.1 (2026-06-05)
 
 ## What's Changed
 * ci(codeql): emit single-language check name to match required context by @ozzyfromspace in https://github.com/attaform/Attaform/pull/352
@@ -354,7 +354,7 @@
 
 ---
 
-## v0.21.0 — 2026-06-02
+## v0.21.0 (2026-06-02)
 
 ## What's Changed
 * perf(bundle): strip dev-only code from prod builds + add eager-byte gate by @ozzyfromspace in https://github.com/attaform/Attaform/pull/340
@@ -370,7 +370,7 @@
 
 ---
 
-## v0.20.2 — 2026-05-31
+## v0.20.2 (2026-05-31)
 
 ## What's Changed
 * ci(release): pr-driven publish workflow with idempotent recovery by @ozzyfromspace in https://github.com/attaform/Attaform/pull/318
@@ -400,13 +400,13 @@
 
 ---
 
-## v0.20.1 — 2026-05-30
+## v0.20.1 (2026-05-30)
 
 **Full Changelog**: https://github.com/attaform/Attaform/compare/v0.20.1...v0.20.1
 
 ---
 
-## v0.20.0 — 2026-05-30
+## v0.20.0 (2026-05-30)
 
 ## What's Changed
 * Phase 1: Security & honesty (SEC-1/2/3/4, SF1 guard, DEVTOOLS-1/2) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/288
@@ -441,7 +441,7 @@
 
 ---
 
-## v0.19.0 — 2026-05-27
+## v0.19.0 (2026-05-27)
 
 ## What's Changed
 * docs(readme): add OpenSSF Scorecard badge by @ozzyfromspace in https://github.com/attaform/Attaform/pull/276
@@ -462,7 +462,7 @@
 
 ---
 
-## v0.18.2 — 2026-05-26
+## v0.18.2 (2026-05-26)
 
 ## What's Changed
 * build(deps): bump pnpm 10 → 11, raise Node floor to 22 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/262
@@ -484,7 +484,7 @@
 
 ---
 
-## v0.18.1 — 2026-05-25
+## v0.18.1 (2026-05-25)
 
 ## What's Changed
 * chore: drop magic-string, reach zero runtime dependencies by @ozzyfromspace in https://github.com/attaform/Attaform/pull/253
@@ -500,7 +500,7 @@
 
 ---
 
-## v0.18.0 — 2026-05-25
+## v0.18.0 (2026-05-25)
 
 ## What's Changed
 * feat(form): defaultValues trichotomy + form.rehydrate() + meta extensions by @ozzyfromspace in https://github.com/attaform/Attaform/pull/199
@@ -556,7 +556,7 @@
 
 ---
 
-## v0.17.2 — 2026-05-14
+## v0.17.2 (2026-05-14)
 
 ## What's Changed
 * fix(form): v3 parity through the unified attaform/zod entry by @ozzyfromspace in https://github.com/attaform/Attaform/pull/198
@@ -566,7 +566,7 @@
 
 ---
 
-## v0.17.1 — 2026-05-13
+## v0.17.1 (2026-05-13)
 
 ## What's Changed
 * feat(form): close §1–4 of the 0.17.0 feedback — ReadShape, form.clear, preprocess synthesis by @ozzyfromspace in https://github.com/attaform/Attaform/pull/196
@@ -583,7 +583,7 @@
 
 ---
 
-## v0.17.0 — 2026-05-11
+## v0.17.0 (2026-05-11)
 
 ## What's Changed
 * feat(form): library hardening + multi-tab sync via BroadcastChannel by @ozzyfromspace in https://github.com/attaform/Attaform/pull/189
@@ -593,7 +593,7 @@
 
 ---
 
-## v0.16.4 — 2026-05-10
+## v0.16.4 (2026-05-10)
 
 ## What's Changed
 * fix(zod-v3): array .min and parent .refine no longer break per-field revalidation by @ozzyfromspace in https://github.com/attaform/Attaform/pull/183
@@ -608,7 +608,7 @@
 
 ---
 
-## v0.16.3 — 2026-05-09
+## v0.16.3 (2026-05-09)
 
 ## What's Changed
 * fix(zod): unify fieldMeta storage; portable hello-world example by @ozzyfromspace in https://github.com/attaform/Attaform/pull/181
@@ -619,7 +619,7 @@
 
 ---
 
-## v0.16.2 — 2026-05-08
+## v0.16.2 (2026-05-08)
 
 ## What's Changed
 * docs(readme): simplify going further snippet by @ozzyfromspace in https://github.com/attaform/Attaform/pull/180
@@ -629,7 +629,7 @@
 
 ---
 
-## v0.16.1 — 2026-05-08
+## v0.16.1 (2026-05-08)
 
 ## What's Changed
 * chore(security): force fast-uri >=3.1.2 to patch open Dependabot alerts by @ozzyfromspace in https://github.com/attaform/Attaform/pull/179
@@ -640,7 +640,7 @@
 
 ---
 
-## v0.16.0 — 2026-05-08
+## v0.16.0 (2026-05-08)
 
 ## What's Changed
 * feat: Vite + useForm DX overhaul by @ozzyfromspace in https://github.com/attaform/Attaform/pull/176
@@ -650,7 +650,7 @@
 
 ---
 
-## v0.15.1 — 2026-05-08
+## v0.15.1 (2026-05-08)
 
 ## What's Changed
 * fix(composables): surface undefined in useRegister return type by @ozzyfromspace in https://github.com/attaform/Attaform/pull/175
@@ -660,7 +660,7 @@
 
 ---
 
-## v0.15.0 — 2026-05-07
+## v0.15.0 (2026-05-07)
 
 ## What's Changed
 * refactor(site): editorial polish on docs landing + homepage v-register flag by @ozzyfromspace in https://github.com/attaform/Attaform/pull/170
@@ -673,7 +673,7 @@
 
 ---
 
-## v0.14.0 — 2026-05-04
+## v0.14.0 (2026-05-04)
 
 ## What's Changed
 * docs: capitalize Attaform as a proper noun in narrative prose by @ozzyfromspace in https://github.com/attaform/Attaform/pull/167
@@ -687,7 +687,7 @@
 
 ---
 
-## v0.14.0-rc.0 — 2026-05-03
+## v0.14.0-rc.0 (2026-05-03)
 
 ## What's Changed
 * feat!: 0.14 rewrite — drillable surfaces, DU variant memory, schema coercion, v3/v4 parity, audit + test quality by @ozzyfromspace in https://github.com/attaform/Attaform/pull/160
@@ -701,7 +701,7 @@
 
 ---
 
-## v0.13.0 — 2026-04-30
+## v0.13.0 (2026-04-30)
 
 ## What's Changed
 * chore: gitignore .claude workspace state by @ozzyfromspace in https://github.com/attaform/Attaform/pull/155
@@ -714,7 +714,7 @@
 
 ---
 
-## v0.12.1 — 2026-04-29
+## v0.12.1 (2026-04-29)
 
 ## What's Changed
 * fix(slim-gate): reject unknown-path writes + property tests + KISS warn copy by @ozzyfromspace in https://github.com/attaform/Attaform/pull/154
@@ -725,7 +725,7 @@
 
 ---
 
-## v0.12.0 — 2026-04-29
+## v0.12.0 (2026-04-29)
 
 ## What's Changed
 * Claude/optimistic isconnected ssr by @ozzyfromcubic in https://github.com/attaform/Attaform/pull/133
@@ -750,7 +750,7 @@
 
 ---
 
-## v0.11.1 — 2026-04-25
+## v0.11.1 (2026-04-25)
 
 ## What's Changed
 * fix(dev): quiet ambient-provide warning + add source frames by @ozzyfromspace in https://github.com/attaform/Attaform/pull/132
@@ -760,7 +760,7 @@
 
 ---
 
-## v0.11.0 — 2026-04-25
+## v0.11.0 (2026-04-25)
 
 ## What's Changed
 * docs: slim README, add Vue 3 / Nuxt 3 + 4 / TypeScript badges by @ozzyfromspace in https://github.com/attaform/Attaform/pull/126
@@ -775,7 +775,7 @@
 
 ---
 
-## v0.10.0 — 2026-04-24
+## v0.10.0 (2026-04-24)
 
 ## What's Changed
 * fix(nuxt): resolve Nuxt module against package entry, not ./runtime/ by @ozzyfromcubic in https://github.com/attaform/Attaform/pull/125
@@ -785,7 +785,7 @@
 
 ---
 
-## v0.9.0 — 2026-04-24
+## v0.9.0 (2026-04-24)
 
 ## What's Changed
 * Claude/optional form key by @ozzyfromcubic in https://github.com/attaform/Attaform/pull/117
@@ -802,7 +802,7 @@
 
 ---
 
-## v0.8.3 — 2026-04-24
+## v0.8.3 (2026-04-24)
 
 ## What's Changed
 * fix(test): poll for persistence writes instead of fixed-sleep waits by @ozzyfromcubic in https://github.com/attaform/Attaform/pull/115
@@ -813,7 +813,7 @@
 
 ---
 
-## v0.8.2 — 2026-04-24
+## v0.8.2 (2026-04-24)
 
 ## What's Changed
 * fix(eslint): point nuxt-globals loader at playground/.nuxt by @ozzyfromcubic in https://github.com/attaform/Attaform/pull/114
@@ -823,7 +823,7 @@
 
 ---
 
-## v0.8.1 — 2026-04-24
+## v0.8.1 (2026-04-24)
 
 ## What's Changed
 * ci: bump crazy-max/ghaction-import-gpg + actions/upload-artifact by @ozzyfromcubic in https://github.com/attaform/Attaform/pull/113
@@ -835,7 +835,7 @@
 
 ---
 
-## v0.8.0 — 2026-04-24
+## v0.8.0 (2026-04-24)
 
 ## What's Changed
 * Core rewrite + new APIs + docs by @ozzyfromspace in https://github.com/attaform/Attaform/pull/112

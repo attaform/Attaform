@@ -17,7 +17,7 @@ function probe(rootSchema: z.ZodSchema, path: (string | number)[]): ReadonlySet<
   return adapter.getSlimPrimitiveTypesAtPath(path)
 }
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — leaf primitives', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: leaf primitives', () => {
   it('z.string() → {string}', () => {
     expect([...probe(z.object({ x: z.string() }), ['x'])]).toEqual(['string'])
   })
@@ -35,7 +35,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — leaf primitives', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — refinements ignored', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: refinements ignored', () => {
   it('z.string().email() → {string}', () => {
     expect([...probe(z.object({ x: z.string().email() }), ['x'])]).toEqual(['string'])
   })
@@ -47,7 +47,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — refinements ignored', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — enum / literal', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: enum / literal', () => {
   it('z.enum([strings...]) → {string}', () => {
     expect([...probe(z.object({ x: z.enum(['a', 'b', 'c']) }), ['x'])]).toEqual(['string'])
   })
@@ -59,7 +59,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — enum / literal', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — wrappers', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: wrappers', () => {
   it('z.string().optional() → {string, undefined}', () => {
     const set = probe(z.object({ x: z.string().optional() }), ['x'])
     expect(set.has('string')).toBe(true)
@@ -80,7 +80,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — wrappers', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — unions', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: unions', () => {
   it('z.union([z.string(), z.number()]) → {string, number}', () => {
     const set = probe(z.object({ x: z.union([z.string(), z.number()]) }), ['x'])
     expect(set.has('string')).toBe(true)
@@ -94,7 +94,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — unions', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — composites', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: composites', () => {
   it('z.object({...}) at the path → {object}', () => {
     expect([...probe(z.object({ x: z.object({ y: z.string() }) }), ['x'])]).toEqual(['object'])
   })
@@ -109,7 +109,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — composites', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — permissive shapes', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: permissive shapes', () => {
   it('z.any() → permissive (set has many primitives)', () => {
     const set = probe(z.object({ x: z.any() }), ['x'])
     expect(set.has('string')).toBe(true)
@@ -123,13 +123,13 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — permissive shapes', () => {
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — root path', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: root path', () => {
   it('empty path → {object} (root form is always an object)', () => {
     expect([...probe(z.object({ x: z.string() }), [])]).toEqual(['object'])
   })
 })
 
-describe('zod v3: getSlimPrimitiveTypesAtPath — literal-dot key disambiguation (V4-6)', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: literal-dot key disambiguation (V4-6)', () => {
   it('keyed segment ["user.name"] resolves the literal-dot key, not nested ["user","name"]', () => {
     const schema = z.object({
       // Literal-dot key in the schema's own shape.
@@ -149,7 +149,7 @@ describe('zod v3: getSlimPrimitiveTypesAtPath — literal-dot key disambiguation
 // Branch coverage for the walker's long tail, including the v3-only
 // kinds (native-enum / branded / effects / pipeline) that have no v4
 // counterpart.
-describe('zod v3: getSlimPrimitiveTypesAtPath — walker long tail', () => {
+describe('zod v3: getSlimPrimitiveTypesAtPath: walker long tail', () => {
   it('z.nan() → {number}', () => {
     expect([...probe(z.object({ x: z.nan() }), ['x'])]).toEqual(['number'])
   })

@@ -68,7 +68,7 @@ try {
 function main() {
   const inCI = process.env.GITHUB_ACTIONS === 'true'
   if (!inCI) {
-    log('skipping — not in GitHub Actions')
+    log('skipping: not in GitHub Actions')
     return
   }
 
@@ -109,7 +109,7 @@ function main() {
   }
 
   if (previousTag === '') {
-    log('no previous v-tag found — seeding first entry')
+    log('no previous v-tag found, seeding first entry')
   }
 
   const repo = process.env.GITHUB_REPOSITORY ?? 'attaform/Attaform'
@@ -151,7 +151,7 @@ function main() {
 
   const body = typeof notes?.body === 'string' ? notes.body.trim() : ''
   if (body === '') {
-    log('API returned empty body — skipping')
+    log('API returned empty body, skipping')
     return
   }
 
@@ -179,7 +179,7 @@ function main() {
     warn('git log HEAD date returned empty; skipping')
     return
   }
-  const entry = `## ${newTag} — ${date}\n\n${body}\n\n---\n\n`
+  const entry = `## ${newTag} (${date})\n\n${body}\n\n---\n\n`
 
   const releasesPath = resolve(repoRoot, 'RELEASES.md')
   const HEADER = '# Releases\n\n'

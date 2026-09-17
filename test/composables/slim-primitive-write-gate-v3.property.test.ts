@@ -28,7 +28,7 @@ const arbSchema = buildSchemaWithManifest(z, 3)
 
 type SetValueFn = (path: string, value: unknown) => boolean
 
-describe('slim-primitive write gate — property: manifest sanity (v3)', () => {
+describe('slim-primitive write gate: property: manifest sanity (v3)', () => {
   test.prop([arbSchema])(
     'manifest leaf accept-sets equal adapter.getSlimPrimitiveTypesAtPath',
     ({ schema, leaves }) => {
@@ -43,7 +43,7 @@ describe('slim-primitive write gate — property: manifest sanity (v3)', () => {
   )
 })
 
-describe('slim-primitive write gate — property: known leaf paths (v3)', () => {
+describe('slim-primitive write gate: property: known leaf paths (v3)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -104,7 +104,7 @@ describe('slim-primitive write gate — property: known leaf paths (v3)', () => 
   )
 })
 
-describe('slim-primitive write gate — property: unknown paths (v3)', () => {
+describe('slim-primitive write gate: property: unknown paths (v3)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 

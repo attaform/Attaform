@@ -32,7 +32,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — progress', () => {
+describe('useWizard: progress', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -100,7 +100,7 @@ describe('useWizard — progress', () => {
     expect(result.progress).toBeCloseTo(0.02, 5)
   })
 
-  it('override is reactive — re-evaluates when underlying statuses change', async () => {
+  it('override is reactive: re-evaluates when underlying statuses change', async () => {
     const { app, result } = mountHarness(() => {
       const a = useForm({
         schema: okSchema,

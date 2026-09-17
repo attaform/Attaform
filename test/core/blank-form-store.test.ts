@@ -38,7 +38,7 @@ const defaults: Form = {
   meta: { notes: '', score: 0 },
 }
 
-describe('FormStore — blank gate hook', () => {
+describe('FormStore: blank gate hook', () => {
   it('exposes both reactive and snapshot Sets, empty by default', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-1',
@@ -136,7 +136,7 @@ describe('FormStore — blank gate hook', () => {
   })
 })
 
-describe('FormStore — reset', () => {
+describe('FormStore: reset', () => {
   it('reset() restores blankPaths from the originals snapshot', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-10',
@@ -185,7 +185,7 @@ describe('FormStore — reset', () => {
   })
 })
 
-describe('FormStore — reactive Set tracking', () => {
+describe('FormStore: reactive Set tracking', () => {
   it('Vue 3.5 reactive Set fires on .add() / .delete() / .has()', () => {
     const state = createFormStore<Form>({ formKey: 'atta-13', schema: fakeSchema(defaults) })
     // Smoke-check that the Set is reactive enough to drive a watcher.

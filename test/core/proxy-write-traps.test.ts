@@ -42,7 +42,7 @@ const adapters = [
   },
 ] as const
 
-describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
+describe.each(adapters)('proxy write traps: $name', ({ mount }) => {
   let warnings: string[]
   let warnSpy: ReturnType<typeof vi.spyOn>
 

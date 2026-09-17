@@ -145,7 +145,7 @@ describe('zod v3: getDefaultAtPath', () => {
       expect(adapter.getDefaultAtPath(['profile', 'name'])).toBe('')
     })
 
-    it('preserves Optional around a PRIMITIVE leaf — returns undefined, not the inner default', () => {
+    it('preserves Optional around a PRIMITIVE leaf: returns undefined, not the inner default', () => {
       const schema = z.object({
         notes: z.string().optional(),
         score: z.number().optional(),
@@ -157,13 +157,13 @@ describe('zod v3: getDefaultAtPath', () => {
       expect(adapter.getDefaultAtPath(['active'])).toBeUndefined()
     })
 
-    it('preserves Nullable around a PRIMITIVE leaf — returns null, not the inner default', () => {
+    it('preserves Nullable around a PRIMITIVE leaf: returns null, not the inner default', () => {
       const schema = z.object({ name: z.string().nullable() })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
       expect(adapter.getDefaultAtPath(['name'])).toBeNull()
     })
 
-    it('peels Nullable around a STRUCTURAL inner — returns the inner default', () => {
+    it('peels Nullable around a STRUCTURAL inner: returns the inner default', () => {
       const schema = z.object({
         user: z.object({ name: z.string(), age: z.number() }).nullable(),
       })

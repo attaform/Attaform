@@ -40,7 +40,7 @@ function makeFormProxy<T>(): T {
  * read-side surfaces like `FieldStateMap<T>`.
  */
 
-describe('WriteShape — primitive-literal widening', () => {
+describe('WriteShape: primitive-literal widening', () => {
   it('widens string-literal unions to string', () => {
     expectTypeOf<WriteShape<'red' | 'green' | 'blue'>>().toEqualTypeOf<string>()
   })
@@ -76,7 +76,7 @@ describe('WriteShape — primitive-literal widening', () => {
   })
 })
 
-describe('WriteShape — composites', () => {
+describe('WriteShape: composites', () => {
   it('widens object property leaves', () => {
     type R = WriteShape<{ color: 'red' | 'green'; name: string }>
     expectTypeOf<R>().toEqualTypeOf<{ color: string; name: string }>()
@@ -110,7 +110,7 @@ const _setValueSchema = z.object({
 })
 const setValueForm = makeFormProxy<UseFormReturn<typeof _setValueSchema>>()
 
-describe('WriteShape — applied to setValue', () => {
+describe('WriteShape: applied to setValue', () => {
   const form = setValueForm
 
   it('setValue accepts any string at an enum-typed path', () => {
@@ -142,7 +142,7 @@ describe('WriteShape — applied to setValue', () => {
   })
 })
 
-describe('WriteShape — applied to defaultValues', () => {
+describe('WriteShape: applied to defaultValues', () => {
   it('refinement-invalid string defaults are accepted', () => {
     const _schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
     type Defaults = UseFormConfig<typeof _schema>['defaultValues']
@@ -164,7 +164,7 @@ describe('WriteShape — applied to defaultValues', () => {
 const _submitSchema = z.object({ color: z.enum(['red', 'green', 'blue']) })
 const _submitForm = makeFormProxy<UseFormReturn<typeof _submitSchema>>()
 
-describe('WriteShape — handleSubmit stays strict', () => {
+describe('WriteShape: handleSubmit stays strict', () => {
   it('handleSubmit data is the strict zod-output type, not WriteShape', () => {
     type SubmitArg = Parameters<Parameters<typeof _submitForm.handleSubmit>[0]>[0]
 
@@ -188,7 +188,7 @@ const _readForm = makeFormProxy<UseFormReturn<typeof _readSchema>>()
  * leaves to the slim primitive type. Strict post-validation shapes
  * only appear on `handleSubmit` / `validate*()`.
  */
-describe('WriteShape — applied to form.values', () => {
+describe('WriteShape: applied to form.values', () => {
   it('form.values at an enum-typed path is string', () => {
     // The store can hold `'teal'` (refinement-invalid but slim-correct);
     // the read type must admit it. Pre-widen this was 'red'|'green'|'blue'.
@@ -219,7 +219,7 @@ describe('WriteShape — applied to form.values', () => {
   })
 })
 
-describe('WriteShape — applied to form.fields', () => {
+describe('WriteShape: applied to form.fields', () => {
   it('fields at an enum-typed path narrows value/original to string', () => {
     expectTypeOf(_readForm.fields.color.value).toEqualTypeOf<string>()
     expectTypeOf(_readForm.fields.color.original).toEqualTypeOf<string>()
@@ -232,7 +232,7 @@ describe('WriteShape — applied to form.fields', () => {
   })
 })
 
-describe('WriteShape — applied to register', () => {
+describe('WriteShape: applied to register', () => {
   it("register(path).innerRef widens the path's leaf type", () => {
     const reg = _readForm.register('color')
     expectTypeOf(reg.innerRef.value).toEqualTypeOf<string>()

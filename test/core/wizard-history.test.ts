@@ -21,7 +21,7 @@ import { createWizardHistory } from '../../src/runtime/core/wizard-history'
 
 const ORIGINAL_URL = 'http://localhost:3000/wizard'
 
-describe('createWizardHistory — primitive', () => {
+describe('createWizardHistory: primitive', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
   })
@@ -58,7 +58,7 @@ describe('createWizardHistory — primitive', () => {
     handle.dispose()
   })
 
-  it('replace(key) calls replaceState (not pushState) — canonicalize in place', () => {
+  it('replace(key) calls replaceState (not pushState): canonicalize in place', () => {
     const handle = createWizardHistory('step')
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')

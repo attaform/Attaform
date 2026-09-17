@@ -338,7 +338,7 @@ describe('containsDiscriminatedUnion', () => {
 })
 
 describe('containsAsyncRefine', () => {
-  it('flags any leaf refine at the root — sync or async (v3 conservative)', () => {
+  it('flags any leaf refine at the root: sync or async (v3 conservative)', () => {
     // v3 cannot statically distinguish sync from async refines; both
     // are treated as "potentially async" so the runtime never misses
     // the post-mount async pass.
@@ -395,7 +395,7 @@ describe('containsAsyncTransform', () => {
     expect(containsAsyncTransform(z.preprocess((v) => v, z.string()))).toBe(false)
   })
 
-  it('does not flag refinements (sync or async) — those are the refine walker’s domain', () => {
+  it('does not flag refinements (sync or async): those are the refine walker’s domain', () => {
     expect(containsAsyncTransform(z.string().refine(async () => Promise.resolve(true)))).toBe(false)
     expect(containsAsyncTransform(z.string().refine(() => true))).toBe(false)
   })

@@ -45,7 +45,7 @@ function mountWithApp<T>(setup: () => T): T {
   return captured
 }
 
-describe('field-meta walk uninstalled — no registration surface imported', () => {
+describe('field-meta walk uninstalled: no registration surface imported', () => {
   it('Zod 4: label humanizes, description reads .describe(), meta is empty', () => {
     const schema = zV4.object({
       firstName: zV4.string().describe('Given name'),

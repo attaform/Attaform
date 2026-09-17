@@ -36,7 +36,7 @@ function readDescriptionBounds(): { min: number; max: number } {
   const max = Number(block.match(/\.max\((\d+)/)?.[1])
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
     throw new Error(
-      'could not read the description min/max from apps/site/content.config.ts — ' +
+      'could not read the description min/max from apps/site/content.config.ts: ' +
         'the schema shape changed; update readDescriptionBounds()'
     )
   }
@@ -120,7 +120,7 @@ describe('docs description length contract', () => {
         if (/^['"[{>|]/.test(value)) continue
         if (/:\s/.test(value)) {
           // Frontmatter starts on file line 2 (line 1 is the opening `---`).
-          violations.push(`${relative(repoRoot, file)}:${i + 2} — ${line.trim()}`)
+          violations.push(`${relative(repoRoot, file)}:${i + 2}: ${line.trim()}`)
         }
       }
     }

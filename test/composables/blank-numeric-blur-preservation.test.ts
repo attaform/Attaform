@@ -64,7 +64,7 @@ function mountNumericInput() {
   return { app, root }
 }
 
-describe('blank-marked number leaf — blur preserves empty display', () => {
+describe('blank-marked number leaf: blur preserves empty display', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -133,7 +133,7 @@ describe('blank-marked number leaf — blur preserves empty display', () => {
   })
 })
 
-describe('blank-marked number leaf — blank flag survives blur', () => {
+describe('blank-marked number leaf: blank flag survives blur', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

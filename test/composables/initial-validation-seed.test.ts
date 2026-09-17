@@ -58,7 +58,7 @@ describe('initial validation seed', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('an async refine degrades gracefully — form mounts cleanly', () => {
+  it('an async refine degrades gracefully: form mounts cleanly', () => {
     // Regression: the seed pass calls `rootSchema.safeParse(data)`
     // synchronously, which throws when the schema contains an async refine
     // (zod's "Encountered Promise during synchronous parse"). The adapter
@@ -119,7 +119,7 @@ describe('initial validation seed', () => {
   })
 })
 
-describe('initial validation seed — async-refine schema', () => {
+describe('initial validation seed: async-refine schema', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -397,7 +397,7 @@ describe('initial validation seed — async-refine schema', () => {
   })
 })
 
-describe('initial validation seed — hydration takes precedence', () => {
+describe('initial validation seed: hydration takes precedence', () => {
   it('skips the seed when hydration is provided (server is authoritative)', () => {
     // Hand-roll a fakeSchema whose getDefaultValues reports a failure,
     // proves the seed code path WOULD fire if hydration weren't

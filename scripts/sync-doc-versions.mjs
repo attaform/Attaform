@@ -36,7 +36,7 @@ for (const { file, pattern } of targets) {
     const content = readFileSync(path, 'utf8')
     if (!pattern.test(content)) {
       console.error(
-        `[sync-doc-versions] no version marker in ${file} — skipping (version=${version})`
+        `[sync-doc-versions] no version marker in ${file}, skipping (version=${version})`
       )
       continue
     }

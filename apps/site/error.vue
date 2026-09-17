@@ -15,7 +15,7 @@
   const lede = computed(() =>
     isNotFound.value
       ? 'This page wandered off. Check the URL, or jump back to somewhere familiar.'
-      : 'An unexpected error broke this page. The site itself is fine — try the home page or refresh.'
+      : 'An unexpected error broke this page. The site itself is fine, so try the home page or refresh.'
   )
 
   const monogram = computed(() => String(props.error?.statusCode ?? 'oops'))
@@ -44,7 +44,7 @@
   <NuxtLayout>
     <section class="relative isolate overflow-hidden">
       <!-- Same dot-grid + glow stack as the homepage hero. The 404
-           page is a moment, not a corridor — give it the same warmth
+           page is a moment, not a corridor: give it the same warmth
            treatment so it feels like part of the site, not an OS
            error dialog. -->
       <div
@@ -129,7 +129,7 @@
 </template>
 
 <style scoped>
-  /* Single celebratory rotation on mount — the compass needle rights
+  /* Single celebratory rotation on mount: the compass needle rights
      itself once. Looped rotation here would feel like a loading
      spinner; one turn reads as punctuation. */
   .compass-spin {

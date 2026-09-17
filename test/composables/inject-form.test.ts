@@ -21,7 +21,7 @@ const defaults: Form = { email: '', profile: { name: '' } }
  * runs inside `mount()`, which touches the DOM (even if the component
  * itself doesn't render anything interesting).
  */
-describe('injectForm — ambient provide/inject', () => {
+describe('injectForm: ambient provide/inject', () => {
   it('resolves the nearest ancestor anonymous form and shares state with it', () => {
     const shared: {
       parent?: ReturnType<typeof useForm<Form>>
@@ -87,7 +87,7 @@ describe('injectForm — ambient provide/inject', () => {
     app.unmount()
   })
 
-  describe('miss modes — keyed warns, ambient silent', () => {
+  describe('miss modes: keyed warns, ambient silent', () => {
     let warnSpy: ReturnType<typeof vi.spyOn>
     beforeEach(() => {
       warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -314,7 +314,7 @@ describe('injectForm — ambient provide/inject', () => {
   // past Parent's keyed form and resolves to Grandparent's anonymous
   // one. Pin the behavior so the keyed-ambient-skip rule doesn't
   // regress to "keyed shadows ambient too."
-  it('mid-chain keyed form does not shadow ambient — grandchild resolves past it to the anonymous ancestor', () => {
+  it('mid-chain keyed form does not shadow ambient: grandchild resolves past it to the anonymous ancestor', () => {
     const shared: {
       grandparent?: ReturnType<typeof useForm<Form>>
       grandchild?: ReturnType<typeof injectForm<Form>>
@@ -416,7 +416,7 @@ describe('injectForm — ambient provide/inject', () => {
   })
 })
 
-describe('injectForm — explicit key resolution', () => {
+describe('injectForm: explicit key resolution', () => {
   it('resolves a form by key even when the caller is not a descendant', () => {
     const shared: { sibling?: ReturnType<typeof injectForm<Form>> } = {}
 
@@ -475,7 +475,7 @@ describe('injectForm — explicit key resolution', () => {
   })
 })
 
-describe('injectForm — consumer ref-counting', () => {
+describe('injectForm: consumer ref-counting', () => {
   it('keeps the form alive while any child holds it; evicts after last unmount', async () => {
     // We ref-count via the trackConsumer path in injectForm. Unmount
     // the parent after the child while the underlying form is still

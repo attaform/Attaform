@@ -40,7 +40,7 @@ function setupForm<F extends z.ZodObject<Record<string, z.ZodType>>>(schema: F) 
   return { app, form: captured }
 }
 
-describe('handleSubmit — required-empty raises a synthesised error', () => {
+describe('handleSubmit: required-empty raises a synthesised error', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -199,7 +199,7 @@ describe('handleSubmit — required-empty raises a synthesised error', () => {
   })
 })
 
-describe('parse({ commit: true }) — surfaces required-empty errors', () => {
+describe('parse({ commit: true }): surfaces required-empty errors', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

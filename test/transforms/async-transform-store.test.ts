@@ -35,7 +35,7 @@ const adapters = [
   { name: 'zod v3', schema: z3.object({ name: z3.string(), email: z3.string() }) },
 ]
 
-describe.each(adapters)('async-transform store machinery — $name', ({ schema }) => {
+describe.each(adapters)('async-transform store machinery: $name', ({ schema }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

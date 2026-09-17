@@ -2,7 +2,7 @@
   <!-- 2-column shell: sidebar (lg+) + content area. The content area
        is what catch-all pages drop into via <slot />, and they
        further split it into article + TOC at xl+. The layout never
-       constrains article width itself — that's a page concern, since
+       constrains article width itself: that's a page concern, since
        the docs index uses a different content width than the
        catch-all article view. -->
   <div class="flex min-h-screen flex-col">

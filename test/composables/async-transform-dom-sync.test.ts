@@ -43,7 +43,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3 as AnyUseForm, z: zV3 as unknown as typeof zV4 },
 ] as const
 
-describe.each(adapters)('async transform — no mid-flight DOM revert ($name)', ({ useForm, z }) => {
+describe.each(adapters)('async transform: no mid-flight DOM revert ($name)', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

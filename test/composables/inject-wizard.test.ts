@@ -31,7 +31,7 @@ function registryOf(app: App): AttaformRegistry {
   return (app as unknown as { _attaform: AttaformRegistry })._attaform
 }
 
-describe('injectWizard — keyed resolution', () => {
+describe('injectWizard: keyed resolution', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -72,7 +72,7 @@ describe('injectWizard — keyed resolution', () => {
     expect(shared.child).toBe(shared.parent)
   })
 
-  it('shares reactive state — child observes parent navigation', async () => {
+  it('shares reactive state: child observes parent navigation', async () => {
     const shared: {
       parent?: UseWizardReturnType
       child?: UseWizardReturnType | null
@@ -135,7 +135,7 @@ describe('injectWizard — keyed resolution', () => {
   })
 })
 
-describe('injectWizard — ambient resolution', () => {
+describe('injectWizard: ambient resolution', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -236,7 +236,7 @@ describe('injectWizard — ambient resolution', () => {
   })
 })
 
-describe('injectWizard — miss modes (keyed warns, ambient silent)', () => {
+describe('injectWizard: miss modes (keyed warns, ambient silent)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
   beforeEach(() => {
@@ -318,7 +318,7 @@ describe('injectWizard — miss modes (keyed warns, ambient silent)', () => {
   })
 })
 
-describe('injectWizard — sibling isolation', () => {
+describe('injectWizard: sibling isolation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -375,7 +375,7 @@ describe('injectWizard — sibling isolation', () => {
   })
 })
 
-describe('injectWizard — consumer ref-counting (keyed)', () => {
+describe('injectWizard: consumer ref-counting (keyed)', () => {
   it('keeps the handle in the registry while a keyed child consumer is mounted', async () => {
     const Parent = defineComponent({
       setup() {
@@ -409,7 +409,7 @@ describe('injectWizard — consumer ref-counting (keyed)', () => {
   })
 })
 
-describe('injectWizard — multi-ambient detection', () => {
+describe('injectWizard: multi-ambient detection', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
   beforeEach(() => {

@@ -74,7 +74,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, build: buildV3 },
 ] as const
 
-describe.each(adapters)('reset clears snapshot map — $name', ({ useForm, build }) => {
+describe.each(adapters)('reset clears snapshot map: $name', ({ useForm, build }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

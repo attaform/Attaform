@@ -651,7 +651,7 @@
  * The callable arm admits Attaform's \`ValuesSurface\` (the type of
  * \`form.values\`). \`form.values\` is a callable readonly proxy that
  * carries a \`toJSON()\` hook, so \`JSON.stringify\` walks straight
- * through to the underlying form data — no special casing on the
+ * through to the underlying form data, no special casing on the
  * caller's side. Naked functions without \`toJSON\` render as
  * \`[function]\` rather than poisoning the output.
  */

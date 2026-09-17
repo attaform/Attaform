@@ -34,7 +34,7 @@ function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — basic navigation', () => {
+describe('useWizard: basic navigation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -196,7 +196,7 @@ describe('useWizard — basic navigation', () => {
   })
 })
 
-describe('useWizard — degenerate inputs degrade without throwing', () => {
+describe('useWizard: degenerate inputs degrade without throwing', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

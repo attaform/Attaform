@@ -17,7 +17,7 @@ function run<T extends z.ZodObject>(schema: T, opts: Options = {}) {
   })
 }
 
-describe('getDefaultValuesFromZodSchema — scalar defaults', () => {
+describe('getDefaultValuesFromZodSchema: scalar defaults', () => {
   it('string → empty string', () => {
     const { data } = run(z.object({ name: z.string() }))
     expect(data.name).toBe('')
@@ -32,7 +32,7 @@ describe('getDefaultValuesFromZodSchema — scalar defaults', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — wrappers', () => {
+describe('getDefaultValuesFromZodSchema: wrappers', () => {
   it('optional → undefined', () => {
     const { data } = run(z.object({ nickname: z.string().optional() }))
     expect(data.nickname).toBeUndefined()
@@ -47,13 +47,13 @@ describe('getDefaultValuesFromZodSchema — wrappers', () => {
     })
     expect(data.tier).toBe('free')
   })
-  it('.default() skipped when useDefaultSchemaValues=false — leaf empty wins', () => {
+  it('.default() skipped when useDefaultSchemaValues=false: leaf empty wins', () => {
     const { data } = run(z.object({ tier: z.string().default('free') }))
     expect(data.tier).toBe('')
   })
 })
 
-describe('getDefaultValuesFromZodSchema — containers', () => {
+describe('getDefaultValuesFromZodSchema: containers', () => {
   it('array → []', () => {
     const { data } = run(z.object({ tags: z.array(z.string()) }))
     expect(data.tags).toEqual([])
@@ -75,7 +75,7 @@ describe('getDefaultValuesFromZodSchema — containers', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — discriminated unions', () => {
+describe('getDefaultValuesFromZodSchema: discriminated unions', () => {
   it('produces first-option defaults (not an empty object)', () => {
     const schema = z.object({
       status: z.discriminatedUnion('kind', [
@@ -90,7 +90,7 @@ describe('getDefaultValuesFromZodSchema — discriminated unions', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — refinement-heavy schemas', () => {
+describe('getDefaultValuesFromZodSchema: refinement-heavy schemas', () => {
   it('never evaluates refinements (the fix walk is structural, not enforcement)', () => {
     // The helper's job is to produce usable starting data, refinement
     // enforcement lives at the adapter layer (see the next describe).
@@ -104,7 +104,7 @@ describe('getDefaultValuesFromZodSchema — refinement-heavy schemas', () => {
   })
 })
 
-describe('zodAdapter.getDefaultValues — refinement enforcement', () => {
+describe('zodAdapter.getDefaultValues: refinement enforcement', () => {
   it('surfaces refinement errors via the outer rootSchema pass', () => {
     // The contract: the *adapter's* getDefaultValues runs the
     // FULL schema (refinements intact) over the derived data. When
@@ -139,7 +139,7 @@ describe('zodAdapter.getDefaultValues — refinement enforcement', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — constraints', () => {
+describe('getDefaultValuesFromZodSchema: constraints', () => {
   it('constraints override walker defaults (shallow)', () => {
     const schema = z.object({ name: z.string(), age: z.number() })
     const { data } = run(schema, { constraints: { name: 'alice' } })
@@ -158,7 +158,7 @@ describe('getDefaultValuesFromZodSchema — constraints', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — validate-then-fix recovery', () => {
+describe('getDefaultValuesFromZodSchema: validate-then-fix recovery', () => {
   it('succeeds even with unusual leaf types', () => {
     const schema = z.object({
       enumField: z.enum(['red', 'green', 'blue']),
@@ -171,7 +171,7 @@ describe('getDefaultValuesFromZodSchema — validate-then-fix recovery', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — bigint default', () => {
+describe('getDefaultValuesFromZodSchema: bigint default', () => {
   // z.bigint() rejects a number, so `0` here fails the schema's own
   // safeParse before validate-then-fix can intervene.
   it('returns a bigint zero, not a number', () => {
@@ -183,7 +183,7 @@ describe('getDefaultValuesFromZodSchema — bigint default', () => {
   })
 })
 
-describe('getDefaultValuesFromZodSchema — mergeDeep edge cases', () => {
+describe('getDefaultValuesFromZodSchema: mergeDeep edge cases', () => {
   it('null override clears a nullable default', () => {
     const schema = z.object({
       avatar: z.string().nullable(),

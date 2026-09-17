@@ -15,7 +15,7 @@ import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
 
-describe('register({ transforms }) — applies to all four element variants', () => {
+describe('register({ transforms }): applies to all four element variants', () => {
   let app: App | undefined
 
   afterEach(() => {

@@ -47,7 +47,7 @@ const adapters = [
   },
 ] as const
 
-describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
+describe.each(adapters)('form.errors enumeration: $name', ({ mount }) => {
   it("Object.keys(form.errors) excludes '' for a global error (it lives at [])", () => {
     const { api, app } = mount()
     api.setErrors([{ message: 'top-level' }])

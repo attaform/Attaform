@@ -155,7 +155,7 @@ describe('SSR connected via vRegisterHintTransform', () => {
   })
 })
 
-describe('SSR connected — read-before-input (preamble) via both transforms', () => {
+describe('SSR connected: read-before-input (preamble) via both transforms', () => {
   /**
    * The hint transform alone fires marks at v-register evaluation
    * time. If a template reads `getFieldState(path)` BEFORE the bound
@@ -223,7 +223,7 @@ describe('SSR connected — read-before-input (preamble) via both transforms', (
   })
 })
 
-describe('SSR connected — fields the template never binds', () => {
+describe('SSR connected: fields the template never binds', () => {
   it('a schema field with no matching v-register stays connected: false', async () => {
     // The schema declares both `email` and `password`, but the
     // template only renders `<input v-register="form.register('email')">`.
@@ -250,7 +250,7 @@ describe('SSR connected — fields the template never binds', () => {
   })
 })
 
-describe('SSR connected — cross-component sync via shared form key', () => {
+describe('SSR connected: cross-component sync via shared form key', () => {
   /**
    * Two sibling components consume the same FormStore by key. One
    * binds a field via `v-register`; the other reads `getFieldState`

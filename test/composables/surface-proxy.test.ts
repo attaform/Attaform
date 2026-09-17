@@ -46,7 +46,7 @@ function mount<Schema extends z.ZodObject>(
   return captured as UseFormReturnV4<Schema>
 }
 
-describe('form.fields — shadowing immunity (FIELD_STATE_KEYS only inject at leaves)', () => {
+describe('form.fields: shadowing immunity (FIELD_STATE_KEYS only inject at leaves)', () => {
   it('schema field named "dirty" at depth 2 is reachable as a descent target', () => {
     const schema = z.object({
       address: z.object({
@@ -97,7 +97,7 @@ describe('form.fields — shadowing immunity (FIELD_STATE_KEYS only inject at le
   })
 })
 
-describe('form.fields — callable form', () => {
+describe('form.fields: callable form', () => {
   const schema = z.object({
     email: z.string().email(),
     address: z.object({ city: z.string(), zip: z.string() }),
@@ -158,7 +158,7 @@ describe('form.fields — callable form', () => {
     expect(root.dirty).toBe(false)
   })
 
-  it('container call-form returns FieldState — not navigable', () => {
+  it('container call-form returns FieldState, not navigable', () => {
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC', zip: '10001' } })
     const addr = (form.fields as unknown as (p: string) => FieldStateLike)('address')
     expect(addr.path).toEqual(['address'])
@@ -169,7 +169,7 @@ describe('form.fields — callable form', () => {
   })
 })
 
-describe('form.values — callable form', () => {
+describe('form.values: callable form', () => {
   const schema = z.object({
     email: z.string(),
     address: z.object({ city: z.string() }),
@@ -202,7 +202,7 @@ describe('form.values — callable form', () => {
   })
 })
 
-describe('form.errors — callable form', () => {
+describe('form.errors: callable form', () => {
   const schema = z.object({
     email: z.string(),
     address: z.object({ city: z.string() }),
@@ -237,7 +237,7 @@ describe('form.errors — callable form', () => {
   })
 })
 
-describe('form.meta.errors — flat aggregate', () => {
+describe('form.meta.errors: flat aggregate', () => {
   const schema = z.object({
     email: z.string(),
     password: z.string(),
@@ -275,7 +275,7 @@ describe('form.meta.errors — flat aggregate', () => {
   })
 })
 
-describe('form.fields — JSON.stringify behaviour', () => {
+describe('form.fields: JSON.stringify behaviour', () => {
   const schema = z.object({
     email: z.string().email(),
     address: z.object({ city: z.string() }),
@@ -305,7 +305,7 @@ describe('form.fields — JSON.stringify behaviour', () => {
   })
 })
 
-describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
+describe('surface proxies: primitive coercion (Symbol.toPrimitive)', () => {
   // The surface intercepts `Symbol.toPrimitive` and returns a sensible
   // primitive, so `String(form.errors)` and `{{ form.errors }}` in a
   // template work. Without it they throw "Cannot convert object to
@@ -439,7 +439,7 @@ describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
   })
 })
 
-describe('surface proxies — schema-named toString/valueOf collisions', () => {
+describe('surface proxies: schema-named toString/valueOf collisions', () => {
   // A schema field literally named `toString` or `valueOf` is not
   // dot-reachable on the fields / errors surfaces: dot-access resolves
   // the primitive-coercion handler so `String(...)` and direct method
@@ -541,7 +541,7 @@ describe('surface proxies — schema-named toString/valueOf collisions', () => {
   })
 })
 
-describe('surface proxies — hasOwnProperty resolves to the real method (not a node call)', () => {
+describe('surface proxies: hasOwnProperty resolves to the real method (not a node call)', () => {
   // Container nodes and leaf-views are non-callable, but `hasOwnProperty`
   // is a universal Object method that tooling (Vue's reactivity) and
   // consumers call against any object-like value. The surfaces hand back
@@ -617,7 +617,7 @@ describe('surface proxies — hasOwnProperty resolves to the real method (not a 
   })
 })
 
-describe('form.fields — discriminated unions (DU)', () => {
+describe('form.fields: discriminated unions (DU)', () => {
   const schema = z.object({
     name: z.string(),
     notify: z.discriminatedUnion('channel', [
@@ -647,7 +647,7 @@ describe('form.fields — discriminated unions (DU)', () => {
   })
 })
 
-describe('form.errors — container materialisation (toJSON / String / `{{ }}`)', () => {
+describe('form.errors: container materialisation (toJSON / String / `{{ }}`)', () => {
   // The materialiser walks the live error stores and produces a sparse
   // nested tree at every container depth, root included. Without it
   // `JSON.stringify(form.errors)` returns `{}` unconditionally, hiding
@@ -796,7 +796,7 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
   })
 })
 
-describe('form.fields — container materialisation (toJSON / String / `{{ }}`)', () => {
+describe('form.fields: container materialisation (toJSON / String / `{{ }}`)', () => {
   it('root materialisation produces FieldState snapshots for every leaf', () => {
     const schema = z.object({
       email: z.string(),
@@ -857,7 +857,7 @@ describe('form.fields — container materialisation (toJSON / String / `{{ }}`)'
   })
 })
 
-describe('surface materialisation — predictable representations + complex errors', () => {
+describe('surface materialisation: predictable representations + complex errors', () => {
   // These tests pin exact stringified output for non-trivial shapes
   // (deep nesting, arrays, discriminated unions). If the materialiser
   // ever drifts, wrong key ordering at the schema level, lost

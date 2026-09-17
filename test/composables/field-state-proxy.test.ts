@@ -52,7 +52,7 @@ function mountForm(): {
   return { api: captured, app }
 }
 
-describe('form.fields — top-level leaf reads', () => {
+describe('form.fields: top-level leaf reads', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()
@@ -99,7 +99,7 @@ describe('form.fields — top-level leaf reads', () => {
   })
 })
 
-describe('form.fields — nested descent', () => {
+describe('form.fields: nested descent', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()
@@ -136,7 +136,7 @@ describe('form.fields — nested descent', () => {
   })
 })
 
-describe('form.fields — errors propagation', () => {
+describe('form.fields: errors propagation', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()

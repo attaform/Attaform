@@ -92,7 +92,7 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
   for (const [name, schema] of Object.entries(shapes)) {
     const built = adapter(schema)('authored-baseline-probe', { maxRecursionDepth: 64 })
 
-    it(`raw blank baseline equals the slim-parsed baseline — ${name}`, () => {
+    it(`raw blank baseline equals the slim-parsed baseline: ${name}`, () => {
       const slimPassBaseline = built.getDefaultValues({
         useDefaultSchemaValues: false,
       }).data
@@ -100,7 +100,7 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
       expect(rawBaseline).toStrictEqual(slimPassBaseline)
     })
 
-    it(`authored-path set is identical from either baseline — ${name}`, () => {
+    it(`authored-path set is identical from either baseline: ${name}`, () => {
       const withDefaults = built.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: undefined,

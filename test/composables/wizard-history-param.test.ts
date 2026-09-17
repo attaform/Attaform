@@ -40,7 +40,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — custom restore / persist callbacks', () => {
+describe('useWizard: custom restore / persist callbacks', () => {
   const apps: App[] = []
 
   beforeEach(() => {

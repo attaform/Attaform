@@ -64,15 +64,15 @@ for (const { label, tsconfig } of fixtureProjects) {
   console.log(`[check-bundled-types] typechecking ${label} against bundled .d.ts`)
   try {
     run(`pnpm exec tsc --project "${tsconfig}"`)
-    console.log(`[check-bundled-types] ok — ${label}`)
+    console.log(`[check-bundled-types] ok: ${label}`)
   } catch {
     failed = true
-    console.error(`[check-bundled-types] FAILED — ${label} did not compile.`)
+    console.error(`[check-bundled-types] FAILED: ${label} did not compile.`)
   }
 }
 
 if (failed) {
-  console.error('[check-bundled-types] FAILED — a bundled-types fixture did not compile.')
+  console.error('[check-bundled-types] FAILED: a bundled-types fixture did not compile.')
   console.error('  Depth-efficiency regression suspects: DefaultValuesInput, LeafWalker,')
   console.error('  internal-helper exports, WriteShape. Surface-shape drift suspects: any')
   console.error('  recent change to public types that did not propagate through unbuild to dist.')
@@ -82,4 +82,4 @@ if (failed) {
   process.exit(1)
 }
 
-console.log('[check-bundled-types] ok — all bundled-types fixtures compile cleanly')
+console.log('[check-bundled-types] ok: all bundled-types fixtures compile cleanly')

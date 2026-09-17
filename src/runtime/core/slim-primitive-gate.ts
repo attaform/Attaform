@@ -202,9 +202,9 @@ function reportRejection(
   // enough that they don't deserve top billing.
   if (accepted.size === 0) {
     console.warn(
-      `[attaform] Cannot write to '${dotted}' — this path is not in your schema.\n` +
+      `[attaform] Cannot write to '${dotted}': this path is not in your schema.\n` +
         `  Fix: check for a typo in register('${dotted}'); it should match a leaf key in your schema.\n` +
-        `  (If the path resolves to a never-typed schema, it explicitly admits no values — relax the schema if intentional.)\n` +
+        `  (If the path resolves to a never-typed schema, it explicitly admits no values; relax the schema if intentional.)\n` +
         `  The write was a no-op.`
     )
     return
@@ -218,7 +218,7 @@ function reportRejection(
   // so the dev can copy-paste rather than parse "slim primitive set".
   if (kind === 'string' && accepted.has('number')) {
     console.warn(
-      `[attaform] Cannot write a string to '${dotted}' — the schema expects ${expected}.\n` +
+      `[attaform] Cannot write a string to '${dotted}': the schema expects ${expected}.\n` +
         `  Fix: add type="number" to the input, OR use the .number modifier on v-register:\n` +
         `    <input type="number" v-register="register('${dotted}')" />\n` +
         `    <input v-register.number="register('${dotted}')" />\n` +
@@ -229,7 +229,7 @@ function reportRejection(
 
   // Generic kind mismatch, with no built-in DOM coercion path to suggest.
   console.warn(
-    `[attaform] Cannot write a ${kind} to '${dotted}' — the schema expects ${expected}.\n` +
+    `[attaform] Cannot write a ${kind} to '${dotted}': the schema expects ${expected}.\n` +
       `  The write was a no-op.`
   )
 }

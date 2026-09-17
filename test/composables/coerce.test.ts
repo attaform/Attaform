@@ -54,7 +54,7 @@ function mount<S extends z.ZodObject>(
   return { api: handle.api, root }
 }
 
-describe('text input — numeric path', () => {
+describe('text input: numeric path', () => {
   const schema = z.object({ age: z.number(), note: z.string() })
 
   it('typing "25" coerces to number 25 in storage', async () => {
@@ -97,7 +97,7 @@ describe('text input — numeric path', () => {
   })
 })
 
-describe('text input — boolean path', () => {
+describe('text input: boolean path', () => {
   it('typing "true" / "false" coerces to boolean', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -115,7 +115,7 @@ describe('text input — boolean path', () => {
   })
 })
 
-describe('text input — `.number` modifier composes without double-coerce', () => {
+describe('text input: `.number` modifier composes without double-coerce', () => {
   it('modifier runs first; coerce sees a number and short-circuits', async () => {
     const schema = z.object({ age: z.number() })
     const { api, root } = mount(schema, { age: 0 }, (api) => {
@@ -135,7 +135,7 @@ describe('text input — `.number` modifier composes without double-coerce', () 
   })
 })
 
-describe('select (single) — numeric path', () => {
+describe('select (single): numeric path', () => {
   it('selecting an option coerces to number', async () => {
     const schema = z.object({ pick: z.number() })
     const { api, root } = mount(schema, { pick: 1 }, (api) => {
@@ -160,7 +160,7 @@ describe('select (single) — numeric path', () => {
   })
 })
 
-describe('select (multi) — number array', () => {
+describe('select (multi): number array', () => {
   it('select two number options stores [1, 2]', async () => {
     const schema = z.object({ ids: z.array(z.number()) })
     const { api, root } = mount(schema, { ids: [] }, (api) => {
@@ -187,7 +187,7 @@ describe('select (multi) — number array', () => {
   })
 })
 
-describe('select (multi) — number Set', () => {
+describe('select (multi): number Set', () => {
   it('select two number options stores Set { 1, 2 }', async () => {
     const schema = z.object({ ids: z.set(z.number()) })
     const { api, root } = mount(schema, { ids: new Set<number>() }, (api) => {
@@ -213,7 +213,7 @@ describe('select (multi) — number Set', () => {
   })
 })
 
-describe('checkbox array — numeric values', () => {
+describe('checkbox array: numeric values', () => {
   it('toggling a checkbox with value="3" pushes 3 (number) into the array', async () => {
     const schema = z.object({ ids: z.array(z.number()) })
     const { api, root } = mount(schema, { ids: [] }, (api) => {
@@ -233,7 +233,7 @@ describe('checkbox array — numeric values', () => {
   })
 })
 
-describe('checkbox Set — boolean values', () => {
+describe('checkbox Set: boolean values', () => {
   it('checkboxes with value="true"/"false" produce booleans in a Set', async () => {
     const schema = z.object({ flags: z.set(z.boolean()) })
     const { api, root } = mount(schema, { flags: new Set<boolean>() }, (api) => {
@@ -262,7 +262,7 @@ describe('checkbox Set — boolean values', () => {
   })
 })
 
-describe('checkbox scalar — boolean path (no-op)', () => {
+describe('checkbox scalar: boolean path (no-op)', () => {
   it('a single boolean checkbox writes booleans (already-correct kind)', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -280,7 +280,7 @@ describe('checkbox scalar — boolean path (no-op)', () => {
   })
 })
 
-describe('checkbox with true-value / false-value — composes with coerce', () => {
+describe('checkbox with true-value / false-value: composes with coerce', () => {
   // `:true-value` / `:false-value` are Vue v-model conventions that
   // store custom values in the model when a checkbox toggles. The
   // directive routes the chosen value through the same assigner
@@ -444,7 +444,7 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
   })
 })
 
-describe('radio — boolean path', () => {
+describe('radio: boolean path', () => {
   it('selecting value="true"/"false" radios stores boolean', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -688,7 +688,7 @@ describe('reference-equality preservation', () => {
 // `setChecked` or `setSelected`; without that read nothing re-compares
 // and an asymmetry stays latent.
 
-describe('read-side coerce symmetry — array checkbox with case-mismatched boolean values', () => {
+describe('read-side coerce symmetry: array checkbox with case-mismatched boolean values', () => {
   it('checkbox array stays in sync across toggles when option value is "True"/"False"', async () => {
     const schema = z.object({ flags: z.array(z.boolean()) })
     const { api, root } = mount(schema, { flags: [] }, (api) => {
@@ -718,8 +718,8 @@ describe('read-side coerce symmetry — array checkbox with case-mismatched bool
   })
 })
 
-describe('read-side coerce symmetry — Set checkbox with numeric values', () => {
-  it('checkbox Set stays in sync — Set.has uses === so any kind mismatch breaks it', async () => {
+describe('read-side coerce symmetry: Set checkbox with numeric values', () => {
+  it('checkbox Set stays in sync: Set.has uses === so any kind mismatch breaks it', async () => {
     const schema = z.object({ tags: z.set(z.number()) })
     const { api, root } = mount(schema, { tags: new Set<number>() }, (api) => {
       const rv = api.register('tags')
@@ -742,7 +742,7 @@ describe('read-side coerce symmetry — Set checkbox with numeric values', () =>
   })
 })
 
-describe('read-side coerce symmetry — multi-select with case-mismatched boolean options', () => {
+describe('read-side coerce symmetry: multi-select with case-mismatched boolean options', () => {
   it('select multi shows the selected booleans across re-renders', async () => {
     const schema = z.object({ flags: z.array(z.boolean()), note: z.string() })
     const { api, root } = mount(schema, { flags: [], note: '' }, (api) => {
@@ -785,7 +785,7 @@ describe('read-side coerce symmetry — multi-select with case-mismatched boolea
   })
 })
 
-describe('read-side coerce symmetry — single-select with case-mismatched boolean', () => {
+describe('read-side coerce symmetry: single-select with case-mismatched boolean', () => {
   it('select single highlights the option matching the post-coerce model', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -813,8 +813,8 @@ describe('read-side coerce symmetry — single-select with case-mismatched boole
   })
 })
 
-describe('read-side coerce symmetry — radio with case-mismatched boolean values', () => {
-  it('radio cycle stays in sync — pre-fix every-other-click desynced like the checkbox case', async () => {
+describe('read-side coerce symmetry: radio with case-mismatched boolean values', () => {
+  it('radio cycle stays in sync: pre-fix every-other-click desynced like the checkbox case', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
       const rv = api.register('active')

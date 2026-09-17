@@ -1,5 +1,5 @@
 <template>
-  <!-- The mark itself transitions on hover via the `app-logo` class —
+  <!-- The mark itself transitions on hover via the `app-logo` class:
        opacity already happens at the parent NuxtLink level (header,
        footer); this layer adds a tiny spring-scaled pop so the mark
        feels tactile under the cursor. The transform composes with
@@ -23,7 +23,7 @@
 <style scoped>
   /* The transition lives on the SVG itself (not the parent link) so
      the scale pop is visible even when the parent's hover state only
-     moves opacity. Spring easing overshoots gently — at 80ms it reads
+     moves opacity. Spring easing overshoots gently: at 80ms it reads
      as a press, not a bounce. */
   .app-logo {
     transition: transform var(--duration-snappy) var(--ease-spring);

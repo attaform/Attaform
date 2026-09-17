@@ -32,7 +32,7 @@ function dispatchChange(el: HTMLInputElement): void {
   el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-describe('<input type="checkbox" v-register> — single boolean', () => {
+describe('<input type="checkbox" v-register>: single boolean', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -112,7 +112,7 @@ describe('<input type="checkbox" v-register> — single boolean', () => {
   })
 })
 
-describe('<input type="checkbox" v-register> — array group', () => {
+describe('<input type="checkbox" v-register>: array group', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -402,7 +402,7 @@ describe('<input type="checkbox" v-register> — array group', () => {
   })
 })
 
-describe('<input type="checkbox" v-register> — Set group', () => {
+describe('<input type="checkbox" v-register>: Set group', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -472,7 +472,7 @@ describe('<input type="checkbox" v-register> — Set group', () => {
   })
 })
 
-describe('<input type="checkbox" v-register> — :true-value / :false-value', () => {
+describe('<input type="checkbox" v-register> with :true-value / :false-value', () => {
   let app: App | undefined
 
   afterEach(() => {

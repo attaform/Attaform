@@ -111,7 +111,7 @@ function runRecordSuite(
       }
     })
 
-    it('keeps a record entry FieldState keyless — the key lives on the record view', () => {
+    it('keeps a record entry FieldState keyless: the key lives on the record view', () => {
       const { api, unmount } = buildForm(uniqueKey('keyless'))
       try {
         // FieldState.key is the array-element identity token; a record

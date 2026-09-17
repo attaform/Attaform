@@ -102,7 +102,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
+describe.each(ADAPTERS)('every Zod kind: $name', (adapter) => {
   // ── construction ──────────────────────────────────────────────────
 
   it.each(['mapScalar', 'symbolScalar', 'fnScalar', 'promiseScalar'] as const)(
@@ -125,7 +125,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
     ['symbolScalar', 'tag'],
     ['fnScalar', 'cb'],
     ['promiseScalar', 'pending'],
-  ] as const)('leaves %s absent — no canonical empty member to seed', (key, path) => {
+  ] as const)('leaves %s absent: no canonical empty member to seed', (key, path) => {
     // There is no empty Promise and no empty function, and `Symbol()`
     // mints a fresh value on every call: seeding one would make the
     // derived blank non-deterministic and break reference stability
@@ -273,7 +273,7 @@ describe('setValue at an opaque leaf keeps the updater overload', () => {
   })
 })
 
-describe('every Zod kind — zod v4 only', () => {
+describe('every Zod kind: zod v4 only', () => {
   it('mounts a z.templateLiteral leaf and seeds the string blank', () => {
     // A template literal parses strings against a pattern, so `''` is
     // its blank. It need not satisfy the pattern, exactly as `''` does

@@ -34,7 +34,7 @@ function runSetup(callback: () => void): unknown {
   return captured
 }
 
-describe('useForm foot-gun guard — `attaform/zod` (unified)', () => {
+describe('useForm foot-gun guard: `attaform/zod` (unified)', () => {
   it('throws InvalidUseFormConfigError when called with a Zod v4 schema directly', () => {
     const err = runSetup(() => {
       // The mistake the original feedback flagged: schema as the first arg.
@@ -69,7 +69,7 @@ describe('useForm foot-gun guard — `attaform/zod` (unified)', () => {
   })
 })
 
-describe('useForm foot-gun guard — `attaform/zod-v4` (explicit v4)', () => {
+describe('useForm foot-gun guard: `attaform/zod-v4` (explicit v4)', () => {
   it('throws when called with a Zod v4 schema directly', () => {
     const err = runSetup(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,7 +87,7 @@ describe('useForm foot-gun guard — `attaform/zod-v4` (explicit v4)', () => {
   })
 })
 
-describe('useForm foot-gun guard — `attaform/zod-v3` (explicit v3)', () => {
+describe('useForm foot-gun guard: `attaform/zod-v3` (explicit v3)', () => {
   it('throws when called with a Zod v3 schema directly', () => {
     const err = runSetup(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,7 +105,7 @@ describe('useForm foot-gun guard — `attaform/zod-v3` (explicit v3)', () => {
   })
 })
 
-describe('useForm foot-gun guard — `attaform` (abstract root)', () => {
+describe('useForm foot-gun guard: `attaform` (abstract root)', () => {
   it('throws when called with a Zod schema directly (no .schema field)', () => {
     const err = runSetup(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

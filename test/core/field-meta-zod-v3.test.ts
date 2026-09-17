@@ -3,7 +3,7 @@ import { z } from 'zod-v3'
 import { getFieldMetaForSchema as getFieldMeta } from '../../src/runtime/core/field-meta-store'
 import { fieldMeta, withMeta } from '../../src/runtime/adapters/zod-v3/field-meta'
 
-describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
+describe('Zod 3: fieldMeta WeakMap shim + withMeta helper', () => {
   it('round-trips a payload via the withMeta helper', () => {
     const schema = withMeta(z.string(), { label: 'Reference', placeholder: 'PO-12345' })
     expect(getFieldMeta(schema)).toEqual({ label: 'Reference', placeholder: 'PO-12345' })
@@ -53,7 +53,7 @@ describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
   })
 })
 
-describe('Zod 3 — registry stores against schema reference identity', () => {
+describe('Zod 3: registry stores against schema reference identity', () => {
   // Direct fieldMeta.add (the .register-equivalent for v3) keys on
   // the schema reference. The path-resolver disambiguates per
   // tree-walk occurrence when the same schema instance is bound at
@@ -90,7 +90,7 @@ describe('Zod 3 — registry stores against schema reference identity', () => {
   })
 })
 
-describe('Zod 3 — coexistence with .describe()', () => {
+describe('Zod 3: coexistence with .describe()', () => {
   it('keeps schema.description independent of registry payload', () => {
     const schema = withMeta(z.string().describe('legacy desc'), { description: 'fresh' })
     expect(schema.description).toBe('legacy desc')

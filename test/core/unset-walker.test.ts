@@ -25,7 +25,7 @@ function adapterFor(schema: z.ZodObject): AbstractSchema<GenericForm, GenericFor
 
 const keyFor = (segments: (string | number)[]): string => canonicalizePath(segments).key
 
-describe('walkUnsetSentinels — construction-time walk (synthesizes schema keys, auto-marks numeric)', () => {
+describe('walkUnsetSentinels: construction-time walk (synthesizes schema keys, auto-marks numeric)', () => {
   it('synthesizes schema-only keys and auto-marks the unspecified numeric leaf', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
     const result = walkUnsetSentinels({ name: 'a' }, schema)
@@ -64,7 +64,7 @@ describe('walkUnsetSentinels — construction-time walk (synthesizes schema keys
   })
 })
 
-describe('substituteUnsetSentinels — setValue-time walk (trusts caller, no synthesis, no auto-mark)', () => {
+describe('substituteUnsetSentinels: setValue-time walk (trusts caller, no synthesis, no auto-mark)', () => {
   it('does NOT synthesize schema-only keys for a partial payload', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
     const result = substituteUnsetSentinels({ name: 'a' }, [], schema)
@@ -103,7 +103,7 @@ describe('substituteUnsetSentinels — setValue-time walk (trusts caller, no syn
   })
 })
 
-describe('unset-walker — contracts shared by both entry points', () => {
+describe('unset-walker: contracts shared by both entry points', () => {
   it('expands an explicit unset leaf to the slim default and marks the path', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
     const walked = walkUnsetSentinels({ name: 'a', age: unset }, schema)

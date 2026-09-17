@@ -35,7 +35,7 @@ function getVueApi(config: ResolvedConfig): VuePluginApi | undefined {
   return (vuePlugin as unknown as { api?: VuePluginApi } | undefined)?.api
 }
 
-describe('attaform/vite — plugin registration', () => {
+describe('attaform/vite: plugin registration', () => {
   it('registers both node transforms with @vitejs/plugin-vue', async () => {
     const config = await resolveWith([vue(), attaform()])
     const api = getVueApi(config)
@@ -90,7 +90,7 @@ describe('attaform/vite — plugin registration', () => {
   })
 })
 
-describe('attaform/vite — plugin order', () => {
+describe('attaform/vite: plugin order', () => {
   it('runs with enforce:"pre" so it is not downstream of other transforms', async () => {
     const config = await resolveWith([vue(), attaform()])
     const attaformPlugin = config.plugins.find((p) => p.name === 'attaform')

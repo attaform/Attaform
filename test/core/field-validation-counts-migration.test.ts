@@ -36,7 +36,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, schema: schemaV3 },
 ] as const
 
-describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm, schema }) => {
+describe.each(adapters)('fieldValidationCounts migration: $name', ({ useForm, schema }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

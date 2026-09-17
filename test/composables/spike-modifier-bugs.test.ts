@@ -44,7 +44,7 @@ function compileTemplateToRender(template: string): (...args: unknown[]) => unkn
   return new Function('Vue', code)(VueRuntime) as (...args: unknown[]) => unknown
 }
 
-describe('regression: 16b — `<input v-register.trim>` spacebar after content', () => {
+describe('regression: 16b: `<input v-register.trim>` spacebar after content', () => {
   let app: App | undefined
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -148,7 +148,7 @@ describe('regression: 16b — `<input v-register.trim>` spacebar after content',
   })
 })
 
-describe('regression: 16e — `<input type="number">` backspace-to-empty', () => {
+describe('regression: 16e: `<input type="number">` backspace-to-empty', () => {
   let app: App | undefined
   let warnSpy: ReturnType<typeof vi.spyOn>
 

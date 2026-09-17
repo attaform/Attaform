@@ -105,7 +105,7 @@ function mountProfile(options: { defaultValues?: unknown } = {}): {
   return { app, api: handle.api as ProfileApi }
 }
 
-describe('DU hardening — Case A invalid leaf discriminator write', () => {
+describe('DU hardening: Case A invalid leaf discriminator write', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -219,7 +219,7 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
   })
 })
 
-describe('DU hardening — Case B invalid whole-union write', () => {
+describe('DU hardening: Case B invalid whole-union write', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -276,7 +276,7 @@ describe('DU hardening — Case B invalid whole-union write', () => {
   })
 })
 
-describe('DU hardening — slim-primitive gate at the discriminator key', () => {
+describe('DU hardening: slim-primitive gate at the discriminator key', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -386,7 +386,7 @@ describe('DU hardening — slim-primitive gate at the discriminator key', () => 
   })
 })
 
-describe('DU hardening — variant memory survives an invalid intermediate', () => {
+describe('DU hardening: variant memory survives an invalid intermediate', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -418,7 +418,7 @@ describe('DU hardening — variant memory survives an invalid intermediate', () 
   })
 })
 
-describe('DU hardening — construction with invalid discriminator in defaultValues', () => {
+describe('DU hardening: construction with invalid discriminator in defaultValues', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -443,7 +443,7 @@ describe('DU hardening — construction with invalid discriminator in defaultVal
   })
 })
 
-describe('DU hardening — repeated invalid writes', () => {
+describe('DU hardening: repeated invalid writes', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -464,7 +464,7 @@ describe('DU hardening — repeated invalid writes', () => {
   })
 })
 
-describe('DU hardening — undo across an invalid intermediate', () => {
+describe('DU hardening: undo across an invalid intermediate', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -504,7 +504,7 @@ describe('DU hardening — undo across an invalid intermediate', () => {
   })
 })
 
-describe('DU hardening — invalid discriminator at an array element', () => {
+describe('DU hardening: invalid discriminator at an array element', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -563,7 +563,7 @@ describe('DU hardening — invalid discriminator at an array element', () => {
   })
 })
 
-describe('DU hardening — invalid discriminator at an inner nested DU', () => {
+describe('DU hardening: invalid discriminator at an inner nested DU', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -624,7 +624,7 @@ describe('DU hardening — invalid discriminator at an inner nested DU', () => {
   })
 })
 
-describe('DU hardening — zod v3 adapter parity', () => {
+describe('DU hardening: zod v3 adapter parity', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -711,7 +711,7 @@ describe('DU hardening — zod v3 adapter parity', () => {
 //      (touched / dirty / blank / valid)
 //   6. handleSubmit while the form holds an invalid discriminator
 
-describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', () => {
+describe('DU hardening: `unset` on the discriminator (no-selection-yet UX)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -839,7 +839,7 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
   })
 })
 
-describe('DU hardening — bad default values at the union path', () => {
+describe('DU hardening: bad default values at the union path', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -929,7 +929,7 @@ describe('DU hardening — bad default values at the union path', () => {
   })
 })
 
-describe('DU hardening — invalid OUTER discriminator with valid inner state', () => {
+describe('DU hardening: invalid OUTER discriminator with valid inner state', () => {
   const flowSchema = z.object({
     flow: z.discriminatedUnion('step', [
       z.object({
@@ -1025,7 +1025,7 @@ describe('DU hardening — invalid OUTER discriminator with valid inner state', 
   })
 })
 
-describe('DU hardening — reset / resetField after an invalid discriminator write', () => {
+describe('DU hardening: reset / resetField after an invalid discriminator write', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1082,7 +1082,7 @@ describe('DU hardening — reset / resetField after an invalid discriminator wri
   })
 })
 
-describe('DU hardening — field metadata side-effects of an invalid discriminator write', () => {
+describe('DU hardening: field metadata side-effects of an invalid discriminator write', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1136,7 +1136,7 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
   })
 })
 
-describe('DU hardening — handleSubmit while the form has an invalid discriminator', () => {
+describe('DU hardening: handleSubmit while the form has an invalid discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1210,7 +1210,7 @@ describe('DU hardening — handleSubmit while the form has an invalid discrimina
 // `.swap` / `.move` and whole-array `setValue`, so the probes drive
 // each of them.
 
-describe('DU hardening — array of DU: variant memory under array reshape', () => {
+describe('DU hardening: array of DU: variant memory under array reshape', () => {
   const arraySchema = z.object({
     events: z.array(
       z.discriminatedUnion('type', [
@@ -1407,7 +1407,7 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
   })
 })
 
-describe('DU hardening — DU containing an array variant: round-trip preservation', () => {
+describe('DU hardening: DU containing an array variant: round-trip preservation', () => {
   const containerSchema = z.object({
     payload: z.discriminatedUnion('kind', [
       z.object({
@@ -1491,7 +1491,7 @@ describe('DU hardening — DU containing an array variant: round-trip preservati
   })
 })
 
-describe('DU hardening — array index Case A/B with invalid discriminator', () => {
+describe('DU hardening: array index Case A/B with invalid discriminator', () => {
   const arraySchema = z.object({
     events: z.array(
       z.discriminatedUnion('type', [
@@ -1619,7 +1619,7 @@ describe('DU hardening — array index Case A/B with invalid discriminator', () 
   })
 })
 
-describe('DU hardening — array element invalid disc: container-level error reporting', () => {
+describe('DU hardening: array element invalid disc: container-level error reporting', () => {
   const arraySchema = z.object({
     events: z.array(
       z.discriminatedUnion('type', [
@@ -1677,7 +1677,7 @@ describe('DU hardening — array element invalid disc: container-level error rep
 
 import { reactive, ref } from 'vue'
 
-describe('chaos — caller mutates value AFTER setValue', () => {
+describe('chaos: caller mutates value AFTER setValue', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1711,7 +1711,7 @@ describe('chaos — caller mutates value AFTER setValue', () => {
   })
 })
 
-describe('chaos — prototype pollution attempts via path & value', () => {
+describe('chaos: prototype pollution attempts via path & value', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1784,7 +1784,7 @@ describe('chaos — prototype pollution attempts via path & value', () => {
   })
 })
 
-describe('chaos — values that break JSON.stringify (variant memory snapshot)', () => {
+describe('chaos: values that break JSON.stringify (variant memory snapshot)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1870,7 +1870,7 @@ describe('chaos — values that break JSON.stringify (variant memory snapshot)',
   })
 })
 
-describe('chaos — exotic discriminator literal types', () => {
+describe('chaos: exotic discriminator literal types', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1945,7 +1945,7 @@ describe('chaos — exotic discriminator literal types', () => {
   })
 })
 
-describe('chaos — NaN at the discriminator', () => {
+describe('chaos: NaN at the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1986,7 +1986,7 @@ describe('chaos — NaN at the discriminator', () => {
   })
 })
 
-describe('chaos — `-0` written over `0` at a numeric leaf', () => {
+describe('chaos: `-0` written over `0` at a numeric leaf', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2032,7 +2032,7 @@ describe('chaos — `-0` written over `0` at a numeric leaf', () => {
   })
 })
 
-describe('chaos — DU with two variants sharing the same literal value', () => {
+describe('chaos: DU with two variants sharing the same literal value', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2080,7 +2080,7 @@ describe('chaos — DU with two variants sharing the same literal value', () => 
   })
 })
 
-describe('chaos — recursive DU via z.lazy (tree of nodes)', () => {
+describe('chaos: recursive DU via z.lazy (tree of nodes)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2166,7 +2166,7 @@ describe('chaos — recursive DU via z.lazy (tree of nodes)', () => {
   })
 })
 
-describe('chaos — setValue re-entry inside listener callbacks', () => {
+describe('chaos: setValue re-entry inside listener callbacks', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2229,7 +2229,7 @@ describe('chaos — setValue re-entry inside listener callbacks', () => {
   })
 })
 
-describe('chaos — handleSubmit fired twice rapidly', () => {
+describe('chaos: handleSubmit fired twice rapidly', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2261,7 +2261,7 @@ describe('chaos — handleSubmit fired twice rapidly', () => {
   })
 })
 
-describe('chaos — Vue ref / reactive object passed as setValue value', () => {
+describe('chaos: Vue ref / reactive object passed as setValue value', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2282,7 +2282,7 @@ describe('chaos — Vue ref / reactive object passed as setValue value', () => {
     expect(api.values.notify).toEqual({ channel: 'sms', number: '5551234' })
   })
 
-  it('passing a Vue `ref(...)` is rejected or unwrapped — never stored as a Ref proxy', async () => {
+  it('passing a Vue `ref(...)` is rejected or unwrapped, never stored as a Ref proxy', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -2302,7 +2302,7 @@ describe('chaos — Vue ref / reactive object passed as setValue value', () => {
   })
 })
 
-describe('chaos — Symbol-keyed values in the input object', () => {
+describe('chaos: Symbol-keyed values in the input object', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2328,7 +2328,7 @@ describe('chaos — Symbol-keyed values in the input object', () => {
   })
 })
 
-describe('chaos — DU variant with no fields beyond the discriminator', () => {
+describe('chaos: DU variant with no fields beyond the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2369,7 +2369,7 @@ describe('chaos — DU variant with no fields beyond the discriminator', () => {
   })
 })
 
-describe('chaos — two DUs with the same discriminator key at different paths', () => {
+describe('chaos: two DUs with the same discriminator key at different paths', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2434,7 +2434,7 @@ describe('chaos — two DUs with the same discriminator key at different paths',
   })
 })
 
-describe('chaos — array of DU mutated via proxy length / direct index assignment', () => {
+describe('chaos: array of DU mutated via proxy length / direct index assignment', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2487,7 +2487,7 @@ describe('chaos — array of DU mutated via proxy length / direct index assignme
   })
 })
 
-describe('chaos — non-data value types passed to setValue', () => {
+describe('chaos: non-data value types passed to setValue', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2527,7 +2527,7 @@ describe('chaos — non-data value types passed to setValue', () => {
   })
 })
 
-describe('chaos — exotic path inputs', () => {
+describe('chaos: exotic path inputs', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2566,7 +2566,7 @@ describe('chaos — exotic path inputs', () => {
   })
 })
 
-describe('chaos — writing through register binding for an inactive variant', () => {
+describe('chaos: writing through register binding for an inactive variant', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2601,7 +2601,7 @@ describe('chaos — writing through register binding for an inactive variant', (
   })
 })
 
-describe('chaos — leaf write while the parent discriminator is invalid', () => {
+describe('chaos: leaf write while the parent discriminator is invalid', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2640,7 +2640,7 @@ describe('chaos — leaf write while the parent discriminator is invalid', () =>
 // Zod transforms, coerce, preprocess and pipe; DoS-shaped input;
 // seemingly-reasonable values; API misuse; v3-vs-v4 quirks.
 
-describe('chaos — z.coerce at the discriminator', () => {
+describe('chaos: z.coerce at the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2725,7 +2725,7 @@ describe('chaos — z.coerce at the discriminator', () => {
   })
 })
 
-describe('chaos — z.preprocess() wrapping a discriminated union', () => {
+describe('chaos: z.preprocess() wrapping a discriminated union', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2806,7 +2806,7 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
   })
 })
 
-describe('chaos — z.transform() at a leaf changes the output type', () => {
+describe('chaos: z.transform() at a leaf changes the output type', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -2908,7 +2908,7 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     expect(result2.data?.isLongEmail).toBe(true) // 31 chars, > 10 → true
   })
 
-  it('TYPES: input/output asymmetry threads through useForm — values stays z.input, handleSubmit/parse resolve to z.output', () => {
+  it('TYPES: input/output asymmetry threads through useForm: values stays z.input, handleSubmit/parse resolve to z.output', () => {
     // A type-level probe: `expectTypeOf` asserts at compile time, so
     // the body is a runtime no-op, but the `it` still has to exist for
     // Vitest to report the file. A failure here is a tsc error surfaced
@@ -2959,7 +2959,7 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
   })
 })
 
-describe('chaos — non-JSON-friendly types in DU subtree', () => {
+describe('chaos: non-JSON-friendly types in DU subtree', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3010,7 +3010,7 @@ describe('chaos — non-JSON-friendly types in DU subtree', () => {
   })
 })
 
-describe('chaos — numeric-string write at a z.number() leaf', () => {
+describe('chaos: numeric-string write at a z.number() leaf', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3044,7 +3044,7 @@ describe('chaos — numeric-string write at a z.number() leaf', () => {
   })
 })
 
-describe('chaos — null at a nullable string leaf', () => {
+describe('chaos: null at a nullable string leaf', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3078,7 +3078,7 @@ describe('chaos — null at a nullable string leaf', () => {
   })
 })
 
-describe('chaos — performance: rapid setValue chain', () => {
+describe('chaos: performance: rapid setValue chain', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3100,7 +3100,7 @@ describe('chaos — performance: rapid setValue chain', () => {
   })
 })
 
-describe('chaos — performance: large array of DU', () => {
+describe('chaos: performance: large array of DU', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3142,7 +3142,7 @@ describe('chaos — performance: large array of DU', () => {
   })
 })
 
-describe("chaos — resetField with the form-level errors path ''", () => {
+describe("chaos: resetField with the form-level errors path ''", () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3204,7 +3204,7 @@ describe("chaos — resetField with the form-level errors path ''", () => {
   })
 })
 
-describe('chaos — two useForm calls with the same key in one app', () => {
+describe('chaos: two useForm calls with the same key in one app', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3260,7 +3260,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(b.values.x).toBe('two')
   })
 
-  it("each instance honors its own validateOn — sibling's 'submit' doesn't suppress the other's 'change'", async () => {
+  it("each instance honors its own validateOn: sibling's 'submit' doesn't suppress the other's 'change'", async () => {
     // Two call sites, one shared store: A is submit-only, B asks for
     // change mode, and a valid seed means neither has errors at mount.
     // A setValue through B fires the change-mode pipeline and surfaces
@@ -3328,7 +3328,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(a.errors.email?.[0]?.message).toBe('bad email')
   })
 
-  it("handleSubmit re-entry guard protects across siblings — B's submit is a no-op while A's is in flight", async () => {
+  it("handleSubmit re-entry guard protects across siblings: B's submit is a no-op while A's is in flight", async () => {
     // The double-click guard reads `state.activeSubmissions.value`
     // off the FormStore, which every `useForm({ key })` call site
     // shares, so an in-flight submission through A suppresses a
@@ -3719,7 +3719,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   })
 })
 
-describe('chaos — setValue called after the host component unmounts', () => {
+describe('chaos: setValue called after the host component unmounts', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3742,7 +3742,7 @@ describe('chaos — setValue called after the host component unmounts', () => {
   })
 })
 
-describe('chaos — direct mutation through api.values proxy', () => {
+describe('chaos: direct mutation through api.values proxy', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3772,7 +3772,7 @@ describe('chaos — direct mutation through api.values proxy', () => {
   })
 })
 
-describe('chaos — handleSubmit re-entry inside onSuccess', () => {
+describe('chaos: handleSubmit re-entry inside onSuccess', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3864,7 +3864,7 @@ describe('non-discriminated z.union with literal variants', () => {
   })
 })
 
-describe('chaos — array of arrays of discriminated unions', () => {
+describe('chaos: array of arrays of discriminated unions', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3921,7 +3921,7 @@ describe('chaos — array of arrays of discriminated unions', () => {
   })
 })
 
-describe('chaos — stringified JSON written at an object-typed leaf', () => {
+describe('chaos: stringified JSON written at an object-typed leaf', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3959,7 +3959,7 @@ describe('chaos — stringified JSON written at an object-typed leaf', () => {
   })
 })
 
-describe('chaos — branded literal at the discriminator', () => {
+describe('chaos: branded literal at the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -3998,7 +3998,7 @@ describe('chaos — branded literal at the discriminator', () => {
   })
 })
 
-describe('chaos — zod v3 ZodEffects wrapping a discriminatedUnion', () => {
+describe('chaos: zod v3 ZodEffects wrapping a discriminatedUnion', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4045,7 +4045,7 @@ describe('chaos — zod v3 ZodEffects wrapping a discriminatedUnion', () => {
   })
 })
 
-describe('chaos — z.intersection of a DU and a sibling schema', () => {
+describe('chaos: z.intersection of a DU and a sibling schema', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4102,7 +4102,7 @@ describe('chaos — z.intersection of a DU and a sibling schema', () => {
   })
 })
 
-describe('chaos — preprocess on the discriminator leaf inside a variant', () => {
+describe('chaos: preprocess on the discriminator leaf inside a variant', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4162,7 +4162,7 @@ describe('chaos — preprocess on the discriminator leaf inside a variant', () =
 // discriminator switches, invalid intermediates, array-shape changes
 // and concurrent submission.
 
-describe('chaos — history (undo/redo) × discriminated unions', () => {
+describe('chaos: history (undo/redo) × discriminated unions', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4310,7 +4310,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     expect(api.values.name).not.toBe('')
   })
 
-  it('reset() is itself undoable — the pre-reset state is recoverable', async () => {
+  it('reset() is itself undoable: the pre-reset state is recoverable', async () => {
     // To the history module a reset is a mutation, not a stack wipe:
     // `applyFormReplacement` inside `reset()` fires `onFormChange`,
     // which pushes the post-reset snapshot and leaves the user's
@@ -4473,7 +4473,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
 // Records, tuples, Map and Set, setErrors edges, plugin install, a
 // concurrency race and a DoS-length string.
 
-describe('chaos — z.record() with DU values', () => {
+describe('chaos: z.record() with DU values', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4569,7 +4569,7 @@ describe('chaos — z.record() with DU values', () => {
   })
 })
 
-describe('chaos — z.tuple containing a discriminated union', () => {
+describe('chaos: z.tuple containing a discriminated union', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4622,7 +4622,7 @@ describe('chaos — z.tuple containing a discriminated union', () => {
   })
 })
 
-describe('chaos — Map / Set values at leaves', () => {
+describe('chaos: Map / Set values at leaves', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4724,7 +4724,7 @@ describe('chaos — Map / Set values at leaves', () => {
   })
 })
 
-describe('chaos — setErrors at edge paths', () => {
+describe('chaos: setErrors at edge paths', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4811,7 +4811,7 @@ describe('chaos — setErrors at edge paths', () => {
   })
 })
 
-describe('chaos — installing createAttaform twice on one app', () => {
+describe('chaos: installing createAttaform twice on one app', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4844,7 +4844,7 @@ describe('chaos — installing createAttaform twice on one app', () => {
   })
 })
 
-describe('chaos — concurrent handleSubmit and committing parse', () => {
+describe('chaos: concurrent handleSubmit and committing parse', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4876,7 +4876,7 @@ describe('chaos — concurrent handleSubmit and committing parse', () => {
   })
 })
 
-describe('chaos — extremely long string at a slim leaf', () => {
+describe('chaos: extremely long string at a slim leaf', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4917,7 +4917,7 @@ describe('chaos — extremely long string at a slim leaf', () => {
   })
 })
 
-describe('chaos — two <input> elements registered to the same path', () => {
+describe('chaos: two <input> elements registered to the same path', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -4972,7 +4972,7 @@ describe('chaos — two <input> elements registered to the same path', () => {
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp } from 'vue'
 
-describe('chaos — SSR rendering with discriminated-union schemas', () => {
+describe('chaos: SSR rendering with discriminated-union schemas', () => {
   it('renderToString completes for a form whose schema includes a DU', async () => {
     let threw = false
     let html = ''
@@ -5019,7 +5019,7 @@ describe('chaos — SSR rendering with discriminated-union schemas', () => {
     expect(threw).toBe(false)
   })
 })
-describe('chaos — SSR id allocator collision when two forms share a parent', () => {
+describe('chaos: SSR id allocator collision when two forms share a parent', () => {
   it('two anonymous forms in the same parent component get distinct keys', async () => {
     let key1: string | undefined
     let key2: string | undefined
@@ -5051,7 +5051,7 @@ describe('chaos — SSR id allocator collision when two forms share a parent', (
 
 import { vi } from 'vitest'
 
-describe('chaos — dev warning surface for construction-time issues', () => {
+describe('chaos: dev warning surface for construction-time issues', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5086,7 +5086,7 @@ describe('chaos — dev warning surface for construction-time issues', () => {
   })
 })
 
-describe('chaos — handleSubmit when onError callback throws', () => {
+describe('chaos: handleSubmit when onError callback throws', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5140,7 +5140,7 @@ describe('chaos — handleSubmit when onError callback throws', () => {
   })
 })
 
-describe('chaos — JSON.stringify(form.values()) with a BigInt-typed leaf', () => {
+describe('chaos: JSON.stringify(form.values()) with a BigInt-typed leaf', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5185,7 +5185,7 @@ describe('chaos — JSON.stringify(form.values()) with a BigInt-typed leaf', () 
   })
 })
 
-describe('chaos — empty z.object({}) schema', () => {
+describe('chaos: empty z.object({}) schema', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5224,7 +5224,7 @@ describe('chaos — empty z.object({}) schema', () => {
 // Crash-grade probes: the ways Attaform could take down a real Vue or
 // Nuxt app rather than merely trip a test.
 
-describe('crash — BigInt-in-DU surfaces as a thrown error to the Vue app', () => {
+describe('crash: BigInt-in-DU surfaces as a thrown error to the Vue app', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5280,7 +5280,7 @@ describe('crash — BigInt-in-DU surfaces as a thrown error to the Vue app', () 
   })
 })
 
-describe('crash — recursive z.lazy + DU at construction', () => {
+describe('crash: recursive z.lazy + DU at construction', () => {
   it('mounting a component whose setup uses an unsupported schema throws out of mount()', () => {
     type Node = { kind: 'leaf'; value: string } | { kind: 'branch'; children: Node[] }
     const nodeSchema: z.ZodType<Node> = z.lazy(() =>
@@ -5319,7 +5319,7 @@ describe('crash — recursive z.lazy + DU at construction', () => {
   })
 })
 
-describe('crash — infinite reactivity loop via setValue inside a computed', () => {
+describe('crash: infinite reactivity loop via setValue inside a computed', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5384,7 +5384,7 @@ describe('crash — infinite reactivity loop via setValue inside a computed', ()
   })
 })
 
-describe('crash — extremely deep path setValue', () => {
+describe('crash: extremely deep path setValue', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5432,7 +5432,7 @@ describe('crash — extremely deep path setValue', () => {
   })
 })
 
-describe('crash — handleSubmit onSuccess callback throws', () => {
+describe('crash: handleSubmit onSuccess callback throws', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5472,7 +5472,7 @@ describe('crash — handleSubmit onSuccess callback throws', () => {
   })
 })
 
-describe('crash — render template chain access into an inactive-variant subtree', () => {
+describe('crash: render template chain access into an inactive-variant subtree', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -5514,7 +5514,7 @@ describe('crash — render template chain access into an inactive-variant subtre
   })
 })
 
-describe('crash — SSR / prerender stability with misconfigured forms', () => {
+describe('crash: SSR / prerender stability with misconfigured forms', () => {
   it('renderToString on a form with bad-disc defaultValues does not throw', async () => {
     let threw = false
     try {

@@ -132,7 +132,7 @@ function meteredHarness(n: number) {
   }
 }
 
-describe('field arrays — per-element work does not scale with N (perf guard)', () => {
+describe('field arrays: per-element work does not scale with N (perf guard)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

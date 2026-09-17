@@ -129,7 +129,7 @@ const hooks = vRegister as unknown as {
 
 // `<input type="text">` modifier matrix
 
-describe('vRegisterText — `.lazy`', () => {
+describe('vRegisterText: `.lazy`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -173,12 +173,12 @@ describe('vRegisterText — `.lazy`', () => {
   })
 })
 
-describe('vRegisterText — `.trim`', () => {
+describe('vRegisterText: `.trim`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
 
-  it('input event writes the RAW value (deferred trim — no per-keystroke strip)', () => {
+  it('input event writes the RAW value (deferred trim: no per-keystroke strip)', () => {
     // Per-keystroke trim fights Vue's :value patch, typing a
     // trailing space would otherwise collapse before the user could
     // keep typing (regression #16b). The trim is committed on blur
@@ -211,7 +211,7 @@ describe('vRegisterText — `.trim`', () => {
   })
 })
 
-describe('vRegisterText — `.number`', () => {
+describe('vRegisterText: `.number`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -290,7 +290,7 @@ describe('vRegisterText — `.number`', () => {
   })
 })
 
-describe('vRegisterText — combined modifiers', () => {
+describe('vRegisterText: combined modifiers', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -350,8 +350,8 @@ describe('vRegisterText — combined modifiers', () => {
 
 // `<textarea>` smoke
 
-describe('vRegisterText — <textarea> reuses the same variant', () => {
-  it('`.trim` works on textarea — input writes raw, change commits trimmed', () => {
+describe('vRegisterText: <textarea> reuses the same variant', () => {
+  it('`.trim` works on textarea: input writes raw, change commits trimmed', () => {
     const ta = document.createElement('textarea')
     document.body.appendChild(ta)
     const { value, setValue } = makeRegisterValue('')
@@ -370,7 +370,7 @@ describe('vRegisterText — <textarea> reuses the same variant', () => {
 
 // `<select>` modifier matrix
 
-describe('vRegisterSelect — `.number`', () => {
+describe('vRegisterSelect: `.number`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -502,7 +502,7 @@ describe('vRegisterSelect — `.number`', () => {
   })
 })
 
-describe('vRegisterSelect — multi-select (Array / Set models)', () => {
+describe('vRegisterSelect: multi-select (Array / Set models)', () => {
   // The directive captures `isSet(innerRef.value)` at `created` time
   // (`isSetModel`) and uses it to decide whether change events write
   // an Array or a Set. setSelected (mount/updated) drives DOM from
@@ -707,7 +707,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
 
 // `vRegisterText.beforeUpdate` lazy/trim escape-hatches
 
-describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
+describe('vRegisterText.beforeUpdate: escape hatches under focus', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -764,7 +764,7 @@ describe('attaform interactions: `.number` × slim-primitive gate', () => {
     document.body.innerHTML = ''
   })
 
-  it('non-castable input never reaches the gate — directive marks blank instead', () => {
+  it('non-castable input never reaches the gate: directive marks blank instead', () => {
     // Post-commit-5 the directive's `.number` listener short-circuits
     // BEFORE the assigner when `looseToNumber` returns a non-number,
     // so the slim-primitive gate never sees the bogus write. The
@@ -835,7 +835,7 @@ describe('attaform interactions: `.lazy` × value-swap', () => {
 
 // Dispatcher propagates modifiers
 
-describe('vRegisterDynamic — propagates modifiers to the per-tag variant', () => {
+describe('vRegisterDynamic: propagates modifiers to the per-tag variant', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -1100,7 +1100,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
  * gets undefined and unchecks the box, even with 'banana' in state and
  * the DOM attribute set.
  */
-describe('vRegisterCheckbox.setChecked — hydration with static value attribute', () => {
+describe('vRegisterCheckbox.setChecked: hydration with static value attribute', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -1152,7 +1152,7 @@ describe('vRegisterCheckbox.setChecked — hydration with static value attribute
 
 // `<input type="radio">` created/beforeUpdate: same hydration shape
 
-describe('vRegisterRadio — hydration with static value attribute', () => {
+describe('vRegisterRadio: hydration with static value attribute', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })

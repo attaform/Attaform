@@ -68,7 +68,7 @@ function mountProfile(): { app: App; api: ProfileApi } {
   return { app, api: handle.api as ProfileApi }
 }
 
-describe('discriminated-union variant switch — storage reshape', () => {
+describe('discriminated-union variant switch: storage reshape', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -173,7 +173,7 @@ describe('discriminated-union variant switch — storage reshape', () => {
   })
 })
 
-describe('discriminated-union variant switch — error reactivity', () => {
+describe('discriminated-union variant switch: error reactivity', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -223,7 +223,7 @@ describe('discriminated-union variant switch — error reactivity', () => {
   })
 })
 
-describe('discriminated-union variant switch — numeric variant blank auto-mark', () => {
+describe('discriminated-union variant switch: numeric variant blank auto-mark', () => {
   const numericVariantSchema = z.object({
     payout: z.discriminatedUnion('kind', [
       z.object({ kind: z.literal('flat'), amount: z.string() }),
@@ -277,7 +277,7 @@ describe('discriminated-union variant switch — numeric variant blank auto-mark
   })
 })
 
-describe('discriminated-union variant switch — whole-union write', () => {
+describe('discriminated-union variant switch: whole-union write', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -313,7 +313,7 @@ describe('discriminated-union variant switch — whole-union write', () => {
   })
 })
 
-describe('discriminated-union variant switch — wrapped DU', () => {
+describe('discriminated-union variant switch: wrapped DU', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -361,7 +361,7 @@ describe('discriminated-union variant switch — wrapped DU', () => {
   })
 })
 
-describe('discriminated-union variant switch — array <-> non-array path', () => {
+describe('discriminated-union variant switch: array <-> non-array path', () => {
   // One variant carries `payload` as an array of records; the other
   // does not carry `payload` at all. The container proxy at
   // `form.fields.payload` mounts an Array target on first read (driven
@@ -520,7 +520,7 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
   })
 })
 
-describe('z.union (non-discriminated) — array-vs-object shape collision at the same path', () => {
+describe('z.union (non-discriminated): array-vs-object shape collision at the same path', () => {
   // Zod's `z.union` allows the same key to be array-shaped in one
   // branch and record-shaped in another. The form value at that
   // path can flip between shapes via `setValue`. The cached
@@ -629,7 +629,7 @@ describe('z.union (non-discriminated) — array-vs-object shape collision at the
   })
 })
 
-describe('surface proxy — per-consumer cache isolation', () => {
+describe('surface proxy: per-consumer cache isolation', () => {
   // Two `useForm` calls with the same key share the underlying form
   // store (the registry de-dupes by key), but each call gets its own
   // `buildFormApi` and therefore its own container cache. This pins
@@ -691,7 +691,7 @@ describe('surface proxy — per-consumer cache isolation', () => {
   })
 })
 
-describe('discriminated-union variant switch — DU inside an array', () => {
+describe('discriminated-union variant switch: DU inside an array', () => {
   const arraySchema = z.object({
     events: z.array(
       z.discriminatedUnion('type', [
@@ -741,7 +741,7 @@ describe('discriminated-union variant switch — DU inside an array', () => {
   })
 })
 
-describe('discriminated-union variant switch — zod v3 adapter', () => {
+describe('discriminated-union variant switch: zod v3 adapter', () => {
   const v3Schema = zV3.object({
     notify: zV3.discriminatedUnion('channel', [
       zV3.object({ channel: zV3.literal('email'), address: zV3.string() }),
@@ -843,7 +843,7 @@ function mountProfileWith(options: { rememberVariants?: boolean } = {}): {
   return { app, api: handle.api as ProfileApi }
 }
 
-describe('variant memory — round-trip preserves typed data', () => {
+describe('variant memory: round-trip preserves typed data', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -946,7 +946,7 @@ describe('variant memory — round-trip preserves typed data', () => {
   })
 })
 
-describe('variant memory — Case B whole-union write', () => {
+describe('variant memory: Case B whole-union write', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -984,7 +984,7 @@ describe('variant memory — Case B whole-union write', () => {
   })
 })
 
-describe('variant memory — same-discriminator Case B', () => {
+describe('variant memory: same-discriminator Case B', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1035,7 +1035,7 @@ describe('variant memory — same-discriminator Case B', () => {
   })
 })
 
-describe('variant memory — opt-out (rememberVariants: false)', () => {
+describe('variant memory: opt-out (rememberVariants: false)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1073,7 +1073,7 @@ describe('variant memory — opt-out (rememberVariants: false)', () => {
   })
 })
 
-describe('variant memory — reset clears memory', () => {
+describe('variant memory: reset clears memory', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1184,7 +1184,7 @@ function mountFlow(): { app: App; api: FlowApi } {
   return { app, api: handle.api as FlowApi }
 }
 
-describe('variant memory — nested DUs (depth 2)', () => {
+describe('variant memory: nested DUs (depth 2)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1284,7 +1284,7 @@ describe('variant memory — nested DUs (depth 2)', () => {
   })
 })
 
-describe('variant memory — nested DU + reset interactions', () => {
+describe('variant memory: nested DU + reset interactions', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1375,7 +1375,7 @@ describe('variant memory — nested DU + reset interactions', () => {
   })
 })
 
-describe('variant memory — DU nested inside an array element', () => {
+describe('variant memory: DU nested inside an array element', () => {
   const arraySchema = z.object({
     events: z.array(
       z.discriminatedUnion('type', [
@@ -1480,7 +1480,7 @@ describe('variant memory — DU nested inside an array element', () => {
   })
 })
 
-describe('variant memory — nested DUs (depth 3)', () => {
+describe('variant memory: nested DUs (depth 3)', () => {
   // wizard = DU('phase', [
   //   { phase: 'config', config: DU('mode', [
   //       { mode: 'manual', detail: DU('shape', [{ shape: 'rect', w, h }, { shape: 'circle', r }]) },
@@ -1597,7 +1597,7 @@ describe('variant memory — nested DUs (depth 3)', () => {
   })
 })
 
-describe('variant memory — field state across round-trip', () => {
+describe('variant memory: field state across round-trip', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1624,7 +1624,7 @@ describe('variant memory — field state across round-trip', () => {
   })
 })
 
-describe('variant memory — history (undo/redo) interaction', () => {
+describe('variant memory: history (undo/redo) interaction', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1688,7 +1688,7 @@ describe('variant memory — history (undo/redo) interaction', () => {
  * the new shape clears stale schemaErrors entries, and user errors stay
  * put.
  */
-describe('inactive-variant errors — filtered from form.errors, schemaErrors re-validated', () => {
+describe('inactive-variant errors: filtered from form.errors, schemaErrors re-validated', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1860,7 +1860,7 @@ function mountCargoLift(): { app: App; api: CargoLiftApi } {
   return { app, api: handle.api as CargoLiftApi }
 }
 
-describe('discriminated-union lift — chained metadata-proxy access', () => {
+describe('discriminated-union lift: chained metadata-proxy access', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -1895,7 +1895,7 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
     expect(api.fields.cargo.fragile?.value).toBe(false)
   })
 
-  it('api.errors.cargo — inactive-variant key is undefined; active key with no errors is []', () => {
+  it('api.errors.cargo: inactive-variant key is undefined; active key with no errors is []', () => {
     const { app, api } = mountCargoLift()
     apps.push(app)
     // tempMinC lives only on `refrigerated`; the active variant is `dry`,
@@ -1944,7 +1944,7 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
  * Symbol-valued leaf, which stops the template's active-variant branch
  * resolving and freezes the UI on the previous variant's body.
  */
-describe('discriminated-union variant switch — whole-union write with unset sentinels', () => {
+describe('discriminated-union variant switch: whole-union write with unset sentinels', () => {
   const cargoSchema = z.object({
     cargo: z.discriminatedUnion('type', [
       z.object({

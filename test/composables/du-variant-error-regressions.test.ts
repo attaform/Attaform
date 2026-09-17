@@ -96,7 +96,7 @@ function mount(
   return { app, api: handle.api as ProfileApi, warnings, errorsObserved }
 }
 
-describe('DU variant switch — error materialisation regressions', () => {
+describe('DU variant switch: error materialisation regressions', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

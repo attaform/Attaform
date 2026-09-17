@@ -23,7 +23,7 @@ export function warnReadOnly(
   if (!__DEV__) return
   const phrase = action === 'write' ? `write to "${String(key)}"` : `${action} of "${String(key)}"`
   console.warn(
-    `[attaform] ${surface} is read-only — ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
+    `[attaform] ${surface} is read-only; ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
   )
 }
 

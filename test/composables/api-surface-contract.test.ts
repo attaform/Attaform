@@ -73,8 +73,8 @@ function mountForm(): { app: App; api: Api } {
   return { app, api: handle.api as Api }
 }
 
-describe('API surface contract — actions on `api`, status on `api.meta`, history on `api.history`', () => {
-  it('undo/redo + flags live on `api.history` — both methods and reactive flags', () => {
+describe('API surface contract: actions on `api`, status on `api.meta`, history on `api.history`', () => {
+  it('undo/redo + flags live on `api.history`: both methods and reactive flags', () => {
     const { api } = mountForm()
 
     // Runtime, methods are functions, flags are unwrapped primitives

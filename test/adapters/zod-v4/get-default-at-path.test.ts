@@ -142,7 +142,7 @@ describe('zod v4: getDefaultAtPath', () => {
       expect(adapter.getDefaultAtPath(['profile', 'name'])).toBe('')
     })
 
-    it('preserves Optional around a PRIMITIVE leaf — returns undefined, not the inner default', () => {
+    it('preserves Optional around a PRIMITIVE leaf: returns undefined, not the inner default', () => {
       // Regression guard: peeling an optional primitive to its inner
       // default `''` would silently overwrite the optional's "absent"
       // semantic. mergeStructural would write `notes: ''` into a sibling
@@ -160,7 +160,7 @@ describe('zod v4: getDefaultAtPath', () => {
       expect(adapter.getDefaultAtPath(['active'])).toBeUndefined()
     })
 
-    it('preserves Nullable around a PRIMITIVE leaf — returns null, not the inner default', () => {
+    it('preserves Nullable around a PRIMITIVE leaf: returns null, not the inner default', () => {
       // The wrapper IS the meaningful schema for primitive leaves:
       // `.nullable()` means "null is allowed". Peeling to `''` would
       // let mergeStructural overwrite an honest null with an empty
@@ -170,7 +170,7 @@ describe('zod v4: getDefaultAtPath', () => {
       expect(adapter.getDefaultAtPath(['name'])).toBeNull()
     })
 
-    it('peels Nullable around a STRUCTURAL inner — returns the inner default', () => {
+    it('peels Nullable around a STRUCTURAL inner: returns the inner default', () => {
       // Nullable around an object: we DO peel so `setValue('user',
       // { name: 'Alice' })` against `user: z.object({...}).nullable()`
       // can fill the inner shape's missing keys.
@@ -181,7 +181,7 @@ describe('zod v4: getDefaultAtPath', () => {
       expect(adapter.getDefaultAtPath(['user'])).toEqual({ name: '', age: 0 })
     })
 
-    it('preserves .default(x) at wrapper level — not peeled', () => {
+    it('preserves .default(x) at wrapper level, not peeled', () => {
       // `.default(x)` is the explicit "fresh" value; it stays.
       const schema = z.object({
         prefs: z.object({ theme: z.string() }).default({ theme: 'dark' }),

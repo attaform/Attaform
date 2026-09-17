@@ -26,7 +26,7 @@ import { awaitSettle, waitUntil } from '../utils/form-harness'
  * unfixed tree (proving the bugs reproduce).
  */
 
-describe('#381 — aria-required is not stamped on array-member checkboxes', () => {
+describe('#381: aria-required is not stamped on array-member checkboxes', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()
@@ -91,7 +91,7 @@ describe('#381 — aria-required is not stamped on array-member checkboxes', () 
   })
 })
 
-describe('#404 — aria-required lands on the bound control, not the component host root', () => {
+describe('#404: aria-required lands on the bound control, not the component host root', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()

@@ -71,7 +71,7 @@ console.log(
 let failed = false
 if (offenders.length > 0) {
   failed = true
-  console.error('[check-tarball-size] FAILED — excluded file shapes are back in the tarball:')
+  console.error('[check-tarball-size] FAILED: excluded file shapes are back in the tarball:')
   console.error(offenders.join('\n'))
   console.error('  Check package.json "files" negations and build.config.ts')
   console.error('  (sourcemap / emitCJS / declaration).')
@@ -79,7 +79,7 @@ if (offenders.length > 0) {
 if (report.size > BUDGET_BYTES) {
   failed = true
   console.error(
-    `[check-tarball-size] FAILED — packed size ${report.size} B exceeds the ` +
+    `[check-tarball-size] FAILED: packed size ${report.size} B exceeds the ` +
       `${BUDGET_BYTES} B budget. If the growth is intentional, raise BUDGET_BYTES ` +
       'with a dated reason in the budget history above.'
   )

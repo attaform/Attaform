@@ -47,7 +47,7 @@
       color: #18181b;
     "
   >
-    <!-- Brand row — wordmark with the same accent square as the
+    <!-- Brand row: wordmark with the same accent square as the
          favicon, so the OG card carries Attaform's mark wherever it
          lands. The accent block is built with HTML rather than the
          SVG path because Satori's SVG support is partial; a div with
@@ -79,7 +79,7 @@
     <!-- Title + description block. Title gets the visual weight of a
          display heading; description plays the role of a subhead and
          caps at three lines visually (Satori doesn't honour
-         line-clamp, so we leave it to the description's own length —
+         line-clamp, so we leave it to the description's own length:
          our content schema bounds it at 200 chars which fits two-to-
          three lines at this size). -->
     <div style="display: flex; flex-direction: column; gap: 28px; max-width: 1040px">
@@ -103,7 +103,7 @@
       </span>
     </div>
 
-    <!-- Footer row — the canonical host on the left so a screenshot
+    <!-- Footer row: the canonical host on the left so a screenshot
          shared without context still says where it came from, and a
          keyword-loaded chip on the right so the card carries
          taxonomy past the headline. -->

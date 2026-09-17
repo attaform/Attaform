@@ -52,7 +52,7 @@ const schema = z.object({
   nullableRef: z.string().nullable(),
 })
 
-describe('v3 — form.clear(path) wipes primitives to falsy', () => {
+describe('v3: form.clear(path) wipes primitives to falsy', () => {
   it('clear("name") → "" (NOT the default "ozzy")', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('str') }))
     try {
@@ -98,7 +98,7 @@ describe('v3 — form.clear(path) wipes primitives to falsy', () => {
   })
 })
 
-describe('v3 — nested object descent', () => {
+describe('v3: nested object descent', () => {
   it('clear("config") → recursively-empty inner shape', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('obj') }))
     try {
@@ -122,7 +122,7 @@ describe('v3 — nested object descent', () => {
   })
 })
 
-describe('v3 — wrapper semantics', () => {
+describe('v3: wrapper semantics', () => {
   it('clear("optionalBio") → undefined', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('opt') }))
     try {
@@ -148,7 +148,7 @@ describe('v3 — wrapper semantics', () => {
   })
 })
 
-describe("v3 — whole-form and `''` distinction", () => {
+describe("v3: whole-form and `''` distinction", () => {
   it('clear() (no arg) wipes every leaf to falsy', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('whole') }))
     try {
@@ -177,7 +177,7 @@ describe("v3 — whole-form and `''` distinction", () => {
   })
 })
 
-describe('v3 — orthogonality with reset', () => {
+describe('v3: orthogonality with reset', () => {
   it('reset restores defaults; clear wipes to falsy', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('vs') }))
     try {

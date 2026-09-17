@@ -263,7 +263,7 @@
 </script>
 
 <template>
-  <!-- Trigger — wide button on md+ that mimics a search field, then
+  <!-- Trigger: wide button on md+ that mimics a search field, then
        collapses to icon-only on small viewports so it fits next to
        the rest of the header chrome without crowding. -->
   <button
@@ -504,7 +504,7 @@
   }
 
   /* Single keyframe shared across every empty / no-results / error /
-     unavailable state — the modal cross-fades between them as the
+     unavailable state: the modal cross-fades between them as the
      query changes, so the panel never reads as "stuck" between
      states. ~180ms keeps the transition under typeahead debounce
      (180ms in performSearch); they don't queue up. */

@@ -92,7 +92,7 @@ describe('buildProcessForm', () => {
       // schema resolves and the watchEffect writes the settled status.
       await waitUntilSettled(r)
       expect(r.value.pending).toBe(false)
-      if (r.value.pending) throw new Error('unreachable — narrowed above')
+      if (r.value.pending) throw new Error('unreachable: narrowed above')
       expect(r.value.success).toBe(true)
       expect(r.value.errors).toBeUndefined()
     })
@@ -131,7 +131,7 @@ describe('buildProcessForm', () => {
     })
   })
 
-  describe('parse — commit mode', () => {
+  describe('parse: commit mode', () => {
     it('resolves to a settled response for the full form, data retained', async () => {
       const state = alwaysValid()
       const { parse } = buildProcessForm(state)
@@ -252,7 +252,7 @@ describe('buildProcessForm', () => {
   })
 
   describe('handleSubmit', () => {
-    it('returns a function (not a Promise) — consumers bind it to @submit', () => {
+    it('returns a function (not a Promise): consumers bind it to @submit', () => {
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state)
       const fn = handleSubmit(async () => {})
@@ -318,7 +318,7 @@ describe('buildProcessForm', () => {
     })
   })
 
-  describe('handleSubmit — submission lifecycle refs', () => {
+  describe('handleSubmit: submission lifecycle refs', () => {
     it('flips submitting true for the duration of the handler, false after', async () => {
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state)
@@ -467,7 +467,7 @@ describe('buildProcessForm', () => {
     })
   })
 
-  describe('handleSubmit — reset() during in-flight submission', () => {
+  describe('handleSubmit: reset() during in-flight submission', () => {
     it('reset() keeps submitting false through the in-flight completion', async () => {
       // Regression: previously `reset()` zeroed `activeSubmissions` and
       // the in-flight submission's finally-block then decremented into
@@ -638,7 +638,7 @@ describe('buildProcessForm', () => {
   // effect scope. The watcher leaks (intentional behaviour), but the
   // first warn per FormStore tells the consumer about the leak so
   // they can wrap in effectScope().
-  describe('validate() — outside-scope dev warning', () => {
+  describe('validate(): outside-scope dev warning', () => {
     it('warns once per FormStore, not on every call', () => {
       const state = alwaysValid()
       const { validate } = buildProcessForm(state)

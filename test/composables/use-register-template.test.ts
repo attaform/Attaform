@@ -66,7 +66,7 @@ function compileTemplateToRender(template: string): (...args: unknown[]) => unkn
   return new Function('Vue', code)(VueRuntime) as (...args: unknown[]) => unknown
 }
 
-describe('useRegister — template-compiled v-register reaches inner input', () => {
+describe('useRegister: template-compiled v-register reaches inner input', () => {
   let app: App | undefined
 
   afterEach(() => {

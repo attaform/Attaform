@@ -104,7 +104,7 @@ const SCHEMAS = {
   },
 } as const
 
-describe('renderAttaformState — no null-prototype leak into the SSR payload', () => {
+describe('renderAttaformState: no null-prototype leak into the SSR payload', () => {
   for (const [adapterName, fixture] of Object.entries(SCHEMAS)) {
     describe(adapterName, () => {
       async function buildSnapshot(): Promise<unknown> {

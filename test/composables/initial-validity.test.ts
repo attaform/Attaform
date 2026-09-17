@@ -96,7 +96,7 @@ function mountSync(): { app: App; api: SyncApi } {
   return { app, api: handle.api as SyncApi }
 }
 
-describe('initial validity gating — async-refinement schema (the demo case)', () => {
+describe('initial validity gating: async-refinement schema (the demo case)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -168,7 +168,7 @@ describe('initial validity gating — async-refinement schema (the demo case)', 
   })
 })
 
-describe('initial validity gating — sync-refinement schema', () => {
+describe('initial validity gating: sync-refinement schema', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -192,7 +192,7 @@ describe('initial validity gating — sync-refinement schema', () => {
 // per-leaf `field.valid` does not (it answers a tighter
 // "based on what we have at this path, has anything failed?"
 // question used by green-checkmark UX patterns).
-describe('initial validity gating — asymmetry between valid and field.valid', () => {
+describe('initial validity gating: asymmetry between valid and field.valid', () => {
   // Schema with a plain `z.string()` leaf living alongside a leaf
   // that does carry an async refine directly. Slim parse strips
   // the refine → construction sees no errors. The form-wide gate
@@ -243,7 +243,7 @@ describe('initial validity gating — asymmetry between valid and field.valid', 
     expect(api.fields.word.valid).toBe(true)
   })
 
-  it('valid([asyncLeafPath]) is gated false at frame 1 — the path has async work pending', () => {
+  it('valid([asyncLeafPath]) is gated false at frame 1: the path has async work pending', () => {
     const { app, api } = mountMixed()
     apps.push(app)
     // `asyncField`'s subtree DOES contain async work, so

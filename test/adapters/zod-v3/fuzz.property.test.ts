@@ -18,7 +18,7 @@ import { buildZodRootObjectArbitrary } from '../../utils/zod-arbitraries'
 
 const arbRootSchema = buildZodRootObjectArbitrary(z, 3, (inner) => z.record(inner))
 
-describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
+describe('zod v3 adapter: fuzz over arbitrary supported schemas', () => {
   test.prop([arbRootSchema])('adapter construction never throws on supported schemas', (schema) => {
     expect(() =>
       zodAdapter(schema as z.ZodObject<z.ZodRawShape>)('f', { maxRecursionDepth: 64 })
@@ -42,7 +42,7 @@ describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
     }
   )
 
-  test.prop([arbRootSchema])('validateAtPath is total — never rejects', async (schema) => {
+  test.prop([arbRootSchema])('validateAtPath is total, never rejects', async (schema) => {
     const adapter = zodAdapter(schema as z.ZodObject<z.ZodRawShape>)('f', { maxRecursionDepth: 64 })
     // Fuzz random values through validateAtPath without requiring a
     // valid initial state. The contract is "resolves to a

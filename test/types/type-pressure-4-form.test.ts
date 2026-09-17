@@ -86,7 +86,7 @@ const reviewSchema = z.object({
   acknowledgements: z.array(z.string()),
 })
 
-describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
+describe('Type-pressure: 4 useForm calls + useWizard composition', () => {
   it('compiles each form with literal key inference preserved', () => {
     function _neverInvoked() {
       const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })

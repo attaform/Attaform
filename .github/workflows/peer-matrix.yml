@@ -18,13 +18,13 @@ name: Peer-Dep Matrix
 #     `zod` itself, because the repo installs both majors side by side and
 #     the v3 adapter's suites import through the alias. It exists because
 #     `peerDependencies.zod` was `>=3.0.0` while the adapter in fact broke
-#     below 3.20.0 — a discriminated union kept its branches in a `Map`
+#     below 3.20.0: a discriminated union kept its branches in a `Map`
 #     before that release, and reading it as an array dropped every
 #     consumer default inside a DU branch. The declared floor is now
 #     measured, and this keeps it measured.
 #   - `fail-fast: false` lets every combination report independently.
 #     Missing future versions (e.g. Vue 3.6 before release) surface as
-#     failed jobs in the Actions tab — informational, not blocking.
+#     failed jobs in the Actions tab: informational, not blocking.
 #
 # Scheduling:
 #   - Cron: Monday 06:00 UTC weekly. Not wired into PR checks; bench +
@@ -57,11 +57,11 @@ jobs:
       matrix:
         include:
           # Floor: the declared peer-dep minimums.
-          - label: floor — Vue 3.5.13 / Vite 5 / Nuxt 3.16
+          - label: floor, Vue 3.5.13 / Vite 5 / Nuxt 3.16
             vue: 3.5.13
             vite: ^5.0.0
             nuxt: ^3.16.0
-          # Vite 6 over the Vue 3.5 floor — confirms no Vite 6-specific
+          # Vite 6 over the Vue 3.5 floor: confirms no Vite 6-specific
           # regressions in the core that would surprise Vite 6 adopters
           # still on Vue 3.5.
           - label: Vue 3.5 latest / Vite 6 / Nuxt 3 latest
@@ -73,7 +73,7 @@ jobs:
             vue: ^3.6.0
             vite: ^6.0.0
             nuxt: ^3.0.0
-          # Nuxt 4 — the README claims 3/4 parity, and this pairing is
+          # Nuxt 4: the README claims 3/4 parity, and this pairing is
           # what a Nuxt 4 adopter would actually install.
           - label: Vue 3.6 / Vite 6 / Nuxt 4
             vue: ^3.6.0
@@ -84,7 +84,7 @@ jobs:
           # against (3.19 is missing `ZodCatch` and `ZodPipeline`, which
           # collapses the form surface to `never`) and the first to keep a
           # discriminated union's branches in an array.
-          - label: zod v3 floor — 3.20.0
+          - label: zod v3 floor, 3.20.0
             vue: ^3.5.0
             vite: ^6.0.0
             nuxt: ^3.0.0
@@ -121,7 +121,7 @@ jobs:
           MATRIX_ZOD_V3: ${{ matrix.zodV3 }}
         run: |
           # pnpm 11 no longer reads the `pnpm` field in package.json, so
-          # the per-cell pins go into pnpm-workspace.yaml — the new home
+          # the per-cell pins go into pnpm-workspace.yaml: the new home
           # for `overrides` (https://pnpm.io/settings). Injecting into
           # package.json instead would be silently ignored, leaving the
           # matrix testing default-resolved versions rather than the

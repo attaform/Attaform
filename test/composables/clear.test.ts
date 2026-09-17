@@ -61,7 +61,7 @@ const schema = z.object({
   nullableRef: z.string().nullable(),
 })
 
-describe('form.clear(path) — primitive leaves wipe to falsy, not default', () => {
+describe('form.clear(path): primitive leaves wipe to falsy, not default', () => {
   it('clear("urls") → []', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('arr') }))
     try {
@@ -107,7 +107,7 @@ describe('form.clear(path) — primitive leaves wipe to falsy, not default', () 
   })
 })
 
-describe('form.clear(path) — nested objects recurse to per-leaf falsy', () => {
+describe('form.clear(path): nested objects recurse to per-leaf falsy', () => {
   it('clear("config") → { enabled: false, label: "" }', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('obj') }))
     try {
@@ -133,7 +133,7 @@ describe('form.clear(path) — nested objects recurse to per-leaf falsy', () => 
   })
 })
 
-describe('form.clear(path) — optional / nullable respect their wrapper semantic', () => {
+describe('form.clear(path): optional / nullable respect their wrapper semantic', () => {
   it('clear("optionalBio") → undefined (the wrapper\'s "absent" marker)', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('opt') }))
     try {
@@ -159,7 +159,7 @@ describe('form.clear(path) — optional / nullable respect their wrapper semanti
   })
 })
 
-describe('form.clear() — whole-form variant clears every leaf to its falsy', () => {
+describe('form.clear(): whole-form variant clears every leaf to its falsy', () => {
   it('clear() with no path wipes every leaf to falsy-for-type', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('whole') }))
     try {
@@ -202,7 +202,7 @@ describe('form.clear() — whole-form variant clears every leaf to its falsy', (
   })
 })
 
-describe('form.clear vs form.reset — orthogonality', () => {
+describe('form.clear vs form.reset: orthogonality', () => {
   it('reset restores schema defaults; clear wipes to falsy', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('vs') }))
     try {
@@ -241,7 +241,7 @@ describe('form.clear vs form.reset — orthogonality', () => {
   })
 })
 
-describe('form.clear — type-level signature', () => {
+describe('form.clear: type-level signature', () => {
   it('accepts FlatPath strings (same as setValue / resetField)', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('types') }))
     try {
@@ -260,7 +260,7 @@ describe('form.clear — type-level signature', () => {
   })
 })
 
-describe('form.clear — tuple-segment path form', () => {
+describe('form.clear: tuple-segment path form', () => {
   it('accepts [segment, ...] tuples (parallels setValue / toRef)', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('tuple') }))
     try {

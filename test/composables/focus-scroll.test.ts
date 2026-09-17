@@ -265,7 +265,7 @@ describe('focusOnInvalidSubmit wiring', () => {
     app.unmount()
   })
 
-  it('false leaves the imperative helpers working — opting out is not losing them', async () => {
+  it('false leaves the imperative helpers working: opting out is not losing them', async () => {
     // The off-switch exists so a consumer can drive the nudge from their
     // own `onError`. Gating `focusFirstError` / `scrollToFirstError` on
     // it would take away the very thing the opt-out is for.
@@ -281,7 +281,7 @@ describe('focusOnInvalidSubmit wiring', () => {
   })
 })
 
-describe('focusFirstError — DOM-order semantics', () => {
+describe('focusFirstError: DOM-order semantics', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -324,7 +324,7 @@ describe('focusFirstError — DOM-order semantics', () => {
   })
 })
 
-describe('applyInvalidSubmitPolicy — public API', () => {
+describe('applyInvalidSubmitPolicy: public API', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -386,7 +386,7 @@ describe('applyInvalidSubmitPolicy — public API', () => {
   })
 })
 
-describe('focusFirstError — shared-key form isolation', () => {
+describe('focusFirstError: shared-key form isolation', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -539,7 +539,7 @@ describe('focusFirstError — shared-key form isolation', () => {
   })
 })
 
-describe('focusFirstError — sort cache invalidation', () => {
+describe('focusFirstError: sort cache invalidation', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -646,7 +646,7 @@ describe('focusFirstError — sort cache invalidation', () => {
   })
 })
 
-describe('focusFirstError — instanceId inheritance through injectForm', () => {
+describe('focusFirstError: instanceId inheritance through injectForm', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -872,7 +872,7 @@ function registeredInput(
   })
 }
 
-describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
+describe('getFirstErrorElement: blank-required fields (issue #468)', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -1009,7 +1009,7 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
   })
 })
 
-describe('focusFirstError — no-latch component host (#538)', () => {
+describe('focusFirstError: no-latch component host (#538)', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -1159,7 +1159,7 @@ describe('focusFirstError — no-latch component host (#538)', () => {
     second.app.unmount()
   })
 
-  it('leaves field.element undefined — the host owns no single control', async () => {
+  it('leaves field.element undefined: the host owns no single control', async () => {
     const { api, app } = mountHostForm({ errorsFor: ['nickname'] })
     await nextTick()
     // The host binds a value channel and reads connected from the host mark,

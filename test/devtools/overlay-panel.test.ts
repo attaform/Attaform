@@ -28,7 +28,7 @@ function mountPanel(bridge: AttaformDevtoolsBridge): {
   return { root, app }
 }
 
-describe('AttaformDevtoolsPanel — empty state', () => {
+describe('AttaformDevtoolsPanel: empty state', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -47,7 +47,7 @@ describe('AttaformDevtoolsPanel — empty state', () => {
   })
 })
 
-describe('AttaformDevtoolsPanel — form display', () => {
+describe('AttaformDevtoolsPanel: form display', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -115,7 +115,7 @@ describe('AttaformDevtoolsPanel — form display', () => {
   })
 })
 
-describe('AttaformDevtoolsPanel — edit path', () => {
+describe('AttaformDevtoolsPanel: edit path', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -183,7 +183,7 @@ describe('AttaformDevtoolsPanel — edit path', () => {
   })
 })
 
-describe('AttaformDevtoolsPanel — timeline', () => {
+describe('AttaformDevtoolsPanel: timeline', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''

@@ -102,7 +102,7 @@ function escapeAttr(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 }
 
-describe('useRegister — SSR (renderToString)', () => {
+describe('useRegister: SSR (renderToString)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
   let warnings: string[]
 
@@ -227,7 +227,7 @@ describe('useRegister — SSR (renderToString)', () => {
     expect(noParentRvWarns).toEqual([])
   })
 
-  it('genuinely standalone child (no parent v-register) is SILENT during SSR — diagnostic deferred to onMounted (CSR-only)', async () => {
+  it('genuinely standalone child (no parent v-register) is SILENT during SSR: diagnostic deferred to onMounted (CSR-only)', async () => {
     // Design choice: the no-parent-RV warn fires once at `onMounted`,
     // which Vue intentionally skips during `renderToString`. Pinning
     // this so SSR never double-counts a diagnostic the CSR hydration

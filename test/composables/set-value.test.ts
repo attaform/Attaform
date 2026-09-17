@@ -54,7 +54,7 @@ function harness() {
   return { app, form: captured }
 }
 
-describe('setValue — value form (existing behaviour)', () => {
+describe('setValue: value form (existing behaviour)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -99,7 +99,7 @@ describe('setValue — value form (existing behaviour)', () => {
   })
 })
 
-describe('setValue — callback form', () => {
+describe('setValue: callback form', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

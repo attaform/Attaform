@@ -56,7 +56,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('writing at a defaulted leaf — $name', (adapter) => {
+describe.each(ADAPTERS)('writing at a defaulted leaf: $name', (adapter) => {
   it('seeds the declared default at mount', () => {
     const { api } = makeMounter(adapter.useForm, adapter.schema(), {})()
     expect(api.values.flag).toBe(true)

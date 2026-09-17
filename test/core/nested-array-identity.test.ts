@@ -41,7 +41,7 @@ const adapters = [
   { name: 'v3', mount: makeMounter(useFormV3, schemaV3, { defaultValues: defaults }) },
 ] as const
 
-describe.each(adapters)('nested-array identity migration — $name', ({ mount }) => {
+describe.each(adapters)('nested-array identity migration: $name', ({ mount }) => {
   const apps: ReturnType<typeof mount>['app'][] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

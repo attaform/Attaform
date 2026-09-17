@@ -54,14 +54,14 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, buildSchema: buildSchemaV3 },
 ] as const
 
-describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSchema }) => {
+describe.each(adapters)('aborted-blur snapshot: $name', ({ useForm, buildSchema }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
     document.body.innerHTML = ''
   })
 
-  it('an aborted blur run does not skip the next blur — invalid A still surfaces error', async () => {
+  it('an aborted blur run does not skip the next blur: invalid A still surfaces error', async () => {
     const schema = buildSchema()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let api: any

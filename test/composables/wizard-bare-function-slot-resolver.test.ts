@@ -41,7 +41,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — bare function slot resolver-call accounting (COMP-W1)', () => {
+describe('useWizard: bare function slot resolver-call accounting (COMP-W1)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

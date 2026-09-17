@@ -104,7 +104,7 @@
             <AppThemeToggle />
           </nav>
 
-          <!-- Mobile theme toggle stays visible at every breakpoint —
+          <!-- Mobile theme toggle stays visible at every breakpoint:
                it's a single icon, doesn't crowd, and users who set a
                preference once shouldn't have to open the hamburger
                to change it again. -->
@@ -112,7 +112,7 @@
             <AppThemeToggle />
           </div>
 
-          <!-- Hamburger — md:hidden so it only appears on phone-class
+          <!-- Hamburger: md:hidden so it only appears on phone-class
                viewports. Doesn't toggle to X here because the X lives
                inside the drawer (the drawer occludes this button). -->
           <button
@@ -130,7 +130,7 @@
     </UiContainer>
   </header>
 
-  <!-- Mobile sheet — Teleported to body so it composites above every
+  <!-- Mobile sheet: Teleported to body so it composites above every
        sticky / transformed ancestor without z-index gymnastics. The
        backdrop is translucent (bg-fg/40 + backdrop-blur), the drawer
        itself is opaque (bg-bg) so menu items always read clearly
@@ -168,7 +168,7 @@
         aria-label="Navigation"
         class="fixed top-0 right-0 z-50 flex h-dvh w-[min(85vw,20rem)] flex-col border-l border-border bg-bg shadow-2xl md:hidden"
       >
-        <!-- Drawer header — mirrors the site header's height so the
+        <!-- Drawer header: mirrors the site header's height so the
              X button lines up visually with the hamburger that
              triggered it. The logo is dropped (the user knows what
              site they're on) leaving a clean title row. -->
@@ -187,7 +187,7 @@
         <!-- @click on every link closes the sheet immediately. The
              route watcher catches navigations to a different page,
              but tapping the link for the page you're already on
-             doesn't fire it — without an explicit close, the sheet
+             doesn't fire it: without an explicit close, the sheet
              would just sit there and read as a broken control. -->
         <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-4">
           <NuxtLink
@@ -198,7 +198,7 @@
             class="group relative inline-flex items-center gap-2 rounded-md px-3 py-3 text-base font-medium text-fg-muted transition-colors duration-(--duration-fast) ease-(--ease-out-quart) hover:bg-surface hover:text-fg"
             @click="mobileNavOpen = false"
           >
-            <!-- Left accent bar — only renders on the active link
+            <!-- Left accent bar: only renders on the active link
                  (driven by the .mobile-nav-active rule below). -->
             <span class="active-bar" aria-hidden="true" />
             <component :is="link.icon" class="h-4 w-4" :stroke-width="2" />
@@ -221,8 +221,8 @@
 </template>
 
 <style scoped>
-  /* Active mobile-nav link. Three layered cues — a left accent bar,
-     accent-soft surface tint, and accent-tinted text — so the
+  /* Active mobile-nav link. Three layered cues: a left accent bar,
+     accent-soft surface tint, and accent-tinted text, so the
      current page reads as "selected" at a glance, distinct from
      hover. The bar is rendered as a sibling <span> inside the
      link so it can position absolutely against the link's relative

@@ -65,7 +65,7 @@ function mount(): { app: App; api: Api } {
   return { app, api: handle.api as Api }
 }
 
-describe('form.errors(path) — aggregation at any depth', () => {
+describe('form.errors(path): aggregation at any depth', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

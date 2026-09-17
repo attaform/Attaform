@@ -47,7 +47,7 @@ function mountForm(history: UseFormConfig<typeof schema>['history']): {
   return { app, api: handle.api as ApiReturn }
 }
 
-describe('history — default (historyPlugin())', () => {
+describe('history: default (historyPlugin())', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -98,7 +98,7 @@ describe('history — default (historyPlugin())', () => {
     expect(api.history.redo()).toBe(false)
   })
 
-  it('reset() is itself undoable — the pre-reset state stays recoverable', () => {
+  it('reset() is itself undoable: the pre-reset state stays recoverable', () => {
     const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'a@example.com')
@@ -137,7 +137,7 @@ describe('history — default (historyPlugin())', () => {
   })
 })
 
-describe('history — bounded stack', () => {
+describe('history: bounded stack', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -172,7 +172,7 @@ describe('history — bounded stack', () => {
   })
 })
 
-describe('history — blankPaths preservation', () => {
+describe('history: blankPaths preservation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -254,7 +254,7 @@ describe('history — blankPaths preservation', () => {
   })
 })
 
-describe('history — delta round-trip', () => {
+describe('history: delta round-trip', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -346,13 +346,13 @@ describe('history — delta round-trip', () => {
   })
 })
 
-describe('history — clear()', () => {
+describe('history: clear()', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('wipes both branches and reseeds — current form state is preserved', () => {
+  it('wipes both branches and reseeds: current form state is preserved', () => {
     const { app, api } = mountForm(historyPlugin())
     apps.push(app)
 
@@ -394,7 +394,7 @@ describe('history — clear()', () => {
   })
 })
 
-describe('history — disabled (no config)', () => {
+describe('history: disabled (no config)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -413,7 +413,7 @@ describe('history — disabled (no config)', () => {
   })
 })
 
-describe('history — one plugin instance across forms', () => {
+describe('history: one plugin instance across forms', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -61,7 +61,7 @@ function ctx(over: Partial<DisplayCtx> = {}): DisplayCtx {
   }
 }
 
-describe('default reducer — settled verdict (validatingSince: null)', () => {
+describe('default reducer: settled verdict (validatingSince: null)', () => {
   // The gate / error / earned-success / container matrix. With nothing in
   // flight the reducer collapses to the documented heuristic, and `now`
   // never changes the answer (the SSR-equivalence guarantee).
@@ -182,7 +182,7 @@ describe('default reducer — settled verdict (validatingSince: null)', () => {
   })
 })
 
-describe('default reducer — the reveal gate governs the spinner', () => {
+describe('default reducer: the reveal gate governs the spinner', () => {
   it('gate closed + validating past show-delay stays idle (no spinner mid-first-entry)', () => {
     // No submit, not blurred-after-interaction: the gate is closed. Even a
     // slow validation must not surface a spinner before the user engages,
@@ -223,7 +223,7 @@ describe('default reducer — the reveal gate governs the spinner', () => {
   })
 })
 
-describe('default reducer — show-delay window', () => {
+describe('default reducer: show-delay window', () => {
   const gatedError = field({ errors: [ownError], blurredAfterInteraction: true })
 
   it('fast validation holds the prior verdict and schedules a review at the window edge', () => {
@@ -366,7 +366,7 @@ describe('default reducer — show-delay window', () => {
   })
 })
 
-describe('default reducer — slow validation surfaces pending', () => {
+describe('default reducer: slow validation surfaces pending', () => {
   it('past the show-delay, still validating → pending, anchored now, held for min-visible', () => {
     const prev: DisplayMachine = { display: 'error' }
     const now = 1000 + showDelay
@@ -401,7 +401,7 @@ describe('default reducer — slow validation surfaces pending', () => {
   })
 })
 
-describe('default reducer — min-visible hold', () => {
+describe('default reducer: min-visible hold', () => {
   it('settled but inside min-visible → still pending', () => {
     const prev = PENDING_AT(2000)
     const next = defaultDisplayState(
@@ -432,7 +432,7 @@ describe('default reducer — min-visible hold', () => {
   })
 })
 
-describe('default reducer — cross-episode continuity', () => {
+describe('default reducer: cross-episode continuity', () => {
   it('a new validation starting mid-spinner keeps the spinner anchored (no flicker)', () => {
     const prev = PENDING_AT(2000)
     // A fresh streak opened at 2050, while the spinner from 2000 is still up.
@@ -589,7 +589,7 @@ describe('createDisplayEngine', () => {
   })
 })
 
-describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () => {
+describe('createDisplayEngine: untrusted reducer reviewAt (robustness)', () => {
   // The engine resolves through a `GetDisplayState` reducer, and a
   // reducer can return a pathological `reviewAt`: NaN or Infinity from
   // bad arithmetic, a huge value from a unit slip, a fixed or past
@@ -685,7 +685,7 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     engine.dispose()
   })
 
-  it('refuses to re-arm for the exact deadline it just fired — no fire loop', () => {
+  it('refuses to re-arm for the exact deadline it just fired: no fire loop', () => {
     const engine = createDisplayEngine(false)
     let calls = 0
     // A misbehaving predicate that re-emits the same past deadline forever.

@@ -81,7 +81,7 @@ function errorsAt(form: { errors: unknown }): ErrorAtPath {
 
 // Bug 1, Array structural mutations re-validate parent array constraints
 
-describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
+describe('Bug 1: array .min(1) re-validates after append/remove', () => {
   it('v3: restores the array-level error when remove empties the array', async () => {
     const schema = zV3.object({
       items: zV3.array(zV3.string()).min(1, 'At least one item required'),
@@ -142,7 +142,7 @@ describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
 
 // Bug 2, .refine() on a parent object preserves per-field re-validation
 
-describe('Bug 2 — parent .refine does not break per-field revalidation', () => {
+describe('Bug 2: parent .refine does not break per-field revalidation', () => {
   it('v3: restores the leaf .min(1) error when the field is cleared', async () => {
     // `.refine()` on a v3 ZodObject returns `ZodEffects<ZodObject>`,
     // the public `useForm` signature narrows to `ZodObject`, so cast

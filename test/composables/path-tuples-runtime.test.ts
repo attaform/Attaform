@@ -53,7 +53,7 @@ function mount(): { app: App; api: Api } {
   return { app, api: handle.api as Api }
 }
 
-describe('register — tuple-segment runtime equivalence', () => {
+describe('register: tuple-segment runtime equivalence', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -105,7 +105,7 @@ describe('register — tuple-segment runtime equivalence', () => {
   })
 })
 
-describe('setValue / toRef — tuple-segment runtime equivalence', () => {
+describe('setValue / toRef: tuple-segment runtime equivalence', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

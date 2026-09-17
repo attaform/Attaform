@@ -164,7 +164,7 @@ async function main() {
     const filtered = parsed.filter((r) => r.family === name && KEEP_SUBSETS.has(r.subset))
     if (filtered.length === 0) {
       throw new Error(
-        `[fonts] no kept subsets for ${name} — Google may have served a stripped CSS. ` +
+        `[fonts] no kept subsets for ${name}: Google may have served a stripped CSS. ` +
           `Re-check the User-Agent and the subset filter.`
       )
     }

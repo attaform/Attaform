@@ -33,7 +33,7 @@ updates:
       default-days: 7
       semver-major-days: 14
     # Group non-security updates by kind so the review surface stays small.
-    # Security updates are intentionally NOT grouped — each one gets its own
+    # Security updates are intentionally NOT grouped: each one gets its own
     # PR so the severity, advisory link, and upgrade blast radius are clear.
     groups:
       dev-dependencies:
@@ -48,7 +48,7 @@ updates:
           - 'patch'
     # Conventional-commit scope is embedded in the prefix directly
     # (`chore(deps): …`, `chore(deps-dev): …`). Do NOT also set
-    # `include: 'scope'` — Dependabot concatenates the two, producing
+    # `include: 'scope'`: Dependabot concatenates the two, producing
     # malformed `chore(deps)(deps): …` subjects that fail commitlint.
     commit-message:
       prefix: 'chore(deps)'
@@ -114,8 +114,8 @@ updates:
     # No `.npmrc`-equivalent for action SHA pins, so this cooldown is
     # the ONLY release-age enforcement on the github-actions axis. A
     # 7-day floor catches actively-worming SHAs that surface in the
-    # week after publish. `semver-major-days` is intentionally omitted
-    # — Dependabot rejects it for the github-actions ecosystem because
+    # week after publish. `semver-major-days` is intentionally omitted:
+    # Dependabot rejects it for the github-actions ecosystem because
     # action versions aren't modeled with strict semver-major
     # distinction. Security advisories bypass cooldown.
     cooldown:

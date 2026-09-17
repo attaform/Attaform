@@ -87,7 +87,7 @@ function readVueNodeTransforms(config: ResolvedConfig): unknown[] {
   return transforms
 }
 
-describe('attaform/vite — node-transform wiring', () => {
+describe('attaform/vite: node-transform wiring', () => {
   it('registers all four compile-time transforms on @vitejs/plugin-vue', async () => {
     const config = await resolveWithRoot([vue(), attaform()], zodV4Root)
     const transforms = readVueNodeTransforms(config)
@@ -142,7 +142,7 @@ describe('attaform/vite — node-transform wiring', () => {
   })
 })
 
-describe('attaform/vite — transform hook (SSR-accessed injection)', () => {
+describe('attaform/vite: transform hook (SSR-accessed injection)', () => {
   it('injects __ssrAccessed: true for a useForm binding referenced in the template', async () => {
     const config = await resolveWithRoot([vue(), attaform()], zodV4Root)
     const plugin = config.plugins.find((p) => p.name === 'attaform')

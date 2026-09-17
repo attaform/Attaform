@@ -123,7 +123,7 @@ export function hydrateAttaformState(app: App, payload: unknown): void {
       console.warn(
         '[attaform] hydrateAttaformState: payload version mismatch (expected ' +
           `${ATTAFORM_STATE_VERSION}, got ${String(got)}). ` +
-          'Skipping hydration — forms will construct fresh. This usually means the SSR bundle ' +
+          'Skipping hydration; forms will construct fresh. This usually means the SSR bundle ' +
           'is on a different attaform version than the client (rolling deploy / stale cache).'
       )
     }

@@ -20,7 +20,7 @@ name: CodeQL
 #   dependency-review + scorecard + workflow-lint workflows.
 #
 # Why `security-extended` (not `code-scanning` / `security-and-quality`):
-#   - `code-scanning` is the default and is conservative — high
+#   - `code-scanning` is the default and is conservative: high
 #     precision, lower recall.
 #   - `security-extended` adds the higher-recall security queries
 #     (prototype pollution, regex DoS, taint-flow chains that need
@@ -28,12 +28,12 @@ name: CodeQL
 #     (schemas, persisted JSON, multi-tab messages) cross a trust
 #     boundary into consumer apps.
 #   - `security-and-quality` adds maintainability / code-smell queries
-#     on top. Out of scope here — the 17-phase audit-remediation
+#     on top. Out of scope here: the 17-phase audit-remediation
 #     series just covered the quality lane; CodeQL is dedicated to the
 #     security lane.
 #
 # Why `build-mode: none`:
-#   JavaScript / TypeScript is interpreted from source — CodeQL can
+#   JavaScript / TypeScript is interpreted from source: CodeQL can
 #   build the database directly from the working tree without running
 #   any consumer build step. `none` skips autobuild's "try to figure
 #   out how to compile this" guessing, which is the right answer for
@@ -61,7 +61,7 @@ on:
 
 # Workflow-level default: zero scopes. The `analyze` job below grants
 # only the exact scopes it consumes. Matches the pedantic
-# least-privilege posture set by `scorecard.yml` — narrower than
+# least-privilege posture set by `scorecard.yml`: narrower than
 # `read-all`, which would grant read on every scope regardless of
 # whether the job uses it.
 permissions: {}
@@ -107,7 +107,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. CodeQL
-          # reads source from the working tree only — it never needs
+          # reads source from the working tree only: it never needs
           # git credentials attached for fetch/push. Same rationale as
           # every other workflow in this directory.
           persist-credentials: false
@@ -117,7 +117,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           # `none` skips autobuild. JavaScript / TypeScript is
-          # interpreted from source — CodeQL extracts directly from
+          # interpreted from source: CodeQL extracts directly from
           # the working tree without invoking any consumer build step.
           build-mode: none
           # `security-extended` is the higher-recall security suite

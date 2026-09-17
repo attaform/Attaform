@@ -49,7 +49,7 @@ function harness(initial?: Partial<BlogForm>) {
   return { app, form: captured }
 }
 
-describe('useForm — field array helpers', () => {
+describe('useForm: field array helpers', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -311,8 +311,8 @@ function logTransformFailure(
   if (__DEV__) {
     const namePart = fn.name !== '' ? `, '${fn.name}'` : ''
     console.error(
-      `[attaform] transform threw for path '${path}' (index ${index}${namePart}) — ` +
-        `write aborted. Transforms must not throw; wrap your own try/catch if the throw is recoverable. ` +
+      `[attaform] transform threw for path '${path}' (index ${index}${namePart}). ` +
+        `Write aborted. Transforms must not throw; wrap your own try/catch if the throw is recoverable. ` +
         `Original error:`,
       err
     )
@@ -527,7 +527,7 @@ export function setAssignFunction(
     if (__DEV__) {
       warn(
         `v-register expected a RegisterValue, got '${typeof value}'. ` +
-          `Bind to form.register('field') — not the field's ref, value, or path string.`
+          `Bind to form.register('field'), not the field's ref, value, or path string.`
       )
     }
     el[assignKey] = makeNoopAssigner()

@@ -13,7 +13,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * recursing on whatever the consumer nested.
  */
 
-describe('zod v3 adapter — bounded wrapper recursion', () => {
+describe('zod v3 adapter: bounded wrapper recursion', () => {
   it('does not stack-overflow on a long .refine() chain', () => {
     let schema: z.ZodTypeAny = z.string()
     for (let i = 0; i < 500; i++) {
@@ -60,7 +60,7 @@ describe('zod v3 adapter — bounded wrapper recursion', () => {
   })
 })
 
-describe('zod v3 adapter — transparent wrapper kinds', () => {
+describe('zod v3 adapter: transparent wrapper kinds', () => {
   it('produces a default for a ZodReadonly leaf', () => {
     const schema = z.object({
       handle: z.string().readonly(),
@@ -128,7 +128,7 @@ describe('zod v3 adapter — transparent wrapper kinds', () => {
   })
 })
 
-describe('zod v3 adapter — ZodCatch fallback', () => {
+describe('zod v3 adapter: ZodCatch fallback', () => {
   it('produces the caught fallback as the construction-time default', () => {
     const schema = z.object({
       handle: z.string().catch('anonymous'),
@@ -180,7 +180,7 @@ describe('zod v3 adapter — ZodCatch fallback', () => {
   })
 })
 
-describe('zod v3 adapter — symbol-segment coercion in ValidationError.path', () => {
+describe('zod v3 adapter: symbol-segment coercion in ValidationError.path', () => {
   it('coerces a Symbol path segment to a string at validateAtPath', async () => {
     const symbolKey = Symbol('weird')
     // A custom check that emits a Symbol path segment. v3 issue paths

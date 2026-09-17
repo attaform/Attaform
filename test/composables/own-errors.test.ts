@@ -211,7 +211,7 @@ const defaults = {
   profile: { bio: 'attaboy writes things', handle: 'attaboy' },
 }
 
-describeOwnErrors('ownErrors / firstOwnError — zod-v3 adapter', () =>
+describeOwnErrors('ownErrors / firstOwnError: zod-v3 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV3({
@@ -237,7 +237,7 @@ const v4Schema = zV4.object({
     }),
 })
 
-describeOwnErrors('ownErrors / firstOwnError — zod-v4 adapter', () =>
+describeOwnErrors('ownErrors / firstOwnError: zod-v4 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV4({

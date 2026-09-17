@@ -75,7 +75,7 @@ function mountForm(mount: () => { api: any; app: App }) {
   return api
 }
 
-describe.each(adapters)('truthful absence — $name', ({ mount }) => {
+describe.each(adapters)('truthful absence: $name', ({ mount }) => {
   it('array: in-bounds index navigates, out-of-bounds and non-index keys are undefined', () => {
     const form = mountForm(mount)
     expect(form.fields.links[0].value).toBe('alpha')
@@ -209,7 +209,7 @@ const refinedAdapters = [
   },
 ] as const
 
-describe.each(refinedAdapters)("a container's own refine error — $name", ({ mount }) => {
+describe.each(refinedAdapters)("a container's own refine error: $name", ({ mount }) => {
   it('reads through the call form, and is absent on the dot surface', async () => {
     const form = mountForm(mount)
     // Nothing validates at mount under the default `validateOn: 'change'`,

@@ -73,7 +73,7 @@ function asTouchable<F>(form: F): F & FormWithTouch {
 
 // v3 adapter
 
-describe('form.touch — zod-v3 adapter', () => {
+describe('form.touch: zod-v3 adapter', () => {
   const schema = zV3.object({
     email: zV3.string().min(1),
     profile: zV3.object({
@@ -100,7 +100,7 @@ describe('form.touch — zod-v3 adapter', () => {
     expect(form.fields('email').touched).toBe(true)
   })
 
-  it('idempotent — touching twice keeps touched=true', async () => {
+  it('idempotent: touching twice keeps touched=true', async () => {
     const form = asTouchable(makeForm())
     form.touch('email')
     await nextTick()
@@ -173,7 +173,7 @@ describe('form.touch — zod-v3 adapter', () => {
 
 // v4 adapter
 
-describe('form.touch — zod-v4 adapter', () => {
+describe('form.touch: zod-v4 adapter', () => {
   const schema = zV4.object({
     email: zV4.string().min(1),
     profile: zV4.object({

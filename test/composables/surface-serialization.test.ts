@@ -32,7 +32,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *     discriminator just switched away) STAY hidden. They're library-
  *     produced; the active variant is the source of truth.
  */
-describe('form.values / form.errors / form.fields — template + JSON.stringify parity', () => {
+describe('form.values / form.errors / form.fields: template + JSON.stringify parity', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -39,7 +39,7 @@ afterEach(() => {
   for (const host of mountedHosts.splice(0)) host.remove()
 })
 
-describe('useForm — lazy install', () => {
+describe('useForm: lazy install', () => {
   it('attaches the registry on first call without an explicit createAttaform()', () => {
     const { app } = mountWithSetup(() => {
       useForm({
@@ -77,7 +77,7 @@ describe('useForm — lazy install', () => {
   })
 })
 
-describe('injectForm — lazy install', () => {
+describe('injectForm: lazy install', () => {
   it('returns null with a dev warning when called as the first attaform call (no useForm ancestor)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     let resolved: unknown = 'not-set'
@@ -119,7 +119,7 @@ describe('injectForm — lazy install', () => {
   })
 })
 
-describe('useRegister — lazy install', () => {
+describe('useRegister: lazy install', () => {
   it('attaches the registry (and no app-level directive) on first call', () => {
     const { app } = mountWithSetup(() => {
       useRegister()

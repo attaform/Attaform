@@ -9,7 +9,7 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
-/* Self-hosted webfonts — Inter (sans) + JetBrains Mono (mono). The
+/* Self-hosted webfonts: Inter (sans) + JetBrains Mono (mono). The
    @font-face declarations live in `./fonts.css` and reference
    .woff2 binaries committed under `public/fonts/`. Pulling these
    ourselves (instead of letting `@nuxt/fonts` proxy from Google at
@@ -19,7 +19,7 @@
    adding a weight or bumping the upstream font version. */
 @import './fonts.css';
 
-/* Docs prose chrome — `.docs-prose` overrides for the typography
+/* Docs prose chrome: `.docs-prose` overrides for the typography
    plugin, plus the `.docs-article-enter` fade-in. Lives in a global
    stylesheet (instead of `pages/docs/[...slug].vue`'s `<style>`)
    so Vite's dev-mode JS-injection lag can't flash the prose
@@ -29,7 +29,7 @@
 @variant dark (&:where(.dark, .dark *));
 
 /* ──────────────────────────────────────────────────────────────────
-   Design tokens — Untitled UI vocabulary
+   Design tokens: Untitled UI vocabulary
    ──────────────────────────────────────────────────────────────────
    Two layers:
 
@@ -45,7 +45,7 @@
       components consume. They're swapped wholesale in `.dark` so
       every component reads correct mode-ramp without per-class
       `dark:` overrides. Add new aliases when a component
-      needs a *new role*, not when it needs a different shade —
+      needs a *new role*, not when it needs a different shade:
       reach into the primitive ramp for that.
 
    Token names match what the existing components already consume so
@@ -54,10 +54,10 @@
    `bg-(--color-accent)`) is a separate, file-by-file pass. */
 
 @theme {
-  /* ─── Gray ramp — Untitled UI's "Gray" ───
+  /* ─── Gray ramp: Untitled UI's "Gray" ───
      A slightly cool gray (hint of blue, very small chroma). Reads
      "professional/dev tool" rather than "warm/marketing". The 25 step
-     is unusual — useful for hairline-tinted hero backgrounds where
+     is unusual: useful for hairline-tinted hero backgrounds where
      #FFFFFF would feel like a void. */
   --color-gray-25: #fcfcfd;
   --color-gray-50: #f9fafb;
@@ -72,7 +72,7 @@
   --color-gray-900: #101828;
   --color-gray-950: #0c111d;
 
-  /* ─── Brand ramp — Untitled UI's "Brand: Violet" ───
+  /* ─── Brand ramp: Untitled UI's "Brand: Violet" ───
      Picked over their "Indigo" because Vue 3's ecosystem leans
      green/teal; violet differentiates without clashing. Untitled UI
      ships these as the canonical brand-violet steps; we use 600 as
@@ -91,7 +91,7 @@
   --color-brand-900: #3e1c96;
   --color-brand-950: #27115f;
 
-  /* ─── Status ramps — Untitled UI's "Success / Warning / Error" ───
+  /* ─── Status ramps: Untitled UI's "Success / Warning / Error" ───
      Each ramp has the full Untitled UI vocabulary; semantic aliases
      below pick the steps we use. Keeping the ramp accessible by
      name lets callouts compose `bg-success-50 text-success-700
@@ -176,7 +176,7 @@
   --font-mono:
     'JetBrains Mono', ui-monospace, SFMono-Regular, 'Fira Code', Menlo, Consolas, monospace;
 
-  /* Display type scale — Untitled UI canonical. Each size carries its
+  /* Display type scale: Untitled UI canonical. Each size carries its
      own line-height and letter-spacing because the right value at
      90px is not the right value at 32px (display-2xl is set tight,
      display-sm sits at default tracking). */
@@ -199,20 +199,20 @@
   --text-display-2xl--line-height: 5.625rem; /* 90px */
   --text-display-2xl--letter-spacing: -0.02em;
 
-  /* ─── Radii — Untitled UI scale ───
+  /* ─── Radii: Untitled UI scale ───
      Each step is ~25% larger than Tailwind's default. Buttons feel
      right at md (8px) rather than 6px; cards at xl (12px) feel
      proportional next to the larger button radii. */
-  --radius-xs: 0.25rem; /* 4px  — chips */
-  --radius-sm: 0.375rem; /* 6px  — small inputs */
-  --radius-md: 0.5rem; /* 8px  — buttons, default */
-  --radius-lg: 0.625rem; /* 10px — large inputs */
-  --radius-xl: 0.75rem; /* 12px — cards */
-  --radius-2xl: 1rem; /* 16px — large cards, modals */
+  --radius-xs: 0.25rem; /* 4px: chips */
+  --radius-sm: 0.375rem; /* 6px: small inputs */
+  --radius-md: 0.5rem; /* 8px: buttons, default */
+  --radius-lg: 0.625rem; /* 10px: large inputs */
+  --radius-xl: 0.75rem; /* 12px: cards */
+  --radius-2xl: 1rem; /* 16px: large cards, modals */
   --radius-3xl: 1.25rem; /* 20px */
-  --radius-4xl: 1.5rem; /* 24px — hero panels */
+  --radius-4xl: 1.5rem; /* 24px: hero panels */
 
-  /* ─── Shadows — Untitled UI canonical ───
+  /* ─── Shadows: Untitled UI canonical ───
      The base color is #101828 (gray-900) at low opacity, not pure
      black. This gives the elevation a slight cool tint instead of
      reading muddy. Two-layer shadows (closer + farther) on md and up
@@ -234,7 +234,7 @@
   --shadow-2xl: 0 1.5rem 3rem -0.75rem rgb(16 24 40 / 0.18);
   --shadow-3xl: 0 2rem 4rem -0.75rem rgb(16 24 40 / 0.14);
 
-  /* Focus ring — used as a colored box-shadow rather than outline so
+  /* Focus ring: used as a colored box-shadow rather than outline so
      it composes with the surface shadow on focused inputs. The
      `--shadow-ring-error` variant is the danger-state companion. */
   --shadow-ring: 0 0 0 0.25rem var(--color-accent-ring);
@@ -243,11 +243,11 @@
   /* ─── Motion ───
      out-quart is the workhorse ramp (sharp into a smooth tail) used
      by every default transition; out-expo (steeper finish) reads as
-     more "decisive" — reserved for state-change indicators (sidebar,
+     more "decisive": reserved for state-change indicators (sidebar,
      TOC) where the user just *did* something; spring overshoots
      gently and is reserved for tactile micro-interactions (logo
      hover, modal entrance) where the bounce sells the press. The
-     duration scale spans 80ms (sub-perception ack — hover bumps,
+     duration scale spans 80ms (sub-perception ack: hover bumps,
      icon swaps) up through 480ms (page-section reveals). Keep
      additions to this set rare; vocabulary creep undoes the
      coherence. */
@@ -262,7 +262,7 @@
 
   /* ─── Warmth pair ───
      Reserved for "highlight" affordances (release chip, version chip,
-     "what's new" markers) — never the default brand surface. Pulls
+     "what's new" markers), never the default brand surface. Pulls
      from the existing warning ramp so it shares the Untitled UI
      vocabulary; amber pairs with violet on the color wheel and adds
      the small bit of warmth that keeps the page from reading
@@ -277,7 +277,7 @@
      Exposed as `--bg-image-*` so Tailwind v4 derives `bg-glow-hero`,
      `bg-glow-warm`, and `bg-dot-grid` utilities from them. The hero
      glow is a top-anchored radial of accent-soft fading to
-     transparent — applied behind the hero copy it adds depth without
+     transparent: applied behind the hero copy it adds depth without
      being a "feature." The dot grid is an old-school 1px-dot lattice
      scaled to 1.5rem; mask the edges from the calling element with
      a radial gradient so it never extends past the copy column. */
@@ -299,7 +299,7 @@
 }
 
 /* ─── Dark-mode semantic re-pointing ───
-   Only the aliases flip. Primitive ramps stay shared between modes —
+   Only the aliases flip. Primitive ramps stay shared between modes:
    gray-200 is gray-200 regardless of theme; what changes is *which
    step the page calls "border"*. */
 .dark {
@@ -314,7 +314,7 @@
   --color-border: var(--color-gray-800);
   --color-border-strong: var(--color-gray-700);
 
-  /* brand-500 is the dark-mode default — brand-600 reads too
+  /* brand-500 is the dark-mode default: brand-600 reads too
      saturated against gray-950. The soft pair flips to a tinted dark
      bg with a bright fg so chips remain readable. */
   --color-accent: var(--color-brand-500);
@@ -338,7 +338,7 @@
   --color-warm-soft: var(--color-warning-900);
   --color-warm-soft-fg: var(--color-warning-300);
 
-  /* Shadows on dark surfaces need a much darker base to register —
+  /* Shadows on dark surfaces need a much darker base to register:
      light-mode's gray-900 base would vanish against gray-950. Pure
      black at higher opacity reads correctly. */
   --shadow-xs: 0 0.0625rem 0.125rem 0 rgb(0 0 0 / 0.4);
@@ -354,7 +354,7 @@
   --shadow-3xl: 0 2rem 4rem -0.75rem rgb(0 0 0 / 0.45);
 }
 
-/* Page baseline — typography + body chrome. Done in raw CSS rather
+/* Page baseline: typography + body chrome. Done in raw CSS rather
    than a body utility so it's always applied regardless of which
    layout / page is rendered. */
 html,
@@ -363,7 +363,7 @@ body {
   color: var(--color-fg);
   font-family: var(--font-sans);
   font-feature-settings:
-    'cv11', 'ss01', 'ss03'; /* Inter's stylistic alternates: straight-sided 1, single-storey a, slashed 0 — reads more "modern dev tool" */
+    'cv11', 'ss01', 'ss03'; /* Inter's stylistic alternates: straight-sided 1, single-storey a, slashed 0: reads more "modern dev tool" */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -375,7 +375,7 @@ body {
   border-color: var(--color-border);
 }
 
-/* Custom scrollbar — only honored on systems that paint inline
+/* Custom scrollbar: only honored on systems that paint inline
    scrollbars (mac overlay scrollbars ignore these properties, which
    is the intended behavior there). */
 @supports (scrollbar-width: thin) {
@@ -392,7 +392,7 @@ body {
   color: var(--color-accent-soft-fg);
 }
 
-/* Inline code chip — single source of truth for the pill we drop
+/* Inline code chip: single source of truth for the pill we drop
    around `useForm`-style references in body copy. Used by the
    `<UiInlineCode>` component (direct template usage) and the
    `renderInlineCode` util (parses backtick-wrapped tokens in data
@@ -461,7 +461,7 @@ body {
    when the IntersectionObserver fires; the keyframe runs once and
    leaves the element in its final state via `both`. The pre-reveal
    state is set here (not on the `data-revealed='false'` selector) so
-   SSR-rendered HTML carries the hidden-state styles directly — the
+   SSR-rendered HTML carries the hidden-state styles directly: the
    page never flashes the final state during hydration. */
 [data-reveal] {
   opacity: 0;
@@ -478,7 +478,7 @@ body {
    in app.vue means the leaver finishes before the enterer starts, so
    these never overlap and we don't need absolute-positioning gymnastics
    to prevent layout flash. Anything heavier than fade-and-tiny-lift
-   reads as gimmicky on a docs site — slides imply directionality the
+   reads as gimmicky on a docs site: slides imply directionality the
    user didn't ask for. */
 .page-enter-active,
 .page-leave-active {
@@ -495,7 +495,7 @@ body {
   transform: translateY(-0.125rem);
 }
 
-/* Theme-toggle wheel — the leaving icon rotates clockwise off-stage
+/* Theme-toggle wheel: the leaving icon rotates clockwise off-stage
    while the entering icon arrives from the opposite side. The two
    halves chain into a single 90° wheel-turn rather than a swap. */
 .theme-spin-enter-active,
@@ -513,7 +513,7 @@ body {
   transform: rotate(90deg) scale(0.85);
 }
 
-/* Reduced-motion override — kills our token-driven transitions and
+/* Reduced-motion override: kills our token-driven transitions and
    any animations the components register. The universal selector is
    intentionally heavy-handed; users who set this preference are
    asking for "no animation, anywhere." */
@@ -530,7 +530,7 @@ body {
      the universal animation kill above, the keyframe collapses to
      zero-duration which would leave them stuck at the from-frame. The
      animation still applies (in `both` mode), so the to-frame paints
-     immediately — but if a user's environment never fires the reveal
+     immediately, but if a user's environment never fires the reveal
      observer (no JS, very narrow viewport, etc.), force the visible
      state directly so they're not stuck behind opacity:0 forever. */
   [data-reveal] {

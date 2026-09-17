@@ -29,7 +29,7 @@ const adapters = [
   { name: 'v3', mount: makeMounter(useFormV3, schemaV3, { defaultValues: defaults }) },
 ] as const
 
-describe.each(adapters)('insert negative index — $name', ({ mount }) => {
+describe.each(adapters)('insert negative index: $name', ({ mount }) => {
   const apps: ReturnType<typeof mount>['app'][] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -61,7 +61,7 @@ describe.each(adapters)('insert negative index — $name', ({ mount }) => {
     expect(form.fields('tags.2').key).toBe(bToken)
   })
 
-  it("touched state on 'a' survives an insert(-1) — its index didn't change", () => {
+  it("touched state on 'a' survives an insert(-1): its index didn't change", () => {
     const form = mountOne()
     form.touch('tags.0')
     expect(form.fields('tags.0').touched).toBe(true)

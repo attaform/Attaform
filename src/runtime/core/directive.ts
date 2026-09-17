@@ -494,8 +494,8 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
         if (rawElementValue === undefined) {
           if (__DEV__) {
             warn(
-              'Checkbox bound to an array model is missing a `value` attribute — ' +
-                'cannot determine which item to add or remove. ' +
+              'Checkbox bound to an array model is missing a `value` attribute, ' +
+                'so Attaform cannot determine which item to add or remove. ' +
                 'Add value="..." to each <input type="checkbox">.'
             )
           }
@@ -521,8 +521,8 @@ const vRegisterCheckbox: RegisterCheckboxCustomDirective = {
         if (rawElementValue === undefined) {
           if (__DEV__) {
             warn(
-              'Checkbox bound to a Set model is missing a `value` attribute — ' +
-                'cannot determine which item to add or remove. ' +
+              'Checkbox bound to a Set model is missing a `value` attribute, ' +
+                'so Attaform cannot determine which item to add or remove. ' +
                 'Add value="..." to each <input type="checkbox">.'
             )
           }
@@ -1270,7 +1270,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
         if (hasMarker || hasUserAssigner) return
         warnedUnsupportedElements.add(el)
         warn(
-          `[attaform] v-register on <${el.tagName.toLowerCase()}> is a no-op — ` +
+          `[attaform] v-register on <${el.tagName.toLowerCase()}> is a no-op: ` +
             `non-input roots aren't bound to text-input semantics. For custom components: ` +
             `call \`useRegister()\` in the child's setup and re-bind v-register to an inner ` +
             `native element. Lower-level: install a custom assigner via the \`assignKey\` ` +

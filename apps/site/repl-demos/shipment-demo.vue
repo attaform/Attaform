@@ -89,7 +89,7 @@
     line2: z
       .string()
       .optional()
-      .register(fieldMeta, { label: 'Line 2', description: 'Suite, unit, etc. — optional.' }),
+      .register(fieldMeta, { label: 'Line 2', description: 'Suite, unit, etc. Optional.' }),
     city: z.string().min(1, 'Add a city.').register(fieldMeta, { label: 'City' }),
     region: z.string().min(2, 'Two-letter code, like CA or ON.').register(fieldMeta, {
       label: 'Region',
@@ -100,7 +100,7 @@
       .min(3, 'Postal code is required.')
       .refine(
         async (v) => await lookupPostalCode(v),
-        "We can't find that postal code — double-check the digits."
+        "We can't find that postal code. Double-check the digits."
       )
       .register(fieldMeta, {
         label: 'Postal code',
@@ -112,7 +112,7 @@
   const referenceSchema = z.object({
     reference: z
       .string()
-      .regex(/^SHP-\d{6}$/, 'Reference looks like SHP-123456 — SHP plus 6 digits.')
+      .regex(/^SHP-\d{6}$/, 'Reference looks like SHP-123456 (SHP plus 6 digits).')
       .register(fieldMeta, {
         label: 'Reference',
         placeholder: 'SHP-123456',
@@ -161,7 +161,7 @@
       if (!ok) {
         ctx.addIssue({
           code: 'custom',
-          message: `Today's max is 6,500 lb — you're at ${totalLb} lb. Trim a row or schedule for tomorrow.`,
+          message: `Today's max is 6,500 lb and you're at ${totalLb} lb. Trim a row or schedule for tomorrow.`,
         })
       }
     })
@@ -176,13 +176,13 @@
       type: z.literal('refrigerated').register(fieldMeta, { label: 'Type' }),
       tempMinF: z
         .number()
-        .min(-22, "Cold-chain low is -22°F — we can't go colder.")
+        .min(-22, "Cold-chain low is -22°F, so we can't go colder.")
         .max(68, 'Cold-chain top is 68°F.')
         .register(fieldMeta, { label: 'Min temp (°F)' }),
       tempMaxF: z
         .number()
         .min(-22, 'Cold-chain low is -22°F.')
-        .max(68, "Cold-chain top is 68°F — we can't go warmer.")
+        .max(68, "Cold-chain top is 68°F, so we can't go warmer.")
         .register(fieldMeta, { label: 'Max temp (°F)' }),
     })
     .refine((v) => v.tempMinF < v.tempMaxF, {
@@ -194,7 +194,7 @@
     type: z.literal('hazmat').register(fieldMeta, { label: 'Type' }),
     unNumber: z
       .string()
-      .regex(/^UN\d{4}$/, 'UN numbers look like UN1234 — UN plus 4 digits.')
+      .regex(/^UN\d{4}$/, 'UN numbers look like UN1234 (UN plus 4 digits).')
       .register(fieldMeta, {
         label: 'UN number',
         description: 'UN identifier for hazardous materials.',
@@ -245,7 +245,7 @@
       .register(fieldMeta, { label: 'Airline' }),
     awbPrefix: z
       .string()
-      .regex(/^\d{3}$/, 'AWB prefix is exactly 3 digits — like 220.')
+      .regex(/^\d{3}$/, 'AWB prefix is exactly 3 digits, like 220.')
       .register(fieldMeta, {
         label: 'AWB prefix',
         description: '3 digits identifying the issuing airline.',
@@ -871,7 +871,7 @@
             </small>
             <input v-register="cargoForm.register('details.permitNumber')" />
             <small v-if="!cargoForm.values.details.permitNumber" class="muted">
-              No permit on file — start typing to add one.
+              No permit on file. Start typing to add one.
             </small>
           </div>
         </div>
@@ -1063,7 +1063,7 @@
             placeholder="Special handling instructions…"
           />
           <small v-if="!serviceForm.values.notes" class="muted">
-            No notes recorded — start typing to add some.
+            No notes recorded. Start typing to add some.
           </small>
           <small class="error">{{ errorMessage(serviceForm.fields.notes) }}</small>
         </div>
@@ -1402,7 +1402,7 @@
       0 0.0625rem 0.125rem 0 rgb(16 24 40 / 0.05);
   }
 
-  /* Validity states — applied per-field via :class binding. */
+  /* Validity states: applied per-field via :class binding. */
   .field.valid input,
   .field.valid select,
   .field.valid textarea {
@@ -1891,7 +1891,7 @@
       gap: 0.625rem;
     }
 
-    /* Line items: 2-column layout — SKU + description full width on
+    /* Line items: 2-column layout, SKU + description full width on
      their own rows, qty + wt side-by-side, remove button on its own
      trailing row, right-aligned. Bigger tap target via grid stretch. */
     .li-grid {

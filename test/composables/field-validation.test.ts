@@ -66,7 +66,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     vi.useRealTimers()
   })
 
-  it('debounces writes — only the most recent value is validated', async () => {
+  it('debounces writes: only the most recent value is validated', async () => {
     vi.useFakeTimers()
     const { app, api } = mountWith({ validateOn: 'change', debounceMs: 200 })
     apps.push(app)
@@ -103,7 +103,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     expect(api.errors.email).toEqual([])
   })
 
-  it('submit entry aborts pending field runs — submit result wins', async () => {
+  it('submit entry aborts pending field runs: submit result wins', async () => {
     vi.useFakeTimers()
     const { app, api } = mountWith({ validateOn: 'change', debounceMs: 500 })
     apps.push(app)
@@ -129,7 +129,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     expect(api.errors.password?.[0]?.message).toBe('min 8 chars')
   })
 
-  it('validateOn defaults to "change" with debounceMs: 0 — writes validate synchronously', async () => {
+  it('validateOn defaults to "change" with debounceMs: 0, so writes validate synchronously', async () => {
     const { app, api } = mountWith({})
     apps.push(app)
 
@@ -157,7 +157,7 @@ describe('validateOn: "blur"', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('writing the value does NOT validate — only blur does', async () => {
+  it('writing the value does NOT validate: only blur does', async () => {
     const { app, api } = mountWith({ validateOn: 'blur' })
     apps.push(app)
 

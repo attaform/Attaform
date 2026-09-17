@@ -56,7 +56,7 @@ function makeFile(name = 'photo.png', size = 1024, type = 'image/png'): File {
   return new File([buf], name, { type })
 }
 
-describe('<input type="file" v-register> — single file', () => {
+describe('<input type="file" v-register>: single file', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -227,7 +227,7 @@ describe('<input type="file" multiple v-register>', () => {
   })
 })
 
-describe('<input type="file" v-register> — required-file error', () => {
+describe('<input type="file" v-register>: required-file error', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -263,7 +263,7 @@ describe('<input type="file" v-register> — required-file error', () => {
   })
 })
 
-describe('<input type="file" v-register> — programmatic clear', () => {
+describe('<input type="file" v-register>: programmatic clear', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -309,7 +309,7 @@ describe('<input type="file" v-register> — programmatic clear', () => {
   })
 })
 
-describe('<input type="file" v-register> — listener cleanup', () => {
+describe('<input type="file" v-register>: listener cleanup', () => {
   let app: App | undefined
 
   afterEach(() => {

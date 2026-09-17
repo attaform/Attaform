@@ -32,7 +32,7 @@ walkers leave eager against the same one-time machinery) drops ~1.0 kB.
 Block F then moves the dev-only shared-key collision warnings into their
 own dynamic-imported module, so a prod build orphans that chunk instead of
 shipping it as dead code (esbuild keeps a top-level function called only
-from a dead `__DEV__` branch — tree-shaking runs before the define-fold),
+from a dead `__DEV__` branch: tree-shaking runs before the define-fold),
 landing the eager set at 43.91 kB gz.
 
 ## Recorded Loosening: anti-flash display timing
@@ -40,7 +40,7 @@ landing the eager set at 43.91 kB gz.
 RECORDED LOOSENING (anti-flash display timing): the timed `getDisplayState`
 reducer + the per-form display engine (clock / single timer / machine map)
 sit on the eager path because `field.displayState` is read synchronously on
-every field access — there is no async seam to defer them behind. That is a
+every field access: there is no async seam to defer them behind. That is a
 deliberate capability-for-bytes trade (a polished, tunable anti-flash
 spinner baked into every form, otherwise re-built ad hoc by each consumer),
 landing the eager set at 44.51 kB gz. The container / form.meta rollup (#346)
@@ -60,12 +60,12 @@ reason in the commit.
 ## Recorded Loosening: async register transforms, #361
 
 RECORDED LOOSENING (async register transforms, #361): the async-transform
-feature (Stage 1 store primitive — beginTransform / endTransform /
+feature (Stage 1 store primitive: beginTransform / endTransform /
 settleTransforms + activeTransforms + transformErrors; Stage 2 vRegisterFile
 unification) sits on the always-on useForm path. register() runs the
 sync-fast transform pipeline on every write, handleSubmit drains in-flight
 transforms before its authoritative pass, and form.settleTransforms is a
-public surface — none has an async seam. Deferring only the await/commit
+public surface: none has an async seam. Deferring only the await/commit
 orchestrator was evaluated and declined: it reclaims a fraction of the cost
 and would push the synchronous `transforming` flip (beginTransform runs
 inside the assigner) behind a dynamic import, lagging the busy state by a
@@ -78,7 +78,7 @@ RECORDED LOOSENING (targeted in-place apply, T2 keystroke bust): the
 single-`setValue` fast path (tryInPlaceLeafWrite + applyTargetedWrite)
 mutates the target leaf's slot in place when it already exists, preserving
 ancestor container identity and taking the keystroke from O(field-count) /
-O(array-length) to O(depth) — 100-230x at scale on the matrix bench. It
+O(array-length) to O(depth): 100-230x at scale on the matrix bench. It
 sits on the always-on write funnel (every setValue), so it cannot defer
 behind an async seam. Measured at 47.35 kB gz; budget raised to restore
 ~0.5 kB headroom for minifier-version drift. The ~9 kB of known
@@ -88,7 +88,7 @@ this; never loosen without a recorded reason.
 ## Note: multi-tab-sync removal, chore/rip-multitab
 
 NOTE (multi-tab-sync removal, chore/rip-multitab): multi-tab sync has been
-async since D1, so deleting it barely moves the eager set — only the
+async since D1, so deleting it barely moves the eager set: only the
 core-anchored remnants (WriteMeta.crossTab thread, state.noSyncPaths
 ref-counted opt-out) come off here, landing eager at 47.61 kB gz, held
 within the budget with no change. The real reclaim is the ~2 kB the inlined
@@ -98,7 +98,7 @@ cap ratchets (54→52 / 68→66 / 62→60 / 64→62 KB).
 ## Note: persist removal, chore/rip-persist
 
 NOTE (persist removal, chore/rip-persist): persist was lazy since D2, but its
-core-anchored remnants were heavier than multi-tab's — the persistOptIns
+core-anchored remnants were heavier than multi-tab's: the persistOptIns
 registry, the isSensitivePath resolution, the sensitive-names static import,
 the insecure-context-warn helper, and the WriteMeta.persist thread all come
 off the eager path, landing eager at 43.48 kB gz (down ~4.1 kB). Budget
@@ -179,7 +179,7 @@ RATCHET (size-teardown P2, directive un-weld): createAttaform /
 ensureAttaformInstalled no longer register the v-register directive, so
 the whole directive cluster (directive + aria/file/listeners/lifecycle/
 value-sync satellites, register-protocol, assigner-pipeline,
-vue-shared-shim) leaves this scenario's eager graph — delivery is the
+vue-shared-shim) leaves this scenario's eager graph: delivery is the
 Vite/Nuxt compile-time rewrite or installVRegister, and the store's DOM
 slice (element registry, focus listeners, first-error focus walk,
 interactive-tags) moved behind the lazily-armed dom-binding module.
@@ -191,7 +191,7 @@ set structurally so a re-weld fails even inside the byte headroom.
 
 RATCHET (size-teardown P3, history plugin + arrays engine): the undo/redo
 runtime moved behind `historyPlugin()` from the new attaform/history
-entry, so history.ts leaves this scenario's eager graph entirely — the
+entry, so history.ts leaves this scenario's eager graph entirely: the
 core wires the module through the plugin's attach() seam, and the ring-
 buffer rewrite killed diff-apply's applyPatchesForward/Inverse plus
 path-walker's deleteAtPath (history was their only consumer). The five
@@ -207,7 +207,7 @@ off the eager inputs.
 
 RATCHET (size-teardown P4, field-meta walk un-weld + probe delete): the
 path-walking field-meta resolver (walk-field-meta.ts) rides the
-registration surface now — `withMeta` / `fieldMeta.add` install it into
+registration surface now: `withMeta` / `fieldMeta.add` install it into
 the shared store's builder slot, the adapters read the slot, and a
 consumer that never registers metadata resolves labels through the
 `.describe()` / humanize fallbacks without shipping the walk. And
@@ -225,7 +225,7 @@ store-first-arg functions + method skins), the tagged error store
 drops), and the DU capability flag cost more bytes than the phase's
 deletions (double diff, du-stubs fold, one-clone construction) saved:
 measured 35,768 B gz, +561 over P4. The audit's store-lazy credits did
-not survive measurement — the activation-chunk split was implemented
+not survive measurement: the activation-chunk split was implemented
 and DECLINED (cross-chunk glue + per-chunk gzip loss exceeded the
 moved bytes). The phase's value landed elsewhere: keystroke deep
 +14/+26/+50%, array writes +8-12% (see
@@ -240,7 +240,7 @@ shell (withActiveValidation) across the reactive kickoff, the
 imperative path, and handleSubmit; parse(path?, { commit? }) absorbed
 validateAsync (sign-off 4); pathStartsWith / groupErrorsByKey /
 submit-throw grouping deduped; display-engine introspection hooks
-dev-gated. Measured 35,621 B gz (down 147 from 35,768) — under the
+dev-gated. Measured 35,621 B gz (down 147 from 35,768): under the
 -250..-500 expectation band because gzip already compresses
 near-identical shells to almost nothing: folding textual twins buys
 little; only deleting structurally redundant logic moves this number.
@@ -278,8 +278,8 @@ FormMetaBase bag (rollup computed-memoised); pickDefined collapsed the
 conditional-spread stacks. The exotic-name schema-authority
 arbitration is dropped (sign-off 8); the root call/apply/bind invoke
 shims are RESTORED after the playground finding (sucrase downlevels
-the documented `surface(path)?.x` idiom into a `.call`-reading helper
-— no-uncaught-exceptions outranks the size sign-off). Measured
+the documented `surface(path)?.x` idiom into a `.call`-reading helper:
+no-uncaught-exceptions outranks the size sign-off). Measured
 34,530 B gz (down 1,091 from 35,621). Refused with measurement: the
 leaf/container field-state builder fold (twin-tail-only, P6 gzip
 discount), the activation-getter loop (+15 B), the useForm layer
@@ -369,7 +369,7 @@ E5b RATCHET (2026-09-16): 33,587 -> 33,133 measured (-454). Both
 adapters' async-strip walkers are gone. Each rebuilt the entire schema
 with its async predicates removed so the sync checks beside them could
 still seed at construction, and each was a second parallel
-understanding of its own Zod major — which is why they gave DIFFERENT
+understanding of its own Zod major: which is why they gave DIFFERENT
 answers for the same schema (v4 seeded sync refines, v3 only container
 checks). Deleting both converges them: a schema declaring async work
 anywhere seeds nothing and defers every verdict to the post-mount

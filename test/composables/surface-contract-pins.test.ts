@@ -125,7 +125,7 @@ const META_BASE_KEYS = [
   'submitting',
 ].sort()
 
-describe.each(adapters)('surface contract pins — $name', ({ mount }) => {
+describe.each(adapters)('surface contract pins: $name', ({ mount }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -28,7 +28,7 @@ import { slimPrimitivesOf } from '../../../src/runtime/adapters/zod-v4/slim-prim
  * did) would gate writes and defaults on any schema nested deeper
  * than 64, plain structural nesting, no recursion involved.
  */
-describe('maxRecursionDepth — counter bumps on lazy only', () => {
+describe('maxRecursionDepth: counter bumps on lazy only', () => {
   describe('slimPrimitivesOf', () => {
     it('a 6-deep wrapper stack resolves correctly at maxRecursionDepth=0', () => {
       // `.optional().nullable().default('x').readonly().catch('y').optional()`,
@@ -217,7 +217,7 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
     })
   })
 
-  describe('integration — useForm at the library cap', () => {
+  describe('integration: useForm at the library cap', () => {
     const apps: App[] = []
     afterEach(() => {
       while (apps.length > 0) apps.pop()?.unmount()

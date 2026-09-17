@@ -6,18 +6,18 @@ name: Dependency Review
 # vulnerability at or above the configured severity threshold.
 #
 # This is the PR-time gate. Weekly Dependabot PRs (see .github/dependabot.yml)
-# handle the *maintenance* side — fixing known vulnerabilities in the current
+# handle the *maintenance* side: fixing known vulnerabilities in the current
 # graph. Together they cover "don't land new CVEs" + "fix existing CVEs."
 #
 # Reference:
 # https://docs.github.com/code-security/supply-chain-security/understanding-your-software-supply-chain/about-dependency-review
 
 # Forked-PR limitation: GitHub strips `pull-requests: write` from
-# workflows triggered by `pull_request` events from forks (security —
+# workflows triggered by `pull_request` events from forks (security:
 # a malicious fork would otherwise be able to write to the PR). That
 # means `comment-summary-in-pr` below does NOT post a comment when
 # the PR originates from a fork. The failure itself is still
-# enforced — the workflow still fails the check — but reviewers have
+# enforced, the workflow still fails the check, but reviewers have
 # to open the Actions log to see *why*. If fork-PR comments ever
 # become a hard requirement, the standard workaround is the two-
 # workflow pattern: keep this `pull_request` workflow for the check,
@@ -37,7 +37,7 @@ permissions:
   contents: read
 
 # Cancel superseded runs on the same PR. A push that adds a new commit
-# supersedes the prior review — the latest commit's dependency diff is
+# supersedes the prior review: the latest commit's dependency diff is
 # what reviewers act on, so finishing the older run wastes compute.
 concurrency:
   group: dependency-review-${{ github.event.pull_request.number }}
@@ -56,7 +56,7 @@ jobs:
         with:
           # Drop GITHUB_TOKEN from .git/config after checkout. The
           # dependency-review action reads the dependency graph diff
-          # over the GitHub API using the workflow's job-level token —
+          # over the GitHub API using the workflow's job-level token:
           # it never needs git credentials attached to the working tree.
           persist-credentials: false
 

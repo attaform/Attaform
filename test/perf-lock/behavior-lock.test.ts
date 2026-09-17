@@ -74,7 +74,7 @@ async function runScenario(
   return { app, checkpoints }
 }
 
-describe('behavior-lock — observable surface frozen across the matrix', () => {
+describe('behavior-lock: observable surface frozen across the matrix', () => {
   const mounted: App[] = []
   afterEach(() => {
     while (mounted.length > 0) mounted.pop()?.unmount()

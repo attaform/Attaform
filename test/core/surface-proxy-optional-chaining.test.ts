@@ -89,7 +89,7 @@ const access = (key: string) => (o: unknown) => (o as Record<string, unknown>)[k
 const callPath = (path: string) => (f: unknown) => (f as (p: string) => unknown)(path)
 
 describe.each(adapters)(
-  'callable surface × downleveled optional chaining — $name',
+  'callable surface × downleveled optional chaining: $name',
   ({ mount, mountPlain }) => {
     it('form.fields(path)?.x survives the sucrase _optionalChain helper', () => {
       const { api, app } = mountPlain()

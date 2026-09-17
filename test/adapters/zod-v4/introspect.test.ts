@@ -329,7 +329,7 @@ describe('containsAsyncTransform', () => {
     expect(containsAsyncTransform(z.preprocess((v) => v, z.string()))).toBe(false)
   })
 
-  it('does not flag refines (sync or async) — the refine walker’s domain', () => {
+  it('does not flag refines (sync or async): the refine walker’s domain', () => {
     expect(containsAsyncTransform(z.string().refine(async () => Promise.resolve(true)))).toBe(false)
     expect(containsAsyncTransform(z.string().refine(() => true))).toBe(false)
   })

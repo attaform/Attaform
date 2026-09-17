@@ -35,7 +35,7 @@ const arbSchema = buildSchemaWithManifest(z, 3)
 // the helper boundary so each call site stays terse.
 type SetValueFn = (path: string, value: unknown) => boolean
 
-describe('slim-primitive write gate — property: manifest sanity (v4)', () => {
+describe('slim-primitive write gate: property: manifest sanity (v4)', () => {
   // No setValue here, directly reconciles the generator's recorded
   // accept-set against the adapter's `getSlimPrimitiveTypesAtPath`.
   // Failure means the generator (the test's oracle) is wrong.
@@ -53,7 +53,7 @@ describe('slim-primitive write gate — property: manifest sanity (v4)', () => {
   )
 })
 
-describe('slim-primitive write gate — property: known leaf paths (v4)', () => {
+describe('slim-primitive write gate: property: known leaf paths (v4)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -134,7 +134,7 @@ describe('slim-primitive write gate — property: known leaf paths (v4)', () => 
   )
 })
 
-describe('slim-primitive write gate — property: unknown paths (v4)', () => {
+describe('slim-primitive write gate: property: unknown paths (v4)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 

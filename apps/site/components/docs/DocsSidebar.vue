@@ -41,7 +41,7 @@
                    slash normalized, unlike the verbatim exact-active-class).
                    The `.docs-nav-item` styles below replace the simple
                    `border-l` with a pseudo-element that scales in from
-                   the center on activate — state changes feel intentional
+                   the center on activate: state changes feel intentional
                    rather than instant. Inactive width is preserved (0.0625rem)
                    so the link doesn't reflow when the indicator appears. -->
               <NuxtLink

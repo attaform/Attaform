@@ -29,7 +29,7 @@ const arbSegment: fc.Arbitrary<Segment> = fc.oneof(arbStringSegment, fc.nat({ ma
 
 const arbSegmentArray = fc.array(arbSegment, { maxLength: 6 })
 
-describe('canonicalizePath — properties', () => {
+describe('canonicalizePath: properties', () => {
   test.prop([arbSegmentArray])(
     'idempotent: canonicalize(canonicalize(x).segments).key === canonicalize(x).key',
     (segments) => {

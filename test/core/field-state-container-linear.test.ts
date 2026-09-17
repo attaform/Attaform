@@ -47,7 +47,7 @@ function rowsAccessor(rowCount: number) {
   }
 }
 
-describe('container field-state aggregation — linear in array length', () => {
+describe('container field-state aggregation: linear in array length', () => {
   it('per-element-container work is decoupled from total row count (O(subtree), not O(total))', () => {
     function elementWalkCalls(rowCount: number): number {
       const { state, getFieldState } = rowsAccessor(rowCount)

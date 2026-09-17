@@ -110,7 +110,7 @@ vi.mock('@vue/devtools-api', () => ({
   },
 }))
 
-describe('DevTools plugin — inspector + timeline wiring', () => {
+describe('DevTools plugin: inspector + timeline wiring', () => {
   const apps: App[] = []
 
   beforeEach(() => {
@@ -205,7 +205,7 @@ describe('DevTools plugin — inspector + timeline wiring', () => {
   })
 })
 
-describe('DevTools plugin — raw values surface (dev-only)', () => {
+describe('DevTools plugin: raw values surface (dev-only)', () => {
   const apps: App[] = []
 
   beforeEach(() => {

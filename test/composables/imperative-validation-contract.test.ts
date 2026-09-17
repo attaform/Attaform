@@ -36,7 +36,7 @@ async function settle(done: () => boolean): Promise<void> {
   }
 }
 
-describe.each(adapters)('imperative validation contract — $name', ({ useForm, z }) => {
+describe.each(adapters)('imperative validation contract: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

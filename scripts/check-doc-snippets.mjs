@@ -186,7 +186,7 @@ for (const file of sources) {
 
 if (fixtures.length === 0) {
   console.error(
-    '[check-doc-snippets] extracted 0 snippets — the fence parser or the attaform-import filter is broken\n' +
+    '[check-doc-snippets] extracted 0 snippets: the fence parser or the attaform-import filter is broken\n' +
       '  (docs carry dozens of `import ... from "attaform"` blocks). Aborting rather than passing vacuously.',
   )
   process.exit(1)
@@ -266,14 +266,14 @@ function printToleratedSummary() {
     console.log(`    ${String(count).padStart(4)}× ${BENIGN[code]} (${code})`)
   }
   if (review.length) {
-    console.log(`  ${review.length} typed mismatch(es) tolerated per the surface-only policy — worth an eyeball:`)
+    console.log(`  ${review.length} typed mismatch(es) tolerated per the surface-only policy, worth an eyeball:`)
     for (const e of review) console.log(`    ${locate(e)}`)
   }
 }
 
 if (surfaceErrors.length) {
   console.error(
-    `\n[check-doc-snippets] FAILED — ${surfaceErrors.length} attaform-surface error(s): a docs import no longer matches dist:\n`,
+    `\n[check-doc-snippets] FAILED: ${surfaceErrors.length} attaform-surface error(s). A docs import no longer matches dist:\n`,
   )
   for (const e of surfaceErrors) console.error(`  ${locate(e)}`)
   console.error(
@@ -285,7 +285,7 @@ if (surfaceErrors.length) {
 }
 
 console.log(
-  `[check-doc-snippets] ok — 0 attaform-surface errors across ${fixtures.length} snippets ` +
+  `[check-doc-snippets] ok: 0 attaform-surface errors across ${fixtures.length} snippets ` +
     `(${stats.ts} ts, ${stats.vue} vue) from ${stats.files.size} files`,
 )
 printToleratedSummary()

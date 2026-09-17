@@ -7,7 +7,7 @@ describe('unset symbol', () => {
     expect(unset).toBe(Symbol.for('attaform/unset'))
   })
 
-  it('is a stable reference — two reads return the same value', () => {
+  it('is a stable reference: two reads return the same value', () => {
     const a = unset
     const b = unset
     expect(a).toBe(b)

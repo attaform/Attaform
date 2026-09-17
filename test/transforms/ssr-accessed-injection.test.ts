@@ -52,7 +52,7 @@ function transformedCode(code: string, id = '/src/Component.vue'): string {
   return result.code
 }
 
-describe('__ssrAccessed transform — bindings referenced by the surrounding template', () => {
+describe('__ssrAccessed transform: bindings referenced by the surrounding template', () => {
   it('injects __ssrAccessed into useForm whose handle is read in an interpolation', () => {
     const sfc = `<script setup lang="ts">
 import { useForm } from 'attaform'
@@ -210,7 +210,7 @@ const form = injectForm()
   })
 })
 
-describe('__ssrAccessed transform — non-injecting cases', () => {
+describe('__ssrAccessed transform: non-injecting cases', () => {
   it('leaves useForm alone when the binding never appears in the template', () => {
     const sfc = `<script setup lang="ts">
 import { useForm } from 'attaform'

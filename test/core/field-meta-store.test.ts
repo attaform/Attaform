@@ -9,7 +9,7 @@ import { getFieldMetaForSchema } from '../../src/runtime/core/field-meta-store'
 const getFieldMetaV4 = getFieldMetaForSchema
 const getFieldMetaV3 = getFieldMetaForSchema
 
-describe('Unified fieldMeta store — cross-adapter storage', () => {
+describe('Unified fieldMeta store: cross-adapter storage', () => {
   it('round-trips a payload on a Zod 4 schema via withMeta', () => {
     const schema = withMeta(z4.string(), { label: 'Username', placeholder: 'your-handle' })
     expect(getFieldMetaV4(schema)).toEqual({ label: 'Username', placeholder: 'your-handle' })

@@ -61,7 +61,7 @@ function tagKeys(form: UseFormReturnType<ListForm>, length: number): string[] {
   return Array.from({ length }, (_, i) => elementKey(form, 'tags', i))
 }
 
-describe('FieldState.key — element identity', () => {
+describe('FieldState.key: element identity', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

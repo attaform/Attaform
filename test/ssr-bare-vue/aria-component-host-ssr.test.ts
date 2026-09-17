@@ -49,7 +49,7 @@ function compileSSR(template: string): string {
   }).code
 }
 
-describe('compiled-SSR transform — component-host modifier (#404)', () => {
+describe('compiled-SSR transform: component-host modifier (#404)', () => {
   it('stamps the component-host modifier on a <Component v-register> host', () => {
     const code = compileSSR(`<FieldWrapper v-register="form.register('email')" />`)
     expect(code).toContain('ssrGetDirectiveProps')
@@ -63,7 +63,7 @@ describe('compiled-SSR transform — component-host modifier (#404)', () => {
   })
 })
 
-describe('getSSRProps — null vnode (compiled SSR) honours the host modifier (#404)', () => {
+describe('getSSRProps: null vnode (compiled SSR) honours the host modifier (#404)', () => {
   let app: App | undefined
   const handle: { rv?: RegisterValue | undefined } = {}
 

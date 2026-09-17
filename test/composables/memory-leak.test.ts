@@ -38,7 +38,7 @@ function mountProbe(registry: ReturnType<typeof createRegistry>, key: string) {
   return app
 }
 
-describe('useForm — registry cleanup on scope dispose', () => {
+describe('useForm: registry cleanup on scope dispose', () => {
   // Eviction is deferred to the next microtask once the last consumer
   // disposes: a new consumer claiming the same key in the same tick
   // cancels the schedule and reuses the live FormStore (HMR / KeepAlive
@@ -58,7 +58,7 @@ describe('useForm — registry cleanup on scope dispose', () => {
     expect(registry.forms.has('gc-solo')).toBe(false)
   })
 
-  it('ref-counts shared-key consumers — only the last unmount queues eviction', async () => {
+  it('ref-counts shared-key consumers: only the last unmount queues eviction', async () => {
     const registry = createRegistry()
     const app1 = mountProbe(registry, 'gc-shared')
     const app2 = mountProbe(registry, 'gc-shared')

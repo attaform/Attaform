@@ -291,7 +291,7 @@ function warnOutsideSetup(): void {
   const frame = captureUserCallSite()
   console.warn(
     `[attaform] useRegister() called outside a component setup; returning an unbound RegisterValue proxy. ` +
-      `Fix: call it inside <script setup> or a setup() function — not from an event handler ` +
+      `Fix: call it inside <script setup> or a setup() function, not from an event handler ` +
       `or async callback.` +
       (frame !== undefined ? ` ${frame}` : '')
   )

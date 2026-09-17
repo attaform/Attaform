@@ -54,7 +54,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as LooseApi<Schema> }
 }
 
-describe('schemaErrors edge cases — cross-field refine on a container', () => {
+describe('schemaErrors edge cases: cross-field refine on a container', () => {
   // A `.refine()` on a container produces an error whose absolute path
   // equals the container's path (no leaf segment). The new
   // `applySchemaErrorsForSubtree` groups by `err.path`, so it lands at
@@ -203,7 +203,7 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   })
 })
 
-describe('schemaErrors edge cases — failing → passing transition', () => {
+describe('schemaErrors edge cases: failing → passing transition', () => {
   // `applySchemaErrorsForSubtree` clears the whole subtree before
   // writing, and the empty-`entries` case falls through
   // `if (entries.length === 0) return` AFTER that clear, so a leaf going
@@ -282,7 +282,7 @@ describe('schemaErrors edge cases — failing → passing transition', () => {
   })
 })
 
-describe('schemaErrors edge cases — field-array shrink', () => {
+describe('schemaErrors edge cases: field-array shrink', () => {
   // Removing an erroring element from an array should leave no stale
   // entry at the (now-nonexistent) index. The cleanup happens through
   // setValueAtPath → scheduleFieldValidation(arrayPath), which routes
@@ -346,7 +346,7 @@ describe('schemaErrors edge cases — field-array shrink', () => {
   })
 })
 
-describe('schemaErrors edge cases — parent + leaf overlapping schedules', () => {
+describe('schemaErrors edge cases: parent + leaf overlapping schedules', () => {
   // Two scheduled validations on overlapping paths can race. With
   // immediate (debounceMs: 0) schedules, the parent's clear-subtree
   // and the leaf's own write may interleave. The contract we pin:

@@ -57,21 +57,21 @@ describe('custom .default() values flow through the consumer surface', () => {
   })
 
   describe('form construction picks .default() over natural falsy', () => {
-    it('string with .default("user") produces "user" — not ""', () => {
+    it('string with .default("user") produces "user", not ""', () => {
       const schema = z.object({ role: z.string().default('user') })
       const { app, form } = harness(schema)
       apps.push(app)
       expect(form.values.role).toBe('user')
     })
 
-    it('number with .default(5) produces 5 — not 0', () => {
+    it('number with .default(5) produces 5, not 0', () => {
       const schema = z.object({ count: z.number().default(5) })
       const { app, form } = harness(schema)
       apps.push(app)
       expect(form.values.count).toBe(5)
     })
 
-    it('boolean with .default(true) produces true — not false', () => {
+    it('boolean with .default(true) produces true, not false', () => {
       const schema = z.object({ active: z.boolean().default(true) })
       const { app, form } = harness(schema)
       apps.push(app)

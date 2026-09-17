@@ -144,7 +144,7 @@ const v3Defaults = {
   users: [{ label: 'first' }, { label: 'second' }],
 }
 
-describeFirstError('field.firstError — zod-v3 adapter', () =>
+describeFirstError('field.firstError: zod-v3 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV3({
@@ -167,7 +167,7 @@ const v4Defaults = {
   users: [{ label: 'first' }, { label: 'second' }],
 }
 
-describeFirstError('field.firstError — zod-v4 adapter', () =>
+describeFirstError('field.firstError: zod-v4 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV4({

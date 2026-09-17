@@ -19,7 +19,7 @@ import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
 
-describe('no-op-write DOM-sync bug class — probes for non-text directives', () => {
+describe('no-op-write DOM-sync bug class: probes for non-text directives', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -28,7 +28,7 @@ describe('no-op-write DOM-sync bug class — probes for non-text directives', ()
     document.body.innerHTML = ''
   })
 
-  it('checkbox — transform that forces `false` strands a checked DOM checkbox', async () => {
+  it('checkbox: transform that forces `false` strands a checked DOM checkbox', async () => {
     // Schema: a single boolean checkbox. Transform always returns
     // false. Storage starts at false. User clicks the checkbox →
     // browser sets el.checked = true → change event fires → assigner
@@ -74,7 +74,7 @@ describe('no-op-write DOM-sync bug class — probes for non-text directives', ()
     expect(input.checked).toBe(false)
   })
 
-  it('select-single — transform that forces a fixed value strands a different option', async () => {
+  it('select-single: transform that forces a fixed value strands a different option', async () => {
     // Storage starts at 'a'. Transform always returns 'a'. User picks
     // 'b' from the select → assigner forces 'a' → setValue('a') →
     // storage stays 'a' (no patch, no render) → setSelected doesn't

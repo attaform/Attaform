@@ -10,7 +10,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
  * error's `path` field to navigate the form.
  */
 
-describe('zod v4 adapter — refine / superRefine error paths', () => {
+describe('zod v4 adapter: refine / superRefine error paths', () => {
   it('leaf .refine emits error at the leaf path', async () => {
     const schema = z.object({
       username: z.string().refine((v) => v.length > 3, 'too short'),
@@ -91,7 +91,7 @@ describe('zod v4 adapter — refine / superRefine error paths', () => {
   })
 })
 
-describe('zod v4 adapter — transform / pipe', () => {
+describe('zod v4 adapter: transform / pipe', () => {
   it('transform produces the transformed shape when parse succeeds', async () => {
     const schema = z.object({
       email: z.string().transform((v) => v.trim().toLowerCase()),
@@ -133,7 +133,7 @@ describe('zod v4 adapter — transform / pipe', () => {
   })
 })
 
-describe('zod v4 adapter — discriminated union with per-branch refinement', () => {
+describe('zod v4 adapter: discriminated union with per-branch refinement', () => {
   it('routes refinement errors to the active branch', async () => {
     const schema = z.object({
       event: z.discriminatedUnion('kind', [
@@ -163,7 +163,7 @@ describe('zod v4 adapter — discriminated union with per-branch refinement', ()
   })
 })
 
-describe('zod v4 adapter — validateAtPath forwards issue paths under a prefix', () => {
+describe('zod v4 adapter: validateAtPath forwards issue paths under a prefix', () => {
   it('path arg + schema-level refinement produces issues under that path', async () => {
     // When validating the subtree at a path, zod's issue paths are relative
     // to the subtree root. The adapter emits them verbatim, consumers

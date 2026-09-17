@@ -37,7 +37,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — restore: false + persist: false', () => {
+describe('useWizard with restore: false + persist: false', () => {
   const apps: App[] = []
 
   beforeEach(() => {

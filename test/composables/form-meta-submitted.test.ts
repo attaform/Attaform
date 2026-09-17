@@ -71,7 +71,7 @@ describe('form.meta.submitted', () => {
     expect(api.meta.submissionAttempts).toBe(1)
   })
 
-  it('stays false when validation fails — submissionAttempts still increments', async () => {
+  it('stays false when validation fails: submissionAttempts still increments', async () => {
     const { app, api } = mountForm(schema, { email: '' })
     apps.push(app)
     const handler = api.handleSubmit(async () => {})
@@ -81,7 +81,7 @@ describe('form.meta.submitted', () => {
     expect(api.meta.submissionAttempts).toBe(1)
   })
 
-  it('stays false when the consumer callback throws — submissionAttempts still increments', async () => {
+  it('stays false when the consumer callback throws: submissionAttempts still increments', async () => {
     const { app, api } = mountForm(schema, { email: 'user@example.com' })
     apps.push(app)
     const handler = api.handleSubmit(async () => {

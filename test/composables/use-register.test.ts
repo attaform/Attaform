@@ -40,7 +40,7 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
 
 const schema = z.object({ email: z.string(), name: z.string() })
 
-describe('useRegister — outside setup', () => {
+describe('useRegister: outside setup', () => {
   it('returns a ComputedRef whose .value is undefined; warns once; does not throw', () => {
     const warnings: string[] = []
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
@@ -67,7 +67,7 @@ describe('useRegister — outside setup', () => {
   })
 })
 
-describe('useRegister — inside child setup', () => {
+describe('useRegister: inside child setup', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -549,7 +549,7 @@ describe('useRegister — inside child setup', () => {
   })
 })
 
-describe('useRegister — sentinel suppresses parent-directive warn', () => {
+describe('useRegister: sentinel suppresses parent-directive warn', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -674,7 +674,7 @@ describe('useRegister — sentinel suppresses parent-directive warn', () => {
   })
 })
 
-describe('useRegister — inner v-register receives full directive lifecycle', () => {
+describe('useRegister: inner v-register receives full directive lifecycle', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -736,7 +736,7 @@ describe('useRegister — inner v-register receives full directive lifecycle', (
   })
 })
 
-describe('useRegister — strips bridge keys from attrs (no inheritAttrs needed)', () => {
+describe('useRegister: strips bridge keys from attrs (no inheritAttrs needed)', () => {
   let app: App | undefined
 
   afterEach(() => {

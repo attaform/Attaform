@@ -60,7 +60,7 @@ function validWizard(suffix: string) {
   return useWizard({ steps: [account, review], restore: false, persist: false })
 }
 
-describe('wizard.handleSubmit — a rejecting callback does not re-throw', () => {
+describe('wizard.handleSubmit: a rejecting callback does not re-throw', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

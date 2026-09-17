@@ -37,7 +37,7 @@ const challenge: Json = {
 
 type Signup = { email: string; password: string }
 
-describe('ValidationError.data — serialise / hydrate round-trip', () => {
+describe('ValidationError.data: serialise / hydrate round-trip', () => {
   it('preserves data on user and schema errors across the SSR round-trip', () => {
     const serverApp = createApp({ render: () => null })
     serverApp.use(createAttaform({ ssr: true }))
@@ -132,7 +132,7 @@ const adapters = [
 
 let keySeq = 0
 
-describe.each(adapters)('ValidationError.data through the form API — $name', ({ useForm, z }) => {
+describe.each(adapters)('ValidationError.data through the form API: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

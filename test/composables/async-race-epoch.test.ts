@@ -94,7 +94,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, build: buildSchemaV3 },
 ] as const
 
-describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
+describe.each(adapters)('async-race epoch: $name', ({ useForm, build }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

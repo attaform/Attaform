@@ -135,7 +135,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
   })
 
   describe('nullable-only string', () => {
-    it('clears to "" — null is reserved for explicit setValue', () => {
+    it('clears to "": null is reserved for explicit setValue', () => {
       const schema = z.object({ note: z.string().nullable() })
       const { app, input, form } = mountInputForPath(schema, 'note')
       apps.push(app)
@@ -146,7 +146,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
   })
 
   describe('optional + nullable string', () => {
-    it('clears to undefined — optional wins, null stays the deliberate signal', () => {
+    it('clears to undefined: optional wins, null stays the deliberate signal', () => {
       const schema = z.object({ note: z.string().nullable().optional() })
       const { app, input, form } = mountInputForPath(schema, 'note')
       apps.push(app)
@@ -173,7 +173,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
   })
 
   describe('required number', () => {
-    it('clears to slim default 0 (regression — markBlank stays for required)', () => {
+    it('clears to slim default 0 (regression: markBlank stays for required)', () => {
       const schema = z.object({ count: z.number() })
       const { app, input, form } = mountInputForPath(schema, 'count', undefined, {
         numberModifier: true,
@@ -204,7 +204,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
    * the error.
    */
   describe('validation cycle after clear', () => {
-    it('z.email().optional() — typing invalid then clearing returns to valid', async () => {
+    it('z.email().optional(): typing invalid then clearing returns to valid', async () => {
       const schema = z.object({ email: z.email().optional() })
       const { app, input, form } = mountInputForPath(schema, 'email')
       apps.push(app)
@@ -217,7 +217,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
       expect(form.values.email).toBeUndefined()
     })
 
-    it('z.email() (required) — error persists after clear (regression)', async () => {
+    it('z.email() (required): error persists after clear (regression)', async () => {
       const schema = z.object({ email: z.email() })
       const { app, input, form } = mountInputForPath(schema, 'email')
       apps.push(app)
@@ -231,7 +231,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
       expect((form.errors.email ?? []).length).toBeGreaterThan(0)
     })
 
-    it('z.number().min(10).optional() — typing too-low then clearing returns to valid', async () => {
+    it('z.number().min(10).optional(): typing too-low then clearing returns to valid', async () => {
       const schema = z.object({ count: z.number().min(10).optional() })
       const { app, input, form } = mountInputForPath(schema, 'count', undefined, {
         numberModifier: true,
@@ -248,7 +248,7 @@ describe('DOM clear → schema-aware empty mapping', () => {
       expect(form.values.count).toBeUndefined()
     })
 
-    it('z.number().min(10) (required) — error persists after clear (regression)', async () => {
+    it('z.number().min(10) (required): error persists after clear (regression)', async () => {
       const schema = z.object({ count: z.number().min(10) })
       const { app, input, form } = mountInputForPath(schema, 'count', undefined, {
         numberModifier: true,

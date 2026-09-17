@@ -71,7 +71,7 @@ const _schema4 = z4.object({
 
 const form4 = formStandIn<typeof _schema4>()
 
-describe('ArrayPath — every array leaf is addressable, optional or not (v4)', () => {
+describe('ArrayPath: every array leaf is addressable, optional or not (v4)', () => {
   it('admits required, defaulted, optional and nullable arrays', () => {
     form4.append('plain', { a: 'x' })
     form4.append('defaulted', { a: 'x' })
@@ -118,7 +118,7 @@ describe('ArrayPath — every array leaf is addressable, optional or not (v4)', 
   })
 })
 
-describe('ArrayItem — an admitted path resolves its element type (v4)', () => {
+describe('ArrayItem: an admitted path resolves its element type (v4)', () => {
   it('resolves through optionality, defaults and DU variants', () => {
     expectTypeOf(form4.list('defaulted')[0]?.value).toEqualTypeOf<{ a: string } | undefined>()
     expectTypeOf(form4.list('optional')[0]?.value).toEqualTypeOf<{ a: string } | undefined>()
@@ -136,7 +136,7 @@ describe('ArrayItem — an admitted path resolves its element type (v4)', () => 
   })
 })
 
-describe('RecordPath / RecordValue — records survive the same shapes (v4)', () => {
+describe('RecordPath / RecordValue: records survive the same shapes (v4)', () => {
   it('admits required, defaulted and optional records', () => {
     form4.record('rec')
     form4.record('recDefaulted')
@@ -161,7 +161,7 @@ describe('RecordPath / RecordValue — records survive the same shapes (v4)', ()
   })
 })
 
-describe('FlatPath — an interior DU offers its variant sub-paths (v4)', () => {
+describe('FlatPath: an interior DU offers its variant sub-paths (v4)', () => {
   it('addresses the discriminant and the shared variant field', () => {
     // Fixed upstream between zod 4.3.6 and 4.4.3, not here. Pinned so a
     // zod release that walks a discriminated union differently fails in

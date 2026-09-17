@@ -152,7 +152,7 @@ const ADAPTERS = [
  */
 const filledPromise = (): Record<string, unknown> => ({ pending: Promise.resolve('seed') })
 
-describe.each(ADAPTERS)('referential values keep the form upright — $name', (adapter) => {
+describe.each(ADAPTERS)('referential values keep the form upright: $name', (adapter) => {
   it('mounts a schema holding nine unserializable things at once', () => {
     expect(() =>
       makeMounter(adapter.useForm, adapter.kitchenSink(), { defaultValues: filledPromise() })()

@@ -116,7 +116,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     return el
   }
 
-  it('latches the single inner control — connected true, exactly one element registered', () => {
+  it('latches the single inner control: connected true, exactly one element registered', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     const inner = input({ type: 'text' })
@@ -128,7 +128,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
-  it('excludes a type=hidden mirror — latches the visible control', () => {
+  it('excludes a type=hidden mirror: latches the visible control', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     const mirror = input({ type: 'hidden' })
@@ -143,7 +143,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
-  it('excludes an aria-hidden (tabindex=-1) mirror — latches the visible control', () => {
+  it('excludes an aria-hidden (tabindex=-1) mirror: latches the visible control', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     // The reka-ui PinInput / BubbleInput pattern: a sr-only mirror input carries
@@ -160,7 +160,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
-  it('excludes a tabindex=-1 mirror that lacks aria-hidden — latches the visible control', () => {
+  it('excludes a tabindex=-1 mirror that lacks aria-hidden: latches the visible control', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     // The reka-ui Combobox BubbleInput uses data-hidden, not aria-hidden, so
@@ -581,7 +581,7 @@ describe('v-register component host: integration (modifier plumbed through)', ()
     expect(m.api.fields.email.blurred).toBe(true)
   })
 
-  it('does NOT fire the "is a no-op" warn — a value-binding host is not a no-op', async () => {
+  it('does NOT fire the "is a no-op" warn: a value-binding host is not a no-op', async () => {
     m = await mountHost(DivWrappedInput)
     expect(m.warnings.filter((w) => w.includes('is a no-op')).length).toBe(0)
   })
@@ -753,7 +753,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
     expect(m.inner().getAttribute('aria-describedby')).toBe(m.api.fields.email.aria.errorId)
   })
 
-  it('watches display state live — a failed submit flips aria-invalid post-mount', async () => {
+  it('watches display state live: a failed submit flips aria-invalid post-mount', async () => {
     m = await mountAriaHost(DivWrappedInput)
     // Gate closed pre-interaction: nothing surfaced on the control.
     expect(m.inner().hasAttribute('aria-invalid')).toBe(false)

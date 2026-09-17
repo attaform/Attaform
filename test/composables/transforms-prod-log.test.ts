@@ -25,7 +25,7 @@ import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
 
-describe('register({ transforms }) — prod log shape (information-leak guard)', () => {
+describe('register({ transforms }): prod log shape (information-leak guard)', () => {
   let app: App | undefined
 
   afterEach(() => {

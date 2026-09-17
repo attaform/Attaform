@@ -74,7 +74,7 @@ function instance(schema: object, build: (s: object) => unknown, key: string, de
   return factory(key, { maxRecursionDepth: depth })
 }
 
-describe.each(adapters)('shared AbstractSchema — $name', ({ schema, build, fresh, other }) => {
+describe.each(adapters)('shared AbstractSchema: $name', ({ schema, build, fresh, other }) => {
   it('hands two forms on one schema the same instance', () => {
     // Different keys, different adapter-factory calls: the shared thing
     // is keyed on the SCHEMA, not on either of those.
@@ -139,7 +139,7 @@ describe('the per-path memo bound', () => {
 })
 
 describe.skipIf(!hasGc).each(adapters)(
-  'shared AbstractSchema releases with its schema — $name',
+  'shared AbstractSchema releases with its schema: $name',
   ({ build, fresh }) => {
     /** Force collection hard enough for a WeakRef to clear. */
     async function collect(): Promise<void> {

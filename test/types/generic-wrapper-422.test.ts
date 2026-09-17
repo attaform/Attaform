@@ -21,7 +21,7 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
  * wrappers exercise call-site inference without a Vue app context.
  */
 
-describe('#422 — generic form wrappers forwarding defaultValues', () => {
+describe('#422: generic form wrappers forwarding defaultValues', () => {
   it('compiles a generic wrapper over the unified entry (v4 schema)', () => {
     function _neverInvoked() {
       function makeForm<S extends z.ZodObject<z.ZodRawShape>>(

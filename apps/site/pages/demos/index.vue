@@ -294,7 +294,7 @@
       </NuxtLink>
     </div>
 
-    <!-- No-results state — the filter matched nothing. -->
+    <!-- No-results state: the filter matched nothing. -->
     <div
       v-else-if="query"
       class="rounded-xl border border-dashed border-border bg-surface/30 p-10 text-center"
@@ -327,7 +327,7 @@
       </p>
     </div>
 
-    <!-- Pagination row — page numbers + range readout. Hidden when
+    <!-- Pagination row: page numbers + range readout. Hidden when
          everything fits on one page so it doesn't clutter the
          small-corpus case. -->
     <div

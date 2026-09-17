@@ -44,7 +44,7 @@ const adapters = [
   { name: 'v3', mount: makeMounter(useFormV3, schemaV3), unset: unsetV3 },
 ] as const
 
-describe.each(adapters)('setValue clears descendant blank-marks — $name', ({ mount, unset }) => {
+describe.each(adapters)('setValue clears descendant blank-marks: $name', ({ mount, unset }) => {
   const apps: ReturnType<typeof mount>['app'][] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -76,7 +76,7 @@ describe.each(adapters)('setValue clears descendant blank-marks — $name', ({ m
     expect(form.values.addr.zip).toBe(12345)
   })
 
-  it('handleSubmit accepts after the container write — no false required-blank rejection', async () => {
+  it('handleSubmit accepts after the container write: no false required-blank rejection', async () => {
     const form = mountOne()
     form.setValue('addr.zip', unset)
     form.setValue('addr.city', 'placeholder')

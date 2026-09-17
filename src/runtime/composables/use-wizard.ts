@@ -160,7 +160,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   const rawSteps: ReadonlyArray<StepSlot> = Array.isArray(options.steps) ? options.steps : []
   if (rawSteps.length === 0 && __DEV__) {
     console.error(
-      '[attaform] useWizard({ steps }): expected a non-empty array of step slots. Continuing with an empty step list — wizard.currentStep reads as undefined, navigation refuses, handleSubmit no-ops.'
+      '[attaform] useWizard({ steps }): expected a non-empty array of step slots. Continuing with an empty step list: wizard.currentStep reads as undefined, navigation refuses, handleSubmit no-ops.'
     )
   }
 

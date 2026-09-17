@@ -59,7 +59,7 @@ function mount<Schema extends z.ZodObject>(
   return captured as UseFormReturnV4<Schema>
 }
 
-describe('form.errors — container-self materialisation under "" sentinel', () => {
+describe('form.errors: container-self materialisation under "" sentinel', () => {
   it('container refine + descendant leaf both surface in container sub-tree', () => {
     const schema = z.object({
       profile: z.object({

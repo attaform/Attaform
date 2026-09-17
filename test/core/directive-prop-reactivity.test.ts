@@ -117,7 +117,7 @@ const hooks = vRegister as unknown as {
 
 // A, `setAssignFunction` re-derives on every render
 
-describe('setAssignFunction — @update:registerValue prop reactivity', () => {
+describe('setAssignFunction: @update:registerValue prop reactivity', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -164,7 +164,7 @@ describe('setAssignFunction — @update:registerValue prop reactivity', () => {
 
 // B, `vRegisterText` derives `castToNumber` per fire
 
-describe('vRegisterText — :type swap reactivity', () => {
+describe('vRegisterText: :type swap reactivity', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -195,7 +195,7 @@ describe('vRegisterText — :type swap reactivity', () => {
 
 // C, `vRegisterSelect` derives `isSetModel` per fire
 
-describe('vRegisterSelect — Array ↔ Set model swap reactivity', () => {
+describe('vRegisterSelect: Array ↔ Set model swap reactivity', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })

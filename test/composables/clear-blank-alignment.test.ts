@@ -36,7 +36,7 @@ const adapters = [
   { name: 'v3', mount: makeMounter(useFormV3, schemaV3), unset: unsetV3 },
 ] as const
 
-describe.each(adapters)('clear aligns with setValue(unset) — $name', ({ mount, unset }) => {
+describe.each(adapters)('clear aligns with setValue(unset): $name', ({ mount, unset }) => {
   const apps: ReturnType<typeof mount>['app'][] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

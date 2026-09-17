@@ -19,7 +19,7 @@ import { waitUntil } from '../utils/form-harness'
 
 const schema = z.object({ name: z.string() })
 
-describe('v-register runtime redundant-binding warn — production gate', () => {
+describe('v-register runtime redundant-binding warn: production gate', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()

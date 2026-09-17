@@ -49,7 +49,7 @@ const adapters = [
   },
 ] as const
 
-describe.each(adapters)('Array.prototype on array-shaped proxies — $name', ({ mount }) => {
+describe.each(adapters)('Array.prototype on array-shaped proxies: $name', ({ mount }) => {
   it('form.fields.<array>.map iterates over the per-element FieldStates', () => {
     const { api, app } = mount()
     const values = (

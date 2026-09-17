@@ -38,7 +38,7 @@ function makeWideForm(leafCount: number) {
   }
 }
 
-describe('buildContainerFieldStateBase — leaf-walk canonicalize budget', () => {
+describe('buildContainerFieldStateBase: leaf-walk canonicalize budget', () => {
   it('does not re-canonicalize per leaf when reading the root container state on a 500-leaf form', () => {
     const LEAVES = 500
     const { state, getFieldState } = makeWideForm(LEAVES)

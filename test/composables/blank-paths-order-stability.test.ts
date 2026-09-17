@@ -47,7 +47,7 @@ function mountForm<Schema extends z.ZodObject>(schema: Schema): { app: App; api:
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('derivedBlankErrors — insertion-order stability across DU reshape', () => {
+describe('derivedBlankErrors: insertion-order stability across DU reshape', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

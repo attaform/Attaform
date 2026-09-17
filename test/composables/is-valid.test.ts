@@ -72,7 +72,7 @@ function mount(): { app: App; api: Api; store: FormStore<GenericForm> } {
   document.body.appendChild(root)
   app.mount(root)
   const store = registry.forms.get('is-valid')
-  if (!store) throw new Error('FormStore not registered — test setup broken')
+  if (!store) throw new Error('FormStore not registered: test setup broken')
   return { app, api: handle.api as Api, store }
 }
 

@@ -35,7 +35,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3 as AnyUseForm, z: zV3 as unknown as typeof zV4 },
 ] as const
 
-describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
+describe.each(adapters)('gate() seed-clearing: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     for (const app of apps.splice(0)) app.unmount()

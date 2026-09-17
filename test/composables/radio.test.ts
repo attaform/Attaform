@@ -26,7 +26,7 @@ function dispatchChange(el: HTMLInputElement): void {
   el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-describe('<input type="radio" v-register> — single-group selection', () => {
+describe('<input type="radio" v-register>: single-group selection', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -235,7 +235,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
   })
 })
 
-describe('<input type="radio" v-register> — hydration with static value attribute', () => {
+describe('<input type="radio" v-register>: hydration with static value attribute', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -306,7 +306,7 @@ describe('<input type="radio" v-register> — hydration with static value attrib
   })
 })
 
-describe('<input type="radio" v-register> — slim-gate interactions', () => {
+describe('<input type="radio" v-register>: slim-gate interactions', () => {
   let app: App | undefined
   let warnSpy: ReturnType<typeof vi.spyOn>
 

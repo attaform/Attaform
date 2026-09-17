@@ -22,7 +22,7 @@ import type { NestedReadType, NestedType } from '../../src/runtime/types/types-c
  * parity before any changes ship.
  */
 
-describe('NestedType — strict resolve (no `| undefined` from array crossings)', () => {
+describe('NestedType: strict resolve (no `| undefined` from array crossings)', () => {
   it('resolves a nested object leaf to its exact type', () => {
     expectTypeOf<NestedType<{ user: { email: string } }, 'user.email'>>().toEqualTypeOf<string>()
   })
@@ -59,7 +59,7 @@ describe('NestedType — strict resolve (no `| undefined` from array crossings)'
   })
 })
 
-describe('NestedReadType — taint leaves with `| undefined` once an array index crosses', () => {
+describe('NestedReadType: taint leaves with `| undefined` once an array index crosses', () => {
   it('resolves a non-array leaf without tainting', () => {
     expectTypeOf<
       NestedReadType<{ user: { email: string } }, 'user.email'>

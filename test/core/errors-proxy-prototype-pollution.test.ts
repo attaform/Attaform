@@ -58,12 +58,12 @@ type ErrorTree = Record<string, unknown>
 function materialisedErrorTree(api: { errors: unknown }): ErrorTree {
   const errors = api.errors as { toJSON?: () => ErrorTree }
   if (typeof errors.toJSON !== 'function') {
-    throw new Error('form.errors did not expose toJSON — surface-proxy contract changed')
+    throw new Error('form.errors did not expose toJSON: surface-proxy contract changed')
   }
   return errors.toJSON()
 }
 
-describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', ({ mount }) => {
+describe.each(adapters)('errors-proxy `placeAt` proto-less storage: $name', ({ mount }) => {
   beforeEach(() => {
     // Pre-test invariant: the canary must NOT be present. A leaked
     // pollution from earlier in the test process would otherwise

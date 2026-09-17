@@ -120,7 +120,7 @@ function unclassifiableZodWarning(tag: string): string {
   return (
     `[${tag}] Could not classify the installed Zod major (corrupted package.json, ` +
     'monorepo edge case, or an unexpected version string). Falling through to runtime ' +
-    'dispatch — both Zod adapters will ship in the bundle. ' +
+    'dispatch, so both Zod adapters will ship in the bundle. ' +
     'Pass `attaform({ resolveZodAlias: false })` to silence this warning.'
   )
 }

@@ -97,7 +97,7 @@ async function callResolveId(
   return (handler as any).call(context, source, importer)
 }
 
-describe('attaform/vite — resolveId alias for `attaform/zod`', () => {
+describe('attaform/vite: resolveId alias for `attaform/zod`', () => {
   it('rewrites `attaform/zod` to `attaform/zod-v4` when zod@4 is installed', async () => {
     const config = await resolveWithRoot([vue(), attaform()], zodV4Root)
     const plugin = findAttaformPlugin(config)

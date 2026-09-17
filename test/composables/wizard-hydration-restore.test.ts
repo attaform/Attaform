@@ -62,7 +62,7 @@ function mountWithResolver<R>(
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — injected active-step resolver (Nuxt path)', () => {
+describe('useWizard: injected active-step resolver (Nuxt path)', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
@@ -135,7 +135,7 @@ describe('useWizard — injected active-step resolver (Nuxt path)', () => {
   })
 })
 
-describe('useWizard — explicit restore lambda', () => {
+describe('useWizard: explicit restore lambda', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)
@@ -200,7 +200,7 @@ describe('useWizard — explicit restore lambda', () => {
   })
 })
 
-describe('useWizard — SSR-to-client hydration through the resolver', () => {
+describe('useWizard: SSR-to-client hydration through the resolver', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', ORIGINAL_URL)

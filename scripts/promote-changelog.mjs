@@ -23,7 +23,7 @@ const content = readFileSync(changelogPath, 'utf8')
 const unreleased = /^## Unreleased\s*$/m
 if (!unreleased.test(content)) {
   console.error(
-    `[promote-changelog] no "## Unreleased" header in CHANGELOG.md — skipping (version=${pkg.version})`
+    `[promote-changelog] no "## Unreleased" header in CHANGELOG.md, skipping (version=${pkg.version})`
   )
   process.exit(0)
 }

@@ -91,7 +91,7 @@ const hooks = vRegister as unknown as {
   created?: (el: HTMLElement, binding: DirectiveBinding, vnode: VNode, prev: unknown) => void
 }
 
-describe('directive — blank on numeric clear', () => {
+describe('directive: blank on numeric clear', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -199,7 +199,7 @@ describe('directive — blank on numeric clear', () => {
   })
 })
 
-describe('directive — `.number` × text-input beforeinput filter', () => {
+describe('directive: `.number` × text-input beforeinput filter', () => {
   let removalSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -456,7 +456,7 @@ describe('directive — `.number` × text-input beforeinput filter', () => {
   })
 })
 
-describe('directive — `.number` blur cleanup (16d regression: lone period)', () => {
+describe('directive: `.number` blur cleanup (16d regression: lone period)', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -565,7 +565,7 @@ describe('directive — `.number` blur cleanup (16d regression: lone period)', (
   })
 })
 
-describe('directive — `.number` real-time storage updates with mid-typing DOM preservation', () => {
+describe('directive: `.number` real-time storage updates with mid-typing DOM preservation', () => {
   // Storage commits on every keystroke that parses to a number;
   // `lastTypedForm` keeps Vue's `:value` patch from yanking the DOM
   // away from the user's caret. Blur clears `lastTypedForm` so the
@@ -737,7 +737,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
   })
 })
 
-describe('directive — `.number` overflow (Infinity) refusal', () => {
+describe('directive: `.number` overflow (Infinity) refusal', () => {
   // `parseFloat('1e309')` is `Infinity`. `typeof Infinity === 'number'`,
   // so without an explicit guard the slim-primitive gate accepts it
   // and storage holds `Infinity`. Downstream chaos:
@@ -834,7 +834,7 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
   })
 })
 
-describe('directive — `<input type="number">` mid-typing badInput is not a clear', () => {
+describe('directive: `<input type="number">` mid-typing badInput is not a clear', () => {
   // 16e: `validity.badInput` tells a real user-clear
   // (`badInput === false`) from a transient mid-edit
   // (`badInput === true`). A browser reports `el.value === ''` for

@@ -81,7 +81,7 @@ function mount<T extends ReturnType<(typeof fixtures)[keyof typeof fixtures]>>(
   return { app, form: handle.form as AnyForm }
 }
 
-describe('public form surfaces — no null-prototype leak into consumer reads', () => {
+describe('public form surfaces: no null-prototype leak into consumer reads', () => {
   for (const [adapter, build] of Object.entries(fixtures)) {
     describe(adapter, () => {
       it('form.values.hasOwnProperty works at the root', () => {

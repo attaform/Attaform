@@ -64,7 +64,7 @@ function mountInert(factoryBody: () => Promise<Shape>): {
   return { app, api: captured.api as CapturedForm, calls }
 }
 
-describe('useForm — lazy activation', () => {
+describe('useForm: lazy activation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

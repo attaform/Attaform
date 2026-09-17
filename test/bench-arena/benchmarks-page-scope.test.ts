@@ -96,9 +96,23 @@ describe('the arena cohort vs the page explaining it', () => {
     const results = JSON.parse(
       readFileSync(join(REPO_ROOT, 'apps/bench-arena/results.json'), 'utf8')
     ) as { bundle: { asyncGzBytes?: number }[] }
-    const splits = results.bundle.some((row) => (row.asyncGzBytes ?? 0) > 0)
-    expect(splits, 'no row defers a chunk; the caveat below may no longer apply').toBe(true)
+    const deferring = results.bundle.filter((row) => (row.asyncGzBytes ?? 0) > 0).length
+
+    // The build code-splits whether or not anything lands in a deferred
+    // chunk, so the page explains the split either way. What it must not
+    // do is promise a figure the table is not rendering: `BenchArena.vue`
+    // shows "+N deferred" only for a row with a non-zero async chunk.
+    // This assertion used to require that SOME row defer, which made a
+    // cohort where none does read as a docs defect. Attaform was the only
+    // row that ever had a deferred chunk, and deleting the last dynamic
+    // import from its build took it to zero, so the page has to account
+    // for a row with no badge rather than only for a row with one.
     expect(page()).toContain('deferred')
+    expect(
+      /no deferred badge loads in one chunk/.test(page()),
+      `${PAGE} must say what a row without a deferred badge means; ` +
+        `${deferring} of ${results.bundle.length} rows defer`
+    ).toBe(true)
     expect(
       /Bundle is total/.test(page()),
       'the bundle figure is the initial load, not the total'

@@ -158,7 +158,6 @@ const SHARED_EXTERNALS = [
   'vue',
   'zod',
   'typescript',
-  /lodash-es.*/,
 ]
 
 const SHARED_ROLLUP: NonNullable<BuildConfig['rollup']> = {

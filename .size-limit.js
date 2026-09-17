@@ -15,8 +15,13 @@
  *  - Vue is external everywhere, as the preset configures it.
  *
  * A `limit` is a ceiling, not a record of a measurement: `pnpm check:size`
- * prints the current size beside each one. Where a cap sits snug it is a
- * tripwire and is meant to bind. Why any given cap moved is in git.
+ * prints the current size beside each one. Why any given cap moved is in git.
+ *
+ * Every cap here is the measured size rounded up to the next 0.25 kB that
+ * leaves at least 5% headroom. A cap set further out than that stops being a
+ * tripwire without anyone noticing: the Nuxt and Vite entries sat at 14 and
+ * 13 kB against measurements of 8.8 and 8.2, so either could have doubled
+ * its build-time weight and still passed.
  */
 
 /** @param {import('esbuild').BuildOptions} config */
@@ -107,17 +112,18 @@ export default [
     // links none of it. A jump here with no history-side feature behind it
     // means the plugin's graph started dragging store weight along.
     path: 'dist/history.mjs',
-    limit: '1.5 KB',
+    limit: '1.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
   {
     // The Nuxt module: auto-import manifest, runtime-config slot, and the
-    // lazily imported DevTools custom tab. Build-time weight, not shipped
-    // to the browser, which is why this cap is loose next to the runtime
-    // entries above.
+    // lazily imported DevTools custom tab. Build-time weight, not shipped to
+    // the browser, so a jump here costs a consumer build seconds rather than
+    // bytes; the cap still binds, because the way build-time weight grows is
+    // a runtime module drifting into the module's own graph.
     path: 'dist/nuxt.mjs',
-    limit: '14 KB',
+    limit: '9.25 KB',
     gzip: true,
     ignore: ['@nuxt/kit', 'nuxt/app'],
     modifyEsbuildConfig: asEsmNode,
@@ -125,10 +131,10 @@ export default [
   {
     // The Vite plugin: the `resolveId` hook and Zod-major detection that
     // rewrite `attaform/zod` to a single-adapter entry, the devtools iframe
-    // middleware, and the auto-import manifest re-export. Build-time
-    // weight, so this cap is loose for the same reason the Nuxt one is.
+    // middleware, and the auto-import manifest re-export. Build-time weight,
+    // read the same way as the Nuxt module's.
     path: 'dist/vite.mjs',
-    limit: '13 KB',
+    limit: '8.75 KB',
     gzip: true,
     ignore: ['vite'],
     modifyEsbuildConfig: asEsmNode,
@@ -142,25 +148,25 @@ export default [
   // weight into a build-time entry.
   {
     path: 'dist/rollup.mjs',
-    limit: '1.25 KB',
+    limit: '1 KB',
     gzip: true,
     modifyEsbuildConfig: asEsmNode,
   },
   {
     path: 'dist/esbuild.mjs',
-    limit: '1.25 KB',
+    limit: '1 KB',
     gzip: true,
     modifyEsbuildConfig: asEsmNode,
   },
   {
     path: 'dist/webpack.mjs',
-    limit: '1.25 KB',
+    limit: '1 KB',
     gzip: true,
     modifyEsbuildConfig: asEsmNode,
   },
   {
     path: 'dist/rspack.mjs',
-    limit: '1.25 KB',
+    limit: '1 KB',
     gzip: true,
     modifyEsbuildConfig: asEsmNode,
   },
@@ -168,7 +174,7 @@ export default [
     // The Vue compiler transforms that give v-register its SSR markup.
     // Build-time only, with @vue/compiler-core external.
     path: 'dist/transforms.mjs',
-    limit: '6 KB',
+    limit: '4.5 KB',
     gzip: true,
     ignore: ['@vue/compiler-core'],
     modifyEsbuildConfig: asEsmNode,
@@ -274,7 +280,7 @@ export default [
     name: 'attaform: { createAttaform } only',
     path: 'dist/index.mjs',
     import: '{ createAttaform }',
-    limit: '1.5 KB',
+    limit: '0.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

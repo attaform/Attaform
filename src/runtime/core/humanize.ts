@@ -4,7 +4,7 @@
  * registered with the schema. Splits camelCase, snake_case, and
  * kebab-case into separate words and title-cases each word.
  *
- * Numeric segments (array indices) collapse to an empty string —
+ * A numeric segment (an array index) collapses to an empty string:
  * `items[3]` should not present as `'3'`. Callers can substitute
  * their own fallback (e.g. `'Item 3'`) when this returns empty.
  *

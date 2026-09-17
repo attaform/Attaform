@@ -58,7 +58,7 @@ function describePath(schema: AbstractSchema<GenericForm, GenericForm>, path: Pa
  * The default shape is the right spine to walk because it is what the
  * form materialises at construction, so the sketch covers exactly the
  * paths a shared store would actually disagree about. Optional subtrees
- * with no default are invisible to it — deliberately. This is a footgun
+ * with no default are invisible to it, deliberately. This is a footgun
  * catcher, not a soundness proof, and it was never able to be one:
  * refinement and transform bodies are opaque to every version of this
  * check.

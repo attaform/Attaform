@@ -8,7 +8,7 @@ import { mergeSparseHydration } from './merge-hydration'
 import { ROOT_PATH, ROOT_PATH_KEY } from './paths'
 
 /**
- * The async-defaults orchestrator — the heavy half of `activate()` /
+ * The async-defaults orchestrator, the heavy half of `activate()` and
  * `rehydrate()`. The gating flips (`activated`, `hydrating`,
  * `activationPromise`) are published synchronously by the kernel's
  * `fireFactory` BEFORE this runs, so gated readers and
@@ -24,7 +24,7 @@ export async function runFactoryAndApply<F extends GenericForm, G extends Generi
 ): Promise<void> {
   // Stale-while-revalidate: keep any prior `HydrationFailed` entry
   // visible until the new attempt settles. Same contract field
-  // errors follow under `field.validating === true` — the surface
+  // errors follow under `field.validating === true`, and the surface
   // shouldn't flicker to empty during the retry. The entry is
   // replaced on failure or cleared on success in the branches
   // below. (`hydrating` was already flipped true, synchronously, by

@@ -1,6 +1,6 @@
 /**
  * Escape a JSON string so it's safe to embed inside an inline
- * `<script>` tag during SSR. Plain `JSON.stringify` is not safe — a
+ * `<script>` tag during SSR. Plain `JSON.stringify` is not safe: a
  * form value containing the literal substring `</script>` would
  * break out of the script tag.
  *
@@ -9,7 +9,7 @@
  * // `<script>window.__ATTAFORM_STATE__ = ${payload}</script>` is safe.
  * ```
  *
- * Output remains valid JSON — `JSON.parse` round-trips back to the
+ * Output remains valid JSON, so `JSON.parse` round-trips back to the
  * original value on the client.
  */
 export function escapeForInlineScript(json: string): string {

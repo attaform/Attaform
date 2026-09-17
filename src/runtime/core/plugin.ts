@@ -24,8 +24,8 @@ export type AttaformPluginOptions = SSRDetectOptions & {
  * warning when triggered by the lazy-install path).
  *
  * Used internally by:
- *  - `createAttaform()` — the explicit plugin install path.
- *  - `ensureAttaformInstalled()` — the lazy-install path triggered by
+ *  - `createAttaform()`: the explicit plugin install path.
+ *  - `ensureAttaformInstalled()`: the lazy-install path triggered by
  *    `useForm` / `injectForm` / `useRegister` when no explicit install
  *    has happened yet.
  *
@@ -47,7 +47,7 @@ function installAttaformOnApp(
 ): AttaformRegistry {
   // Idempotent install: a second call (e.g. createAttaform() registered
   // twice via vite.config + nuxt module, or createAttaform() after a
-  // lazy useForm call) would otherwise overwrite the existing registry —
+  // lazy useForm call) would otherwise overwrite the existing registry,
   // orphaning every FormStore the previous instance had built. Detect
   // via the `_attaform` slot `attachRegistryToApp` writes; bail with a
   // dev warning ONLY for the explicit path, since the lazy path is
@@ -71,8 +71,8 @@ function installAttaformOnApp(
         const { setupAttaformDevtools } = await import('./devtools')
         await setupAttaformDevtools(app, registry)
       } catch {
-        // Missing peer dep / DevTools not attached — silently skip.
-        // The form runtime works without DevTools; this is pure-
+        // Missing peer dep, or DevTools not attached. Silently skip,
+        // the form runtime working without DevTools: this is pure
         // observability tooling.
       }
     })()
@@ -85,7 +85,7 @@ function installAttaformOnApp(
  * Lazy-install the form library on a Vue app from inside a setup
  * context. Called by `useForm`, `injectForm`, and `useRegister` so
  * `pnpm install attaform` is the entire setup story for the common
- * CSR case — no `app.use(createAttaform())` required in `main.ts`.
+ * CSR case, with no `app.use(createAttaform())` required in `main.ts`.
  *
  * If the app already has an attaform registry attached (because the
  * consumer installed `createAttaform({ devtools })` or the
@@ -93,7 +93,7 @@ function installAttaformOnApp(
  * returned. App-wide options are preserved.
  *
  * SSR helpers (`renderAttaformState`, `hydrateAttaformState`) do NOT
- * use this path — they run outside setup and require explicit
+ * use this path: they run outside setup and require an explicit
  * `createAttaform()` install.
  */
 export function ensureAttaformInstalled(app: App): AttaformRegistry {
@@ -103,7 +103,7 @@ export function ensureAttaformInstalled(app: App): AttaformRegistry {
 /**
  * Create the Vue plugin that installs the form library on a Vue
  * application. Required only when you want app-wide options
- * (`devtools: false`, `ssr: true`) — for the default setup,
+ * (`devtools: false`, `ssr: true`). For the default setup,
  * `useForm` / `injectForm` / `useRegister` lazy-install the registry
  * on first use.
  *
@@ -117,10 +117,10 @@ export function ensureAttaformInstalled(app: App): AttaformRegistry {
  * ```
  *
  * Under SSR with bare Vue 3, install explicitly with `{ ssr: true }`
- * from your server entry — the SSR serialization helpers
+ * from your server entry: the SSR serialization helpers
  * (`renderAttaformState` / `hydrateAttaformState`) require an
  * already-attached registry and don't trigger lazy install. Under
- * Nuxt, install via `attaform/nuxt` instead — the Nuxt module wires
+ * Nuxt, install via `attaform/nuxt` instead; the Nuxt module wires
  * both server and client automatically.
  *
  * Installing more than once on the same app is a no-op (the second

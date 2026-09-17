@@ -33,7 +33,7 @@ const EMPTY_ARIA_LOCKS: ReadonlySet<string> = new Set()
 /**
  * "Respect your markup": detect authored aria attributes at the vnode
  * props level rather than the DOM, so a dynamic `:aria-invalid="x"` is
- * caught even when `x` is falsy at mount. Locks only ever accumulate —
+ * caught even when `x` is falsy at mount. Locks only accumulate:
  * once an attribute is authored, the directive leaves it alone for the
  * binding's lifetime.
  */

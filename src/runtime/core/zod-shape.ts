@@ -7,7 +7,7 @@
  * reads `def.type`).
  *
  * Why `def.type` and not `_def`:
- * - Zod v4 retained `_def` for backward compat — reading `_def` alone
+ * - Zod v4 retained `_def` for backward compat, so reading `_def` alone
  *   misclassifies v4 schemas as v3.
  * - Zod v4's stable shape is `def.type: string` (lowercase tag like
  *   `'object'`); Zod v3's is `_def.typeName: string` (capitalised tag

@@ -1,29 +1,29 @@
 /**
  * Browser-history primitive for `useWizard`. Encapsulates the only
  * DOM-touching surface in the wizard module so the composable can
- * stay framework-agnostic — no `useRoute()`, no vue-router, no Nuxt
+ * stay framework-agnostic: no `useRoute()`, no vue-router, no Nuxt
  * coupling.
  *
  * The handle exposes five operations:
- *   - `push(key)` — write `key` into `?<param>=<key>` via pushState so
+ *   - `push(key)`: write `key` into `?<param>=<key>` via pushState so
  *     the step earns a real history entry and the browser Back /
  *     Forward buttons walk the flow. Deduped: a no-op when the URL is
  *     already on `key`. Preserves any other search params already on
  *     the URL.
- *   - `replace(key)` — write `key` via replaceState, canonicalizing the
+ *   - `replace(key)`: write `key` via replaceState, canonicalizing the
  *     current entry in place without growing the stack. The wizard uses
  *     this when the target step is the URL's *effective* step (a bare
  *     `/wizard` resolves to the first step, so writing the first step is
  *     not a navigation), so Back never lands on a dead entry showing the
  *     same step, and the Forward stack survives a Back round-trip.
- *   - `read()` — read the current step key from the URL, or
+ *   - `read()`: read the current step key from the URL, or
  *     `undefined` if the param is absent.
- *   - `subscribe(cb)` — register a popstate listener; the callback
+ *   - `subscribe(cb)`: register a popstate listener whose callback
  *     receives the key parsed off the new URL (or `undefined`).
- *   - `dispose()` — tear down. Idempotent.
+ *   - `dispose()`: tear down. Idempotent.
  *
  * SSR safety: when `typeof window === 'undefined'`, the factory
- * returns a no-op handle. Consumers don't have to gate calls — the
+ * returns a no-op handle, so a consumer never has to gate a call: the
  * primitive is the gate.
  */
 
@@ -74,22 +74,22 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
 
   window.addEventListener('popstate', handlePopstate)
 
-  // Some embedded contexts can't accept a same-document URL rewrite —
-  // most commonly `about:srcdoc` iframes (e.g. Vue REPL previews),
+  // Some embedded contexts cannot accept a same-document URL rewrite,
+  // most commonly an `about:srcdoc` iframe (a Vue REPL preview),
   // sandboxed iframes, and data: URLs. In those, `buildUrl(key)`
   // resolves to a URL whose origin doesn't match the document's
   // (the document inherits the parent's origin, but the synthesized
   // URL keeps the scheme), and the History API throws `SecurityError`.
-  // The user-visible step state still works — `current` / `goTo()`
-  // drive the form via the in-memory wizard — they just won't appear in
-  // the URL bar. Silently swallowing keeps the preview functional
-  // without coupling the library to embed-detection logic.
+  // The user-visible step state still works, `current` and `goTo()`
+  // driving the form through the in-memory wizard; they just do not
+  // appear in the URL bar. Silently swallowing keeps the preview
+  // working without coupling Attaform to embed-detection logic.
   function safeWrite(key: string, mode: 'push' | 'replace'): void {
     try {
       if (mode === 'push') window.history.pushState({}, '', buildUrl(key))
       else window.history.replaceState({}, '', buildUrl(key))
     } catch {
-      // SecurityError or similar — origin mismatch, sandboxed history,
+      // SecurityError or similar: an origin mismatch, sandboxed history,
       // or a host that's locked down the History API. No remediation
       // possible here; the in-memory wizard state remains the source
       // of truth.
@@ -100,7 +100,7 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
     push(key) {
       if (disposed) return
       // Dedup: skip when the URL is already on `key`. Pushing an
-      // identical step would stack a duplicate entry — most visibly on
+      // identical step would stack a duplicate entry, most visibly on
       // the popstate -> restore -> persist round-trip, where a Back that
       // lands on `?<param>=<key>` re-fires the persist watcher.
       if (currentKey() === key) return

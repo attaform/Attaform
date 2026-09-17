@@ -11,16 +11,16 @@ import { canonicalizePath, SET_MEMBER_SEGMENT, type Path, type PathKey } from '.
  * Version-specific primitives the field-meta walk consumes. Both
  * adapters already expose all three:
  *
- *   - `intro` — the adapter's `SchemaIntrospector` (kind discriminant +
+ *   - `intro`: the adapter's `SchemaIntrospector` (kind discriminant plus
  *     structural accessors + wrapper unwraps). The walk dispatches on
  *     `intro.kindOf`, which differs per version (v3 returns
  *     `effects` / `pipeline` / `branded`; v4 returns `pipe` / `transform`),
  *     so the switch below handles both vocabularies.
- *   - `peelAllWrappers` — the catch-peeling structural peel
+ *   - `peelAllWrappers`: the catch-peeling structural peel
  *     (`peelAllV3Wrappers` on v3, `peelAllWrappers` on v4). Used to reach
  *     a registration that sits on the inner before wrapping, e.g.
  *     `withMeta(z.string(), {...}).optional()`.
- *   - `getFieldMetaList` — reads the adapter's per-instance registration
+ *   - `getFieldMetaList`: reads the adapter's per-instance registration
  *     list. The registry is adapter-local (keyed by schema instance), so
  *     it can't be a shared import.
  *
@@ -39,7 +39,7 @@ export interface FieldMetaWalkServices<Schema> {
  * resolver's bytes ride the consumer's own registration import:
  * registering metadata is the only way a payload can exist, hence the
  * walk is installed before any lookup could need it. Reads and removes
- * delegate straight through — they can't create a payload, so they
+ * delegate straight through: they cannot create a payload, so they
  * don't need the walk.
  */
 export const installingFieldMetaStore: FieldMetaStore = {
@@ -69,7 +69,7 @@ const pathMetaCache = new WeakMap<object, Map<PathKey, FieldMetaPayload>>()
  * multiple paths lives in one place.
  *
  * After the walk, "surplus" registrations get absorbed into the schema's
- * last-visited path — covers chains like
+ * last-visited path, which covers chains like
  * `withMeta(s, {label}).register(fieldMeta, {desc})` where one path
  * consumes list[0] and list[1] would otherwise go unread.
  */
@@ -101,7 +101,7 @@ export function getFieldMetaPathMap<Schema extends object>(
 /**
  * Pull a payload off `schema`'s registration list, counter-indexed so a
  * schema registered at multiple paths pairs each visit with the next
- * payload in declaration order. Clamp to the last entry — schemas reused
+ * payload in declaration order. Clamp to the last entry: a schema reused
  * MORE times than they're registered (e.g. an array element registered
  * once, visited per-index) all share the single registration.
  */

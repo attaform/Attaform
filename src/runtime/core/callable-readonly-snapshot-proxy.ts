@@ -15,7 +15,7 @@ export type CallableReadonlySnapshotProxy<T> = ((...args: unknown[]) => unknown)
  * warn-and-noop) is fixed and shared across surfaces.
  *
  * Reactivity contract: each hook is invoked inside the corresponding
- * trap, which fires inside the consumer's active effect — every
+ * trap, which fires inside the consumer's active effect, so every
  * reactive read inside the hook (a Ref, a computed, the form value)
  * is tracked at access time. The factory caches nothing; callers
  * that need expensive snapshots should memoise inside `snapshot`.
@@ -32,7 +32,7 @@ export interface CallableReadonlySnapshotOptions<T> {
    * `apply()`, `toJSON` / `toString` / `Symbol.toPrimitive` coercion,
    * and (when no custom `describeKey` is supplied) the
    * `getOwnPropertyDescriptor` value field. Should be cheap or
-   * pre-memoised — `Symbol.toPrimitive` calls may stack inside Vue's
+   * pre-memoised, since `Symbol.toPrimitive` calls may stack inside Vue's
    * stringification path.
    */
   readonly snapshot: () => T
@@ -43,7 +43,7 @@ export interface CallableReadonlySnapshotOptions<T> {
    *
    * The split exists because `snapshot()` may return a Vue reactive /
    * readonly proxy (so `proxy()` hands consumers a live, tracked view),
-   * but Vue shims `hasOwnProperty` on such proxies — so a data field
+   * but Vue shims `hasOwnProperty` on such proxies, so a data field
    * literally named `hasOwnProperty` would serialise as Vue's function
    * shim (and `JSON.stringify` would drop it). A surface whose snapshot
    * is reactive supplies a raw (`toRaw`'d) snapshot here so
@@ -56,7 +56,7 @@ export interface CallableReadonlySnapshotOptions<T> {
    * Resolve a `string` property access against the underlying source.
    * Called from the `get` trap (after the coercion-key / symbol
    * branches) so consumer-supplied logic can decide what each key
-   * resolves to — usually `(snapshot() as Record<string, unknown>)[key]`
+   * resolves to, usually `(snapshot() as Record<string, unknown>)[key]`
    * or a per-key unwrap of a `ComputedRef`.
    *
    * Returning `undefined` is the natural "not present" reply; the
@@ -101,28 +101,28 @@ export interface CallableReadonlySnapshotOptions<T> {
 
 /**
  * Build the shared callable readonly Proxy that powers `form.values`
- * and `wizard.statuses` — and any future surface that follows the
+ * and `wizard.statuses`, plus any future surface that follows the
  * "callable, readonly, snapshot-backed" shape (a Ref + a couple of
  * coercion / enumeration hooks).
  *
  * Trap topology (shared, fixed):
  *
- * - **`apply(_, _, args)`** — `proxy()` returns `snapshot()` whole;
+ * - **`apply(_, _, args)`**: `proxy()` returns `snapshot()` whole;
  *   `proxy(arg)` returns `resolveCall?.(arg) ?? resolveKey(String(arg))`.
- * - **`get(_, key)`** — `Symbol.toPrimitive` returns the coercion
+ * - **`get(_, key)`**: `Symbol.toPrimitive` returns the coercion
  *   handler; other symbols pass through to `Reflect.get(target, key)`
  *   so Vue's reactivity sigils (`__v_isRef`, `__v_isReadonly`, …) and
  *   iteration symbols resolve against the function target. `toJSON`,
  *   `toString`, `valueOf` return the coercion handlers. Any other
  *   `string` key returns `resolveKey(key)`.
- * - **`has(_, key)`** — symbols pass through to the function target;
+ * - **`has(_, key)`**: symbols pass through to the function target;
  *   strings route through `hasKey`.
- * - **`ownKeys`** — `ownKeys()`. The arrow-function target carries no
+ * - **`ownKeys`**: `ownKeys()`. The arrow-function target carries no
  *   non-configurable own properties, so the Proxy invariant is satisfied
  *   by whatever the surface returns.
- * - **`getOwnPropertyDescriptor(_, key)`** — `describeKey?.(key)` when
+ * - **`getOwnPropertyDescriptor(_, key)`**: `describeKey?.(key)` when
  *   supplied; otherwise the default value-from-`resolveKey` descriptor.
- * - **`set` / `deleteProperty` / `defineProperty`** — `warnReadOnly` +
+ * - **`set` / `deleteProperty` / `defineProperty`**: `warnReadOnly` plus
  *   return `true`. Strict-mode callers don't throw; the readonly
  *   contract is enforced by the absence of any actual mutation.
  *

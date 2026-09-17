@@ -7,11 +7,11 @@ import type { ValidationError } from '../types/types-api'
  * Convention: `<scope>:<kebab-case-identifier>`. Three scopes are
  * recognised by the library:
  *
- * - `atta:` — emitted by the framework-agnostic core (this map).
- * - `zod:` — emitted by the Zod adapter; computed inline from
+ * - `atta:`: emitted by the framework-agnostic core (this map).
+ * - `zod:`: emitted by the Zod adapter, computed inline from
  *   `issue.code` (e.g. `zod:too_small`). No enum here because
  *   Zod's code list evolves.
- * - consumer-defined — anything the consumer's backend / app stamps
+ * - consumer-defined: anything the consumer's backend or app stamps
  *   onto a `ValidationError` (a server response handed to `setErrors`,
  *   or a code passed inline). Pick a scope (`api:`, `auth:`, etc.) and
  *   stay consistent.
@@ -25,7 +25,7 @@ import type { ValidationError } from '../types/types-api'
  * ```
  */
 export const AttaformErrorCode = {
-  /** A required field is in the blank set — user hasn't supplied a value. */
+  /** A required field is in the blank set: no value was supplied. */
   NoValueSupplied: 'atta:no-value-supplied',
   /** The schema adapter's `validateAtPath` threw synchronously. */
   AdapterThrew: 'atta:adapter-threw',
@@ -95,7 +95,7 @@ export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof Attaform
  * The canonical "No value supplied" error for a required field currently in
  * the blank set. Single source of truth so the reactively-aggregated form
  * (`derivedBlankErrors`, create-form-store.ts) and the per-leaf field-state
- * synthesis (field-state-api.ts) emit a byte-identical entry — they read
+ * synthesis (field-state-api.ts) emit a byte-identical entry. They read
  * different reactive channels (the whole-form blank Map vs. a leaf's own
  * `blankPaths.has(key)`) but must produce the same `ValidationError`.
  */

@@ -1,5 +1,5 @@
 /**
- * Schema-attached field metadata — the shared types used by both Zod
+ * Schema-attached field metadata: the shared types used by both Zod
  * adapters and the unified `attaform/zod` entry so a consumer's data
  * flow reads the same shape regardless of which path runs at lookup.
  *
@@ -24,7 +24,7 @@
  */
 
 /**
- * The metadata a consumer attaches to a schema node — short label
+ * The metadata a consumer attaches to a schema node: a short label
  * (presentational), longer description (helper text), placeholder
  * (input affordance). Declared as `interface` (not `type`) so
  * downstream apps can extend the shape via TypeScript declaration
@@ -41,7 +41,7 @@
  * and `state.meta.tooltip` reads back as `string | undefined`.
  *
  * Every key is optional. Empty payloads (no keys registered) are
- * indistinguishable from "not registered at all" — both surface as
+ * indistinguishable from "not registered at all", both surfacing as
  * fallbacks (humanize for label, undefined for the rest).
  */
 export interface FieldMetaPayload {
@@ -58,12 +58,12 @@ export interface FieldMetaPayload {
  *   - `label`: registry payload → `humanize(lastSegment)`
  *   - `description`: registry payload → schema's `.describe()` value → `undefined`
  *   - `placeholder`: registry payload → `undefined`
- *   - `meta`: full registered payload, frozen — empty object if nothing registered
+ *   - `meta`: the full registered payload, frozen; `{}` if nothing registered
  *
  * `label` is always a non-empty string at leaves (humanize fallback
  * guarantees this for any non-numeric segment). For containers it
  * may collapse to the empty string when the path is empty (root) or
- * the segment is a numeric index — callers display "" or substitute
+ * the segment is a numeric index, so callers display "" or substitute
  * a context-appropriate fallback.
  */
 export type ResolvedFieldMeta = {

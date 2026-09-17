@@ -8,7 +8,7 @@ import { getRegistryFromApp, type SerializedFormData } from './registry'
  * Version stamp written onto every serialized envelope and required
  * back at hydration. Rolling deploys and stale CDN caches can pair an
  * old server bundle's payload with a new client (or vice versa); a
- * stamp mismatch skips hydration wholesale — the client falls back to
+ * stamp mismatch skips hydration wholesale, so the client falls back to
  * fresh construction, which beats replaying a payload whose inner
  * shapes have drifted. Bump when `SerializedFormData`'s wire shape
  * changes.
@@ -19,11 +19,11 @@ export const ATTAFORM_STATE_VERSION = 1
  * Serialised snapshot of every form in a Vue app, produced by
  * `renderAttaformState` and consumed by `hydrateAttaformState`.
  *
- * JSON-safe — pass to `JSON.stringify`, `devalue`, or any other
+ * JSON-safe: pass it to `JSON.stringify`, `devalue`, or any other
  * serialiser before embedding in your SSR payload.
  */
 export type SerializedAttaformState = {
-  /** Envelope version — see {@link ATTAFORM_STATE_VERSION}. */
+  /** Envelope version; see {@link ATTAFORM_STATE_VERSION}. */
   readonly v: number
   /** Tuples of `[formKey, snapshot]` for every form in the app. */
   readonly forms: ReadonlyArray<readonly [FormKey, SerializedFormData]>
@@ -48,7 +48,7 @@ export type SerializedAttaformState = {
  * ```
  *
  * Pair with `hydrateAttaformState` on the client to restore the
- * forms in their server-rendered state. Nuxt users don't need this —
+ * forms in their server-rendered state. Nuxt users do not need it:
  * `attaform/nuxt` wires SSR automatically.
  */
 export function renderAttaformState(app: App): SerializedAttaformState {
@@ -107,7 +107,7 @@ export function renderAttaformState(app: App): SerializedAttaformState {
  * construct fresh from their schemas instead.
  *
  * The next `useForm({ key })` call for each serialised form picks up
- * the snapshot transparently — no further action is required.
+ * the snapshot transparently, with no further action required.
  */
 export function hydrateAttaformState(app: App, payload: unknown): void {
   // A missing or mismatched stamp means the server bundle that

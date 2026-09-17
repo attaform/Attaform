@@ -668,13 +668,6 @@ function adapterThrowMessage(err: unknown): string {
   return 'Adapter validateAtPath threw a non-Error value'
 }
 
-/**
- * Snapshot the reactively-derived blank-required errors, filtered to paths
- * inside `scope`, or all of them when `scope` is `undefined`. The errors
- * themselves are computed on the store; this takes a scoped slice for the
- * validation or submit response. Mutating the returned array is safe, the
- * store's computed building a fresh map per recompute.
- */
 /** `true` when any cell in the tagged store holds consumer-set (user-side) entries. */
 function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericForm>): boolean {
   for (const cell of state.errorCells.values()) {
@@ -683,6 +676,13 @@ function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericF
   return false
 }
 
+/**
+ * Snapshot the reactively-derived blank-required errors, filtered to paths
+ * inside `scope`, or all of them when `scope` is `undefined`. The errors
+ * themselves are computed on the store; this takes a scoped slice for the
+ * validation or submit response. Mutating the returned array is safe, the
+ * store's computed building a fresh map per recompute.
+ */
 function collectScopedBlankErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   scope: Path | undefined

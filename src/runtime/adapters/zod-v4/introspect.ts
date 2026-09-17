@@ -525,21 +525,6 @@ function walkSchemaTree(
 }
 
 /**
- * True iff any refinement check on the schema (or any descendant
- * subschema) is async. Detection: walks the tree once via
- * `walkSchemaTree`, inspecting each `def.checks[].def.fn` for
- * `constructor.name === 'AsyncFunction'`. Direct `async (v) => …`
- * refinements are caught; sync functions that happen to return a
- * Promise (rare; we'd recommend marking them `async`) are NOT.
- *
- * Used by the adapter's `needsAsyncValidation()` to drive the
- * runtime's construction-time async-validation seed (see
- * create-form-store's `queueInitialAsyncValidation`). False negatives just delay
- * async refines until first mutation — matches the pre-detection
- * behavior. False positives are unlikely (the AsyncFunction check is
- * precise) and cost only one extra microtask of validation work.
- */
-/**
  * True iff the schema tree holds at least one discriminated union at
  * any depth — `walkSchemaTree` reaches unions inside arrays, tuples,
  * records, intersections, pipes, and (cycle-capped) lazy schemas.
@@ -549,6 +534,21 @@ export function containsDiscriminatedUnion(schema: z.ZodType, seen?: WeakSet<obj
   return walkSchemaTree(schema, (node) => kindOf(node) === 'discriminated-union', seen)
 }
 
+/**
+ * True iff any refinement check on the schema (or any descendant
+ * subschema) is async. Detection: walks the tree once via
+ * `walkSchemaTree`, inspecting each `def.checks[].def.fn` for
+ * `constructor.name === 'AsyncFunction'`. Direct `async (v) => …`
+ * refinements are caught; sync functions that happen to return a
+ * Promise (rare; we'd recommend marking them `async`) are NOT.
+ *
+ * The adapter's `needsAsyncValidation()` uses it to drive the runtime's
+ * construction-time async-validation seed (see create-form-store's
+ * `queueInitialAsyncValidation`). A false negative only delays async
+ * refines until the first mutation, and a false positive, unlikely given
+ * how precise the AsyncFunction check is, costs one extra microtask of
+ * validation work.
+ */
 export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
   return walkSchemaTree(
     schema,

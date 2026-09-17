@@ -118,17 +118,6 @@ export function removePropsByName(
 }
 
 /**
- * Exact prop-name match. Pre-rewrite used .includes('register') /
- * .includes('value') / .includes('type') which false-positived on
- * any user prop whose name contained those substrings (e.g.
- * `data-register-id`, `valueFoo`, `prototype`, `:registerField`).
- *
- * Summarized keys come in three shapes depending on prop type:
- *   attribute       -> "name"          (from getSummarizedProps)
- *   v-bind:name="x" -> "\"name\""      (quoted via renderAsStatic)
- *   static v-prefix -> "\"name\""
- */
-/**
  * A summarized prop's value as compound-expression children, ready to
  * splice into an injected expression. `undefined` in, `undefined` out,
  * so a caller can ask "did the author bind this?" and build the
@@ -141,6 +130,17 @@ export function toExpressionArray(
   return Array.isArray(value) ? value : [value]
 }
 
+/**
+ * Exact prop-name match, and it MUST stay exact. A substring test
+ * (`.includes('register')`, `.includes('value')`, `.includes('type')`)
+ * false-positives on any author prop whose name merely contains one:
+ * `data-register-id`, `valueFoo`, `prototype`, `:registerField`.
+ *
+ * A summarized key comes in three shapes depending on prop type:
+ *   attribute       -> "name"          (from getSummarizedProps)
+ *   v-bind:name="x" -> "\"name\""      (quoted via renderAsStatic)
+ *   static v-prefix -> "\"name\""
+ */
 export function isExactKey(summarizedKey: string, name: string): boolean {
   return summarizedKey === name || summarizedKey === `"${name}"`
 }

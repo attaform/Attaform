@@ -1891,32 +1891,6 @@ export type RegisterValue<Value = unknown> = Readonly<{
 }>
 
 /**
- * Internal extension of `RegisterValue` that includes directive-private
- * coordination state. Imported by the directive runtime; not part of
- * the public surface.
- *
- * `lastTypedForm` is the user's most recently typed string form for a
- * numeric field while mid-typing, or `null` once the field has been
- * blurred / cleared. The directive populates it on every committable
- * input event and clears it on the change (blur) event so:
- *
- *   - Mid-typing: `displayValue` returns the typed form (e.g.
- *     `'1e2'`) when it parses back to current storage. Vue's
- *     `:value` patch then targets the typed form, which already
- *     equals the DOM — idempotent, no cursor reset.
- *   - On blur: `displayValue` falls back to `String(storage)`
- *     (`'100'`), Vue patches the DOM to match. The user sees
- *     exactly what's stored.
- *
- * Why a separate field: JavaScript's Number carries no representation
- * info — `1e2 === 100`, so `String(parseFloat('1e2'))` yields `'100'`.
- * Tracking the typed form lets us avoid Vue's mid-typing DOM yank
- * without lying about storage. Only meaningful for `.number` text
- * inputs and `<input type="number">`; other bindings ignore it.
- *
- * @internal
- */
-/**
  * Mutable holder for an async-transform run's `AbortController`, shared
  * between the directive — which lazily creates the controller the first
  * time a transform reaches for `ctx.signal` — and the store, which
@@ -1945,6 +1919,32 @@ export type TransformAbortHolder = { controller: AbortController | null; aborted
  */
 export type TransformContext = { readonly signal: AbortSignal }
 
+/**
+ * Internal extension of `RegisterValue` that includes directive-private
+ * coordination state. Imported by the directive runtime; not part of
+ * the public surface.
+ *
+ * `lastTypedForm` is the user's most recently typed string form for a
+ * numeric field while mid-typing, or `null` once the field has been
+ * blurred / cleared. The directive populates it on every committable
+ * input event and clears it on the change (blur) event so:
+ *
+ *   - Mid-typing: `displayValue` returns the typed form (e.g.
+ *     `'1e2'`) when it parses back to current storage. Vue's
+ *     `:value` patch then targets the typed form, which already
+ *     equals the DOM — idempotent, no cursor reset.
+ *   - On blur: `displayValue` falls back to `String(storage)`
+ *     (`'100'`), Vue patches the DOM to match. The user sees
+ *     exactly what's stored.
+ *
+ * Why a separate field: JavaScript's Number carries no representation
+ * info — `1e2 === 100`, so `String(parseFloat('1e2'))` yields `'100'`.
+ * Tracking the typed form lets us avoid Vue's mid-typing DOM yank
+ * without lying about storage. Only meaningful for `.number` text
+ * inputs and `<input type="number">`; other bindings ignore it.
+ *
+ * @internal
+ */
 export type InternalRegisterValue<Value = unknown> = RegisterValue<Value> & {
   lastTypedForm: Ref<string | null>
   /**
@@ -2701,43 +2701,10 @@ export type FieldState<Value = unknown> = {
   readonly meta: Readonly<FieldMetaPayload>
 }
 
-/**
- * Recursive type behind `form.fields`. Leaf-aware branching: at
- * primitive paths (string, number, boolean, bigint, Date, …) the
- * proxy returns a `FieldState`; at container paths (object,
- * array, …) the proxy descends without injecting leaf-keys.
- *
- * Field-name collisions at depth 2+ resolve unambiguously: a schema
- * field literally named `dirty` at depth 2 is reachable as a
- * descent target (`form.fields.address.dirty` returns the
- * FieldState for `address.dirty`). Reading `dirty` AT the
- * leaf-view (`form.fields.address.dirty.dirty`) reads the leaf's
- * own dirty boolean — path-segment and leaf-prop occupy different
- * proxy depths.
- *
- * The runtime implementation queries `schema.isLeafAtPath(segments)`
- * at every step; this type approximates that decision using
- * "T extends primitive". The two stay in sync for typical schemas;
- * exotic adapter-defined leaf kinds (custom `Date`-like) may need
- * a runtime check (the runtime is authoritative).
- *
- * The mapped type strips optional flags (`-?:`) because the field-
- * state surface always exposes a record per known leaf, regardless
- * of whether the schema field is declared `.optional()`. Optional
- * schemas mean the VALUE can be undefined — `FieldState<string |
- * undefined>` carries that — but the FieldState wrapper itself
- * always exists. Without the strip, `form.fields.notes` (where
- * `notes?: string`) would type as `FieldState<...> | undefined`,
- * forcing consumers to optional-chain through every reactive read.
- *
- * For discriminated-union containers the object branch uses
- * `[T] extends [object]` (non-distributive) plus
- * `KeyofUnion`/`ValueOfUnion` to merge variant key sets — so
- * `form.fields.cargo.tempMinC` (refrigerated-only) is reachable
- * regardless of the active variant, with the leaf typed as
- * `FieldState<number | undefined>`. Matches the runtime's stub
- * `FieldState` for inactive-variant paths.
- */
+/** `true` only for bare `unknown`, the storage shape of a preprocess or
+ *  coerce leaf. `any` is excluded, since it absorbs every test. */
+type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
+
 /**
  * Leaf-shape dispatch table for `LeafWalker`. Each entry maps a walker
  * kind to the leaf type that walker produces at primitive / Date /
@@ -2766,8 +2733,6 @@ export type FieldState<Value = unknown> = {
  * Implementation-detail surface — consumers reach for `FieldStateMap`
  * or `FormErrorsSurface` instead.
  */
-type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
-
 export interface LeafSchemeFor<T> {
   field: FieldState<T>
   errors: IsUnknown<T> extends true
@@ -2891,6 +2856,43 @@ type ContainerSelfErrorsSlot<T, Kind> = Kind extends 'errors'
     : { readonly ['']: readonly ValidationError[] }
   : unknown
 
+/**
+ * Recursive type behind `form.fields`. Leaf-aware branching: at
+ * primitive paths (string, number, boolean, bigint, Date, …) the
+ * proxy returns a `FieldState`; at container paths (object,
+ * array, …) the proxy descends without injecting leaf-keys.
+ *
+ * Field-name collisions at depth 2+ resolve unambiguously: a schema
+ * field literally named `dirty` at depth 2 is reachable as a
+ * descent target (`form.fields.address.dirty` returns the
+ * FieldState for `address.dirty`). Reading `dirty` AT the
+ * leaf-view (`form.fields.address.dirty.dirty`) reads the leaf's
+ * own dirty boolean — path-segment and leaf-prop occupy different
+ * proxy depths.
+ *
+ * The runtime implementation queries `schema.isLeafAtPath(segments)`
+ * at every step; this type approximates that decision using
+ * "T extends primitive". The two stay in sync for typical schemas;
+ * exotic adapter-defined leaf kinds (custom `Date`-like) may need
+ * a runtime check (the runtime is authoritative).
+ *
+ * The mapped type strips optional flags (`-?:`) because the field-
+ * state surface always exposes a record per known leaf, regardless
+ * of whether the schema field is declared `.optional()`. Optional
+ * schemas mean the VALUE can be undefined — `FieldState<string |
+ * undefined>` carries that — but the FieldState wrapper itself
+ * always exists. Without the strip, `form.fields.notes` (where
+ * `notes?: string`) would type as `FieldState<...> | undefined`,
+ * forcing consumers to optional-chain through every reactive read.
+ *
+ * For discriminated-union containers the object branch uses
+ * `[T] extends [object]` (non-distributive) plus
+ * `KeyofUnion`/`ValueOfUnion` to merge variant key sets — so
+ * `form.fields.cargo.tempMinC` (refrigerated-only) is reachable
+ * regardless of the active variant, with the leaf typed as
+ * `FieldState<number | undefined>`. Matches the runtime's stub
+ * `FieldState` for inactive-variant paths.
+ */
 export type FieldStateMapEntry<T> = LeafWalker<T, 'field'>
 
 /**
@@ -3008,23 +3010,20 @@ export type FormErrorRecord = Record<string, ValidationError[]>
  * form.errors()                                  // root proxy
  * ```
  *
- * Single-bracket dotted access (`form.errors['user.profile.email']`)
- * is intentionally NOT supported — JS object semantics treat the
- * dotted string as a single key, which would land on a non-existent
- * path. Use chained dot/bracket access or the callable form.
- */
-
-/**
- * Recursive shape of the `form.errors` proxy. Mirrors the schema:
- * statically-known primitive leaves expose `readonly ValidationError[]`
- * (always an array; empty when no errors); leaves whose value type
- * itself includes `undefined` (DU variant-only fields) keep the
- * `| undefined` branch. Containers expose a sub-shape you can keep
- * drilling. Arrays expose numeric-indexed sub-shapes; reading a
- * numeric index introduces `| undefined` via noUncheckedIndexedAccess.
+ * Single-bracket dotted access (`form.errors['user.profile.email']`) is
+ * intentionally NOT supported: JS object semantics read the dotted string
+ * as one key, which lands on a path that does not exist. Use chained
+ * dot/bracket access, or the callable form.
  *
- * Augmented with the callable signatures so dot-access and function-
- * call coexist on the same identifier.
+ * The underlying shape mirrors the schema. A statically-known primitive
+ * leaf exposes `readonly ValidationError[]`, always an array and empty
+ * when no errors land; a leaf whose value type itself includes `undefined`
+ * (a DU variant-only field) keeps the `| undefined` branch. A container
+ * exposes a sub-shape to keep drilling, and an array exposes
+ * numeric-indexed sub-shapes where reading an index introduces
+ * `| undefined` through noUncheckedIndexedAccess. The callable signatures
+ * are intersected in, so dot access and a function call coexist on one
+ * identifier.
  */
 export type FormErrorsSurface<Form> = ErrorsProxyShape<Form> & {
   (path: string): readonly ValidationError[]
@@ -3272,45 +3271,6 @@ export type FormMeta<F = unknown> = FieldState<F> & {
 }
 
 /**
- * The object returned by `useForm`. Holds every reactive ref, write
- * helper, and lifecycle method bound to one form.
- *
- * ```ts
- * const form = useForm({ schema })
- * form.register('email')        // bind to <input v-register>
- * form.values.email             // current value (proxy, no .value)
- * form.fields.email.dirty   // per-field flags
- * form.errors.email             // readonly ValidationError[]
- * form.setValue('email', 'a@b.c')
- * form.handleSubmit(onSubmit)   // returns a submit handler
- * form.meta.submitting        // form-level reactive flag
- * ```
- *
- * Three generic slots split the write view, parse view, and read view:
- *
- * - `Form` — the **input / write shape** (`z.input<Schema>`). Used
- *   by `setValue`, `defaultValues`, and `register`'s write side.
- *   Loose: preprocess paths accept `unknown` at the write boundary,
- *   defaulted fields accept their inner type optionally.
- *
- * - `GetValueFormType` — the **output / parsed shape**
- *   (`z.output<Schema>`). Used by `handleSubmit`'s `onSubmit`
- *   callback and by `form.parse()`'s success payload. This is the
- *   shape after refinements have fired and transforms have run.
- *
- * - `ReadForm` — the **read / storage shape**. Used by `values`,
- *   `fields`, `register`'s read side, `toRef`. Per-key precise: at
- *   the write-boundary wrappers (`default` / `prefault` / `catch` /
- *   `readonly` / `preprocess`) the value is `z.output<Inner>`
- *   (default has fired, preprocess has normalized); at transforms /
- *   pipes the value stays `z.input<Inner>` (transforms are deferred
- *   until parse). For schema-agnostic call sites defaults to `Form`.
- *
- * For schemas without write-boundary wrappers or transforms the three
- * shapes coincide.
- */
-
-/**
  * Read-only view returned by `form.blankPaths.value`. Exposes lookup
  * (`.has`), aggregate (`.size`), and iteration over the form's
  * blank-marked paths.
@@ -3367,6 +3327,44 @@ export type RootRecordView<Form> = string extends keyof Form
     : unknown
   : unknown
 
+/**
+ * The object returned by `useForm`. Holds every reactive ref, write
+ * helper, and lifecycle method bound to one form.
+ *
+ * ```ts
+ * const form = useForm({ schema })
+ * form.register('email')        // bind to <input v-register>
+ * form.values.email             // current value (proxy, no .value)
+ * form.fields.email.dirty   // per-field flags
+ * form.errors.email             // readonly ValidationError[]
+ * form.setValue('email', 'a@b.c')
+ * form.handleSubmit(onSubmit)   // returns a submit handler
+ * form.meta.submitting        // form-level reactive flag
+ * ```
+ *
+ * Three generic slots split the write view, parse view, and read view:
+ *
+ * - `Form` — the **input / write shape** (`z.input<Schema>`). Used
+ *   by `setValue`, `defaultValues`, and `register`'s write side.
+ *   Loose: preprocess paths accept `unknown` at the write boundary,
+ *   defaulted fields accept their inner type optionally.
+ *
+ * - `GetValueFormType` — the **output / parsed shape**
+ *   (`z.output<Schema>`). Used by `handleSubmit`'s `onSubmit`
+ *   callback and by `form.parse()`'s success payload. This is the
+ *   shape after refinements have fired and transforms have run.
+ *
+ * - `ReadForm` — the **read / storage shape**. Used by `values`,
+ *   `fields`, `register`'s read side, `toRef`. Per-key precise: at
+ *   the write-boundary wrappers (`default` / `prefault` / `catch` /
+ *   `readonly` / `preprocess`) the value is `z.output<Inner>`
+ *   (default has fired, preprocess has normalized); at transforms /
+ *   pipes the value stays `z.input<Inner>` (transforms are deferred
+ *   until parse). For schema-agnostic call sites defaults to `Form`.
+ *
+ * For schemas without write-boundary wrappers or transforms the three
+ * shapes coincide.
+ */
 export type UseFormReturnType<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,

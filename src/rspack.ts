@@ -1,5 +1,6 @@
 /**
- * `attaform/rspack` — Rspack plugin that rewrites `attaform/zod` imports
+ * `attaform/rspack`, the Rspack plugin that rewrites `attaform/zod`
+ * imports
  * to the single matching adapter subpath (`attaform/zod-v3` or
  * `attaform/zod-v4`) at build time, based on the consumer's installed Zod
  * major. Without it, Rspack ships both adapters because the unified

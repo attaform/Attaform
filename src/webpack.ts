@@ -1,11 +1,12 @@
 /**
- * `attaform/webpack` — webpack plugin that rewrites `attaform/zod`
+ * `attaform/webpack`, the webpack plugin that rewrites `attaform/zod`
  * imports to the single matching adapter subpath (`attaform/zod-v3` or
  * `attaform/zod-v4`) at build time, based on the consumer's installed Zod
  * major. Without it, webpack ships both adapters because the unified
  * `attaform/zod` entry imports both for runtime dispatch.
  *
- * Usage (ESM config — the plugin is ESM-only, matching attaform's package):
+ * Usage, in an ESM config, since the plugin is ESM-only like the rest of
+ * the package:
  *
  *   // webpack.config.mjs
  *   import { attaform } from 'attaform/webpack'

@@ -26,9 +26,9 @@
  * can be called at all.
  *
  * Deliberately absent (reach for these with an explicit import):
- *   - `useAbstractForm` — the schema-agnostic escape hatch on
- *     `attaform/abstract`, an advanced surface, not the default form.
- *   - `createAttaform` — the plugin install, a setup-level one-liner that
+ *   - `useAbstractForm`, the schema-agnostic escape hatch on
+ *     `attaform/abstract`: an advanced surface, not the default form.
+ *   - `createAttaform`, the plugin install, a setup-level one-liner that
  *     belongs beside the app bootstrap, not in every component's scope.
  *   - `unset` / `isUnset` and the serialize helpers: plain values and
  *     functions with no component affinity, equally at home in a store, a

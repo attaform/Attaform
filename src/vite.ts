@@ -23,8 +23,8 @@ export interface AttaformVitePluginOptions {
   /**
    * Rewrite `attaform` and `attaform/zod` imports at build time to
    * either `attaform/zod-v3` or `attaform/zod-v4`, based on the
-   * consumer's installed Zod major. Default `true` — produces a leaner
-   * bundle for the common case of one Zod version per project.
+   * consumer's installed Zod major. Default `true`, which produces a
+   * leaner bundle for the common case of one Zod version per project.
    *
    * Set to `false` to fall through to the unified entry's runtime
    * dispatch. Useful when:
@@ -94,7 +94,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
     enforce: 'pre',
     configResolved(resolved) {
       const vuePlugin = resolved.plugins.find((p) => p.name === 'vite:vue')
-      // Two distinct failure modes — separate error messages so the
+      // Two distinct failure modes get separate error messages, so the
       // consumer's fix is unambiguous:
       //   1. plugin not in the plugins array → install + register vue()
       //   2. plugin found but version-incompatible (no `api.options`) →
@@ -118,7 +118,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
       const existing = api.options.template.compilerOptions.nodeTransforms ?? []
       // Idempotent install: if a previous attaform() invocation
       // (vite + nuxt module + manual `plugins: [attaform()]`) has
-      // already pushed our transforms, skip — re-pushing would double
+      // already pushed our transforms, skip. Re-pushing would double
       // every binding the AST emits, breaking the IIFE-wrapping
       // invariants downstream transforms depend on. We detect the
       // sentinel via reference equality; user-supplied transforms with
@@ -269,7 +269,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
     },
     async resolveId(source, importer) {
       // Intercept the bare `attaform` barrel AND the explicit
-      // `attaform/zod` — both carry the runtime dispatcher, so both
+      // `attaform/zod`: both carry the runtime dispatcher, so both
       // collapse to the one detected adapter. The pinned subpaths
       // (`attaform/zod-v3`, `attaform/zod-v4`) pass through unchanged:
       // that's the documented escape hatch for power users who want a
@@ -278,12 +278,13 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
       if (aliasTarget === null) return null
       if (!isRewritableZodSpecifier(source)) return null
       // Returning the bare specifier directly would freeze it as the
-      // resolved id — Vite then ships `/@id/attaform/zod-v4` to the
-      // browser and 404s because no plugin loads that virtual URL.
+      // resolved id, and Vite would then ship `/@id/attaform/zod-v4` to
+      // the browser and 404, since no plugin loads that virtual URL.
       // Re-run the new specifier through the resolver chain so the
       // matching subpath export lands as a real file path.
-      // `skipSelf: true` is defensive — our filter rejects the rewritten
-      // target anyway, but keeps the hook reentrant under future edits.
+      // `skipSelf: true` is defensive: the filter rejects the rewritten
+      // target anyway, but it keeps the hook reentrant under later
+      // edits.
       return this.resolve(aliasTarget, importer, { skipSelf: true })
     },
     transform(code, id) {

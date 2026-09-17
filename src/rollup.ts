@@ -1,5 +1,5 @@
 /**
- * `attaform/rollup` — Rollup plugin that rewrites `attaform` and
+ * `attaform/rollup`, the Rollup plugin that rewrites `attaform` and
  * `attaform/zod` imports to the single matching adapter subpath
  * (`attaform/zod-v3` or `attaform/zod-v4`) at build time, based on the
  * consumer's installed Zod major. Without it, Rollup ships both adapters

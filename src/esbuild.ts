@@ -1,5 +1,5 @@
 /**
- * `attaform/esbuild` — esbuild plugin that rewrites `attaform` and
+ * `attaform/esbuild`, the esbuild plugin that rewrites `attaform` and
  * `attaform/zod` imports to the single matching adapter subpath
  * (`attaform/zod-v3` or `attaform/zod-v4`) at build time, based on the
  * consumer's installed Zod major. Without it, esbuild ships both adapters

@@ -3,8 +3,8 @@
  * the bundler plugins (`attaform/vite`, `attaform/rollup`,
  * `attaform/esbuild`, `attaform/webpack`, `attaform/rspack`).
  *
- * The unified `attaform/zod` entry — and the bare `attaform` barrel, which
- * re-exports the identical surface — runtime-dispatches between the v3 and
+ * The unified `attaform/zod` entry, and the bare `attaform` barrel that
+ * re-exports the identical surface, runtime-dispatch between the v3 and
  * v4 adapters, so a bundler that does not rewrite the import ships BOTH.
  * Each plugin rewrites those two specifiers (see
  * {@link REWRITABLE_ZOD_SPECIFIER_FILTER}) to the single matching adapter
@@ -31,8 +31,8 @@ export const ZOD_BARREL_SPECIFIER = 'attaform'
  * unified `attaform/zod` entry AND the bare `attaform` barrel. Both are
  * structurally identical (the barrel re-exports the same
  * `_shared-exports` + `_zod-binding` surface as `attaform/zod`), so both
- * carry the runtime-dispatching `useForm` that pulls in BOTH adapters —
- * and both rewrite to the same single adapter when one Zod major is
+ * carry the runtime-dispatching `useForm` that pulls in BOTH adapters,
+ * and both rewrite to the same single adapter once one Zod major is
  * detected.
  *
  * The rewrite is value-safe: every runtime binding the barrel exports
@@ -47,9 +47,9 @@ export const ZOD_BARREL_SPECIFIER = 'attaform'
  * specifiers: the pinned adapters (`attaform/zod-v3`, `attaform/zod-v4`)
  * and every build-tool / other subpath (`attaform/nuxt`, `attaform/vite`,
  * `attaform/abstract`, `attaform/transforms`, ...) pass through untouched.
- * It serves double duty — as esbuild's `onResolve` `filter` (a Go RE2
- * regexp) and, via `.test()`, as the string-match predicate the other
- * plugins call — so the two representations can never diverge.
+ * It serves double duty, as esbuild's `onResolve` `filter` (a Go RE2
+ * regexp) and, through `.test()`, as the string-match predicate the
+ * other plugins call, so the two representations cannot diverge.
  */
 export const REWRITABLE_ZOD_SPECIFIER_FILTER = /^attaform(?:\/zod)?$/
 

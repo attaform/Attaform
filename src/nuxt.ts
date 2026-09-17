@@ -8,8 +8,9 @@ import { attaform as attaformVitePlugin } from './vite'
 
 // Read the published version from the package's own package.json so the
 // module's DevTools panel surfaces the live version pill without a
-// build-time string injection. `createRequire` reads sync at module load —
-// run once, free at steady state. Works under unbuild's Rollup output
+// build-time string injection. `createRequire` reads sync at module
+// load, once, so it is free at steady state. Works under unbuild's
+// Rollup output
 // without bundler-specific JSON-import handling.
 const pkgVersion = (createRequire(import.meta.url)('../package.json') as { version: string })
   .version
@@ -31,8 +32,9 @@ const pkgVersion = (createRequire(import.meta.url)('../package.json') as { versi
 export interface AttaformModuleOptions {
   /**
    * Forwarded to `attaform/vite`'s `resolveZodAlias` option.
-   * Default `true` — `attaform` and `attaform/zod` imports are rewritten
-   * at build time to either `attaform/zod-v3` or `attaform/zod-v4`, based
+   * Default `true`, so `attaform` and `attaform/zod` imports are
+   * rewritten at build time to `attaform/zod-v3` or `attaform/zod-v4`,
+   * based
    * on the consumer's installed Zod major. Set to `false` to bypass
    * the rewrite and ship the runtime-dispatch unified entry instead.
    */
@@ -61,7 +63,7 @@ export type AttaformRuntimeConfig = {
   /**
    * Library version, read from the package's own `package.json` at
    * module setup. Surfaced to the runtime plugin so the DevTools
-   * overlay panel can render a version pill — single source of truth
+   * overlay panel can render a version pill. One source of truth, so it
    * matches the `meta.version` Nuxt DevTools sees in the Modules panel.
    */
   version: string

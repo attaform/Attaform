@@ -193,9 +193,7 @@ function describeOwnErrors(label: string, makeForm: () => FormLike): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
 const v3Schema = zV3.object({
   email: zV3.string().min(1),
@@ -225,9 +223,7 @@ describeOwnErrors('ownErrors / firstOwnError — zod-v3 adapter', () =>
   )
 )
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
 const v4Schema = zV4.object({
   email: zV4.string().min(1),

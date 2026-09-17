@@ -109,9 +109,7 @@ const SEED = {
   ],
 }
 
-// -----------------------------------------------------------------------------
 // Shared behaviour, parameterised by adapter
-// -----------------------------------------------------------------------------
 
 type MakeForm = () => FormWithInteract
 
@@ -295,9 +293,7 @@ for (const { name, makeForm } of ADAPTERS) {
   })
 }
 
-// -----------------------------------------------------------------------------
 // Earned success — engagement, not net value change
-// -----------------------------------------------------------------------------
 
 describe('form.interact — a valid subtree earns its success check', () => {
   const schema = zV4.object({
@@ -408,9 +404,7 @@ describe('earned success — a real user who edits and reverts', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // Disabled forms
-// -----------------------------------------------------------------------------
 
 describe('form.interact — disabled form', () => {
   const schema = zV4.object({ email: zV4.string().email() })
@@ -449,9 +443,7 @@ describe('form.interact — disabled form', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // Stickiness across unmount — the field-array-row-in-a-modal case
-// -----------------------------------------------------------------------------
 
 describe('form.interact — survives unmount', () => {
   const schema = zV4.object({ email: zV4.string().email('Enter a valid email') })

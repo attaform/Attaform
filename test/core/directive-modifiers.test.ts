@@ -127,9 +127,7 @@ const hooks = vRegister as unknown as {
   beforeUnmount?: DirectiveHook
 }
 
-// ─────────────────────────────────────────────────────────────────
 // `<input type="text">` modifier matrix
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterText — `.lazy`', () => {
   beforeEach(() => {
@@ -351,9 +349,7 @@ describe('vRegisterText — combined modifiers', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<textarea>` smoke
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterText — <textarea> reuses the same variant', () => {
   it('`.trim` works on textarea — input writes raw, change commits trimmed', () => {
@@ -373,9 +369,7 @@ describe('vRegisterText — <textarea> reuses the same variant', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<select>` modifier matrix
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterSelect — `.number`', () => {
   beforeEach(() => {
@@ -713,9 +707,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `vRegisterText.beforeUpdate` lazy/trim escape-hatches
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
   beforeEach(() => {
@@ -767,9 +759,7 @@ describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // attaform-specific interactions
-// ─────────────────────────────────────────────────────────────────
 
 describe('attaform interactions: `.number` × slim-primitive gate', () => {
   beforeEach(() => {
@@ -845,9 +835,7 @@ describe('attaform interactions: `.lazy` × value-swap', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // Dispatcher propagates modifiers
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterDynamic — propagates modifiers to the per-tag variant', () => {
   beforeEach(() => {
@@ -901,9 +889,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 })
 
-// ─────────────────────────────────────────────────────────────────
 // Regression: spike-discovered bugs
-// ─────────────────────────────────────────────────────────────────
 
 /**
  * Spike `16b` reported "can't use the spacebar at all" on a
@@ -1106,9 +1092,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<input type="checkbox">` setChecked: hydration-with-static-attribute case
-// ─────────────────────────────────────────────────────────────────
 
 /**
  * Repro for the playground bug where SSR rendered `<input type="checkbox"
@@ -1174,9 +1158,7 @@ describe('vRegisterCheckbox.setChecked — hydration with static value attribute
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<input type="radio">` created/beforeUpdate: same hydration shape
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterRadio — hydration with static value attribute', () => {
   beforeEach(() => {

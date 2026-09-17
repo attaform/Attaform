@@ -184,9 +184,7 @@ function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // zod-v3 adapter
-// -----------------------------------------------------------------------------
 
 describe('root [] vs literal "" conflation — zod-v3 adapter', () => {
   const schema = zV3
@@ -211,9 +209,7 @@ describe('root [] vs literal "" conflation — zod-v3 adapter', () => {
   imperativeConflationTests(() => make({ '': 'ok', name: 'fine' }))
 })
 
-// -----------------------------------------------------------------------------
 // zod-v4 adapter
-// -----------------------------------------------------------------------------
 
 describe('root [] vs literal "" conflation — zod-v4 adapter', () => {
   const schema = zV4

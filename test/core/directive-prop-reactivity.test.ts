@@ -116,9 +116,7 @@ const hooks = vRegister as unknown as {
   beforeUnmount?: DirectiveHook
 }
 
-// ─────────────────────────────────────────────────────────────────
 // A — `setAssignFunction` re-derives on every render
-// ─────────────────────────────────────────────────────────────────
 
 describe('setAssignFunction — @update:registerValue prop reactivity', () => {
   beforeEach(() => {
@@ -165,9 +163,7 @@ describe('setAssignFunction — @update:registerValue prop reactivity', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // B — `vRegisterText` derives `castToNumber` per fire
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterText — :type swap reactivity', () => {
   beforeEach(() => {
@@ -198,9 +194,7 @@ describe('vRegisterText — :type swap reactivity', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // C — `vRegisterSelect` derives `isSetModel` per fire
-// ─────────────────────────────────────────────────────────────────
 
 describe('vRegisterSelect — Array ↔ Set model swap reactivity', () => {
   beforeEach(() => {

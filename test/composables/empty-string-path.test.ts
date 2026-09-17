@@ -72,9 +72,7 @@ function callValues(form: { values: unknown }): ValuesCallForm {
   return form.values as unknown as ValuesCallForm
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
 describe('empty-string path semantics — zod-v3 adapter', () => {
   const schema = zV3
@@ -159,9 +157,7 @@ describe('empty-string path semantics — zod-v3 adapter', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
 describe('empty-string path semantics — zod-v4 adapter', () => {
   const schema = zV4
@@ -234,11 +230,9 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // Literal root '' field — proves '' is free of form-level duty. errors('')
 // reads THIS field; meta.ownErrors returns the root [] bucket alone, and
 // errors([]) is the full aggregate like errors().
-// -----------------------------------------------------------------------------
 
 describe("literal root '' field — zod-v3 adapter", () => {
   const schema = zV3

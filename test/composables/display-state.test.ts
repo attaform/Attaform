@@ -127,9 +127,7 @@ function expectProjections(field: FieldStateLike): void {
   expect(field.showIdle).toBe(field.displayState === 'idle')
 }
 
-// -----------------------------------------------------------------------------
 // Shared schema-shaped tests, parameterised by adapter
-// -----------------------------------------------------------------------------
 
 type AdapterFactory = (pluginOptions?: Parameters<typeof createAttaform>[0]) => FormLike
 
@@ -314,9 +312,7 @@ function describeAdapter(label: string, makeForm: AdapterFactory): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
 const v3Schema = zV3.object({
   email: zV3.string().min(1),
@@ -341,9 +337,7 @@ describeAdapter('displayState — zod-v3 adapter', () =>
   )
 )
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
 const v4Schema = zV4.object({
   email: zV4.string().min(1),
@@ -368,9 +362,7 @@ describeAdapter('displayState — zod-v4 adapter', () =>
   )
 )
 
-// -----------------------------------------------------------------------------
 // Cross-cutting: omit'd args, public default heuristic, runtime safety
-// -----------------------------------------------------------------------------
 
 describe('the display reducer — cross-cutting', () => {
   it('defaultDisplayState is a (prev, ctx) reducer', () => {

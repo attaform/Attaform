@@ -67,9 +67,7 @@ function uniqueKey(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2)}`
 }
 
-// ──────────────────────────────────────────────────────────────────────
 // ZodDefault — type should peel `| undefined`; runtime resolves the default.
-// ──────────────────────────────────────────────────────────────────────
 
 const defaultsSchema = z.object({
   flag: z.boolean().default(true),
@@ -180,9 +178,7 @@ describe('ZodDefault — type peels `| undefined`, runtime resolves the default'
   })
 })
 
-// ──────────────────────────────────────────────────────────────────────
 // Bare-required fields — synthesis resolves to a falsy concrete value.
-// ──────────────────────────────────────────────────────────────────────
 
 const bareRequiredSchema = z.object({
   s: z.string(),
@@ -256,9 +252,7 @@ describe('Synthesis — bare-required fields resolve to a falsy concrete value',
   })
 })
 
-// ──────────────────────────────────────────────────────────────────────
 // Deep nested synthesis — invariant holds all the way down.
-// ──────────────────────────────────────────────────────────────────────
 
 const deepSchema = z.object({
   user: z.object({
@@ -314,9 +308,7 @@ describe('Synthesis — deep nested objects resolve recursively', () => {
   })
 })
 
-// ──────────────────────────────────────────────────────────────────────
 // Discriminated union — stub state before the discriminator is chosen.
-// ──────────────────────────────────────────────────────────────────────
 
 const duSchema = z.object({
   tagged: z.discriminatedUnion('type', [
@@ -358,9 +350,7 @@ describe('Discriminated union — stub state before discriminator chosen', () =>
   })
 })
 
-// ──────────────────────────────────────────────────────────────────────
 // Genuinely uncertain — invariant does NOT promise to peel these.
-// ──────────────────────────────────────────────────────────────────────
 
 const optionalSchema = z.object({ bio: z.string().optional() })
 const nullableSchema = z.object({ ref: z.string().nullable() })
@@ -425,9 +415,7 @@ describe('Genuinely uncertain — invariant does NOT promise to peel', () => {
   })
 })
 
-// ──────────────────────────────────────────────────────────────────────
 // preprocess / transform — write-boundary vs parse-time semantics.
-// ──────────────────────────────────────────────────────────────────────
 
 const preprocessSchema = z.object({
   trimmed: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string()),
@@ -541,7 +529,6 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
   })
 })
 
-// ──────────────────────────────────────────────────────────────────────
 // Depth-pressure regression. Modelled on the cargo-shipment booking
 // demo (apps/site/repl-demos/shipment-demo.vue) — the schema-shape
 // that previously made the language-service hover for `useForm`
@@ -549,7 +536,6 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
 // though tsc accepted it. Two discriminated unions, an array of
 // objects, two address sub-objects, and several enums in one shape
 // is the bar this probe holds.
-// ──────────────────────────────────────────────────────────────────────
 
 describe('Depth pressure — multi-step booking schema (shipment-demo shape)', () => {
   const COUNTRIES = ['US', 'CA', 'MX', 'GB', 'DE', 'FR', 'JP', 'CN', 'AU'] as const

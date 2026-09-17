@@ -71,9 +71,7 @@ function asTouchable<F>(form: F): F & FormWithTouch {
   return form as unknown as F & FormWithTouch
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
 describe('form.touch — zod-v3 adapter', () => {
   const schema = zV3.object({
@@ -173,9 +171,7 @@ describe('form.touch — zod-v3 adapter', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
 describe('form.touch — zod-v4 adapter', () => {
   const schema = zV4.object({

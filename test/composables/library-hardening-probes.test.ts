@@ -13,28 +13,28 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import type { PathInput, PathOutput } from '../../src/runtime/adapters/zod-v4'
 
 /**
- * Discriminated-union HARDENING — what happens when a caller forces
- * an INVALID value into the discriminator key. "Invalid" means the
- * value is not in any variant's literal set: `notify.channel = 'wat'`
- * against `z.discriminatedUnion('channel', [literal('email'),
- * literal('sms')])`. Includes wrong-type writes (null, number,
- * undefined) at a string-literal discriminator.
+ * What happens when a caller forces an INVALID value into a
+ * discriminator key: one outside every variant's literal set
+ * (`notify.channel = 'wat'` against
+ * `z.discriminatedUnion('channel', [literal('email'), literal('sms')])`),
+ * or of the wrong type entirely (null, number, undefined).
  *
- * These tests probe surfaces an unsuspecting caller could reach via
- * `setValue`, `defaultValues`, persistence rehydrate, and undo. Each
- * test asserts the behavior we'd EXPECT from a hardened library —
- * the failures are bugs to triage. We're not committing to a remedy
- * yet (reject vs. accept-and-flag is the design call); the tests
- * just illuminate what's broken so we can pick.
+ * The settled answer, which every test below pins: the write SUCCEEDS
+ * and storage at the union path collapses to a discriminator-only stub
+ * `{ [discKey]: value }`. Validation, not the write gate, is the
+ * authority on literal-set membership. The shape a test never accepts
+ * is a mixed one carrying the previous variant's keys beside a
+ * discriminator that no variant claims, because nothing downstream can
+ * render or parse it.
+ *
+ * Reached through `setValue`, `defaultValues`, rehydrate and undo.
  */
 
-// -------------------- shared test-local relaxed shapes --------------------
-// These probes deliberately land the form in unrepresentable states
-// (invalid discriminators, foreign keys, JSON-cycle artefacts), so the
-// shape can't be the schema's strict discriminated-union image. Each
-// field is `unknown` so the test bodies can branch via JS-level
-// `===` / `typeof` / `in` narrowing without TS4111 noise on index-
-// signature access.
+// Shared test-local relaxed shapes. These probes deliberately land the
+// form in unrepresentable states, so the shape cannot be the schema's
+// strict discriminated-union image. Every field is `unknown` so test
+// bodies can narrow with `===` / `typeof` / `in` without TS4111 noise on
+// index-signature access.
 type AnyNotify = {
   channel?: unknown
   address?: unknown
@@ -70,7 +70,6 @@ type AnyTree = {
   kind?: unknown
 }
 
-// -------------------- shared profile fixture --------------------
 const profileSchema = z.object({
   name: z.string(),
   notify: z.discriminatedUnion('channel', [
@@ -106,7 +105,6 @@ function mountProfile(options: { defaultValues?: unknown } = {}): {
   return { app, api: handle.api as ProfileApi }
 }
 
-// -------------------- Case A: leaf write to discriminator --------------------
 describe('DU hardening — Case A invalid leaf discriminator write', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -120,12 +118,10 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     api.setValue('notify.channel', 'wat')
     await nextTick()
 
-    // Storage must reflect a SHAPE THAT MATCHES SOME VARIANT, or the
-    // write must have been rejected and storage left untouched. The
-    // unrepresentable-state outcome — `{ channel: 'wat', address: '…' }`
-    // — is the bug: no variant has `channel='wat'` so this shape is
-    // not in the schema's image. Whatever the remedy, this assertion
-    // pins the contract.
+    // Storage holds either a shape matching some variant, or the
+    // discriminator-only stub. What it never holds is the mixed
+    // `{ channel: 'wat', address: '...' }`: no variant claims
+    // `channel='wat'`, so that shape is outside the schema's image.
     const notify = api.values.notify as AnyNotify
     const isPreservedEmail =
       notify.channel === 'email' && typeof notify.address === 'string' && !('number' in notify)
@@ -137,13 +133,12 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
-    // Slim-primitive gate is type-only — it accepts any string at a
-    // string-literal disc. The stub-state contract: the write
-    // succeeds (returns true), storage at the union path collapses
-    // to `{ [discKey]: value }` only — prior variant body and any
-    // foreign keys are dropped. Validation is the authority on
-    // value-level correctness; it surfaces the issue at notify /
-    // notify.channel via Zod's natural invalid_union_discriminator.
+    // The slim-primitive gate is type-only, so any string passes at a
+    // string-literal discriminator. The write returns true and storage
+    // collapses to `{ [discKey]: value }`, dropping the prior variant
+    // body and every foreign key. Zod's own
+    // `invalid_union_discriminator` then surfaces at notify or
+    // notify.channel.
     const ok = api.setValue('notify.channel', 'wat')
     await nextTick()
     expect(ok).toBe(true)
@@ -159,10 +154,10 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
 
     const result = await api.parse({ commit: true })
     expect(result.success).toBe(false)
-    // The error should be reported on a stable path callers can bind
-    // to. Either `notify` (the union) or `notify.channel` (the
-    // discriminator leaf) are reasonable; the test accepts either,
-    // but rejects an empty / non-matching error list.
+    // The error lands on a path callers can bind to. Both `notify`
+    // (the union) and `notify.channel` (the discriminator leaf) are
+    // stable choices, so the test accepts either and rejects only an
+    // empty or non-matching list.
     const paths = result.errors?.map((e) => e.path.join('.')) ?? []
     const hasDiscError = paths.some((p) => p === 'notify' || p === 'notify.channel')
     expect(hasDiscError).toBe(true)
@@ -193,14 +188,12 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
     await api.parse({ commit: true })
     await nextTick()
 
-    // The address leaf is now in storage but no longer sits under any
-    // active variant's schema. A reader walking `form.fields` should
-    // either:
-    //   (a) treat the orphan as gone (errors=undefined, value stub), OR
-    //   (b) surface the parent-level discriminator mismatch through it.
-    // What it SHOULD NOT do: report the leaf as fully valid — the
-    // form is structurally broken and pretending otherwise hides it
-    // from any error-summary UI bound to children of `notify`.
+    // The address leaf is in storage but under no active variant's
+    // schema. A reader walking `form.fields` may treat the orphan as
+    // gone (errors undefined, value stub) or surface the parent's
+    // discriminator mismatch through it. What it must not do is report
+    // the leaf as fully valid, which would hide a structurally broken
+    // form from any error summary bound to children of `notify`.
     const orphanedSurface = (
       api as unknown as {
         fields: { notify: { address?: { errors: unknown[]; valid: boolean } } }
@@ -226,7 +219,6 @@ describe('DU hardening — Case A invalid leaf discriminator write', () => {
   })
 })
 
-// -------------------- Case B: whole-union write --------------------
 describe('DU hardening — Case B invalid whole-union write', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -271,11 +263,10 @@ describe('DU hardening — Case B invalid whole-union write', () => {
     const { app, api } = mountProfile()
     apps.push(app)
 
-    // Consumer omits `channel`. The stub-state contract: storage
-    // collapses to `{}` (no discriminator to hold, every consumer key
-    // dropped — no auto-merge with the first-variant default).
-    // Validation surfaces the issue via Zod's natural invalid-union-
-    // discriminator on the next committing parse.
+    // Consumer omits `channel`, so there is no discriminator to hold
+    // and storage collapses to `{}`: every consumer key is dropped and
+    // nothing auto-merges from the first variant. The next committing
+    // parse surfaces Zod's `invalid_union_discriminator`.
     const ok = api.setValue('notify', { address: 'a@b.io' })
     await nextTick()
     expect(ok).toBe(true)
@@ -285,7 +276,6 @@ describe('DU hardening — Case B invalid whole-union write', () => {
   })
 })
 
-// -------------------- Slim-primitive gate at the discriminator --------------------
 describe('DU hardening — slim-primitive gate at the discriminator key', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -385,20 +375,17 @@ describe('DU hardening — slim-primitive gate at the discriminator key', () => 
     apps.push(app)
     const api = handle.api as NumericApi
 
-    // `99` is the right type but not a literal value. The slim gate
-    // is type-only (kinds, not literal sets), so the write reaches the
-    // disc reshape. With no matching variant, storage collapses to a
-    // disc-only stub `{ kind: 99 }` and validation surfaces the
-    // mismatch via Zod's natural error pipeline. setValue returns true
-    // — the write lands; it's validation, not the runtime gate, that
-    // flags the value as out-of-range.
+    // `99` is the right type but not a literal in the set. The slim
+    // gate checks kinds, not literal sets, so the write reaches the
+    // discriminator reshape, storage collapses to `{ kind: 99 }` and
+    // setValue returns true. Validation, not the write gate, flags the
+    // value as out of range.
     expect(api.setValue('payload.kind', 99)).toBe(true)
     await nextTick()
     expect(api.values.payload).toEqual({ kind: 99 })
   })
 })
 
-// -------------------- Variant memory poisoning --------------------
 describe('DU hardening — variant memory survives an invalid intermediate', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -413,9 +400,9 @@ describe('DU hardening — variant memory survives an invalid intermediate', () 
     api.setValue('notify.address', 'first@example.com')
     await nextTick()
 
-    // Try to switch to an invalid discriminator. Whether this is
-    // rejected or no-ops, the email memory must NOT be polluted —
-    // it should still hold the typed address verbatim.
+    // Switch to an invalid discriminator. Rejected or no-op, the email
+    // memory is not polluted: it still holds the typed address
+    // verbatim.
     api.setValue('notify.channel', 'wat')
     await nextTick()
 
@@ -424,14 +411,13 @@ describe('DU hardening — variant memory survives an invalid intermediate', () 
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'sms', number: '' })
 
-    // Switch back to email — memory should restore the typed address.
+    // Switching back to email restores the typed address from memory.
     api.setValue('notify.channel', 'email')
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'email', address: 'first@example.com' })
   })
 })
 
-// -------------------- Construction with invalid defaults --------------------
 describe('DU hardening — construction with invalid discriminator in defaultValues', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -445,12 +431,11 @@ describe('DU hardening — construction with invalid discriminator in defaultVal
     apps.push(app)
     await nextTick()
 
-    // Stub-state contract at construction: form mounts with the
-    // consumer's verbatim disc value at the DU path, no auto-fill from
-    // any variant default — storage is exactly `{channel:'wat'}`,
-    // foreign-variant fields are not invented. A one-shot dev warning
-    // (assertable separately) flags the bad disc; validation surfaces
-    // the mismatch on next committing parse.
+    // The same stub rule at construction: the form mounts holding the
+    // consumer's verbatim discriminator and nothing else, so storage is
+    // exactly `{channel:'wat'}` with no invented variant fields. A
+    // one-shot dev warning flags the bad discriminator, and the next
+    // committing parse surfaces the mismatch.
     const notify = api.values.notify as AnyNotify
     expect(notify).toEqual({ channel: 'wat' })
     const result = await api.parse({ commit: true })
@@ -458,7 +443,6 @@ describe('DU hardening — construction with invalid discriminator in defaultVal
   })
 })
 
-// -------------------- Re-set same invalid (idempotency) --------------------
 describe('DU hardening — repeated invalid writes', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -480,7 +464,6 @@ describe('DU hardening — repeated invalid writes', () => {
   })
 })
 
-// -------------------- Undo --------------------
 describe('DU hardening — undo across an invalid intermediate', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -521,7 +504,6 @@ describe('DU hardening — undo across an invalid intermediate', () => {
   })
 })
 
-// -------------------- Array DU --------------------
 describe('DU hardening — invalid discriminator at an array element', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -567,10 +549,10 @@ describe('DU hardening — invalid discriminator at an array element', () => {
 
     // Sibling unaffected.
     expect(api.values.events[1]).toEqual({ type: 'text', value: 'second' })
-    // Target element collapses to a disc-only stub; foreign keys
-    // from the prior variant (e.g. `x`) are dropped. The stub-state
-    // outcome is also "representable" alongside the two valid-variant
-    // outcomes; what matters is no mixed shape.
+    // The target element collapses to a discriminator-only stub and
+    // the prior variant's keys (here `x`) are dropped. The stub counts
+    // as representable alongside the two valid-variant shapes; all the
+    // assertion forbids is a mixed one.
     const e0 = api.values.events[0] as AnyEvent
     const isStub = Object.keys(e0).length === 1 && e0.type === 'unknown'
     const valid =
@@ -581,7 +563,6 @@ describe('DU hardening — invalid discriminator at an array element', () => {
   })
 })
 
-// -------------------- Nested DU --------------------
 describe('DU hardening — invalid discriminator at an inner nested DU', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -629,10 +610,10 @@ describe('DU hardening — invalid discriminator at an inner nested DU', () => {
     // Outer step untouched.
     expect(api.values.flow.step).toBe('choose')
 
-    // Inner collapses to a disc-only stub `{kind:'Z'}` — foreign
-    // `a` from the prior variant is dropped. The stub outcome
-    // joins the two valid-variant outcomes as "representable"; the
-    // mixed `{kind:'Z', a:'value-a'}` shape is what the bug looked like.
+    // Inner collapses to `{kind:'Z'}`, dropping the prior variant's
+    // `a`. The stub joins the two valid-variant shapes as
+    // representable; the mixed `{kind:'Z', a:'value-a'}` is the one
+    // outcome the assertion rejects.
     const inner = (api.values.flow as AnyFlow).inner as AnyInner
     const isStub = Object.keys(inner).length === 1 && inner.kind === 'Z'
     const innerValid =
@@ -643,7 +624,6 @@ describe('DU hardening — invalid discriminator at an inner nested DU', () => {
   })
 })
 
-// -------------------- v3 adapter parity --------------------
 describe('DU hardening — zod v3 adapter parity', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -720,24 +700,17 @@ describe('DU hardening — zod v3 adapter parity', () => {
   })
 })
 
-// =====================================================================
-// EXPANDED PROBES — failure modes raised in design conversation:
+// Six surfaces the discriminator rules have to hold across:
 //
 //   1. "No selection yet" UX (`unset` + blank on the discriminator)
-//   2. Bad default-value variations (missing key, missing variant
-//      fields, foreign-variant fields, partial defaults)
-//   3. Discriminators-in-discriminators (outer-invalid cascades)
-//   4. Reset / resetField interactions across an invalid state
-//   5. Field metadata side-effects on the discriminator after invalid
-//      writes (touched / dirty / blank / valid)
-//   6. handleSubmit posture while the form is in an invalid state
-//
-// Same posture as the suite above: each test asserts what we'd EXPECT
-// from a hardened library. Failures are bugs to triage, not commitments
-// to a remedy.
-// =====================================================================
+//   2. Bad default values (missing key, missing variant fields,
+//      foreign-variant fields, partial defaults)
+//   3. Discriminators inside discriminators (outer-invalid cascades)
+//   4. reset / resetField across an invalid state
+//   5. Field metadata on the discriminator after an invalid write
+//      (touched / dirty / blank / valid)
+//   6. handleSubmit while the form holds an invalid discriminator
 
-// -------------------- 1. "No selection yet" UX --------------------
 describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -753,10 +726,10 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
           key: `du-unset-default-${Math.random().toString(36).slice(2)}`,
           defaultValues: {
             name: '',
-            // Consumer wants "no channel chosen yet". `unset` substitutes
-            // to the slim default (`''`) at the discriminator path. We
-            // expect storage to reflect a state any reader can render
-            // (no orphan keys, no shape that mixes variants).
+            // "No channel chosen yet": `unset` substitutes the slim
+            // default (`''`) at the discriminator path, leaving a state
+            // any reader can render, with no orphan keys and no mixed
+            // variant shape.
             notify: { channel: unset },
           } as never,
         }) as unknown as ProfileApi
@@ -769,13 +742,11 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
     const api = handle.api as ProfileApi
     await nextTick()
 
-    // Either:
-    //  (a) the form holds a valid first-variant default + the
-    //      discriminator path tracked as blank, OR
-    //  (b) the form holds only the discriminator key + nothing else.
-    // The accept-as-is outcome is the bug — `{channel:''}` plus
-    // first-variant `address` keys is structurally identical to a half-
-    // built variant whose validation pretends to know which one.
+    // Either a valid first-variant default with the discriminator
+    // tracked as blank, or the discriminator key alone. Not both at
+    // once: `{channel:''}` carrying first-variant `address` keys is
+    // structurally a half-built variant, and validation would have to
+    // pretend it knows which one.
     const notify = api.values.notify as AnyNotify
     const validShape =
       (notify.channel === 'email' && typeof notify.address === 'string') ||
@@ -802,11 +773,11 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
     const api = handle.api as ProfileApi
     await nextTick()
 
-    // The blank-bookkeeping is what powers the "user hasn't chosen yet"
-    // UX. Without it, the form reports `dirty: false` + `valid: true`
-    // (nothing has been validated, channel == '' passes the slim gate)
-    // — so the consumer can't tell "no choice yet" from "valid email
-    // form with empty address" at the data layer.
+    // Blank bookkeeping is what powers the "user has not chosen yet"
+    // UX. Without it the form reports `dirty: false` and `valid: true`,
+    // since nothing has been validated and `channel === ''` passes the
+    // slim gate, leaving the consumer unable to tell "no choice yet"
+    // from "valid email form with an empty address".
     const notifyChannel = (
       api as unknown as {
         fields: { notify: { channel: { blank: boolean } } }
@@ -823,9 +794,9 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'email', address: 'typed@example.com' })
 
-    // Consumer asks "no selection yet" mid-flight — e.g. user clicks
-    // a "clear my choice" button. The orphan `address` key is the bug:
-    // storage shape doesn't match any variant.
+    // "No selection yet" mid-flight, as when the user clicks a "clear
+    // my choice" button. An orphan `address` key left behind would be a
+    // storage shape matching no variant.
     api.setValue('notify.channel', unset)
     await nextTick()
 
@@ -855,11 +826,10 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
     api.setValue('notify.channel', unset)
     await nextTick()
 
-    // Consumers reading values for a review pane / network round-trip
-    // need a clean JSON. The accept-as-is shape `{channel:'', address:'old@example.com'}`
-    // serializes fine but represents nothing the schema accepts — and
-    // the consumer can't tell from the JSON whether the form is "no
-    // choice" or "broken email choice".
+    // A review pane or network round-trip reads these values as JSON.
+    // `{channel:'', address:'old@example.com'}` serializes fine but
+    // represents nothing the schema accepts, and the JSON alone cannot
+    // tell "no choice" from "broken email choice".
     const json = JSON.parse(JSON.stringify(api.values.notify)) as AnyNotify
     const consistent =
       (json.channel === '' && Object.keys(json).length === 1) ||
@@ -869,7 +839,6 @@ describe('DU hardening — `unset` on the discriminator (no-selection-yet UX)', 
   })
 })
 
-// -------------------- 2. Bad default-value variations --------------------
 describe('DU hardening — bad default values at the union path', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -883,10 +852,9 @@ describe('DU hardening — bad default values at the union path', () => {
         handle.api = useForm({
           schema: profileSchema,
           key: `du-bad-defaults-no-disc-${Math.random().toString(36).slice(2)}`,
-          // No `channel`. The schema's `getDefaultAtPath` falls back to
-          // the first variant — so `address` lands under email by the
-          // construction pipeline. The consumer never asked for email;
-          // this is implicit-first-variant magic.
+          // No `channel`, so `getDefaultAtPath` falls back to the first
+          // variant and `address` lands under email without the
+          // consumer ever asking for it.
           defaultValues: { name: '', notify: { address: 'unspecified@x.io' } } as never,
         }) as unknown as ProfileApi
         return () => h('div')
@@ -961,7 +929,6 @@ describe('DU hardening — bad default values at the union path', () => {
   })
 })
 
-// -------------------- 3. Discriminators in discriminators --------------------
 describe('DU hardening — invalid OUTER discriminator with valid inner state', () => {
   const flowSchema = z.object({
     flow: z.discriminatedUnion('step', [
@@ -1007,10 +974,9 @@ describe('DU hardening — invalid OUTER discriminator with valid inner state', 
     api.setValue('flow.step', 'BAD_OUTER')
     await nextTick()
 
-    // Stub-state contract: outer collapses to a disc-only stub
-    // `{step:'BAD_OUTER'}` — the prior variant's `inner` subtree is
-    // dropped, so no orphan island survives under a non-variant
-    // parent. Validation flags the bad disc on next committing parse.
+    // Outer collapses to `{step:'BAD_OUTER'}`, dropping the prior
+    // variant's whole `inner` subtree so no orphan island survives
+    // under a non-variant parent.
     const flow = api.values.flow as AnyFlow
     const isStub = Object.keys(flow).length === 1 && flow.step === 'BAD_OUTER'
     const valid =
@@ -1027,10 +993,9 @@ describe('DU hardening — invalid OUTER discriminator with valid inner state', 
     api.setValue('flow', { step: 'choose', inner: { kind: 'BAD_INNER', a: 'x' } })
     await nextTick()
 
-    // Outer reshape activates the choose variant; inner collapses to
-    // a disc-only stub `{kind:'BAD_INNER'}` — foreign `a` is dropped.
-    // The stub joins the two valid-variant outcomes as "representable";
-    // the mixed `{kind:'BAD_INNER', a:'x'}` shape is the bug.
+    // The outer reshape activates the choose variant and inner
+    // collapses to `{kind:'BAD_INNER'}`, dropping `a`. The mixed
+    // `{kind:'BAD_INNER', a:'x'}` is the one shape rejected.
     const flow = api.values.flow as AnyFlow
     const inner = flow.inner as AnyInner
     const isStub = Object.keys(inner).length === 1 && inner.kind === 'BAD_INNER'
@@ -1050,9 +1015,9 @@ describe('DU hardening — invalid OUTER discriminator with valid inner state', 
     api.setValue('flow.step', 'done')
     await nextTick()
 
-    // The valid `done` variant has only `notes`. After this sequence,
-    // we expect the standard sms-style slim default — `notes: ''` —
-    // and no leftover `inner` key, no leftover `step:'BAD_OUTER'`.
+    // The valid `done` variant carries only `notes`, so the sequence
+    // ends at the slim default `notes: ''` with no leftover `inner` and
+    // no leftover `step:'BAD_OUTER'`.
     const flow = api.values.flow as AnyFlow
     expect(flow.step).toBe('done')
     expect('inner' in flow).toBe(false)
@@ -1060,7 +1025,6 @@ describe('DU hardening — invalid OUTER discriminator with valid inner state', 
   })
 })
 
-// -------------------- 4. Reset interactions across invalid --------------------
 describe('DU hardening — reset / resetField after an invalid discriminator write', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -1079,7 +1043,7 @@ describe('DU hardening — reset / resetField after an invalid discriminator wri
 
     const notify = api.values.notify as AnyNotify
     expect(notify.channel).toBe('email')
-    // Clean shape — no orphan/invalid leftover.
+    // A clean shape, with no orphan or invalid leftover.
     expect(typeof notify.address).toBe('string')
   })
 
@@ -1118,7 +1082,6 @@ describe('DU hardening — reset / resetField after an invalid discriminator wri
   })
 })
 
-// -------------------- 5. Field metadata after invalid write --------------------
 describe('DU hardening — field metadata side-effects of an invalid discriminator write', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -1133,11 +1096,10 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
     await api.parse({ commit: true })
     await nextTick()
 
-    // Container proxies aren't leaf-views — `api.fields.notify.valid`
-    // descends; the aggregated boolean lives on the call-form
-    // `api.fields('notify')`. Stub-state contract: validation
-    // surfaces a Zod disc-mismatch error AT or UNDER the union path,
-    // so the aggregated `valid` is FALSE.
+    // Container proxies are not leaf views: `api.fields.notify.valid`
+    // descends, and the aggregated boolean lives on the call form
+    // `api.fields('notify')`. Validation puts the discriminator
+    // mismatch at or under the union path, so that boolean is false.
     const notifyState = (
       api as unknown as {
         fields: (path: string) => { valid: boolean; errors: unknown[] }
@@ -1174,7 +1136,6 @@ describe('DU hardening — field metadata side-effects of an invalid discriminat
   })
 })
 
-// -------------------- 6. handleSubmit while invalid --------------------
 describe('DU hardening — handleSubmit while the form has an invalid discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -1228,32 +1189,26 @@ describe('DU hardening — handleSubmit while the form has an invalid discrimina
   })
 })
 
-// =====================================================================
-// 7. ARRAY × DISCRIMINATED UNION — interplay failure modes.
+// Arrays crossed with discriminated unions. Three structural shapes,
+// each with its own hazard:
 //
-// Three structural shapes worth probing separately:
+//   (a) `z.array(z.discriminatedUnion(...))`: every element carries its
+//       own discriminator, and variant memory is keyed by absolute path
+//       (`['events', 0, 'channel']`), so splicing or reordering shifts
+//       memory entries onto elements they were never captured for.
 //
-//   (a) `array of DU` — `z.array(z.discriminatedUnion(...))` — every
-//       element carries its own discriminator. Variant memory is
-//       keyed by absolute path (`['events', 0, 'channel']` etc.), so
-//       splicing or reordering shifts memory entries onto DIFFERENT
-//       elements than they were captured for.
+//   (b) `discriminatedUnion('kind', [{kind:'list', items: array(...)},
+//       {kind:'single', ...}])`: switching the outer discriminator
+//       hides and restores a whole array branch, so memory has to round
+//       trip a non-trivial subtree.
 //
-//   (b) `DU containing an array variant` — `discriminatedUnion('kind',
-//       [{kind:'list', items: array(...)}, {kind:'single', ...}])`
-//       — switching the outer discriminator hides/restores an entire
-//       array branch, so memory has to round-trip a non-trivial
-//       sub-tree.
+//   (c) indexed Case A vs Case B: a write to `events.0.type` (the leaf)
+//       against one to `events.0` (the whole element). Invalid
+//       discriminators behave identically through both.
 //
-//   (c) `array Case A vs Case B at indexed paths` — write to
-//       `events.0.type` (Case A leaf) vs `events.0` (Case B whole
-//       element). Both should reject invalid discriminators the same
-//       way.
-//
-// These probes also exercise array-level operations (`fieldArray.append`,
-// `.remove`, `.swap`, `.move`, whole-array replacement via `setValue`)
-// since those are the common ways arrays change shape under a DU.
-// =====================================================================
+// Array reshape arrives through `fieldArray.append` / `.remove` /
+// `.swap` / `.move` and whole-array `setValue`, so the probes drive
+// each of them.
 
 describe('DU hardening — array of DU: variant memory under array reshape', () => {
   const arraySchema = z.object({
@@ -1304,8 +1259,8 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
   it('removing an element does NOT bleed its memory onto the new occupant of that index', async () => {
     const api = mountArr()
 
-    // Build memory at events.0: type something into click.x, switch to
-    // text — variant memory captures `click → {x:'first'}` keyed by
+    // Build memory at events.0: type into click.x, then switch to
+    // text. Variant memory captures `click -> {x:'first'}` keyed by the
     // absolute path `["events",0]`.
     api.setValue('events.0.x', 'click-typed')
     api.setValue('events.0.type', 'text')
@@ -1317,11 +1272,10 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
     api.remove('events', 0)
     await nextTick()
 
-    // Switch the now-events[0] (was events[1]) from text → click. If
-    // memory is honored by index, it'll restore the OLD events[0]'s
-    // typed `x: 'click-typed'`. That's a cross-element bleed:
-    // events[1]'s click variant has never been typed, so `x` should
-    // be the slim default.
+    // Switch the now-events[0] (was events[1]) from text to click.
+    // Honouring memory by index would restore the OLD events[0]'s typed
+    // `x: 'click-typed'`, a cross-element bleed: events[1]'s click
+    // variant has never been typed, so `x` is the slim default.
     api.setValue('events.0.type', 'click')
     await nextTick()
 
@@ -1341,9 +1295,9 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
     api.setValue('events.2.type', 'text')
     await nextTick()
 
-    // Truncate to one element. Memory entries for events.1 and events.2
-    // describe elements that are gone — they should be dropped, not
-    // linger forever.
+    // Truncate to one element. Memory entries for events.1 and
+    // events.2 describe elements that no longer exist, so they are
+    // dropped rather than left to linger.
     api.setValue('events', [{ type: 'click', x: 'a' }])
     await nextTick()
 
@@ -1377,9 +1331,9 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
     ])
     await nextTick()
 
-    // Switching the new elements' discriminators should NOT surface
-    // pre-replace memory — the elements we just installed have no
-    // history with this form.
+    // Switching the new elements' discriminators surfaces no
+    // pre-replace memory: the elements just installed have no history
+    // with this form.
     api.setValue('events.0.type', 'click')
     api.setValue('events.1.type', 'text')
     await nextTick()
@@ -1398,11 +1352,10 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
     api.setValue('events.1.type', 'click')
     await nextTick()
 
-    // Swap. After this, events[0] is the original `text` element and
-    // events[1] is the original `click` element. Memory was keyed by
-    // path; after the swap, restoring events[0] consults memory.events[0]
-    // which captured the OLD events[0] state. That memory is for a
-    // different element identity now.
+    // After the swap, events[0] is the original `text` element and
+    // events[1] the original `click`. Memory is keyed by path, so
+    // restoring events[0] consults an entry captured for a different
+    // element identity.
     api.swap('events', 0, 1)
     await nextTick()
 
@@ -1443,14 +1396,11 @@ describe('DU hardening — array of DU: variant memory under array reshape', () 
     api.setValue('events.0.type', 'click')
     await nextTick()
 
-    // The bug this probe pins: A's value (`'A'`) leaking onto the new
-    // events[0] (which is the original B) via index-keyed memory at
-    // events.0. After a move, memory at the moved index must NOT
-    // restore the moved-out element's typed state on a same-index
-    // switch. Either the slim default OR the pre-switch state of the
-    // new occupant (B's own `x: 'B'` from defaultValues) is fine —
-    // both honour the "no cross-element bleed" contract; only A's
-    // value would signal the bug.
+    // After a move, memory at the moved index must not restore the
+    // moved-out element's typed state on a same-index switch. Both the
+    // slim default and the new occupant's own pre-switch state (B's
+    // `x: 'B'` from defaultValues) honour that; A's `'A'` reaching the
+    // new events[0] is the cross-element bleed.
     const e0 = api.values.events[0] as AnyEvent
     expect(e0.type).toBe('click')
     expect(e0.x).not.toBe('A')
@@ -1528,10 +1478,10 @@ describe('DU hardening — DU containing an array variant: round-trip preservati
     api.setValue('payload.kind', 'list')
     await nextTick()
 
-    // After the invalid intermediate + valid round-trip, items should
-    // be either the originally-typed `[{sku:'S-1'}]` (restored from
-    // pre-invalid memory) or the slim default `[]`. The accept-as-is
-    // outcome would surface the invalid intermediate's frozen state.
+    // After the invalid intermediate and the round trip back, items is
+    // either the originally-typed `[{sku:'S-1'}]` restored from
+    // pre-invalid memory, or the slim default `[]`. Never the invalid
+    // intermediate's frozen state.
     const payload = api.values.payload as AnyPayload
     expect(payload.kind).toBe('list')
     expect(Array.isArray(payload.items)).toBe(true)
@@ -1612,10 +1562,10 @@ describe('DU hardening — array index Case A/B with invalid discriminator', () 
     await nextTick()
 
     const e0 = api.values.events[0] as AnyEvent
-    // Either the element collapses to `{type:''}` (with x cleaned
-    // up + the disc path tracked as blank) or the element retains a
-    // valid variant. The accept-as-is `{type:'', x:'first'}` shape is
-    // the bug.
+    // Either the element collapses to `{type:''}` with `x` cleaned up
+    // and the discriminator tracked as blank, or it retains a valid
+    // variant. `{type:'', x:'first'}` is the mixed shape it never
+    // holds.
     const valid =
       (Object.keys(e0).length === 1 && e0.type === '') ||
       (e0.type === 'click' && typeof e0.x === 'string') ||
@@ -1651,10 +1601,9 @@ describe('DU hardening — array index Case A/B with invalid discriminator', () 
     const ok = api.setValue('events.5', { type: 'BAD' })
     await nextTick()
 
-    // Stub-state contract: target index lands a disc-only stub
-    // `{type:'BAD'}`; gap indices 2-4 are padded with the schema's
-    // element default (a valid first-variant default). No
-    // first-variant fields leak onto the consumer-targeted index.
+    // The target index lands `{type:'BAD'}` while gap indices 2-4 are
+    // padded with the schema's element default, so no first-variant
+    // fields leak onto the index the consumer aimed at.
     if (ok === true && api.values.events.length > 2) {
       for (let i = 0; i < api.values.events.length; i++) {
         const e = api.values.events[i] as AnyEvent
@@ -1714,27 +1663,20 @@ describe('DU hardening — array element invalid disc: container-level error rep
     await api.parse({ commit: true })
     await nextTick()
 
-    // The array container's `firstError` should reflect that one of
-    // its elements is broken. Without it, a parent UI bound to the
-    // array's summary error has no signal — it has to walk every
-    // index manually.
-    // Model P: the array container's rolled-up summary error reads
-    // through the call-form (`form.fields('events')`), not field-state
-    // keys on the navigable container node.
+    // The array container's `firstError` reflects a broken element, so
+    // a parent UI bound to the array's summary error does not have to
+    // walk every index itself. Like every rolled-up container value it
+    // reads through the call form `form.fields('events')`, not through
+    // field-state keys on the navigable node.
     expect(api.fields('events').firstError).toBeDefined()
   })
 })
 
-// =====================================================================
-// 8. UNHINGED PROBES — corner cases far from the happy path. The goal
-//    is awareness, not remediation: each test asserts a property that
-//    a robust library should hold under adversarial input. Failures
-//    here surface latent bugs we may want to harden over time.
-// =====================================================================
+// Corner cases far from the happy path. Each test pins a property
+// Attaform holds under adversarial input.
 
 import { reactive, ref } from 'vue'
 
-// -------------------- 8.1 Aliasing & mutation --------------------
 describe('chaos — caller mutates value AFTER setValue', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -1750,9 +1692,9 @@ describe('chaos — caller mutates value AFTER setValue', () => {
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'sms', number: '5551234' })
 
-    // Caller mutates their own reference. The form must own its
-    // storage — sharing the reference would mean later input edits
-    // poison the form.
+    // The caller mutates their own reference. The form owns its
+    // storage, so sharing that reference would let later edits outside
+    // the form poison it.
     live.number = 'pwned'
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'sms', number: '5551234' })
@@ -1769,7 +1711,6 @@ describe('chaos — caller mutates value AFTER setValue', () => {
   })
 })
 
-// -------------------- 8.2 Prototype pollution --------------------
 describe('chaos — prototype pollution attempts via path & value', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -1803,9 +1744,8 @@ describe('chaos — prototype pollution attempts via path & value', () => {
     api.setValue('bag.__proto__.polluted', 'yes')
     await nextTick()
 
-    // Object.prototype must NOT pick up `polluted`. If it does, every
-    // object in the JS realm gets the property — that's prototype
-    // pollution.
+    // `Object.prototype` does not pick up `polluted`. If it did, every
+    // object in the realm would carry the property.
     const fresh = {} as Record<string, unknown>
     expect(fresh['polluted']).toBeUndefined()
     // Cleanup if pollution did occur, so subsequent tests aren't flaky.
@@ -1844,7 +1784,6 @@ describe('chaos — prototype pollution attempts via path & value', () => {
   })
 })
 
-// -------------------- 8.3 JSON-cycle traps in variant memory --------------------
 describe('chaos — values that break JSON.stringify (variant memory snapshot)', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -1878,10 +1817,10 @@ describe('chaos — values that break JSON.stringify (variant memory snapshot)',
     apps.push(app)
     const api = handle.api as BigApi
 
-    // Set a real BigInt value, then trigger a discriminator switch.
-    // Variant memory uses `JSON.parse(JSON.stringify(...))` to deep-
-    // clone the outgoing subtree. JSON.stringify throws on BigInt —
-    // this would surface as a runtime error or a corrupt memory entry.
+    // Set a real BigInt, then switch the discriminator. Variant memory
+    // deep-clones the outgoing subtree with
+    // `JSON.parse(JSON.stringify(...))`, and JSON.stringify throws on
+    // BigInt, so the hazard is a runtime error or a corrupt entry.
     api.setValue('payload.id', 9007199254740993n)
     await nextTick()
 
@@ -1924,15 +1863,13 @@ describe('chaos — values that break JSON.stringify (variant memory snapshot)',
     api.setValue('payload.kind', 'big')
     await nextTick()
 
-    // If the snapshot succeeded, restoration brings back the typed
-    // BigInt. If snapshot crashed silently, we'd get the slim default
-    // (0n). We accept either as long as state is internally consistent
-    // — the assertion is that the value at least matches its type.
+    // A successful snapshot restores the typed BigInt; a silently
+    // crashed one leaves the slim default (0n). Either is acceptable so
+    // long as the value still matches its type.
     expect(typeof api.values.payload.id).toBe('bigint')
   })
 })
 
-// -------------------- 8.4 Exotic discriminator literals --------------------
 describe('chaos — exotic discriminator literal types', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2008,7 +1945,6 @@ describe('chaos — exotic discriminator literal types', () => {
   })
 })
 
-// -------------------- 8.5 NaN special cases --------------------
 describe('chaos — NaN at the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2050,7 +1986,6 @@ describe('chaos — NaN at the discriminator', () => {
   })
 })
 
-// -------------------- 8.6 -0 vs 0 identity quirk --------------------
 describe('chaos — `-0` written over `0` at a numeric leaf', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2097,7 +2032,6 @@ describe('chaos — `-0` written over `0` at a numeric leaf', () => {
   })
 })
 
-// -------------------- 8.7 Conflicting discriminator literals --------------------
 describe('chaos — DU with two variants sharing the same literal value', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2105,10 +2039,9 @@ describe('chaos — DU with two variants sharing the same literal value', () => 
   })
 
   it("zod surfaces a schema-level error or first-wins; runtime doesn't crash", async () => {
-    // Two variants with `kind: z.literal('a')` is illegal in v4 but
-    // worth probing: does construction throw, succeed, or silently
-    // pick one? If the schema construction itself throws, the test
-    // catches it.
+    // Two variants sharing `kind: z.literal('a')` is illegal in v4.
+    // Construction may throw, succeed, or silently pick one; the test
+    // catches all three.
     let constructed = false
     let err: unknown = null
     try {
@@ -2147,7 +2080,6 @@ describe('chaos — DU with two variants sharing the same literal value', () => 
   })
 })
 
-// -------------------- 8.8 z.lazy recursive DU --------------------
 describe('chaos — recursive DU via z.lazy (tree of nodes)', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2234,7 +2166,6 @@ describe('chaos — recursive DU via z.lazy (tree of nodes)', () => {
   })
 })
 
-// -------------------- 8.9 Re-entry into setValue --------------------
 describe('chaos — setValue re-entry inside listener callbacks', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2259,10 +2190,9 @@ describe('chaos — setValue re-entry inside listener callbacks', () => {
           key: `chaos-reentry-${Math.random().toString(36).slice(2)}`,
           defaultValues: { name: '', mirror: '' },
         }) as unknown as Api
-        // Mirror name → mirror via a watch. A naïve implementation
-        // would re-enter setValue, the form would emit again, the
-        // watcher would fire again, and so on. The implementation
-        // must guard re-entry (or at least avoid divergent loops).
+        // Mirror `name` into `mirror` through a watch. Re-entering
+        // setValue from the watcher re-emits, which fires the watcher
+        // again; the write path guards that rather than diverging.
         let stop = 0
         const live = api as unknown as { values: { name: string } }
         const observer = (): void => {
@@ -2299,7 +2229,6 @@ describe('chaos — setValue re-entry inside listener callbacks', () => {
   })
 })
 
-// -------------------- 8.10 Concurrent submits --------------------
 describe('chaos — handleSubmit fired twice rapidly', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2332,7 +2261,6 @@ describe('chaos — handleSubmit fired twice rapidly', () => {
   })
 })
 
-// -------------------- 8.11 Vue ref / reactive proxy as value --------------------
 describe('chaos — Vue ref / reactive object passed as setValue value', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2363,8 +2291,8 @@ describe('chaos — Vue ref / reactive object passed as setValue value', () => {
     await nextTick()
 
     // Either rejection (storage unchanged from the email default) or
-    // unwrap (sms applied). What it must NOT do: store the Ref object
-    // wholesale (a Ref has `.value` — that key isn't in the schema).
+    // unwrap (sms applied). What it must not do is store the Ref
+    // wholesale, since its `.value` key is not in the schema.
     const notify = api.values.notify as AnyNotify
     const acceptedAndUnwrapped = notify.channel === 'sms' && typeof notify.number === 'string'
     const rejectedKeptEmail = notify.channel === 'email'
@@ -2374,7 +2302,6 @@ describe('chaos — Vue ref / reactive object passed as setValue value', () => {
   })
 })
 
-// -------------------- 8.12 Symbol-keyed values --------------------
 describe('chaos — Symbol-keyed values in the input object', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2401,7 +2328,6 @@ describe('chaos — Symbol-keyed values in the input object', () => {
   })
 })
 
-// -------------------- 8.13 Empty-variant DU --------------------
 describe('chaos — DU variant with no fields beyond the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2443,7 +2369,6 @@ describe('chaos — DU variant with no fields beyond the discriminator', () => {
   })
 })
 
-// -------------------- 8.14 Same-name discriminators at different depths --------------------
 describe('chaos — two DUs with the same discriminator key at different paths', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2488,10 +2413,10 @@ describe('chaos — two DUs with the same discriminator key at different paths',
     api.setValue('outer.inner.kind', 'Y')
     await nextTick()
 
-    // Switch OUTER's kind A → B → A. Memory at outer snapshots
-    // {kind:A, inner:{kind:Y, y:''}}. After A→B→A, outer restores.
-    // The two DU memory maps are at different absolute paths
-    // (`['outer']` vs `['outer','inner']`) — they must NOT confuse.
+    // Switch OUTER through A, B, A. Memory at outer snapshots
+    // `{kind:A, inner:{kind:Y, y:''}}` and restores it on the way back.
+    // The two memory maps sit at different absolute paths (`['outer']`
+    // and `['outer','inner']`) and never confuse each other.
     api.setValue('outer.kind', 'B')
     await nextTick()
     api.setValue('outer.kind', 'A')
@@ -2509,7 +2434,6 @@ describe('chaos — two DUs with the same discriminator key at different paths',
   })
 })
 
-// -------------------- 8.15 Array-length manipulation through proxy --------------------
 describe('chaos — array of DU mutated via proxy length / direct index assignment', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2545,8 +2469,8 @@ describe('chaos — array of DU mutated via proxy length / direct index assignme
     apps.push(app)
     const api = handle.api as ArrApi
 
-    // Try writing an absurdly far-out index. Either rejection or
-    // schema-fill — but never a sparse / non-iterable array.
+    // Write an absurdly far-out index. Either rejection or schema-fill,
+    // never a sparse or non-iterable array.
     api.setValue('events.10', { type: 'text', value: 'far' })
     await nextTick()
 
@@ -2563,7 +2487,6 @@ describe('chaos — array of DU mutated via proxy length / direct index assignme
   })
 })
 
-// -------------------- 8.16 Function passed as value --------------------
 describe('chaos — non-data value types passed to setValue', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2592,12 +2515,10 @@ describe('chaos — non-data value types passed to setValue', () => {
     apps.push(app)
     const api = handle.api as Api
 
-    // setValue's overload includes a callback form — but a non-arity
-    // function (e.g., a getter) at a STRING leaf should be rejected.
-    // The callback form is only reached when typeof === 'function'
-    // AND the path resolves to something the function returns a value
-    // for. Probe: does the form reject, or does it call the function
-    // and store the result, or does it store the function itself?
+    // setValue's overloads include a callback form, reached only when
+    // the value is a function AND the path resolves to something that
+    // function returns a value for. A zero-arity getter at a STRING
+    // leaf meets neither condition.
     const fn = (() => 'computed') as unknown
     api.setValue('name', fn)
     await nextTick()
@@ -2606,7 +2527,6 @@ describe('chaos — non-data value types passed to setValue', () => {
   })
 })
 
-// -------------------- 8.17 Path with empty/exotic key --------------------
 describe('chaos — exotic path inputs', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2640,13 +2560,12 @@ describe('chaos — exotic path inputs', () => {
     } catch {
       threw = true
     }
-    // A throw is acceptable — it's the documented contract. What's
-    // unacceptable is silent acceptance into a nonsense path.
+    // A throw is the documented contract here. Silent acceptance into
+    // a nonsense path is not.
     expect(threw).toBe(true)
   })
 })
 
-// -------------------- 8.18 Inactive-variant register-binding write --------------------
 describe('chaos — writing through register binding for an inactive variant', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2654,12 +2573,11 @@ describe('chaos — writing through register binding for an inactive variant', (
   })
 
   it('register a path that only exists on the SMS variant while EMAIL is active', async () => {
-    // The lift returns a stub for inactive-variant fields. But what
-    // about register? If a developer template-binds an input to
-    // register('notify.number') unconditionally, then switches to
-    // email, the binding stays attached but the path is inactive.
-    // setValue through the binding writes a key that doesn't belong
-    // — does the form reject, accept, or coerce?
+    // The FieldState lift returns a stub for inactive-variant fields,
+    // but a binding outlives the variant: template-bind an input to
+    // `register('notify.number')` unconditionally, switch to email, and
+    // the binding stays attached to an inactive path that a write would
+    // put a foreign key on.
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -2667,13 +2585,12 @@ describe('chaos — writing through register binding for an inactive variant', (
     await nextTick()
 
     const notify = api.values.notify as AnyNotify
-    // Active variant is email; `number` doesn't belong on the active
-    // variant's shape. Either the slim gate / cross-variant guard
-    // rejects the write (storage unchanged on email + valid address)
-    // or the runtime coerces a variant switch (sms with `number`
-    // typed). The accept-as-is bug —
+    // The active variant is email, so `number` is not on its shape.
+    // Either the cross-variant guard rejects the write and storage
+    // stays on a valid email, or the runtime coerces a switch to sms
+    // with `number` typed. Only
     // `{channel:'email', address:'old@example.com', number:'stale...'}`
-    // — is the only outcome the contract forbids.
+    // is forbidden.
     const valid =
       (ok === false &&
         notify.channel === 'email' &&
@@ -2684,7 +2601,6 @@ describe('chaos — writing through register binding for an inactive variant', (
   })
 })
 
-// -------------------- 8.19 `setValue` on path WHILE the discriminator is invalid --------------------
 describe('chaos — leaf write while the parent discriminator is invalid', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2698,10 +2614,10 @@ describe('chaos — leaf write while the parent discriminator is invalid', () =>
     api.setValue('notify.channel', 'wat')
     await nextTick()
 
-    // Now write to `notify.address` while `channel: 'wat'` (no variant
-    // matches). Either reject, or first restore a valid disc, or
-    // surface a clear error. The accept-as-is outcome compounds the
-    // earlier bug.
+    // Write to `notify.address` while `channel: 'wat'` matches no
+    // variant. The write is rejected, or a valid discriminator is
+    // restored first, or a clear error surfaces; what it does not do is
+    // deepen the unrepresentable shape.
     const ok = api.setValue('notify.address', 'next@example.com')
     await nextTick()
 
@@ -2721,13 +2637,9 @@ describe('chaos — leaf write while the parent discriminator is invalid', () =>
   })
 })
 
-// =====================================================================
-// 9. MORE CHAOS — Zod transforms / coerce / preprocess / pipe;
-//    performance / DoS; seemingly-reasonable values; API misuse;
-//    Zod v3-vs-v4 specific quirks.
-// =====================================================================
+// Zod transforms, coerce, preprocess and pipe; DoS-shaped input;
+// seemingly-reasonable values; API misuse; v3-vs-v4 quirks.
 
-// -------------------- 9.1 z.coerce.* at the discriminator --------------------
 describe('chaos — z.coerce at the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2735,12 +2647,12 @@ describe('chaos — z.coerce at the discriminator', () => {
   })
 
   it('z.coerce.number() discriminator: string-typed write does not silently corrupt', async () => {
-    // Tricky: input type is `unknown` (z.coerce.number accepts anything
-    // and tries Number(value)); output type is `number`. The slim-
-    // primitive gate has to choose — if it uses input type, '1' passes
-    // and the variant lookup runs against the un-coerced string; if
-    // output, '1' is rejected. Both are reasonable but should be
-    // consistent.
+    // `z.coerce.number` has input type `unknown` (it accepts anything
+    // and tries `Number(value)`) and output type `number`, so the slim
+    // gate has to pick one. Reading the input type lets '1' through and
+    // runs the variant lookup against the un-coerced string; reading
+    // the output type rejects it. The test pins which, so the two
+    // adapters cannot drift apart.
     const schema = z.object({
       payload: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal(1), v: z.string() }),
@@ -2767,11 +2679,10 @@ describe('chaos — z.coerce at the discriminator', () => {
     apps.push(app)
     const api = handle.api as Api
 
-    // Write a string to a numeric discriminator. Either the gate
-    // rejects (consistent with strict-typed posture) or coerces and
-    // reshapes (consistent with v4's coerce semantics). What it must
-    // NOT do: accept the string verbatim, leaving `kind: '1'` (a string)
-    // which no variant's `z.literal(1)` literal matches.
+    // Write a string to a numeric discriminator. The gate either
+    // rejects it, or coerces and reshapes. What it must not do is
+    // accept the string verbatim and leave `kind: '1'`, which no
+    // variant's `z.literal(1)` matches.
     api.setValue('payload.kind', '1')
     await nextTick()
 
@@ -2807,15 +2718,13 @@ describe('chaos — z.coerce at the discriminator', () => {
     api.setValue('name', 42)
     await nextTick()
 
-    // Under the no-write-mutation contract, schema-side coerce runs at
-    // parse / submit, not at the write boundary. The raw number 42
-    // lands in storage; safeParse turns it into the string '42' when
-    // the consumer calls validate / handleSubmit.
+    // Schema-side coerce runs at parse and submit, never at the write
+    // boundary, so the raw number 42 lands in storage and safeParse
+    // turns it into '42' when the consumer validates or submits.
     expect(api.values.name).toBe(42)
   })
 })
 
-// -------------------- 9.2 z.preprocess wrapping a DU --------------------
 describe('chaos — z.preprocess() wrapping a discriminated union', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2860,10 +2769,10 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
   })
 
   it('v3: preprocess wrapping a DU: raw null lands in storage', async () => {
-    // v3 parity. Zod v3 expresses `z.preprocess(fn, inner)` as a
-    // ZodEffects with `_def.effect.type === 'preprocess'`; the v3
-    // adapter's `isPreprocessOrCoerceLeaf` predicate fires at the
-    // wrapper and the slim-gate accepts the raw write verbatim.
+    // v3 parity. v3 expresses `z.preprocess(fn, inner)` as a ZodEffects
+    // with `_def.effect.type === 'preprocess'`, so the v3 adapter's
+    // `isPreprocessOrCoerceLeaf` fires at the wrapper and the slim gate
+    // takes the raw write verbatim.
     const inner = zV3.discriminatedUnion('channel', [
       zV3.object({ channel: zV3.literal('email'), address: zV3.string() }),
       zV3.object({ channel: zV3.literal('sms'), number: zV3.string() }),
@@ -2897,7 +2806,6 @@ describe('chaos — z.preprocess() wrapping a discriminated union', () => {
   })
 })
 
-// -------------------- 9.3 z.transform at a leaf inside a variant --------------------
 describe('chaos — z.transform() at a leaf changes the output type', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -2905,9 +2813,9 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
   })
 
   it('storage holds the INPUT type, not the transform OUTPUT type', async () => {
-    // input string `' hello '` → output `'hello'`. The form should
-    // store and return the input verbatim — the consumer can apply the
-    // transform on parse.
+    // Input `' hello '` transforms to output `'hello'`. The form stores
+    // and returns the input verbatim, leaving the consumer to apply the
+    // transform at parse.
     const schema = z.object({
       name: z.string().transform((s) => s.trim().toUpperCase()),
     })
@@ -2934,22 +2842,19 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     api.setValue('name', '  ada  ')
     await nextTick()
 
-    // The user typed '  ada  '; storage should preserve their input
-    // (so the input element shows what they typed, not 'ADA'). The bug
-    // case: the form pre-applies the transform and the user sees their
-    // text reformatted on every keystroke. The post-transform OUTPUT
-    // is reachable via `form.parse()` below — keeps storage as the
-    // honest input view, exposes the output on demand.
+    // Storage preserves what the user typed ('  ada  '), so the input
+    // element does not reformat their text on every keystroke. The
+    // post-transform output stays reachable through `form.parse()`
+    // below.
     expect(api.values.name).toBe('  ada  ')
   })
 
   it('form.parse() returns the post-transform OUTPUT shape while form.values stays as input', async () => {
-    // The input/output asymmetry contract: storage (and form.values)
-    // holds the pre-transform value the consumer wrote;
-    // `form.parse()` runs the full parse pipeline (refinements +
-    // transforms) and returns the post-transform value. handleSubmit's
-    // callback already receives this same shape — `parse()` is the
-    // standalone way to ask for it.
+    // The input/output asymmetry: storage and `form.values` hold the
+    // pre-transform value the consumer wrote, while `form.parse()` runs
+    // the full pipeline (refinements and transforms) and returns the
+    // post-transform one. handleSubmit's callback receives that same
+    // shape, so `parse()` is the standalone way to ask for it.
     const schema = z.object({
       isLongEmail: z.string().transform((v) => v.length > 10),
       count: z.string().transform((v) => Number(v)),
@@ -3004,17 +2909,16 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
   })
 
   it('TYPES: input/output asymmetry threads through useForm — values stays z.input, handleSubmit/parse resolve to z.output', () => {
-    // Type-level probe. The body is a no-op at runtime — `expectTypeOf`
-    // assertions run at compile time, not at runtime — but the test
-    // function still has to exist for Vitest to report the file's
-    // status. Failure here is a tsc error caught by `pnpm typecheck`.
-    // Underscore prefix marks the `const` as type-only for the
-    // `no-unused-vars` linter; we read it via `typeof _schema` below.
+    // A type-level probe: `expectTypeOf` asserts at compile time, so
+    // the body is a runtime no-op, but the `it` still has to exist for
+    // Vitest to report the file. A failure here is a tsc error surfaced
+    // by `pnpm typecheck`. The underscore keeps `no-unused-vars` quiet
+    // on a const read only through `typeof _schema`.
     const _schema = z.object({
-      // Different input vs output types — the trickier case.
+      // Different input and output types, the trickier case.
       isLongEmail: z.string().transform((v) => v.length > 10),
       count: z.string().transform((v) => Number(v)),
-      // Same input/output (no transform) — the common case still works.
+      // Same input and output, the common case.
       name: z.string(),
     })
 
@@ -3033,15 +2937,15 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
     // so the public TS surface is what's under test.
     type FormApi = UseFormReturn<typeof _schema>
 
-    // form.values reflects storage — the pre-transform z.input view.
+    // form.values reflects storage: the pre-transform z.input view.
     type FlagAtValues = FormApi['values']['isLongEmail']
     type CountAtValues = FormApi['values']['count']
     expectTypeOf<FlagAtValues>().toEqualTypeOf<string>()
     expectTypeOf<CountAtValues>().toEqualTypeOf<string>()
 
-    // form.handleSubmit's onSubmit callback receives z.output (post-
-    // transform). Extract via Parameters<...>[0] off the OnSubmit fn
-    // shape — `(data: z.output) => void | Promise<void>`.
+    // handleSubmit's onSubmit callback receives z.output, extracted
+    // through `Parameters<...>[0]` off the OnSubmit shape
+    // `(data: z.output) => void | Promise<void>`.
     type OnSubmitParam = Parameters<Parameters<FormApi['handleSubmit']>[0]>[0]
     expectTypeOf<OnSubmitParam['isLongEmail']>().toEqualTypeOf<boolean>()
     expectTypeOf<OnSubmitParam['count']>().toEqualTypeOf<number>()
@@ -3055,7 +2959,6 @@ describe('chaos — z.transform() at a leaf changes the output type', () => {
   })
 })
 
-// -------------------- 9.4 Date / Map / Set inside a DU subtree --------------------
 describe('chaos — non-JSON-friendly types in DU subtree', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3098,17 +3001,15 @@ describe('chaos — non-JSON-friendly types in DU subtree', () => {
     api.setValue('payload.kind', 'dated')
     await nextTick()
 
-    // Variant memory snapshot uses JSON-cycle, which converts Date →
-    // ISO string. After the round-trip, restoration yields a STRING,
-    // not a Date. `instanceof Date` fails — and the consumer's code
-    // that expects `at.getTime()` crashes silently the next time it
-    // runs.
+    // The variant-memory snapshot round-trips through JSON, which
+    // turns a Date into an ISO string. Restoration therefore yields a
+    // string, `instanceof Date` fails, and consumer code calling
+    // `at.getTime()` crashes the next time it runs.
     const at = (api.values.payload as AnyPayload).at
     expect(at instanceof Date).toBe(true)
   })
 })
 
-// -------------------- 9.5 Numeric strings at numeric leaves --------------------
 describe('chaos — numeric-string write at a z.number() leaf', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3143,7 +3044,6 @@ describe('chaos — numeric-string write at a z.number() leaf', () => {
   })
 })
 
-// -------------------- 9.6 null at z.string().nullable() --------------------
 describe('chaos — null at a nullable string leaf', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3178,7 +3078,6 @@ describe('chaos — null at a nullable string leaf', () => {
   })
 })
 
-// -------------------- 9.7 Performance: 1000 setValue calls --------------------
 describe('chaos — performance: rapid setValue chain', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3201,7 +3100,6 @@ describe('chaos — performance: rapid setValue chain', () => {
   })
 })
 
-// -------------------- 9.8 Performance: large array of DU --------------------
 describe('chaos — performance: large array of DU', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3244,7 +3142,6 @@ describe('chaos — performance: large array of DU', () => {
   })
 })
 
-// -------------------- 9.9 resetField('') is the form-level-errors path --------------------
 describe("chaos — resetField with the form-level errors path ''", () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3252,10 +3149,10 @@ describe("chaos — resetField with the form-level errors path ''", () => {
   })
 
   it("resetField('') targets the literal '' field, NOT the global bucket", async () => {
-    // Form-level (global) errors live at the root `[]`, set via setErrors
-    // and cleared via clearErrors([]). `''` is an ordinary literal
-    // empty-key field, so resetField('') targets THAT field, never the
-    // global bucket — and it is NOT a "reset everything" alias.
+    // Form-level errors live at the root `[]`, set with setErrors and
+    // cleared with clearErrors([]). `''` is an ordinary literal
+    // empty-key field, so `resetField('')` targets that field, never
+    // the global bucket, and is not a "reset everything" alias.
     const { app, api } = mountProfile()
     apps.push(app)
 
@@ -3271,8 +3168,8 @@ describe("chaos — resetField with the form-level errors path ''", () => {
     ;(api.resetField as (path: string) => void)('')
     await nextTick()
 
-    // Named field and the global bucket are both untouched — `''` is
-    // neither's home.
+    // The named field and the global bucket are both untouched, since
+    // `''` is neither's home.
     expect(api.values.name).toBe('Ada')
     expect(api.meta.ownErrors).toHaveLength(1)
 
@@ -3307,21 +3204,19 @@ describe("chaos — resetField with the form-level errors path ''", () => {
   })
 })
 
-// -------------------- 9.10 Two useForm with same key --------------------
 describe('chaos — two useForm calls with the same key in one app', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  // Shared-key semantics are intentional (modal + main rendering the
-  // same logical form). The store IS shared; storage IS shared. What
-  // mustn't bleed is per-instance config — each useForm callsite
-  // honors its own validateOn / getDisplayState / coerce /
-  // rememberVariants / debounceMs. The first call's defaultValues
-  // wins; subsequent calls inherit the live store state, not their own
-  // seed (so opening a modal shows whatever the user typed in the
-  // main form).
+  // Shared-key semantics are deliberate: a modal and a main view
+  // render the same logical form, so the store and the storage are
+  // shared. Per-instance config is not, and each `useForm` call site
+  // honours its own validateOn, coerce, rememberVariants and
+  // debounceMs. The first call's defaultValues wins and later calls
+  // inherit the live store state rather than their own seed, so opening
+  // a modal shows whatever the user has typed in the main form.
   it('shares store + first-call defaults wins; subsequent call sees live store state', () => {
     const schema = z.object({ x: z.string() })
     const handle: { a?: unknown; b?: unknown } = {}
@@ -3347,10 +3242,10 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     const a = handle.a as { values: { x: string }; setValue: (p: string, v: unknown) => boolean }
     const b = handle.b as { values: { x: string }; setValue: (p: string, v: unknown) => boolean }
 
-    // First call's defaultValues wins; both handles see the same live
-    // state. The second `defaultValues: { x: 'b' }` is a guess that
-    // should yield to the live store — exactly the modal-opens-on-
-    // partially-filled-main-form pattern.
+    // The first call's defaultValues wins and both handles read the
+    // same live state, so the second `defaultValues: { x: 'b' }` yields
+    // to the store: the modal-opens-on-a-partially-filled-main-form
+    // case.
     expect(a.values.x).toBe('a')
     expect(b.values.x).toBe('a')
 
@@ -3366,14 +3261,12 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   })
 
   it("each instance honors its own validateOn — sibling's 'submit' doesn't suppress the other's 'change'", async () => {
-    // Two callsites, one shared store. Instance A starts in
-    // submit-only mode; instance B asks for change-mode. With a
-    // valid seed, neither has errors at mount. After a setValue
-    // through B, the change-mode pipeline should fire and surface
-    // 'bad email' even though the store's construction-time mode is
-    // 'submit'. Without the per-instance lift, B's writes would
-    // silently NOT validate (the store would only know A's submit
-    // mode).
+    // Two call sites, one shared store: A is submit-only, B asks for
+    // change mode, and a valid seed means neither has errors at mount.
+    // A setValue through B fires the change-mode pipeline and surfaces
+    // 'bad email' even though the store was constructed in submit mode.
+    // Without the per-instance lift the store would only know A's mode
+    // and B's writes would silently not validate.
     const schema = z.object({ email: z.email('bad email') })
     const handle: { a?: unknown; b?: unknown } = {}
     const App = defineComponent({
@@ -3410,10 +3303,10 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(a.errors.email).toEqual([])
     expect(b.errors.email).toEqual([])
 
-    // Drain helper: schema.validateAtPath resolves through one
-    // microtask plus the adapter's own async (sync zod still returns
-    // through Promise.resolve), so a single nextTick isn't enough.
-    // setTimeout(0) flushes both microtask queue and the next macrotask.
+    // `schema.validateAtPath` resolves through one microtask plus the
+    // adapter's own async (sync Zod still returns via
+    // `Promise.resolve`), so one nextTick is not enough. `setTimeout(0)`
+    // flushes the microtask queue and the next macrotask.
     const drain = async () => {
       await nextTick()
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -3431,19 +3324,17 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     b.setValue('email', 'second-bad-write')
     await drain()
     expect(b.errors.email?.[0]?.message).toBe('bad email')
-    // Errors are shared store state — A sees them too.
+    // Errors are shared store state, so A sees them too.
     expect(a.errors.email?.[0]?.message).toBe('bad email')
   })
 
   it("handleSubmit re-entry guard protects across siblings — B's submit is a no-op while A's is in flight", async () => {
-    // The double-click guard at `state.activeSubmissions.value > 0`
-    // reads from the FormStore, which is shared across every
-    // `useForm({ key })` callsite. So an in-flight submission through
-    // instance A should suppress a same-key submission through
-    // instance B — they're working on the same logical form. Without
-    // this guarantee, a button in the modal could double-fire the
-    // form's onSubmit while the main form's submit is still awaiting
-    // validation, duplicating POSTs.
+    // The double-click guard reads `state.activeSubmissions.value`
+    // off the FormStore, which every `useForm({ key })` call site
+    // shares, so an in-flight submission through A suppresses a
+    // same-key submission through B. Without it a button in the modal
+    // could double-fire onSubmit while the main form's submit is still
+    // awaiting validation, duplicating POSTs.
     const schema = z.object({ name: z.string().min(1) })
     const handle: { a?: unknown; b?: unknown } = {}
     const App = defineComponent({
@@ -3492,7 +3383,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(aCalls).toBe(1)
     expect(a.meta.submitting).toBe(true)
-    // Both A and B observe submitting=true — meta is shared.
+    // meta is shared, so both A and B observe submitting=true.
     expect(b.meta.submitting).toBe(true)
 
     // While A is in flight, B's submit must be a no-op.
@@ -3501,7 +3392,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(a.meta.submitting).toBe(true)
     expect(b.meta.submitting).toBe(true)
 
-    // Release A — once it completes, B's next submit can run.
+    // Once A completes, B's next submit can run.
     releaseA()
     await aPromise
     await nextTick()
@@ -3513,14 +3404,12 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   })
 
   it("when A's onSubmit throws, the shared lifecycle clears cleanly and B can submit again", async () => {
-    // Symmetric to the success-path probe: a throw inside A's
-    // onSubmit must release the shared re-entry guard AND populate
-    // `submitError` on the shared store, so both siblings see the
-    // captured error and B's next submit can fire. The finally block
-    // in process-form.ts runs regardless of throw vs. success — this
-    // probe pins that invariant across instances. Without it, a
-    // failing submit on the modal could leave the main form stuck in
-    // `submitting: true` forever.
+    // The same guarantee on the failure path: a throw inside A's
+    // onSubmit releases the shared re-entry guard and populates
+    // `submitError` on the shared store, so both siblings see the error
+    // and B's next submit can fire. `process-form.ts`'s finally block
+    // runs on throw and success alike; without it a failing submit in
+    // the modal would strand the main form at `submitting: true`.
     const schema = z.object({ name: z.string().min(1) })
     const handle: { a?: unknown; b?: unknown } = {}
     const App = defineComponent({
@@ -3570,8 +3459,8 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(a.meta.submitting).toBe(true)
     expect(b.meta.submitting).toBe(true)
 
-    // Reject A — its onSubmit rejects. The handler resolves (no re-throw)
-    // and parks the throw on the shared `submitError`.
+    // A's onSubmit rejects. The handler resolves rather than
+    // re-throwing and parks the throw on the shared `submitError`.
     rejectA(boom)
     await expect(aPromise).resolves.toBeUndefined()
     await nextTick()
@@ -3585,8 +3474,9 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(a.meta.submissionAttempts).toBe(1)
     expect(b.meta.submissionAttempts).toBe(1)
 
-    // B's next submit can fire — the re-entry guard released along
-    // with the throw. A fresh successful submit clears submitError.
+    // B's next submit fires because the re-entry guard released along
+    // with the throw, and a fresh successful submit clears
+    // submitError.
     await submitB()
     await nextTick()
     expect(bCalls).toBe(1)
@@ -3596,14 +3486,11 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   })
 
   it('a sync watcher on meta.submitting that throws does not desync activeSubmissions', async () => {
-    // Pressure test for the lifecycle setup ordering in
-    // process-form.ts:handleSubmit. If `state.submitting.value = true`
-    // sits OUTSIDE the try/finally block AND a sync watcher on the
-    // submitting flag throws, the finally never runs and the counter
-    // is stuck at 1 forever — every subsequent submit is silently
-    // dropped by the re-entry guard. The fix is to lift the increment
-    // and the rest of the lifecycle setup inside the try block so the
-    // finally always cleans up (Math.max already guards underflow).
+    // Lifecycle setup ordering in `process-form.ts:handleSubmit`. The
+    // increment and the rest of the setup sit INSIDE the try block, so
+    // a sync watcher throwing at `state.submitting.value = true` still
+    // reaches the finally. Outside it, the counter would stick at 1 and
+    // the re-entry guard would silently drop every later submit.
     const schema = z.object({ name: z.string().min(1) })
     const handle: { api?: unknown; watcherFired?: { count: number } } = {}
     const App = defineComponent({
@@ -3614,12 +3501,12 @@ describe('chaos — two useForm calls with the same key in one app', () => {
           defaultValues: { name: 'Ada' },
         })
         const watcherFired = { count: 0 }
-        // Sync watcher INSIDE setup so it binds to this component
-        // instance. Vue's handleError consults the app-level
-        // errorHandler via the instance's appContext, so bare
-        // `watch()` outside setup wouldn't route through our trap.
-        // `flush: 'sync'` dispatches at the setter call site —
-        // exposing the pre-try-block leak directly.
+        // The watcher goes inside setup so it binds to this component
+        // instance: Vue's handleError reaches the app-level
+        // errorHandler through the instance's appContext, and a bare
+        // `watch()` outside setup would miss the trap. `flush: 'sync'`
+        // dispatches at the setter call site, which is where a
+        // pre-try-block leak would show.
         watch(
           () => api.meta.submitting,
           (next) => {
@@ -3660,10 +3547,10 @@ describe('chaos — two useForm calls with the same key in one app', () => {
       secondCallCount++
     })
 
-    // First submit: the watcher throws when submitting flips true. Vue
-    // routes the throw to the app's errorHandler (captured above);
-    // whether process-form also rethrows is incidental. The critical
-    // invariant is counter recovery.
+    // The watcher throws when submitting flips true and Vue routes it
+    // to the app errorHandler captured above. Whether process-form also
+    // rethrows is incidental; the invariant is that the counter
+    // recovers.
     try {
       await submit1()
     } catch {
@@ -3676,24 +3563,24 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     // isn't blocked by the re-entry guard.
     expect(api.meta.submitting).toBe(false)
 
-    // Second submit MUST be allowed — the counter cleaned up after
-    // the throw. Without the fix, this is a silent no-op forever.
+    // The second submit is allowed because the counter cleaned up
+    // after the throw. A leaked counter would make it a silent no-op
+    // forever.
     await submit2()
     await nextTick()
     expect(secondCallCount).toBe(1)
   })
 
   it("a sync watcher on a field's validating flag that throws does not desync the per-path counter", async () => {
-    // Pressure test for `scheduleFieldValidation`'s `run` closure. The
-    // increments (`activeValidations.value += 1` and
-    // `incFieldValidation(key)`) sit BEFORE the Promise chain whose
-    // `.finally` is the only decrement path. If a sync watcher on
-    // `api.fields.X.validating` (or `api.meta.validating`) throws as
-    // the increment fires, the Promise chain never starts and the
-    // counter is leaked — `validating` stays true forever and the
-    // mount-gate `pathHasAsyncValidation` reports a permanently-
-    // pending state. Fix: wrap the increments + chain start in a try
-    // that ensures the decrements still fire on a sync throw.
+    // `scheduleFieldValidation`'s `run` closure increments
+    // `activeValidations.value` and `incFieldValidation(key)` before
+    // the Promise chain whose `.finally` is the only decrement path. A
+    // sync watcher on `api.fields.X.validating` or `api.meta.validating`
+    // throwing at the increment would leave the chain unstarted and the
+    // counter leaked, stranding `validating` at true and
+    // `pathHasAsyncValidation` permanently pending, so the increments
+    // and the chain start live inside a try that decrements on a sync
+    // throw.
     const schema = z.object({ email: z.email('bad email') })
     const handle: { api?: unknown; watcherFired?: { count: number } } = {}
     const App = defineComponent({
@@ -3704,7 +3591,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
           defaultValues: { email: 'seed@x.com' },
         })
         const watcherFired = { count: 0 }
-        // Sync watcher on the leaf's validating flag — throws on
+        // Sync watcher on the leaf's validating flag, throwing on the
         // first transition to true.
         watch(
           () => api.fields.email.validating,
@@ -3749,15 +3636,15 @@ describe('chaos — two useForm calls with the same key in one app', () => {
 
     expect(watcherFired.count).toBeGreaterThanOrEqual(1)
     expect(capturedVueErrors.length).toBeGreaterThanOrEqual(1)
-    // The critical invariant: validating clears after the throw — the
-    // per-path counter MUST decrement in the .finally even if the
-    // increment's reactive subscriber threw. Without this, the
-    // mount-gate keeps fields reporting validating: true forever.
+    // validating clears after the throw: the per-path counter
+    // decrements in the `.finally` even when the increment's reactive
+    // subscriber threw. Otherwise the mount gate leaves fields
+    // reporting `validating: true` forever.
     expect(api.fields.email.validating).toBe(false)
     expect(api.meta.validating).toBe(false)
 
-    // A subsequent setValue should validate cleanly — the per-path
-    // counter is back to zero, no double-count from the leak.
+    // A later setValue validates cleanly: the per-path counter is back
+    // to zero with no double-count from the leak.
     api.setValue('email', 'good@example.com')
     await nextTick()
     await new Promise((r) => setTimeout(r, 0))
@@ -3767,13 +3654,10 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   })
 
   it('a sync watcher on meta.validating that throws does not desync the committing parse', async () => {
-    // Same defense-in-depth invariant for the imperative committing parse
-    // path. Its single counter increment (`activeValidations.value +=
-    // 1`) sits before the try block in the original code; a sync
-    // watcher on meta.validating that throws at that setter would
-    // leak the counter and hang meta.validating: true forever. With
-    // the fix, the increment lives inside the try and the finally
-    // decrements regardless.
+    // The same guarantee on the imperative committing-parse path: its
+    // `activeValidations.value += 1` lives inside the try, so a sync
+    // watcher on `meta.validating` throwing at that setter cannot leak
+    // the counter and hang `meta.validating` at true.
     const schema = z.object({ name: z.string().min(1) })
     const handle: { api?: unknown; watcherFired?: { count: number } } = {}
     const App = defineComponent({
@@ -3815,8 +3699,9 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     const api = handle.api as Api
     const watcherFired = handle.watcherFired as { count: number }
 
-    // Fire the committing parse — the watcher throws when validating flips
-    // true. Counter must clear regardless of where the throw surfaces.
+    // The watcher throws when validating flips true during the
+    // committing parse. The counter clears wherever the throw
+    // surfaces.
     try {
       await api.parse({ commit: true })
     } catch {
@@ -3826,7 +3711,7 @@ describe('chaos — two useForm calls with the same key in one app', () => {
     expect(watcherFired.count).toBeGreaterThanOrEqual(1)
     expect(api.meta.validating).toBe(false)
 
-    // A subsequent committing parse MUST work — the counter recovered.
+    // A later committing parse works, because the counter recovered.
     const response = await api.parse({ commit: true })
     await nextTick()
     expect(api.meta.validating).toBe(false)
@@ -3834,7 +3719,6 @@ describe('chaos — two useForm calls with the same key in one app', () => {
   })
 })
 
-// -------------------- 9.11 setValue after unmount --------------------
 describe('chaos — setValue called after the host component unmounts', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3858,7 +3742,6 @@ describe('chaos — setValue called after the host component unmounts', () => {
   })
 })
 
-// -------------------- 9.12 Direct mutation via api.values --------------------
 describe('chaos — direct mutation through api.values proxy', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3889,7 +3772,6 @@ describe('chaos — direct mutation through api.values proxy', () => {
   })
 })
 
-// -------------------- 9.13 handleSubmit re-entry --------------------
 describe('chaos — handleSubmit re-entry inside onSuccess', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3909,7 +3791,7 @@ describe('chaos — handleSubmit re-entry inside onSuccess', () => {
       () => {
         calls++
         if (calls > 5) return // hard stop
-        // Re-enter — would be infinite recursion without a guard.
+        // Re-enter: infinite recursion without a guard.
         submit()
       },
       () => {}
@@ -3921,7 +3803,6 @@ describe('chaos — handleSubmit re-entry inside onSuccess', () => {
   })
 })
 
-// -------------------- 9.14 z.union (non-discriminated) --------------------
 describe('non-discriminated z.union with literal variants', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -3929,17 +3810,16 @@ describe('non-discriminated z.union with literal variants', () => {
   })
 
   it('accepts any-string write; validation surfaces the literal-set mismatch', async () => {
-    // Design call (per project convention): the slim-primitive write
-    // gate is a TYPE-SHAPE check, not a value-content check. A union
-    // of string literals slim-resolves to `string`, so writing any
-    // string SUCCEEDS at the gate — storage receives what the user
-    // produced. The literal-set membership is a REFINEMENT, surfaced
-    // by schema validation (which runs by default on every change).
+    // The slim-primitive write gate checks TYPE SHAPE, not value
+    // content. A union of string literals slim-resolves to `string`, so
+    // any string passes the gate and storage receives what the user
+    // produced; literal-set membership is a refinement, surfaced by the
+    // schema validation that runs on every change by default.
     //
-    // Rejecting at the gate would be a silent-UX failure: user types,
-    // nothing happens, no error explains why. Forms exist to receive
-    // information — including invalid information that needs to flow
-    // to a validation error the user can act on.
+    // Rejecting at the gate would be a silent-UX failure: the user
+    // types, nothing happens, and no error explains why. A form exists
+    // to receive information, including the invalid information that
+    // has to reach a validation error the user can act on.
     const schema = z.object({
       role: z.union([z.literal('admin'), z.literal('viewer')]),
     })
@@ -3968,9 +3848,9 @@ describe('non-discriminated z.union with literal variants', () => {
     await nextTick()
     expect(api.values.role).toBe('wat')
 
-    // Validation surfaces the literal-set mismatch — the consumer
-    // path: bind on `form.errors.role` (or `fields.role.errors`)
-    // and the user sees the actionable error.
+    // Validation surfaces the literal-set mismatch, so a consumer
+    // binding `form.errors.role` (or `fields.role.errors`) shows the
+    // user an actionable error.
     const result = await api.parse('role', { commit: true })
     expect(result.success).toBe(false)
 
@@ -3984,7 +3864,6 @@ describe('non-discriminated z.union with literal variants', () => {
   })
 })
 
-// -------------------- 9.15 Array of arrays of DUs --------------------
 describe('chaos — array of arrays of discriminated unions', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4042,7 +3921,6 @@ describe('chaos — array of arrays of discriminated unions', () => {
   })
 })
 
-// -------------------- 9.16 Stringified JSON at object leaf --------------------
 describe('chaos — stringified JSON written at an object-typed leaf', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4073,15 +3951,14 @@ describe('chaos — stringified JSON written at an object-typed leaf', () => {
     apps.push(app)
     const api = handle.api as Api
 
-    // A common API misuse: caller stringifies before setValue. The
-    // form should reject — the schema expects an object.
+    // A common API misuse: the caller stringifies before setValue.
+    // The schema expects an object, so the form rejects it.
     expect(api.setValue('config', '{"key":"value"}')).toBe(false)
     await nextTick()
     expect(api.values.config).toEqual({ key: 'init' })
   })
 })
 
-// -------------------- 9.17 Branded literal at discriminator --------------------
 describe('chaos — branded literal at the discriminator', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4121,7 +3998,6 @@ describe('chaos — branded literal at the discriminator', () => {
   })
 })
 
-// -------------------- 9.18 v3-specific: ZodEffects wrapping a DU --------------------
 describe('chaos — zod v3 ZodEffects wrapping a discriminatedUnion', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4169,7 +4045,6 @@ describe('chaos — zod v3 ZodEffects wrapping a discriminatedUnion', () => {
   })
 })
 
-// -------------------- 9.19 z.intersection containing a DU --------------------
 describe('chaos — z.intersection of a DU and a sibling schema', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4227,7 +4102,6 @@ describe('chaos — z.intersection of a DU and a sibling schema', () => {
   })
 })
 
-// -------------------- 9.20 z.preprocess at the discriminator key itself --------------------
 describe('chaos — preprocess on the discriminator leaf inside a variant', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4235,10 +4109,9 @@ describe('chaos — preprocess on the discriminator leaf inside a variant', () =
   })
 
   it('preprocess that lowercases the discriminator does not break variant lookup', async () => {
-    // Exercise: variant-lookup uses the literal value verbatim, but a
-    // preprocess on the discriminator leaf would turn 'EMAIL' into
-    // 'email'. The slim-gate sees the input ('EMAIL'), the adapter
-    // sees the output ('email').
+    // Variant lookup uses the literal verbatim, but a preprocess on
+    // the discriminator leaf turns 'EMAIL' into 'email', so the slim
+    // gate sees the input and the adapter sees the output.
     const schema = z.object({
       notify: z.discriminatedUnion('channel', [
         z.object({
@@ -4284,15 +4157,11 @@ describe('chaos — preprocess on the discriminator leaf inside a variant', () =
   })
 })
 
-// =====================================================================
-// 10. HISTORY × DU probes.
-//
-// History: enabled via `useForm({ history: historyPlugin() })`. Probes drive
-// undo/redo across discriminator switches, invalid intermediates,
-// array-shape changes, and concurrent submission.
-// =====================================================================
+// History crossed with discriminated unions. With
+// `useForm({ history: historyPlugin() })`, undo and redo run across
+// discriminator switches, invalid intermediates, array-shape changes
+// and concurrent submission.
 
-// -------------------- HISTORY × DU --------------------
 describe('chaos — history (undo/redo) × discriminated unions', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4337,8 +4206,8 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     api.history.undo()
     await nextTick()
 
-    // Pre-invalid state was email + kept@x.io. After undo, the form
-    // must be in that valid shape — not in some halfway repair.
+    // The pre-invalid state was email plus kept@x.io, and undo returns
+    // the form to exactly that shape rather than a halfway repair.
     expect(api.values.notify).toEqual({ channel: 'email', address: 'kept@x.io' })
   })
 
@@ -4388,10 +4257,10 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
   })
 
   it('history snapshots do NOT capture variant memory (memory is a side channel)', async () => {
-    // Documented contract: history snapshots form value, NOT memory.
-    // Verify by typing → switch → undo → switch-back: post-undo
-    // switch-back's memory should reflect the value typed BEFORE the
-    // undo (not the slim default), because memory survives undo.
+    // History snapshots form VALUE, not variant memory, and memory
+    // survives an undo. Type, switch, undo, switch back: the restored
+    // memory holds the value typed before the undo, not the slim
+    // default.
     const { app, api } = mountWithHistory()
     apps.push(app)
 
@@ -4414,10 +4283,10 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
   })
 
   it('history capacity is enforced (oldest delta is folded into the base once cap is exceeded)', async () => {
-    // Pinned to max:50 (NOT the library default) so this test stays a
-    // probe of the eviction mechanism, not of the chosen default.
-    // After 60 mutations, the historySize is bounded at 50 and the
-    // earliest restorable state isn't the original empty default.
+    // Pinned to max:50 rather than the library default so the test
+    // measures the eviction mechanism, not the chosen number. After 60
+    // mutations historySize is bounded at 50 and the earliest
+    // restorable state is no longer the original empty default.
     const { app, api } = mountWithHistory({ history: historyPlugin({ max: 50 }) })
     apps.push(app)
 
@@ -4442,18 +4311,14 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
   })
 
   it('reset() is itself undoable — the pre-reset state is recoverable', async () => {
-    // Reset is a mutation from the history module's point of view, not
-    // a stack-wipe. `applyFormReplacement` (inside `reset()`) fires
-    // `onFormChange`, which pushes the post-reset snapshot. The user's
-    // previous value sits one position earlier in the undo stack, so
-    // calling `undo()` after a reset recovers the form as it was just
-    // before the reset.
-    //
-    // Why this beats the "fresh start" semantic: a consumer who hits
-    // "Reset" by mistake can recover with one undo. Consumers who want
-    // a non-recoverable reset can pop a confirmation modal in their UI
-    // before calling `reset()` (or, post B18, call `history.clear()`
-    // after the reset).
+    // To the history module a reset is a mutation, not a stack wipe:
+    // `applyFormReplacement` inside `reset()` fires `onFormChange`,
+    // which pushes the post-reset snapshot and leaves the user's
+    // previous value one position earlier in the undo stack. So one
+    // `undo()` after a reset recovers the form as it was just before
+    // it, and a mis-click costs nothing. A consumer who wants a
+    // non-recoverable reset confirms in their own UI first, or calls
+    // `history.clear()` afterwards.
     const { app, api } = mountWithHistory()
     apps.push(app)
 
@@ -4605,12 +4470,9 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
   })
 })
 
-// =====================================================================
-// 11. ROUND 7 — records, tuples, Map/Set, setErrors edges,
-//     plugin install, concurrency race, DoS string.
-// =====================================================================
+// Records, tuples, Map and Set, setErrors edges, plugin install, a
+// concurrency race and a DoS-length string.
 
-// -------------------- 11.1 z.record(z.string(), du) --------------------
 describe('chaos — z.record() with DU values', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4707,7 +4569,6 @@ describe('chaos — z.record() with DU values', () => {
   })
 })
 
-// -------------------- 11.2 z.tuple with DU element --------------------
 describe('chaos — z.tuple containing a discriminated union', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4761,7 +4622,6 @@ describe('chaos — z.tuple containing a discriminated union', () => {
   })
 })
 
-// -------------------- 11.3 Map / Set at leaves --------------------
 describe('chaos — Map / Set values at leaves', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4797,7 +4657,7 @@ describe('chaos — Map / Set values at leaves', () => {
       apps.push(app)
       api = handle.api as Api
     } catch {
-      // If Map isn't supported, skip — the bug class doesn't apply.
+      // Without Map support the hazard does not apply, so skip.
       return
     }
     if (api === undefined) return
@@ -4811,9 +4671,9 @@ describe('chaos — Map / Set values at leaves', () => {
     api.setValue('payload.kind', 'mapped')
     await nextTick()
 
-    // JSON-cycle in variant memory drops Map → empty object {}. After
-    // round-trip we should still have a Map instance — or at minimum
-    // the type kind was preserved.
+    // The JSON round trip in variant memory flattens a Map to `{}`.
+    // After it, the value is still a Map instance, or at minimum has
+    // kept its type kind.
     const data = (api.values.payload as AnyPayload).data
     expect(data instanceof Map).toBe(true)
   })
@@ -4864,7 +4724,6 @@ describe('chaos — Map / Set values at leaves', () => {
   })
 })
 
-// -------------------- 11.4 setErrors corner cases --------------------
 describe('chaos — setErrors at edge paths', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4889,9 +4748,9 @@ describe('chaos — setErrors at edge paths', () => {
     }
     await nextTick()
 
-    // Either rejected (warned/skipped) or accepted at a phantom path
-    // — but never silently corrupting form state. Probe is loose:
-    // assertion is that no crash and form remains usable.
+    // Either rejected (warned or skipped) or accepted at a phantom
+    // path, never silently corrupting form state. The assertion is
+    // deliberately loose: no crash, and the form stays usable.
     expect(threw).toBe(false)
     expect(api.values.notify.channel).toBe('email')
   })
@@ -4952,7 +4811,6 @@ describe('chaos — setErrors at edge paths', () => {
   })
 })
 
-// -------------------- 11.5 Plugin double-install --------------------
 describe('chaos — installing createAttaform twice on one app', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -4986,7 +4844,6 @@ describe('chaos — installing createAttaform twice on one app', () => {
   })
 })
 
-// -------------------- 11.6 Concurrent handleSubmit + committing parse --------------------
 describe('chaos — concurrent handleSubmit and committing parse', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5004,9 +4861,9 @@ describe('chaos — concurrent handleSubmit and committing parse', () => {
     // Trigger a committing parse on the current (valid) state.
     const validation = api.parse({ commit: true })
 
-    // Mid-flight, mutate to an invalid state. Then await the original
-    // validation. The original should reflect the state at the time
-    // it was called — not commit errors against the now-current state.
+    // Mutate to an invalid state mid-flight, then await the original
+    // validation: it reflects the state at the time it was called, and
+    // does not commit errors against the now-current one.
     api.setValue('notify.number', '') // sms requires min(7); now invalid
     await nextTick()
 
@@ -5019,7 +4876,6 @@ describe('chaos — concurrent handleSubmit and committing parse', () => {
   })
 })
 
-// -------------------- 11.7 Long-string DoS at a slim leaf --------------------
 describe('chaos — extremely long string at a slim leaf', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5056,12 +4912,11 @@ describe('chaos — extremely long string at a slim leaf', () => {
 
     expect(ok).toBe(true)
     expect(api.values.note.length).toBe(1_000_000)
-    // Generous bound — should be O(1) or O(N) in writes, not O(N²).
+    // A generous bound: O(1) or O(N) in writes, not O(N^2).
     expect(elapsed).toBeLessThan(2000)
   })
 })
 
-// -------------------- 11.8 Multiple v-register on same path --------------------
 describe('chaos — two <input> elements registered to the same path', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5073,9 +4928,8 @@ describe('chaos — two <input> elements registered to the same path', () => {
     type Api = UseFormReturn<typeof schema>
     const handle: { api?: Api; el1?: HTMLInputElement; el2?: HTMLInputElement } = {}
 
-    // Use the directive interface that the existing persistence test
-    // file uses — but we don't need the directive here, the bug class
-    // is about form-level coordination of two registered inputs.
+    // The directive is incidental here. What is under test is
+    // form-level coordination of two registered inputs.
     const App = defineComponent({
       setup() {
         const api = useForm({
@@ -5113,14 +4967,11 @@ describe('chaos — two <input> elements registered to the same path', () => {
   })
 })
 
-// =====================================================================
-// 12. ROUND 8 — SSR / hydration + multi-tab persistence.
-// =====================================================================
+// SSR and hydration.
 
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp } from 'vue'
 
-// -------------------- 12.1 SSR — DU schemas render --------------------
 describe('chaos — SSR rendering with discriminated-union schemas', () => {
   it('renderToString completes for a form whose schema includes a DU', async () => {
     let threw = false
@@ -5196,13 +5047,10 @@ describe('chaos — SSR id allocator collision when two forms share a parent', (
   })
 })
 
-// =====================================================================
-// 13. ROUND 9 — final-pass random probes.
-// =====================================================================
+// Final-pass random probes.
 
 import { vi } from 'vitest'
 
-// -------------------- 13.1 Dev warning on bad-disc-in-defaults --------------------
 describe('chaos — dev warning surface for construction-time issues', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5229,8 +5077,8 @@ describe('chaos — dev warning surface for construction-time issues', () => {
       apps.push(app)
       await nextTick()
 
-      // Some warning should fire — the form is in a known-broken state.
-      // Without it, the developer has no signal until validation runs.
+      // A warning fires because the form is in a known-broken state.
+      // Without it the developer has no signal until validation runs.
       expect(warnSpy).toHaveBeenCalled()
     } finally {
       warnSpy.mockRestore()
@@ -5238,7 +5086,6 @@ describe('chaos — dev warning surface for construction-time issues', () => {
   })
 })
 
-// -------------------- 13.2 handleSubmit's onError throwing --------------------
 describe('chaos — handleSubmit when onError callback throws', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5259,10 +5106,9 @@ describe('chaos — handleSubmit when onError callback throws', () => {
       }
     )
 
-    // First submit: onError throws inside the callback. The promise
-    // either rejects or resolves with an error swallowed — either is
-    // fine. What's NOT fine: the form state being corrupted such that
-    // a subsequent recovery is impossible.
+    // onError throws inside the callback on the first submit. The
+    // promise may reject or resolve with the error swallowed; what it
+    // may not do is corrupt form state past recovery.
     let firstThrew = false
     try {
       await submit()
@@ -5294,7 +5140,6 @@ describe('chaos — handleSubmit when onError callback throws', () => {
   })
 })
 
-// -------------------- 13.5 BigInt at form.values() public surface --------------------
 describe('chaos — JSON.stringify(form.values()) with a BigInt-typed leaf', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5326,13 +5171,10 @@ describe('chaos — JSON.stringify(form.values()) with a BigInt-typed leaf', () 
     api.setValue('id', 9007199254740993n)
     await nextTick()
 
-    // The form's PUBLIC values getter holds a BigInt. A consumer
-    // sending this to a JSON-based RPC will hit the same TypeError
-    // that variant memory hits internally. The form itself can't fix
-    // JSON.stringify, but a future hardening could expose a
-    // `form.values('json-safe')` accessor that converts BigInts to
-    // strings (or similar). Probe expects today's reality: the
-    // serialise throws, leaving the consumer to figure it out.
+    // The public values getter holds a BigInt, so a consumer sending
+    // it to a JSON-based RPC hits the same TypeError variant memory
+    // hits internally. Attaform cannot fix `JSON.stringify`, so the
+    // serialise throws and the consumer handles it.
     let threw = false
     try {
       JSON.stringify(api.values)
@@ -5343,7 +5185,6 @@ describe('chaos — JSON.stringify(form.values()) with a BigInt-typed leaf', () 
   })
 })
 
-// -------------------- 13.6 Empty schema --------------------
 describe('chaos — empty z.object({}) schema', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5370,22 +5211,19 @@ describe('chaos — empty z.object({}) schema', () => {
 
     if (api === undefined) throw new Error('mount failed')
 
-    // `api.values` is a callable proxy (call form for dynamic paths,
-    // dot access for static paths). Vitest deep-equal treats callable
-    // proxies as functions, so compare against the called form which
-    // returns the readonly root.
+    // `api.values` is a callable proxy: the call form for dynamic
+    // paths, dot access for static ones. Vitest's deep-equal treats a
+    // callable proxy as a function, so compare against the call form,
+    // which returns the readonly root.
     expect(api.values()).toEqual({})
     const result = await api.parse({ commit: true })
     expect(result.success).toBe(true)
   })
 })
 
-// =====================================================================
-// 14. ROUND 10 — crash-grade probes. Looking for ways the library
-//     can take down a real Vue / Nuxt app, not just trip a test.
-// =====================================================================
+// Crash-grade probes: the ways Attaform could take down a real Vue or
+// Nuxt app rather than merely trip a test.
 
-// -------------------- 14.1 BigInt during a setValue triggered from a Vue template --------------------
 describe('crash — BigInt-in-DU surfaces as a thrown error to the Vue app', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5433,17 +5271,15 @@ describe('crash — BigInt-in-DU surfaces as a thrown error to the Vue app', () 
     }
     await nextTick()
 
-    // If `setValue` itself throws (rather than returning false), the
-    // crash propagates to whatever event handler called it — a click
-    // handler in real Vue. Either the throw is caught by Vue's
-    // errorHandler, or it surfaces inline. Both modes are equally
-    // bad: a discriminator switch should never crash.
+    // A `setValue` that throws rather than returning false propagates
+    // into whatever called it, in a real app a click handler. Whether
+    // Vue's errorHandler catches it or it surfaces inline, a
+    // discriminator switch never crashes.
     const crashed = setValueThrew || captured.length > 0
     expect(crashed).toBe(false)
   })
 })
 
-// -------------------- 14.2 useForm with unsupported schema crashes setup() --------------------
 describe('crash — recursive z.lazy + DU at construction', () => {
   it('mounting a component whose setup uses an unsupported schema throws out of mount()', () => {
     type Node = { kind: 'leaf'; value: string } | { kind: 'branch'; children: Node[] }
@@ -5457,7 +5293,7 @@ describe('crash — recursive z.lazy + DU at construction', () => {
 
     const App = defineComponent({
       setup() {
-        // Uncaught — propagates to the caller of mount().
+        // Uncaught, so it propagates to the caller of mount().
         useForm({
           schema: treeSchema,
           key: 'crash-lazy-du',
@@ -5476,16 +5312,13 @@ describe('crash — recursive z.lazy + DU at construction', () => {
       crashed = true
     }
 
-    // A real-world consequence: a Nuxt page using a recursive
-    // tree-shaped DU schema fails to render entirely — the whole
-    // route is broken. Either the library should narrow what it
-    // rejects, or the rejection should land as a controlled error
-    // surface (not a thrown construction-time crash).
+    // A construction-time throw here takes a whole Nuxt route down: a
+    // page using a recursive tree-shaped union schema renders nothing.
+    // A rejection has to land as a controlled error surface instead.
     expect(crashed).toBe(false)
   })
 })
 
-// -------------------- 14.3 Infinite reactivity loop via computed that calls setValue --------------------
 describe('crash — infinite reactivity loop via setValue inside a computed', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5495,11 +5328,11 @@ describe('crash — infinite reactivity loop via setValue inside a computed', ()
   it("Vue's max-recursive-update guard catches a setValue-driven feedback loop", async () => {
     const schema = z.object({ a: z.string(), b: z.string() })
 
-    // A misguided template: `b` mirrors `a` via a computed that
-    // writes back to `b`. The computed reads `a`, calls setValue('b',
-    // ...), which triggers a re-render, which re-evaluates the
-    // computed, which writes again. Vue's renderer should detect the
-    // loop and warn (not crash) — but what does attaform do?
+    // A misguided template: `b` mirrors `a` through a computed that
+    // writes back to `b`. The computed reads `a`, calls
+    // `setValue('b', ...)`, triggers a re-render, re-evaluates and
+    // writes again. Vue's renderer detects the loop and warns; the
+    // probe pins that Attaform lets it warn rather than crash.
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -5519,8 +5352,9 @@ describe('crash — infinite reactivity loop via setValue inside a computed', ()
           return () => {
             const aVal = api.values.a
             handle.iterations = (handle.iterations ?? 0) + 1
-            // Cap the loop ourselves so the test process doesn't
-            // genuinely hang — the framework should ALSO cap it.
+            // Cap the loop here so the test process cannot genuinely
+            // hang. Vue caps it too, which is what the assertion
+            // below measures.
             if ((handle.iterations ?? 0) < 200) {
               api.setValue('b', aVal + '!')
             }
@@ -5543,14 +5377,13 @@ describe('crash — infinite reactivity loop via setValue inside a computed', ()
     }
 
     expect(crashed).toBe(false)
-    // The render iteration count should be bounded — if the loop
-    // ran 200 times, Vue's safeguard didn't trigger and we hit our
-    // self-cap. That's a hang in a real app.
+    // The iteration count stays bounded. Reaching 200 would mean
+    // Vue's safeguard never fired and only the self-cap stopped it,
+    // which in a real app is a hang.
     expect(handle.iterations ?? 0).toBeLessThan(200)
   })
 })
 
-// -------------------- 14.4 Deep-path setValue stack overflow --------------------
 describe('crash — extremely deep path setValue', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5599,7 +5432,6 @@ describe('crash — extremely deep path setValue', () => {
   })
 })
 
-// -------------------- 14.5 handleSubmit onSuccess that throws --------------------
 describe('crash — handleSubmit onSuccess callback throws', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5629,18 +5461,17 @@ describe('crash — handleSubmit onSuccess callback throws', () => {
       promiseRejected = true
     }
 
-    // The handler resolves rather than re-throwing — bound to a DOM event
-    // it must not manufacture an unhandled rejection. The throw is still
-    // observable, just through the dedicated `meta.submitError` slot
-    // (coerced to a real Error), the single recovery channel. "Silent
-    // swallow with no path to recovery" stays ruled out.
+    // The handler resolves rather than re-throwing: bound to a DOM
+    // event, it must not manufacture an unhandled rejection. The throw
+    // stays observable through `meta.submitError`, coerced to a real
+    // Error, which is the one recovery channel. A silent swallow with
+    // no path back is what that rules out.
     expect(promiseRejected).toBe(false)
     expect(api.meta.submitError).toBeInstanceOf(Error)
     expect(api.meta.submitError?.message).toBe('onSuccess exploded')
   })
 })
 
-// -------------------- 14.6 Render-time chain access on inactive variant --------------------
 describe('crash — render template chain access into an inactive-variant subtree', () => {
   const apps: App[] = []
   afterEach(() => {
@@ -5657,11 +5488,11 @@ describe('crash — render template chain access into an inactive-variant subtre
           defaultValues: { name: '', notify: { channel: 'sms', number: '5551234' } },
         })
         return () => {
-          // Active variant is sms; `address` belongs to email. The
-          // FieldState lift is documented to return a stub for
-          // inactive-variant chains. If it ever throws, the entire
-          // component fails to render — Vue marks the parent as
-          // errored and the subtree disappears.
+          // The active variant is sms and `address` belongs to email.
+          // The FieldState lift returns a stub for inactive-variant
+          // chains; a throw instead would fail the whole component's
+          // render, and Vue would mark the parent errored and drop the
+          // subtree.
           try {
             const _val = (api.fields as unknown as Record<string, unknown>)['notify']
             const notifyObj = _val as Record<string, unknown>
@@ -5683,7 +5514,6 @@ describe('crash — render template chain access into an inactive-variant subtre
   })
 })
 
-// -------------------- 14.7 Vue prerender (renderToString) on a misconfigured form --------------------
 describe('crash — SSR / prerender stability with misconfigured forms', () => {
   it('renderToString on a form with bad-disc defaultValues does not throw', async () => {
     let threw = false
@@ -5704,8 +5534,8 @@ describe('crash — SSR / prerender stability with misconfigured forms', () => {
       threw = true
     }
 
-    // A Nuxt page that prerenders this form fails the build if this
-    // throws — taking down a static deploy.
+    // A throw here fails the build of any Nuxt page that prerenders
+    // this form, taking a static deploy down with it.
     expect(threw).toBe(false)
   })
 })

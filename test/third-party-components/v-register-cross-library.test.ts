@@ -156,9 +156,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-// ---------------------------------------------------------------------------
 // PrimeVue
-// ---------------------------------------------------------------------------
 
 describe('cross-library matrix: PrimeVue', () => {
   it('InputText: the component root IS the native input -> binds like a native control', async () => {
@@ -213,9 +211,7 @@ describe('cross-library matrix: PrimeVue', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
 // reka-ui
-// ---------------------------------------------------------------------------
 
 describe('cross-library matrix: reka-ui', () => {
   it('NumberField: div host -> latches the spinbutton input, carries a typed number', async () => {
@@ -350,9 +346,7 @@ describe('cross-library matrix: reka-ui', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
 // Value channel + the composition escape path
-// ---------------------------------------------------------------------------
 
 // Standard v-model (modelValue + update:modelValue), div host, typed number.
 const StandardModelInput = defineComponent({
@@ -425,9 +419,7 @@ const MultiRootComponent = defineComponent({
   },
 })
 
-// ---------------------------------------------------------------------------
 // Invalid-submit focus for no-latch hosts (#538)
-// ---------------------------------------------------------------------------
 
 describe('cross-library matrix: invalid-submit focus (#538)', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>

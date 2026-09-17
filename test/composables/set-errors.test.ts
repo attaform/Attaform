@@ -224,9 +224,7 @@ function setErrorsContract(make: () => TestForm): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // zod-v3 adapter
-// -----------------------------------------------------------------------------
 
 describe('setErrors / clearErrors — zod-v3 adapter', () => {
   const schema = zV3.object({ email: zV3.string(), name: zV3.string() })
@@ -242,9 +240,7 @@ describe('setErrors / clearErrors — zod-v3 adapter', () => {
   setErrorsContract(make)
 })
 
-// -----------------------------------------------------------------------------
 // zod-v4 adapter
-// -----------------------------------------------------------------------------
 
 describe('setErrors / clearErrors — zod-v4 adapter', () => {
   const schema = zV4.object({ email: zV4.string(), name: zV4.string() })

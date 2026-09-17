@@ -52,9 +52,7 @@ function elementCount(state: ReturnType<typeof createFormStore<F>>, path: string
   return state.domBinding.value?.elements.get(canonicalizePath(path).key)?.elements.size ?? 0
 }
 
-// ---------------------------------------------------------------------------
 // Store-level: drive the directive hooks directly against a real FormStore.
-// ---------------------------------------------------------------------------
 
 describe('v-register component host: element discovery (store-level)', () => {
   // The directive's `mounted` schedules a deferred dev-warn via `nextTick`;
@@ -451,11 +449,9 @@ describe('v-register component host: element discovery (store-level)', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
 // Integration: mount a real component tree with the modifier injected through
 // withDirectives' 4-tuple (dir, value, arg, modifiers), proving the
 // compile-time signal reaches binding.modifiers and the branch fires.
-// ---------------------------------------------------------------------------
 
 const schema = z.object({ email: z.string(), name: z.string() })
 type Api = UseFormReturn<typeof schema>
@@ -659,7 +655,6 @@ describe('v-register component host: integration (modifier plumbed through)', ()
   })
 })
 
-// ---------------------------------------------------------------------------
 // Phase 3: autoAria on the latched control. The host root's own setupAria (the
 // `created` hook) no-ops on a non-interactive wrapper, so the directive manages
 // aria on the discovered inner control instead, seeding the authored-attr locks
@@ -667,7 +662,6 @@ describe('v-register component host: integration (modifier plumbed through)', ()
 // element). Case A (useRegister wrapper) is untouched: its inner control's own
 // directive already manages aria, and activateComponentHost steps aside before
 // the latch.
-// ---------------------------------------------------------------------------
 
 const ariaSchema = z.object({ email: z.string().min(1), note: z.string().optional() })
 type AriaApi = UseFormReturn<typeof ariaSchema>
@@ -804,14 +798,12 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 })
 
-// ---------------------------------------------------------------------------
 // Container-path binding: a composite host bound directly to a CONTAINER path
 // (array / object) records its connect / focus state on the container's OWN
 // field record. The aggregate walk visits strict descendants only, so it must
 // also fold the container's own record in -- the same own-path case the file
 // directive hits. Dot access stays the subtree graph; the aggregate is the
 // call form `form.fields(path)`.
-// ---------------------------------------------------------------------------
 
 const containerHostSchema = z.object({ tags: z.array(z.string()) })
 type ContainerApi = UseFormReturn<typeof containerHostSchema>

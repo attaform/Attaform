@@ -682,7 +682,6 @@ describe('reference-equality preservation', () => {
   })
 })
 
-// ============================================================
 // Read-side normalizer-symmetry sweep — the same shape of bug
 // (post-coerce model vs raw DOM-side comparison) lurks in every
 // directive site that compares model state against an option /
@@ -691,7 +690,6 @@ describe('reference-equality preservation', () => {
 // re-render that fires `beforeUpdate` / `setChecked` / `setSelected`
 // — without it, the bugs stay latent. Pre-fix these tests fail at
 // the visual-state assertion after the second toggle.
-// ============================================================
 
 describe('read-side coerce symmetry — array checkbox with case-mismatched boolean values', () => {
   it('checkbox array stays in sync across toggles when option value is "True"/"False"', async () => {

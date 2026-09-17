@@ -15,8 +15,7 @@ import { waitUntil } from '../utils/form-harness'
  * storage shape: `File | null` (single) or `File[]` (multiple). Blank
  * paths are marked through `setValueWithInternalPath`'s `{ blank:
  * true }` meta so required-file fields surface "No value supplied"
- * via `derivedBlankErrors`. Persistence is carved out at
- * `syncPersistOptIn` — file paths never enter `optedInPaths`.
+ * via `derivedBlankErrors`.
  *
  * Tests use `z.file().nullable()` (v4 native). The directive itself is
  * DOM-driven, not schema-driven — v3's `z.instanceof(File)` flows

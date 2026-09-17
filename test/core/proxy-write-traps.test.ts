@@ -102,9 +102,8 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-4 — form.errors container path mirrors form.fields. The
-  // errors surface goes through the same `containerProxyAt` factory
-  // and inherits the fix automatically.
+  // form.errors container paths mirror form.fields: both surfaces are
+  // minted by the same `containerCache` factory in `callable-tree.ts`.
   it('form.errors container set + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const errors = api.errors as Record<string, unknown>

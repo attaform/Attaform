@@ -5,9 +5,8 @@ import { fieldMeta } from '../../../src/runtime/adapters/zod-v4/field-meta'
 
 /**
  * v4 mirror of `test/adapters/zod-v3/field-meta-parity.test.ts`. v4
- * already does per-path disambiguation via `walkForMeta` +
- * `getPathMetaMap` (`adapter.ts:773-799`); these tests pin the
- * reference so the v3 port lands as proven parity.
+ * disambiguates per path in `resolveFieldMetaAtPath`, so these tests pin
+ * the reference the v3 port is measured against.
  */
 describe('zod v4: shared-instance field-meta per-path disambiguation', () => {
   it('a schema instance registered at two paths surfaces a distinct payload per path', () => {

@@ -17,7 +17,7 @@
  *   - refines-only pass: re-run all container/root refines, then reapply their
  *     issues (which can land at ANY path).
  *
- * The real mutator (`create-form-store.ts:2985 applySchemaErrorsForSubtree`) clears
+ * The real mutator (`create-form-store.ts applySchemaErrorsForSubtree`) clears
  * by PATH SCOPE: it deletes existing `schemaErrors` keys under the scope path that
  * the new pass doesn't rewrite, then sets the new ones. The hazard the second
  * obligation must rule out: a container refine can emit an issue to a path that
@@ -153,7 +153,7 @@ function variants(z: Z, spec: Node): Variants {
 
 // ── Issues, keys, and the abstract schemaErrors map ───────────────────────────
 // A root-refine issue has an empty path; the real store reroutes it to a
-// form-level bucket (create-form-store.ts:2986). Model that with a sentinel key.
+// form-level bucket (create-form-store.ts). Model that with a sentinel key.
 
 const FORM_KEY = '<form>' // storage key for an empty-path (root-refine) issue
 const ROOT_SCOPE = '<root>' // a clear/replace scope covering EVERY key (real path === [])
@@ -224,7 +224,7 @@ function normMultiset(m: Map<string, Issue[]>): string {
 }
 
 /**
- * The real `applySchemaErrorsForSubtree` (create-form-store.ts:2985) semantics:
+ * The real `applySchemaErrorsForSubtree` (create-form-store.ts) semantics:
  * group `incoming` by each issue's own key; the scope's parent key is dropped only
  * if the new pass doesn't rewrite it; descendant keys under the scope the new pass
  * doesn't rewrite are deleted; the rest are set. For ROOT_SCOPE the parent is the

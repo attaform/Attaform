@@ -1,30 +1,25 @@
 // @vitest-environment jsdom
 /**
- * P1 — validation-cancel equivalence lock.
+ * P1 validation-cancel equivalence lock.
  *
- * GUARDS the AbortController → `aborted`-boolean swap on the field
- * validation scheduler (PERF-ANALYSIS.md "P1"). Profiling found the
- * per-keystroke `new AbortController()` at create-form-store.ts:2603 is
- * ~99% of the scheduler's synchronous alloc cost and unpoolable. The
- * validation controller is never a real abort signal — its `.signal`
- * never escapes to a consumer (`validateAtPath` takes none), it carries
- * no listeners, and it is used ONLY as a one-shot latch: `.abort()` at
- * five sites and `.signal.aborted` read at two. So it is a glorified
- * boolean, and a boolean `aborted` field on the entry (which already
- * exists) reproduces it with zero allocation — the same shape the
- * transform subsystem already uses (`holder.aborted`, create-form-store.ts:1731).
+ * GUARDS the swap from an AbortController to an `aborted` boolean on the
+ * field validation scheduler (PERF-ANALYSIS.md "P1"). Profiling found
+ * `scheduleFieldValidation`'s per-keystroke `new AbortController()` was
+ * ~99% of the scheduler's synchronous alloc cost, and unpoolable. That
+ * controller was never a real abort signal: its `.signal` never escapes
+ * to a consumer (`validateAtPath` takes none), it carries no listeners,
+ * and it serves only as a one-shot latch, aborted at five sites and read
+ * at two. A boolean on the entry reproduces it with zero allocation, and
+ * is the shape the transform subsystem already uses in `holder.aborted`.
  *
- * The five abort sites the swap touches (all supersede / cancel, never a
- * consumer-facing abort):
- *   1. create-form-store.ts:2601 — supersede a prior run on the next schedule
- *   2. create-form-store.ts:2558 — DU variant-reshape: a late async result
- *      can't clobber the sync write
- *   3. create-form-store.ts:2772 — cancelFieldValidation (cancel-all: reset,
- *      handleSubmit, parse({ commit: true }), destroy)
- *   4. create-form-store.ts:2797 — cancelFieldValidationUnder (resetField)
- *   5. array-engine.ts (abortValidationAtVacatedIndices, inside
- *      applyStructuralOp) — array remove
- * Read at create-form-store.ts:2618 (pre-parse) and :2662 (post-resolve).
+ * The five abort sites all supersede or cancel; none is a consumer-facing
+ * abort. In `create-form-store.ts`: superseding a prior run on the next
+ * schedule, the DU variant-reshape guard that stops a late async result
+ * clobbering the sync write, `cancelFieldValidation` (reset,
+ * handleSubmit, `parse({ commit: true })`, destroy) and
+ * `cancelFieldValidationUnder` (resetField). In `array-engine.ts`:
+ * `abortValidationAtVacatedIndices`, inside `applyStructuralOp`, on array
+ * remove. The flag is read pre-parse and again post-resolve.
  *
  * WHY THIS HARNESS EXISTS: the existing field-validation suite only
  * exercises the cancellation sites through the TIMER path — a debounced
@@ -206,10 +201,10 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
     gate.release(false) // A resolves invalid AFTER the cancel
     await tick()
 
-    // Without the abort, A's resolve passes :2658, and reset zeroed
-    // lastCommittedEpoch (create-form-store.ts:3619) so A's epoch beats the
-    // gate at :2666 and COMMITS a stale 'async-invalid' onto the reset
-    // field. The latch (set before the map clear, read via A's own entry)
+    // Without the abort, A's resolve clears the post-resolve check, and
+    // `reset()` has zeroed `lastCommittedEpoch`, so A's epoch beats the
+    // commit gate and lands a stale 'async-invalid' on the reset field.
+    // The latch, set before the map clear and read through A's own entry,
     // drops it.
     expect(hasInvalid(api)).toBe(false)
   })
@@ -271,12 +266,12 @@ describe.each(adapters)('P1 validation-cancel equivalence — $name', ({ z, useF
     const api = mount(schema, { defaultValues: { notify: { channel: 'sync', label: '' } } })
     await settleMount(gate)
 
-    // Switch INTO the async variant: the reshape's sync arm can't apply (the
-    // token refine is async), so it schedules a debounced async validation at
-    // the DU parent (create-form-store.ts:2567) — now in-flight. The throwaway
-    // sync probe (:2543) also parks phantom entries, but its result is
-    // discarded and never reaches the scheduler's commit, so pending > 0 just
-    // confirms the real :2567 run is in flight.
+    // Switching INTO the async variant leaves the reshape's sync arm
+    // unable to apply, since the token refine is async, so it schedules a
+    // debounced async validation at the DU parent. The throwaway sync
+    // probe parks phantom entries too, but its result is discarded and
+    // never reaches the scheduler's commit, so a pending count above zero
+    // confirms the real run is in flight.
     api.setValue('notify.channel', 'async')
     await tick()
     expect(gate.pending()).toBeGreaterThan(0)

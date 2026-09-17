@@ -26,7 +26,7 @@ import type { DisplayState, ValidationError } from '../../src'
 import type { DisplayCtx, DisplayMachine } from '../../src/runtime/types/types-api'
 
 /**
- * `field.displayState` + the `getDisplayState` reducer.
+ * `field.displayState` and the reducer behind it.
  *
  * `field.displayState` is the single derived verdict on `FieldState`
  * (`'idle' | 'pending' | 'error' | 'success'`); the four `show*` booleans
@@ -43,7 +43,6 @@ import type { DisplayCtx, DisplayMachine } from '../../src/runtime/types/types-a
  *      pending, else error if any descendant (or own cross-field) error
  *      has cleared its own reveal gate, else earned success, else idle.
  *      An ungated sibling error never surfaces at the container.
- *   2. `useForm({ getDisplayState })`, which wins over the above.
  *
  * The reducer runs unconditionally (it must see the no-error states to
  * resolve success / idle / pending). Its `ctx.field` / `ctx.formMeta` are

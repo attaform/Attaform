@@ -4,19 +4,17 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 import { AttaformErrorCode } from '../../../src/runtime/core/error-codes'
 
 /**
- * v3 mirror of v4's validator-threw contract (`zod-v4/adapter.ts:680,
- * 702, 727`). User code inside `.refine` / `.transform` / `.preprocess`
- * can throw (sync) or reject (async). Zod does NOT wrap these into
- * issues at the `safeParseAsync` boundary — they propagate out of the
- * parse as a real throw / rejection. Without a catch in
- * `validateAtPath`, the throw escapes into the runtime's submit and
- * change-mode pipelines as either a `submitError` (handleSubmit) or
- * an unhandled rejection (scheduleFieldValidation), and the consumer
- * never sees a path-scoped error message.
+ * Consumer code inside `.refine` / `.transform` / `.preprocess` can throw
+ * or reject, and Zod does not wrap either into an issue at the
+ * `safeParseAsync` boundary: both propagate out of the parse for real.
+ * Uncaught, that reaches the submit and change-mode pipelines as a
+ * `submitError` or an unhandled rejection, with no path-scoped message
+ * for the consumer.
  *
- * v4 surfaces these as `ValidationError { code: 'atta:validator-threw',
- * path }`; v3 currently lets the throw escape. Dual-green after the
- * fix is the parity proof (D4 in the audit ledger; aligned with
+ * `createAbstractSchema` catches it instead and hands back
+ * `ValidationError { code: 'atta:validator-threw', path }`. Both
+ * adapters compose that factory, so this file and its v4 twin pin the
+ * same guarantee from either side (D4 in the audit ledger, under
  * [[feedback-no-uncaught-exceptions]]).
  */
 describe('zod v3: validateAtPath wraps user-validator throws as atta:validator-threw (D4)', () => {

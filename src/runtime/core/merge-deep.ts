@@ -14,9 +14,8 @@
  * path overrides the base's value, mirroring how an explicit `null`
  * would.
  *
- * Hosted in core so the v3 and v4 default-value walkers single-source
- * the intersection / constraint-merge step. Previously identical
- * `mergeDeep` / `mergeDeepV3` bodies lived per-adapter.
+ * Hosted in core so the v3 and v4 default-value walkers single-source the
+ * intersection / constraint-merge step.
  */
 import { isPlainRecord } from './path-walker'
 import { safeAssign, safeOwnRead } from './safe-assign'

@@ -463,7 +463,8 @@ export function createSharedSchemaStore(): <Built>(
  * Build a runtime `AbstractSchema` for `rootSchema`, composing the shared
  * uniform-method implementations with the per-adapter introspector and
  * services. The returned object, its three caches and its two memoised lazy
- * flags live as long as the schema does; see `sharedAbstractSchema`.
+ * flags live as long as the schema does, because each adapter hands it out
+ * through the `createSharedSchemaStore()` instance keyed on the schema.
  */
 export function createAbstractSchema<Schema, Form, GetValueFormType>(
   rootSchema: Schema,
@@ -477,8 +478,8 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   // hit on every read, so the schema is not re-walked per keystroke or per
   // field-state get.
   //
-  // Their lifetime is the SCHEMA's, not a form's, since `sharedAbstractSchema`
-  // hands one instance to every form on that schema. That makes bounding them
+  // Their lifetime is the SCHEMA's, not a form's, since the adapter's shared
+  // store hands one instance to every form on that schema. That makes bounding
   // load-bearing rather than tidy: a path can carry a record key or an array
   // index the consumer invents at runtime, so the key domain is unbounded even
   // though the schema is finite, and growth here is released never rather than

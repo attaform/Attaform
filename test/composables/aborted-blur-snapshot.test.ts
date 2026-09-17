@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * PASS2-3 — `run()` wrote `lastValidatedSnapshot` at run-START,
+ * PASS2-3: `run()` wrote its `pathSnapshots` entry at run-START,
  * BEFORE the post-resolve abort re-check. A path-scoped
  * `parse(other, { commit: true })` calls `cancelFieldValidation()`
  * synchronously, aborting the in-flight blur run for the

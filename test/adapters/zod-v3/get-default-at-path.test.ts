@@ -6,9 +6,9 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * Mirror of the v4 adapter's `get-default-at-path.test.ts`. Both adapters
  * MUST resolve the same defaults at the same paths so the runtime's
  * structural-completeness invariant holds identically across them. v3's
- * unified path-walker (`getNestedZodSchemasAtPath`, structurally parallel
- * to v4's `walkSegments`) peels wrappers transparently — these tests pin
- * parity with v4.
+ * unified path-walker peels wrappers transparently, and each adapter
+ * names its own `getNestedZodSchemasAtPath`, so these tests pin that the
+ * two agree.
  */
 
 describe('zod v3: getDefaultAtPath', () => {

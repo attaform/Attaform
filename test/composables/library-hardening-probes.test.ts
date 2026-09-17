@@ -4010,7 +4010,7 @@ describe('chaos — zod v3 ZodEffects wrapping a discriminatedUnion', () => {
       zV3.object({ channel: zV3.literal('sms'), number: zV3.string() }),
     ])
     // .refine wraps in ZodEffects. The adapter peeling code at
-    // src/runtime/adapters/zod-v3/index.ts:438 must see through this.
+    // src/runtime/adapters/zod-v3/index.ts must see through this.
     const schema = zV3.object({
       notify: inner.refine(
         () => true,

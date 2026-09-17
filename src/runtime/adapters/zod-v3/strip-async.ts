@@ -161,8 +161,6 @@ function walkEffects(schema: z.ZodTypeAny): z.ZodTypeAny {
       // runs after the original parse already threw, so leaving pipes
       // in place would re-throw on retry; recurse the input side
       // alone so the parse can proceed against the structural shape.
-      // Matches the v4 adapter's conservative pipe handling
-      // (`strip.ts:304-313`).
       const inSide = unwrapPipeIn(s)
       return inSide === undefined ? s : recurse(inSide)
     }
@@ -281,7 +279,6 @@ function readObjectCatchall(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
  * `rebuilt`. v3 stores these as standalone `_def.minLength /
  * .maxLength / .exactLength` slots (not on `_def.checks`), so they
  * silently drop when the array is rebuilt via `z.array(inner)`.
- * Mirrors v4's `carryChecks` (`strip.ts:52`).
  */
 function carryArrayChecks(
   rebuilt: z.ZodArray<z.ZodTypeAny>,

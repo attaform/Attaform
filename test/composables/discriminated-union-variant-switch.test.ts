@@ -12,22 +12,20 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
- * Discriminated-union variant switch — when the discriminator value
- * changes, the storage at the union's parent path must reshape to
- * the active variant's slim default.
- *
- * Without this, `setValue('notify.channel', 'sms')` against an
- * `{ channel: 'email', address: 'a@b' }` storage leaves `address`
- * sitting next to `channel: 'sms'` — a shape no variant matches.
+ * When a discriminator value changes, storage at the union's parent
+ * path reshapes to the active variant's slim default. Without that,
+ * `setValue('notify.channel', 'sms')` against
+ * `{ channel: 'email', address: 'a@b' }` would leave `address` sitting
+ * beside `channel: 'sms'`, a shape no variant matches.
  *
  * The contract:
- *   1. Foreign keys (only present in the OLD variant) are removed.
- *   2. Keys belonging to the NEW variant that are missing get the
- *      schema's slim default at that sub-path.
+ *   1. Foreign keys, present only in the OLD variant, are removed.
+ *   2. Missing keys of the NEW variant get the schema's slim default
+ *      at that sub-path.
  *   3. The discriminator key carries the new value.
- *   4. Numeric / bigint leaves of the new variant auto-mark blank
- *      (storage / display divergence — the same rule that governs
- *      mount-time blank).
+ *   4. Numeric and bigint leaves of the new variant auto-mark blank,
+ *      under the same storage-versus-display rule that governs
+ *      mount-time blank.
  */
 
 const profileSchema = z.object({
@@ -37,12 +35,11 @@ const profileSchema = z.object({
     z.object({ channel: z.literal('sms'), number: z.string().min(7) }),
   ]),
 })
-// Loose API type — tests deliberately exercise cross-variant paths
-// (`setValue('notify.address', ...)` while the active variant is sms,
-// and vice versa) which are correctly rejected by the strict
-// inferred type. The runtime shape under test is what matters here.
-// Cast `setValue` to a permissive signature so individual call sites
-// don't each need a `never` cast.
+// A loose API type: these tests deliberately write cross-variant paths
+// (`setValue('notify.address', ...)` while sms is active, and the
+// reverse), which the strict inferred type correctly rejects. Casting
+// `setValue` once to a permissive signature keeps a `never` cast off
+// every call site.
 type ProfileApi = Omit<UseFormReturnType<z.output<typeof profileSchema>>, 'setValue'> & {
   setValue: (path: string, value: unknown) => boolean
   values: {
@@ -88,8 +85,8 @@ describe('discriminated-union variant switch — storage reshape', () => {
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // `address` belongs to the email variant only — must not survive
-    // the switch.
+    // `address` belongs to the email variant alone, so it does not
+    // survive the switch.
     expect((api.values.notify as Record<string, unknown>)['address']).toBeUndefined()
   })
 
@@ -100,9 +97,9 @@ describe('discriminated-union variant switch — storage reshape', () => {
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // `number` is a `z.string().min(7)` — slim default is `''`.
-    // Refinement-class errors are not tested here; this assertion
-    // proves the structural shape was reshaped.
+    // `number` is a `z.string().min(7)`, so its slim default is `''`.
+    // This assertion is about the structural reshape; refinement-class
+    // errors are covered elsewhere.
     expect(api.values.notify).toEqual({ channel: 'sms', number: '' })
   })
 
@@ -126,8 +123,8 @@ describe('discriminated-union variant switch — storage reshape', () => {
     api.setValue('notify.address', 'first@example.com')
     api.setValue('notify.channel', 'sms')
     await nextTick()
-    // sms has no prior memory; falls back to slim default — and the
-    // email-only `address` does not leak across the switch.
+    // sms has no prior memory, so it falls back to the slim default,
+    // and the email-only `address` does not leak across the switch.
     expect(api.values.notify).toEqual({ channel: 'sms', number: '' })
 
     api.setValue('notify.number', '5551234')
@@ -191,9 +188,9 @@ describe('discriminated-union variant switch — error reactivity', () => {
     api.setValue('notify.address', 'ada@example.com')
     await nextTick()
 
-    // Switch to sms — `notify.number` is now required and ''
-    // (failing `.min(7)`). The schema validation pipeline (here:
-    // handleSubmit) re-parses against the new effective shape.
+    // After the switch to sms, `notify.number` is required and `''`,
+    // failing `.min(7)`. The validation pipeline, here handleSubmit,
+    // re-parses against the new effective shape.
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
@@ -204,9 +201,10 @@ describe('discriminated-union variant switch — error reactivity', () => {
     await submit()
     await nextTick()
 
-    // schemaErrors gets populated with the refinement issue against
-    // the new variant's required string. Tightened from `.toBeDefined()`
-    // — the empty-array case is the bug we're guarding against.
+    // schemaErrors carries the refinement issue against the new
+    // variant's required string. The length assertion is deliberate:
+    // `.toBeDefined()` would pass on an empty array, which is the case
+    // being guarded.
     expect(api.errors('notify.number')).toHaveLength(1)
   })
 
@@ -232,7 +230,7 @@ describe('discriminated-union variant switch — numeric variant blank auto-mark
       z.object({ kind: z.literal('tiered'), threshold: z.number() }),
     ]),
   })
-  // Loose API type for the same reason as ProfileApi above —
+  // A loose API type for the same reason as ProfileApi above:
   // cross-variant writes during the switch.
   type NumericApi = Omit<UseFormReturnType<z.output<typeof numericVariantSchema>>, 'setValue'> & {
     setValue: (path: string, value: unknown) => boolean
@@ -265,15 +263,15 @@ describe('discriminated-union variant switch — numeric variant blank auto-mark
   it('switching into a variant whose required leaf is numeric auto-marks blank + emits a derived error', async () => {
     const api = mountNumeric()
 
-    // Initially flat / amount — string leaf, no auto-mark.
+    // Initially flat / amount, a string leaf, so no auto-mark.
     expect(api.errors('payout.threshold')).toEqual([])
 
     api.setValue('payout.kind', 'tiered')
     await nextTick()
 
-    // After the switch, `payout.threshold` exists with slim default `0`
-    // and storage / display diverge — auto-mark fires, derived error
-    // appears reactively.
+    // After the switch `payout.threshold` exists with slim default `0`
+    // and storage diverges from display, so auto-mark fires and the
+    // derived error appears reactively.
     expect((api.values.payout as Record<string, unknown>)['threshold']).toBe(0)
     expect(api.errors('payout.threshold')?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
   })
@@ -292,11 +290,10 @@ describe('discriminated-union variant switch — whole-union write', () => {
     api.setValue('notify.address', 'first@example.com')
     await nextTick()
 
-    // Replace the union's parent with a complete sms-variant value.
-    // This is a normal whole-object write at the union path — the
-    // runtime must use the SMS variant's default to fill structural
-    // gaps, not fall back to the first (email) variant. Otherwise
-    // `address: ''` from the email default leaks back in.
+    // Replace the union's parent with a complete sms-variant value. On
+    // a whole-object write at the union path the runtime fills
+    // structural gaps from the SMS variant's default, not the first
+    // (email) one, or `address: ''` would leak back in.
     api.setValue('notify', { channel: 'sms', number: '5551234' })
     await nextTick()
 
@@ -322,10 +319,9 @@ describe('discriminated-union variant switch — wrapped DU', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  // `notify` itself is `DU(...)` wrapped in `.default(...)`. Wrapping
-  // is structurally transparent — the variant-switch reshape must
-  // peel through wrappers when locating the union one level above
-  // the discriminator key.
+  // `notify` is `DU(...)` wrapped in `.default(...)`. Wrapping is
+  // structurally transparent, so the reshape peels through wrappers
+  // when locating the union one level above the discriminator key.
   it('reshapes when the DU is wrapped in `.default(...)`', async () => {
     const wrappedSchema = z.object({
       notify: z
@@ -367,15 +363,13 @@ describe('discriminated-union variant switch — wrapped DU', () => {
 
 describe('discriminated-union variant switch — array <-> non-array path', () => {
   // One variant carries `payload` as an array of records; the other
-  // doesn't carry `payload` at all. The container proxy at
-  // `form.fields.payload` mounts an Array target the first time it's
-  // read (driven by `isArrayContainer`), and the proxy is cached
-  // per-segments key. Variant switches that remove `payload` from
-  // the active variant — or restore it from variant memory — need
-  // the cached proxy to keep agreeing with the live shape: live
-  // indices when the array is present, zero-length when it's not,
-  // never claiming to be an array when the path now holds something
-  // else entirely.
+  // does not carry `payload` at all. The container proxy at
+  // `form.fields.payload` mounts an Array target on first read (driven
+  // by `isArrayPath`) and is cached per segments key. A variant
+  // switch that removes `payload`, or restores it from variant memory,
+  // has to leave that cached proxy agreeing with the live shape: live
+  // indices when the array is present, zero length when it is not, and
+  // never claiming to be an array when the path holds something else.
 
   const arrayOrSingleSchema = z.object({
     body: z.discriminatedUnion('mode', [
@@ -445,12 +439,11 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     expect(api.values.body.mode).toBe('single')
     expect(api.values.body['payload']).toBeUndefined()
 
-    // The held reference still points at the Array-target proxy
-    // from before the switch (proxy targets are immutable), but
-    // liveKeysAtPath reads `state.form.value` on every enumeration
-    // so the emitted set tracks reality — `Object.keys` / `length`
-    // drop to zero, and v-for renders no stale rows from the
-    // previous variant.
+    // The held reference still points at the pre-switch Array-target
+    // proxy, since proxy targets are immutable, but `liveKeysAtPath`
+    // reads `state.form.value` on every enumeration. So `Object.keys`
+    // and `length` drop to zero and v-for renders no stale rows from
+    // the previous variant.
     expect(Object.keys(fieldsAtPayload as object)).toEqual([])
     expect((fieldsAtPayload as unknown as { length: number }).length).toBe(0)
   })
@@ -466,9 +459,9 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     api.setValue('body.mode', 'single')
     await nextTick()
 
-    // The container cache keys off (segments, shape). With the
-    // live value now `undefined`, the next fresh read produces an
-    // object-target proxy — `Array.isArray` reports the truth.
+    // The container cache keys off (segments, shape), so with the live
+    // value now `undefined` the next fresh read produces an
+    // object-target proxy and `Array.isArray` reports the truth.
     const fresh = (api.fields as unknown as { body: { payload: unknown } }).body.payload
     expect(Array.isArray(fresh)).toBe(false)
     expect(fresh).not.toBe(stale)
@@ -492,8 +485,8 @@ describe('discriminated-union variant switch — array <-> non-array path', () =
     await nextTick()
     expect((api.fields as unknown as { body: { payload: unknown } }).body.payload).toBeUndefined()
 
-    // Flip into the list variant and add items — a fresh read returns
-    // a live array-targeted proxy that enumerates the entries.
+    // Flip into the list variant and add items: a fresh read returns a
+    // live array-targeted proxy that enumerates the entries.
     api.setValue('body.mode', 'list')
     await nextTick()
     api.append('body.payload', { value: 'a' })
@@ -603,10 +596,9 @@ describe('z.union (non-discriminated) — array-vs-object shape collision at the
     await nextTick()
 
     // The held Array-target proxy retraps `length` and `ownKeys` on
-    // every read, so the live record keys surface through the
-    // held reference. The length reports the live key count
-    // regardless of whether the underlying shape is array or
-    // record — both flow through `liveKeysAtPath`.
+    // every read, so live record keys surface through it. Both array
+    // and record shapes flow through `liveKeysAtPath`, so the length
+    // reports the live key count either way.
     expect((heldArr as { length: number }).length).toBe(3)
     expect(Object.keys(heldArr as object).sort()).toEqual(['blue', 'green', 'red'])
 
@@ -814,10 +806,10 @@ describe('discriminated-union variant switch — zod v3 adapter', () => {
 })
 
 /**
- * Variant memory — per-form-instance side-channel that snapshots the
+ * Variant memory is a per-form-instance side channel: it snapshots the
  * outgoing variant's subtree on a discriminated-union switch and
  * restores it on switch-back. On by default (`rememberVariants: true`),
- * opt out via `useForm({ rememberVariants: false })`.
+ * opted out with `useForm({ rememberVariants: false })`.
  *
  * Memory is keyed by absolute union path (`PathKey`), so every DU at
  * every nesting depth gets its own independent memory map. Memory
@@ -984,8 +976,8 @@ describe('variant memory — Case B whole-union write', () => {
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // Consumer explicitly provides the full email shape — overrides
-    // win over the memory baseline.
+    // The consumer supplies the full email shape, and an explicit
+    // override wins over the memory baseline.
     api.setValue('notify', { channel: 'email', address: 'override@example.com' })
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'email', address: 'override@example.com' })
@@ -1061,7 +1053,7 @@ describe('variant memory — opt-out (rememberVariants: false)', () => {
 
     api.setValue('notify.channel', 'email')
     await nextTick()
-    // Memory disabled — the previously-typed address is gone, slim
+    // With memory disabled the typed address is gone and the slim
     // default `address: ''` returns.
     expect(api.values.notify).toEqual({ channel: 'email', address: '' })
   })
@@ -1076,7 +1068,7 @@ describe('variant memory — opt-out (rememberVariants: false)', () => {
       await nextTick()
       api.setValue('notify.channel', 'email')
       await nextTick()
-      // Each round-trip resets to slim default — no accumulation.
+      // Each round trip resets to the slim default, never accumulating.
       expect(api.values.notify).toEqual({ channel: 'email', address: '' })
     }
   })
@@ -1118,8 +1110,8 @@ describe('variant memory — reset clears memory', () => {
     api.resetField('notify')
     await nextTick()
 
-    // Switch sms → email — memory was cleared at union path, so
-    // restoration falls back to slim default.
+    // Memory was cleared at the union path, so switching sms to email
+    // restores the slim default.
     api.setValue('notify.channel', 'sms')
     api.setValue('notify.channel', 'email')
     await nextTick()
@@ -1130,14 +1122,14 @@ describe('variant memory — reset clears memory', () => {
     const { app, api } = mountProfileWith()
     apps.push(app)
 
-    // Type then switch out — memory captures email with the typed value.
+    // Type, then switch out: memory captures email with the typed value.
     api.setValue('notify.address', 'remembered@example.com')
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // Switch back, type something fresh, reset just the leaf —
-    // memory at ['notify'] is preserved by design (it self-corrects
-    // on the next switch-out).
+    // Switch back, type something fresh, then reset just the leaf.
+    // Memory at ['notify'] survives by design, since it self-corrects
+    // on the next switch-out.
     api.setValue('notify.channel', 'email')
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'email', address: 'remembered@example.com' })
@@ -1250,9 +1242,9 @@ describe('variant memory — nested DUs (depth 2)', () => {
     api.setValue('flow.type.b', 'inner-B')
     await nextTick()
 
-    // Outer round-trip: choose-type → review → choose-type. Inner
-    // memory entries were never explicitly cleared — they live at
-    // absolute path `["flow","type"]` regardless of outer state.
+    // Outer round trip: choose-type to review and back. Inner memory
+    // entries are never explicitly cleared; they live at the absolute
+    // path `["flow","type"]` regardless of outer state.
     api.setValue('flow.step', 'review')
     await nextTick()
     api.setValue('flow.step', 'choose-type')
@@ -1281,9 +1273,9 @@ describe('variant memory — nested DUs (depth 2)', () => {
     api.setValue('flow.step', 'review')
     api.setValue('flow.step', 'choose-type')
     await nextTick()
-    // Restored — inner is { kind: 'A', a: 'a-text' }. Inner switch
-    // to B falls back to slim default (no inner memory yet for B
-    // because the inner switch never happened pre-outer-toggle).
+    // Restored to inner `{ kind: 'A', a: 'a-text' }`. An inner switch
+    // to B falls back to the slim default, since the inner switch
+    // never happened before the outer toggle and B has no memory.
     api.setValue('flow.type.kind', 'B')
     await nextTick()
     expect((api.values.flow as Record<string, unknown>)['type']).toEqual({
@@ -1362,7 +1354,7 @@ describe('variant memory — nested DU + reset interactions', () => {
     api.resetField('flow.type')
     await nextTick()
 
-    // Inner memory cleared — A switch falls back to slim default.
+    // Inner memory is cleared, so a switch to A gives the slim default.
     api.setValue('flow.type.kind', 'A')
     await nextTick()
     expect((api.values.flow as Record<string, unknown>)['type']).toEqual({
@@ -1370,9 +1362,9 @@ describe('variant memory — nested DU + reset interactions', () => {
       a: '',
     })
 
-    // Outer memory at ['flow'] is preserved — but in this test the
-    // outer never switched, so there's no outer entry to consult.
-    // Switching outer here just exercises the outer memory machinery.
+    // Outer memory at ['flow'] survives, though this test never
+    // switched the outer, so there is no entry to consult. Switching it
+    // here exercises the outer memory machinery.
     api.setValue('flow.type.a', 'fresh-A')
     api.setValue('flow.step', 'review')
     api.setValue('flow.step', 'choose-type')
@@ -1437,8 +1429,8 @@ describe('variant memory — DU nested inside an array element', () => {
     await nextTick()
     expect(api.values.events[0]).toEqual({ type: 'click', x: 'index-0-click' })
 
-    // events[1] is independent — switching events[1].type must NOT
-    // restore from events[0]'s memory.
+    // events[1] is independent: switching events[1].type never
+    // restores from events[0]'s memory.
     api.setValue('events.1.value', 'index-1-text')
     api.setValue('events.1.type', 'click')
     await nextTick()
@@ -1457,13 +1449,13 @@ describe('variant memory — DU nested inside an array element', () => {
     api.resetField('events.0')
     await nextTick()
 
-    // events[0] memory cleared — switching back to click yields
-    // slim default, not the typed 'idx-0'.
+    // events[0] memory is cleared, so switching back to click yields
+    // the slim default rather than the typed 'idx-0'.
     api.setValue('events.0.type', 'click')
     await nextTick()
     expect(api.values.events[0]).toEqual({ type: 'click', x: '' })
 
-    // events[1] memory preserved — switching back to text restores.
+    // events[1] memory survives, so switching back to text restores.
     api.setValue('events.1.type', 'text')
     await nextTick()
     expect(api.values.events[1]).toEqual({ type: 'text', value: 'idx-1' })
@@ -1583,8 +1575,8 @@ describe('variant memory — nested DUs (depth 3)', () => {
     api.setValue('wizard.config.detail.h', '11')
     await nextTick()
 
-    // Outer switch out and back — captures the entire wizard subtree
-    // including middle + deepest layers.
+    // An outer switch out and back captures the entire wizard subtree,
+    // middle and deepest layers included.
     api.setValue('wizard.phase', 'submit')
     api.setValue('wizard.phase', 'config')
     await nextTick()
@@ -1593,7 +1585,7 @@ describe('variant memory — nested DUs (depth 3)', () => {
       config: { mode: 'manual', detail: { shape: 'rect', w: '99', h: '11' } },
     })
 
-    // Middle switch out and back — captures the deepest layer.
+    // A middle switch out and back captures the deepest layer.
     api.setValue('wizard.config.mode', 'auto')
     api.setValue('wizard.config.preset' as never, 'auto-preset')
     await nextTick()
@@ -1661,16 +1653,16 @@ describe('variant memory — history (undo/redo) interaction', () => {
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // Memory now holds email = { address: 'h1@example.com' }.
-    // Undo restores form value to the pre-switch state. Memory is
-    // not on the history stack — it stays as it is.
+    // Memory now holds email = { address: 'h1@example.com' }. Undo
+    // restores the form value to its pre-switch state; memory is not on
+    // the history stack, so it stays as it is.
     api.history.undo()
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'email', address: 'h1@example.com' })
 
-    // Switching to sms now re-snapshots the (undone-to) state into
-    // memory[email], which already had the same value — no surprise.
-    // The documented behavior: history operates on form value only.
+    // Switching to sms re-snapshots the undone-to state into
+    // memory[email], which already held the same value. History
+    // operates on form value alone.
     api.setValue('notify.channel', 'sms')
     await nextTick()
     expect(api.values.notify).toEqual({ channel: 'sms', number: '' })
@@ -1678,27 +1670,24 @@ describe('variant memory — history (undo/redo) interaction', () => {
 })
 
 /**
- * Inactive-variant errors are filtered from the aggregate `form.errors`
- * surface (the live-data active-path filter); the underlying
- * `schemaErrors` store gets re-validated against the new variant on
- * every reshape, so stale leaf entries from the previous variant
- * don't accumulate. Per-field accessors (`fields[path].errors`)
- * therefore reflect *current schema state* — they show errors only
- * for paths the active variant actually validates.
+ * The aggregate `form.errors` surface filters out inactive-variant
+ * errors through the live-data active-path filter, and every reshape
+ * re-validates the `schemaErrors` store against the new variant, so
+ * stale leaf entries from the previous variant never accumulate.
  *
- *   - `form.errors` answers "what's currently wrong with this form?"
- *     — active schema, active-path-filtered.
+ *   - `form.errors` answers "what is currently wrong with this form?"
+ *     against the active schema, active-path-filtered.
  *   - `fields.<path>.errors` answers "what does the schema runtime
- *     currently say about this path?" — empty for inactive-variant
- *     leaves (their entries clear on reshape).
- *   - User-injected errors (`setErrors`) DO persist across
- *     variant switches: they live in a separate store the schema
- *     validation pipeline never touches.
+ *     currently say about this path?", so it is empty for an
+ *     inactive-variant leaf once reshape clears its entries.
+ *   - User-injected errors (`setErrors`) DO survive a variant switch:
+ *     they live in a separate store the validation pipeline never
+ *     touches.
  *
- * Filter mechanism: `hasAtPath(form.value, err.path)`. Reshape removes
- * inactive-variant keys from `form.value` outright; schema
- * re-validation under the new shape clears stale schemaErrors
- * entries; user errors stay put.
+ * The filter is `hasAtPath(form.value, err.path)`. Reshape removes
+ * inactive-variant keys from `form.value` outright, re-validation under
+ * the new shape clears stale schemaErrors entries, and user errors stay
+ * put.
  */
 describe('inactive-variant errors — filtered from form.errors, schemaErrors re-validated', () => {
   const apps: App[] = []
@@ -1715,15 +1704,14 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     // email variant's failure (address='' fails `.min(3)`). One error.
     expect(api.errors('notify.address')).toHaveLength(1)
 
-    // Switch to sms — the address path leaves form.value entirely.
+    // Switching to sms takes the address path out of form.value.
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // Aggregate filter: notify.address path is no longer reachable
-    // through form.value, so the (still-stored) error is hidden. This
-    // is the bug fix — pre-fix, form.errors leaked the email variant's
-    // address error after switching to sms because schemaErrors had a
-    // dotted-path entry that nothing cleaned up.
+    // notify.address is no longer reachable through form.value, so the
+    // aggregate filter hides the error that is still stored against it.
+    // Without the filter a dotted-path schemaErrors entry would leak
+    // the email variant's address error after a switch to sms.
     expect(api.errors('notify.address')).toEqual([])
   })
 
@@ -1745,12 +1733,11 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
   })
 
   it('per-field fields clears schema errors at inactive-variant paths after reshape', async () => {
-    // Reshape's sync re-validation against the new variant shape
-    // clears every schemaErrors entry under the union's parent path
-    // (the leaf-keyed clear-then-write in
-    // `applySchemaErrorsForSubtree`). Inactive-variant leaves don't
-    // exist in the new shape, so they get no new entries — schemaErrors
-    // ends up reflecting current schema truth.
+    // Reshape's sync re-validation clears every schemaErrors entry
+    // under the union's parent path, through the leaf-keyed
+    // clear-then-write in `applySchemaErrorsForSubtree`. An
+    // inactive-variant leaf is absent from the new shape and so gets no
+    // new entry, leaving schemaErrors at current schema truth.
     const { app, api } = mountProfile()
     apps.push(app)
     await nextTick()
@@ -1759,20 +1746,19 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     await nextTick()
 
     expect(api.errors('notify.address')).toEqual([])
-    // Model P: the inactive-variant node is undefined on the dot surface,
-    // so the per-field state reads through the call-form (a schema-aware
-    // stub) — its errors reflect the cleared schema state.
+    // The inactive-variant node is undefined on the dot surface, so
+    // per-field state reads through the call form, a schema-aware stub
+    // whose errors reflect the cleared schema state.
     expect(api.fields('notify.address').errors).toEqual([])
   })
 
   it('per-field fields preserves USER-injected errors across variant switches', async () => {
-    // userErrors live in a separate store the schema validation
-    // pipeline never touches, so consumer-injected errors at an
-    // inactive-variant path stay visible through the per-field surface
-    // even when `form.errors` filters them out via the active-path
-    // mask. This is the actual "preserved across variant switches"
-    // contract — it's about consumer intent, not about the schema's
-    // historical validation results.
+    // userErrors live in a separate store the validation pipeline
+    // never touches, so a consumer-injected error at an
+    // inactive-variant path stays visible through the per-field
+    // surface even while the active-path mask hides it from
+    // `form.errors`. That is what "preserved across variant switches"
+    // means: consumer intent, not past validation results.
     const { app, api } = mountProfile()
     apps.push(app)
     await nextTick()
@@ -1788,8 +1774,8 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
     api.setValue('notify.channel', 'sms')
     await nextTick()
 
-    // form.errors hides it (active-path filter — notify.address isn't
-    // in the live shape).
+    // The active-path filter hides it from form.errors, since
+    // notify.address is not in the live shape.
     expect(api.errors('notify.address')).toEqual([])
 
     // Per-field surface retains it (userErrors store, untouched by
@@ -1801,9 +1787,9 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
   })
 
   it('handleSubmit-populated errors at the active variant flow through the filter cleanly', async () => {
-    // Verifies the filter doesn't accidentally hide errors at active
-    // paths. Drives errors via handleSubmit (synchronous w.r.t. its
-    // promise) so timing is deterministic — no debounce dependency.
+    // The filter never hides an error at an active path. Errors come
+    // through handleSubmit, which settles with its own promise, so the
+    // timing is deterministic and nothing depends on the debounce.
     const { app, api } = mountProfile()
     apps.push(app)
     await nextTick()
@@ -1828,13 +1814,13 @@ describe('inactive-variant errors — filtered from form.errors, schemaErrors re
 })
 
 /**
- * Cargo 4-variant fixture for the discriminated-union "lift" — runtime
- * smoke that the lifted types match the runtime's TRUTHFUL-ABSENCE
- * semantics for inactive-variant chained access (model P): a key whose
- * variant isn't active is an absent node (`undefined`), not a phantom
- * stub. Mirrors the demo schema's shape (`type` discriminator with
- * `dry | refrigerated | hazmat | oversized`) so a regression here would
- * break the canonical demo flow.
+ * A cargo 4-variant fixture for the discriminated-union lift: runtime
+ * smoke that the lifted types match truthful-absence semantics on
+ * inactive-variant chained access, where a key whose variant is not
+ * active is an absent node (`undefined`) rather than a phantom stub.
+ * It mirrors the demo schema's shape (a `type` discriminator over
+ * `dry | refrigerated | hazmat | oversized`), so a regression here
+ * would break the canonical demo flow.
  */
 const cargoLiftSchema = z.object({
   reference: z.string(),
@@ -1885,10 +1871,11 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
     const { app, api } = mountCargoLift()
     apps.push(app)
 
-    // Active variant is `dry`; `tempMinC` lives only on `refrigerated`.
-    // Model P: the inactive variant's key is an absent node — `undefined`,
-    // not a phantom stub — so a falsy-check agrees with the runtime and
-    // the type (`FieldState<number> | undefined`) forces a `?.` guard.
+    // The active variant is `dry` and `tempMinC` lives only on
+    // `refrigerated`. The inactive variant's key is an absent node,
+    // `undefined` rather than a phantom stub, so a falsy check agrees
+    // with the runtime and the type `FieldState<number> | undefined`
+    // forces a `?.` guard.
     expect(api.fields.cargo.tempMinC).toBeUndefined()
   })
 
@@ -1901,7 +1888,8 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
     expect(api.fields.cargo.tempMinC?.value).toBe(4)
     expect(api.fields.cargo.tempMaxC?.value).toBe(8)
 
-    // Switch back to dry — the refrigerated leaves become absent nodes.
+    // Switching back to dry turns the refrigerated leaves into absent
+    // nodes.
     api.setValue('cargo', { type: 'dry', items: [], fragile: false })
     await nextTick()
     expect(api.fields.cargo.tempMinC).toBeUndefined()
@@ -1940,7 +1928,7 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
 
 /**
  * Whole-union Case B writes carrying `unset` sentinels in the
- * consumer-supplied object — the homepage REPL flow. The demo's
+ * consumer-supplied object, as the homepage REPL does. The demo's
  * `setCargoType('oversized')` calls
  *
  *   form.setValue('cargo', {
@@ -1950,14 +1938,12 @@ describe('discriminated-union lift — chained metadata-proxy access', () => {
  *     permitNumber: unset,
  *   })
  *
- * after a prior switch into a different variant. The construction-
- * time `walkUnsetSentinels` only scrubs `defaultValues`; later
- * setValue path-form writes were forwarded straight into the
- * variant reshape, so the symbols spread into `finalValue` next to
- * the discriminator and reached storage. Once the next read tried
- * to operate on a Symbol-valued leaf, the active-variant branch in
- * the template stopped resolving and the UI froze on the previous
- * variant's body.
+ * after a prior switch into a different variant. `walkUnsetSentinels`
+ * scrubs `defaultValues` at construction only, so the variant reshape
+ * is what has to scrub a later setValue: a symbol reaching storage
+ * beside the discriminator leaves the next read operating on a
+ * Symbol-valued leaf, which stops the template's active-variant branch
+ * resolving and freezes the UI on the previous variant's body.
  */
 describe('discriminated-union variant switch — whole-union write with unset sentinels', () => {
   const cargoSchema = z.object({
@@ -2039,10 +2025,9 @@ describe('discriminated-union variant switch — whole-union write with unset se
     })
     await nextTick()
 
-    // Storage holds the schema's slim defaults — never raw symbols.
-    // Without this gate, `JSON.stringify(form.values())` (the demo's
-    // review pane) would silently drop these leaves and persistence
-    // would fail to round-trip.
+    // Storage holds the schema's slim defaults, never raw symbols.
+    // Otherwise `JSON.stringify(form.values())`, which is what the
+    // demo's review pane reads, would silently drop these leaves.
     expect(isUnset(api.values.cargo.lengthCm)).toBe(false)
     expect(isUnset(api.values.cargo.widthCm)).toBe(false)
     expect(isUnset(api.values.cargo.heightCm)).toBe(false)

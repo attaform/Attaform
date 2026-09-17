@@ -362,7 +362,7 @@ export function buildRegister<F extends GenericForm>(
         return accepted
       },
 
-      // Called by the `vRegisterHint` compile-time transform's wrapping
+      // Called by the `vRegisterHintTransform` compile-time transform's wrapping
       // IIFE on every server-side render of `<element v-register="…">`.
       // Without it, every SSR'd FieldState serialises `connected: false`
       // (because Vue skips directive lifecycle during SSR) and the client

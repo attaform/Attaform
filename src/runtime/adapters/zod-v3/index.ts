@@ -383,7 +383,7 @@ function isStructuralV3Kind(schema: z.ZodTypeAny): boolean {
  * consumer sees), and `unwrapBranded` for `ZodBranded`.
  *
  * `ZodCatch` is deliberately NOT peeled: the caught fallback is
- * load-bearing, and `unwrapDefault` reads it directly.
+ * load-bearing, and `getCatchDefault` reads it directly.
  */
 function peelV3Wrappers(schema: z.ZodTypeAny): z.ZodTypeAny {
   let current: z.ZodTypeAny = schema
@@ -597,7 +597,7 @@ function unwrapToDiscriminatedUnion(
  * Peel EVERY transparent wrapper to expose a schema's structural inner:
  * Optional, Nullable, Default, Readonly and Catch, plus Effects,
  * Pipeline, Branded and Lazy. More aggressive than `peelV3Wrappers`,
- * which keeps catch for `unwrapDefault`'s direct read; the metadata
+ * which keeps catch for `getCatchDefault`'s direct read; the metadata
  * walker wants the structural shape whatever the catch wrapper says, so
  * a registration on the inner under `.catch(...)` still matches. The
  * iteration is bounded against a pathological wrapper chain.

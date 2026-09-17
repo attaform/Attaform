@@ -20,9 +20,9 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
  * `useRegister()` warned `"no parent registerValue prop"` during
  * `renderToString` despite the parent template binding `v-register`.
  *
- * Root cause: Vue intentionally skips lifecycle hooks during SSR (the
- * directive lifecycle docstring at `directive.ts:10` is the formal
- * statement), so an `onBeforeMount`-only capture of
+ * Root cause: Vue intentionally skips lifecycle hooks during SSR, as
+ * `directive.ts`'s module docblock states, so an `onBeforeMount`-only
+ * capture of
  * `instance.attrs.registerValue` leaves the captured value at
  * `undefined`. The first server-side template read of the returned
  * `ComputedRef<RegisterValue | undefined>` then fires the
@@ -55,9 +55,9 @@ function makeChildWithUseRegister() {
     name: 'RegisterChild',
     inheritAttrs: false,
     setup() {
-      // Match the attaform `SpikeStyledInput` shape: child reads
-      // the parent's binding via `useRegister` and re-binds onto an
-      // inner native input. Reading `register.value` directly in
+      // The bring-your-own-component shape: a child reads the parent's
+      // binding through `useRegister` and re-binds it onto an inner
+      // native input. Reading `register.value` directly in
       // render mirrors the template auto-unwrap path
       // (`<input v-register="register">` desugars to a setup-state
       // access that calls `unref(register)`, which invokes the

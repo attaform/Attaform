@@ -625,7 +625,7 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   interactAtPath(segments: Path): boolean
   /**
    * SSR-only optimistic mark: `connected: true` with no DOM element behind it.
-   * The `vRegisterHint` compile-time transform calls it through
+   * The `vRegisterHintTransform` compile-time transform calls it through
    * `RegisterValue.markConnectedOptimistically()` for every element rendered
    * with `v-register`. Idempotent, and a no-op on the client, where the
    * directive's `created` hook is authoritative.

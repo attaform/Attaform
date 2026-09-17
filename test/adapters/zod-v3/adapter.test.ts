@@ -227,11 +227,11 @@ describe('zod v3 adapter — getDefaultValues', () => {
     // async pass scheduled in `create-form-store` when
     // `needsAsyncValidation()` returns true.
     //
-    // (Parity note with v4: the v4 adapter additionally seeds
-    // sync-refinement errors at construction via
-    // `stripAsyncChecks`. v3's slim-schema strategy and runtime
-    // wrapper for `.refine` predicates make that lift a separate
-    // piece of work — see comment in `getDefaultValues`.)
+    // Parity note: v4 seeds sync-refinement errors at construction by
+    // parsing the real schema, and skips that seeding outright once
+    // `containsAsyncTransform` or `containsAsyncRefine` says the schema
+    // holds either. v3 reaches the same end state through its
+    // slim-schema strategy and its runtime wrapper for `.refine`.
     const schema = z.object({
       email: z
         .string()

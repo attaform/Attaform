@@ -8,11 +8,11 @@
  *
  *   P3 found that editing one field recomputed every field's `form.fields(path)`
  *   computed (O(F)), and busted it (lazy `formMeta` + own-key blank). The open
- *   question was whether the v-register DIRECTIVE path shared the cost: with
- *   `autoAria` on (the default), the directive reads `RegisterValue.ariaDisplayState`,
+ *   question was whether the v-register DIRECTIVE path shared the cost: the
+ *   directive reads `RegisterValue.ariaDisplayState`,
  *   which is `computed(() => getDisplayStateAt(segments))` =
- *   `getRootFieldStateAt(segments).value.displayState` (register-api.ts:334,
- *   build-form-api.ts:304) — the SAME field-state accessor `form.fields` uses,
+ *   `getRootFieldStateAt(segments).value.displayState` (register-api.ts,
+ *   build-form-api.ts) — the SAME field-state accessor `form.fields` uses,
  *   built over the same P3-lazy `getFormMetaBase`. So a register-only form with
  *   no component reading `form.fields` could still recompute the display engine
  *   O(F) times per keystroke. render-isolation.lock measures COMPONENT renders,

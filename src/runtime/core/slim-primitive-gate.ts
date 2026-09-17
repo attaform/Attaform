@@ -23,8 +23,8 @@ import { __DEV__ } from './dev'
  * dotted path + offending kind) so the same misuse during a v-for
  * re-render doesn't flood the console.
  *
- * In production, `__DEV__` is `false` and the WeakMap allocation
- * tree-shakes out, and `recordRejection` returns `false` (do not warn).
+ * In production, `__DEV__` is `false`, the WeakMap allocation tree-shakes
+ * out, and `shouldWarnOnce` returns `false`.
  */
 const warnedRejections: WeakMap<object, Set<string>> | null = __DEV__
   ? new WeakMap<object, Set<string>>()

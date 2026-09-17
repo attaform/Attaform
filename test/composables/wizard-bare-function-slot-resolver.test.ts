@@ -14,15 +14,14 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * The audit pinned this as P1 perf because pre-fix every `next` /
  * `back` / `goTo` writes `activeKey`, which invalidates the `slotCtx`
- * computed (`use-wizard.ts:282`) and cascades into `compiledSteps` —
+ * computed (`use-wizard.ts`) and cascades into `compiledSteps` —
  * re-running every bare function slot's resolver. A 50-step wizard
  * with eager function slots therefore re-runs all 50 resolvers per
  * navigation, even ones whose body is independent of the active step.
  *
- * The fix unifies bare function slots on the same getter-style ctx
- * `lazy()` slots already receive (`use-wizard.ts:341` `lazyCtx`): the
- * `currentKey` dep is only established when the slot body actually
- * reads it.
+ * Bare function slots take the same getter-style ctx that `lazy()`
+ * slots receive, so `normalizeSlot` establishes the `currentKey` dep
+ * only when a slot body actually reads it.
  */
 
 const schema = z.object({ email: z.string().optional() })

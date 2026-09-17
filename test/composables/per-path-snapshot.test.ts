@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * PASS2-S3 — the form-wide `lastValidatedSnapshot` `let` was
+ * PASS2-S3 — the form-wide `pathSnapshots` `let` was
  * overwritten by whichever field's run committed last and was
  * compared whole-form in the blur-dedup. Two real consequences:
  *   - a programmatic edit to sibling B (between A blurs) made

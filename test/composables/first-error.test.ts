@@ -18,7 +18,7 @@ import type { ValidationError } from '../../src'
  * Adopters who use a different gate read `firstError` directly.
  *
  * For container paths, `firstError` is the first error in the
- * aggregated subtree (descendant errors sorted by `pathOrdinal`).
+ * aggregated subtree (descendant errors sorted by `pathOrdinals`).
  *
  * Mirrored across both adapters (v3 + v4).
  */

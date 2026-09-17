@@ -84,10 +84,9 @@ export function liveContainerHasKey<F extends GenericForm>(
  * Whether the path resolves to an array container RIGHT NOW. The live
  * form value is the source of truth so a discriminated-union variant
  * switch that swaps the shape at this path produces a freshly-targeted
- * proxy on the next read. The container cache keys off this same
- * predicate (see `containerProxyAt` in surface-proxy.ts), so a shape
- * flip surfaces a freshly-targeted proxy through `form.fields.X` /
- * `form.errors.X`.
+ * proxy on the next read. `containerCache` in `callable-tree.ts` keys off
+ * this same predicate, so a shape flip surfaces a freshly-targeted proxy
+ * through `form.fields.X` / `form.errors.X`.
  *
  * Root path (`segments.length === 0`) reports false, the form root
  * is always a container, never an array target.

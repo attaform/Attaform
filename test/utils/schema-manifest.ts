@@ -71,7 +71,7 @@ function leafBuilders(z: ZNs): fc.Arbitrary<{
     fc.constant({ schema: z.date(), acceptSet: new Set<SlimPrimitiveKind>(['date']) }),
     // .optional() / .nullable() add 'undefined' / 'null' to the inner
     // accept set. Per the AbstractSchema contract docs at
-    // src/runtime/types/types-api.ts:251-253.
+    // src/runtime/types/types-api.ts.
     fc.constant({
       schema: z.string().optional(),
       acceptSet: new Set<SlimPrimitiveKind>(['string', 'undefined']),

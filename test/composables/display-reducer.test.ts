@@ -591,11 +591,12 @@ describe('createDisplayEngine', () => {
 })
 
 describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () => {
-  // `getDisplayState` is consumer-overridable; a custom predicate can return a
-  // pathological `reviewAt` (bad arithmetic → NaN/Infinity, a unit slip → a
-  // huge value, a fixed/past timestamp). The try/catch in field-state-api only
-  // covers THROWS — a bad RETURN value must not reach setTimeout and spin the
-  // engine. None of these arise from the library default.
+  // The engine resolves through a `GetDisplayState` reducer, and a
+  // reducer can return a pathological `reviewAt`: NaN or Infinity from
+  // bad arithmetic, a huge value from a unit slip, a fixed or past
+  // timestamp. field-state-api's try/catch covers only THROWS, so a bad
+  // RETURN value must not reach setTimeout and spin the engine. The
+  // library's own reducer produces none of these.
   const KEY = 'x' as PathKey
   const gated = () => field({ blurredAfterInteraction: true })
 
@@ -636,9 +637,8 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
   })
 
   it('reviews a pending machine the reducer gave no deadline at all', () => {
-    // The structural guarantee, stated directly. `getDisplayState` is a
-    // consumer-overridable extension point, and the library's own reducer
-    // returns no `reviewAt` on its in-flight branch, so "the next
+    // The structural guarantee, stated directly: the library's own
+    // reducer returns no `reviewAt` on its in-flight branch, so "the next
     // re-evaluation comes from a reactive change" cannot be the only way
     // out of a spinner.
     const engine = createDisplayEngine(false)

@@ -92,13 +92,12 @@ describe('slim-primitive write gate — property: known leaf paths (v4)', () => 
       const { api, app } = makeMounter(useForm, sm.schema)()
       apps.push(app)
 
-      // Capture the form ref's pre-write value identity. Accepted writes
-      // that produce a real change replace `form.value` via
-      // `applyFormReplacement` (create-form-store.ts:649); rejected
-      // writes return early at the slim-gate (line 603) and don't
-      // touch the ref. Identity equality is therefore a tight
-      // "no mutation happened" check that sidesteps cloning Vue's
-      // reactive proxy (structuredClone refuses it).
+      // Capture the form ref's pre-write value identity. An accepted
+      // write that produces a real change replaces `form.value` through
+      // `applyFormReplacement`; a rejected one returns early at the slim
+      // gate and never touches the ref. Identity equality is therefore a
+      // tight "no mutation happened" check that sidesteps cloning Vue's
+      // reactive proxy, which structuredClone refuses.
       const beforeForm = api.values
 
       const ok = (api.setValue as SetValueFn)(leaf.path.join('.'), value)

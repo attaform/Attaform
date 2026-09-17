@@ -776,10 +776,11 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
       name: [{ message: 'Required', path: ['name'] }],
     })
 
-    // Clear: model returns to empty → materialised tree empty again. The
-    // cached proxy is the SAME reference, but the closures inside
-    // `containerProxyAt` re-read the live stores every call, so
-    // JSON.stringify produces fresh output rather than the previous shape.
+    // Clearing returns the model to empty, so the materialised tree is
+    // empty again. The cached proxy is the SAME reference, but the
+    // closures behind `containerCache` in `callable-tree.ts` re-read the
+    // live stores on every call, so JSON.stringify produces fresh output
+    // rather than the previous shape.
     form.clearErrors('name')
     expect(form.meta.errors).toEqual([])
     expect(JSON.parse(JSON.stringify(form.errors))).toEqual({})

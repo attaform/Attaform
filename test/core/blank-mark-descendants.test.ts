@@ -13,7 +13,7 @@
  *   3. `form.meta.errors` carries the stale required-blank entry.
  *
  * The fix mirrors the already-correct DU-reshape path at
- * `create-form-store.ts:2346` (`isPathKeyUnder` sweep). Pinned across
+ * `create-form-store.ts` (`isPathKeyUnder` sweep). Pinned across
  * v3 + v4 and across the two consumer-facing entry shapes (path-form
  * `setValue('addr', …)` and root-form `setValue({ addr: … })`).
  */

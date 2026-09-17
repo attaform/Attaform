@@ -4,11 +4,11 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
 import { AttaformErrorCode } from '../../../src/runtime/core/error-codes'
 
 /**
- * v4 mirror of `test/adapters/zod-v3/validator-threw-parity.test.ts`.
- * v4's adapter already wraps `safeParseAsync` in try/catch and routes
- * user-validator throws through `validatorThrewResponse`
- * (`adapter.ts:727-746`); this file pins that reference so the v3
- * port lands as proven parity.
+ * v4 half of the validator-threw contract; the v3 half is
+ * `test/adapters/zod-v3/validator-threw-parity.test.ts`, which carries
+ * the reasoning. `createAbstractSchema` wraps `safeParseAsync` in a
+ * try/catch and routes a consumer validator's throw through
+ * `validatorThrewResponse`, and both adapters compose it.
  */
 describe('zod v4: validateAtPath wraps user-validator throws as atta:validator-threw (D4 reference)', () => {
   it('async-rejecting .refine surfaces as a ValidationError, not an unhandled rejection', async () => {

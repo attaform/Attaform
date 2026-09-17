@@ -16,7 +16,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  *   1. After `configResolved`, all four compile-time node transforms
  *      land in `api.options.template.compilerOptions.nodeTransforms`.
  *   2. The preamble transform comes BEFORE the hint transform
- *      (`vite.ts:177-190`) — reversed order double-wraps every
+ *      (`vite.ts`) — reversed order double-wraps every
  *      v-register IIFE because the preamble's pre-order capture would
  *      pick up an already-wrapped expression.
  *   3. The push is idempotent. A second `configResolved` invocation

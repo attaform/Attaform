@@ -231,13 +231,12 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
 
     it('`<form v-register>` does NOT hit the component branch (NATIVE_FORM_TAGS guard)', () => {
-      // Native form-shell tags (form, fieldset, label, button, etc.)
-      // are excluded from the kebab-case extension via the
-      // NATIVE_FORM_TAGS allow-list. They have no hyphen anyway, so
-      // the new gate's `hasHyphen` check would already short-circuit;
-      // the explicit guard documents the conservative stance and
-      // catches a hypothetical `<form-something v-register>` future
-      // mistake.
+      // Native form-shell tags (form, fieldset, label, button and the
+      // rest) are excluded from the kebab-case extension by the
+      // NATIVE_FORM_TAGS deny-list. Carrying no hyphen, they already
+      // fail the gate's `node.tag.includes('-')` test; the explicit
+      // guard states the conservative stance and covers a hypothetical
+      // `<form-something v-register>`.
       const code = compileWith(`<form v-register="reg" />`, [componentBridgeTransform])
       expect(code).not.toContain('displayValue')
       expect(code).not.toContain('registerValue:')

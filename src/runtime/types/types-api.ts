@@ -2337,10 +2337,8 @@ export type PathSetValuePayload<Leaf> =
 
 /**
  * Per-field reactive shape returned by `form.fields.<leaf-path>` and
- * `form.fields(path)`. Slim, readonly across the board. The unified
- * shape replaces the older split between `FieldState` /
- * `FieldStateBranch`: one type lives at every path, with aggregations
- * rolled up at containers.
+ * `form.fields(path)`. Slim, readonly across the board. One type lives at
+ * every path, with aggregations rolled up at containers.
  *
  * Leaf-aware: this shape only injects these keys at LEAF paths via
  * dot-access. At container paths the proxy descends without
@@ -2572,7 +2570,7 @@ export type FieldState<Value = unknown> = {
    * decides when to render it.
    *
    * On container paths, the first error in the aggregated subtree
-   * (descendants sorted by `pathOrdinal`). For the container's OWN
+   * (descendants sorted by `pathOrdinals`). For the container's OWN
    * first error only, read `firstOwnError`.
    */
   readonly firstError: ValidationError | undefined

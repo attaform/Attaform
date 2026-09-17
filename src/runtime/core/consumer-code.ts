@@ -2,24 +2,21 @@
  * Containment for code the CONSUMER wrote that Attaform has to run.
  *
  * A schema is not inert data. `z.lazy(() => ...)`, `.default(() => ...)`
- * and `.catch(() => ...)` all hold consumer functions, and Attaform
- * invokes them during its own walks: deriving blanks at mount,
- * resolving a recursive node, filling a structural gap on a write. A
- * throw from any of them
- * lands in the middle of a walk, which means it comes out of
- * `useForm(...)` or `setValue(...)` and takes the host component with
- * it. Attaform must never be the reason a third-party page goes down.
+ * and `.catch(() => ...)` each hold a consumer function, and Attaform
+ * invokes them during its own walks: deriving blanks at mount, resolving a
+ * recursive node, filling a structural gap on a write. A throw from one
+ * lands mid-walk, so it comes out of `useForm(...)` or `setValue(...)` and
+ * takes the host component with it. Attaform must never be the reason a
+ * third-party page goes down (#608).
  *
- * Two things make this worth a shared helper rather than a try/catch at
- * each site. The first is that there were nine such call sites and one
- * of them was guarded, which is how the gap survived: a guard added
- * where a bug was once observed protects that site and nothing else.
- * Putting the catch in the introspector, at the point where consumer
- * code is actually invoked, covers every present caller and every
- * future one without anyone having to remember. The second is that a
- * silent swallow trades a crash for a mystery: `undefined` appearing at
- * a defaulted field with no explanation is its own support burden, so
- * every containment reports once per site in development.
+ * Two things make this a shared helper rather than a try/catch per site.
+ * The catch belongs in the introspector, at the point consumer code is
+ * actually invoked, so it covers every present and future caller with
+ * nobody having to remember; a guard placed where a bug was once observed
+ * protects that one site and nothing else. And a silent swallow trades a
+ * crash for a mystery, `undefined` at a defaulted field with no
+ * explanation being its own support burden, so every containment reports
+ * once per site in development.
  *
  * This is NOT for consumer callbacks the runtime invokes on purpose and
  * already routes somewhere visible: `onSubmit` / `onError` land on
@@ -101,13 +98,13 @@ export function callConsumerSchemaFn<T>(fn: () => T, fallback: T, site: Consumer
  * Read `key` off a consumer-supplied object, returning `undefined` if
  * the read throws.
  *
- * Separate from `callConsumerSchemaFn` because the hazard is different
- * and so is the judgement about where to apply it. Attaform walks the
- * values a consumer writes, and a property read is only dangerous when
- * the property is an accessor: a getter on a class instance, a
- * `computed` reached through a Vue reactive object, a Proxy trap. That
- * is rare enough that guarding every read in every hot walker would buy
- * safety with a permanent tax on the common case.
+ * Separate from `callConsumerSchemaFn` because the hazard differs, and so
+ * does the judgement about where to apply it. Attaform walks the values a
+ * consumer writes, and a property read is dangerous only when the property
+ * is an accessor: a getter on a class instance, a `computed` reached
+ * through a Vue reactive object, a Proxy trap. That is rare enough that
+ * guarding every read in every hot walker would buy safety at a permanent
+ * tax on the common case.
  *
  * So this is applied at the walk boundaries that take a consumer value
  * whole and rebuild it (`unset-walker`), not at every property access

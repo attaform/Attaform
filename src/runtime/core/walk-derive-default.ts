@@ -1,63 +1,56 @@
 /**
- * Shared default-value walker — derives the initial seed value the
- * runtime places at every leaf of a Zod schema tree.
+ * The shared default-value walker: it derives the seed value the runtime
+ * places at every leaf of a Zod schema tree.
  *
- * Both v3 and v4 adapters dispatch through this body via their
- * `SchemaIntrospector` instance. The per-version kind sets — v3's `branded` / `effects` / `pipeline`
- * / `native-enum`, v4's `pipe` / `file` — collapse to distinct cases
- * on the SharedZodKind switch.
+ * Both adapters dispatch through this one body via their
+ * `SchemaIntrospector`. The per-version kind sets (v3's `branded` /
+ * `effects` / `pipeline` / `native-enum`, v4's `pipe` / `file`) collapse
+ * to distinct cases on the SharedZodKind switch.
  *
- * Semantics (preserved verbatim from the prior per-adapter
- * implementations — characterised by the `default-values`,
- * `get-default-at-path`, and `default-values-parity` test suites in
- * `test/adapters/zod-v{3,4}/`):
+ * The semantics are pinned by the `default-values`, `get-default-at-path`
+ * and `default-values-parity` suites in `test/adapters/zod-v{3,4}/`:
  *
- *  - When `useDefault=true`, the walker FIRST peels transparent
- *    wrappers (Optional / Nullable / Readonly / Catch-without-value /
- *    Branded / Effects / Pipeline) looking for an embedded
- *    `ZodDefault` — and returns its value if found. This mirrors v3's
- *    prior `unwrapDefault` chain-peel and CLOSES a v3↔v4 parity gap:
- *    on v4, `z.string().default('x').optional()` previously returned
- *    `undefined` because the outer-kind switch hit `case 'optional'`
- *    first; under the unified walker it returns `'x'`. ZodCatch
- *    precedence is preserved: catch wraps default → catch wins (the
- *    chain-peel returns the catch value at the outer Catch layer).
+ *  - With `useDefault=true` the walker FIRST peels transparent wrappers
+ *    (Optional / Nullable / Readonly / Catch-without-value / Branded /
+ *    Effects / Pipeline) looking for an embedded `ZodDefault`, and returns
+ *    its value when it finds one. That peel is what makes
+ *    `z.string().default('x').optional()` resolve to `'x'` on BOTH majors
+ *    rather than stopping at the outer kind. ZodCatch takes precedence: a
+ *    catch wrapping a default wins, the peel returning the catch value at
+ *    the outer Catch layer.
  *
- *  - Schema-side input normalizers (`z.coerce.X()`,
- *    `z.preprocess(fn, _)`) declare a write boundary the runtime
- *    cannot honestly synthesise a default for. Both early-return
- *    `undefined` so the consumer's `defaultValues` or a later
- *    `setValue` owns what lands in storage.
+ *  - A schema-side input normalizer (`z.coerce.X()`, `z.preprocess(fn, _)`)
+ *    declares a write boundary the runtime cannot honestly synthesise a
+ *    default for. Both early-return `undefined`, so the consumer's
+ *    `defaultValues` or a later `setValue` owns what lands in storage.
  *
- *  - Containers recurse into children; leaves return their kind's
- *    canonical empty value (`'' / 0 / 0n / false / new Date(0) /
- *    null / undefined / NaN / first enum or literal value /
- *    [] / new Set() / new Map() / {}`).
+ *  - Containers recurse into their children; a leaf returns its kind's
+ *    canonical empty value (`'' / 0 / 0n / false / new Date(0) / null /
+ *    undefined / NaN / first enum or literal value / [] / new Set() /
+ *    new Map() / {}`).
  *
- *  - Unions / DUs use the first option as the seed.
+ *  - A union or DU seeds from its first option.
  *
- *  - Intersections merge both sides via the shared `mergeDeep`.
+ *  - An intersection merges both sides through the shared `mergeDeep`.
  *
- *  - Lazy bumps a counter; past `maxDepth` returns `undefined` (the
- *    recursive node falls back to consumer-supplied defaultValues).
+ *  - Lazy bumps a counter, and past `maxDepth` returns `undefined`, the
+ *    recursive node falling back to consumer-supplied defaultValues.
  *
- *  - Catch with `useDefault=true` returns the catch fallback; with
- *    `useDefault=false` recurses the inner so the leaf's empty value
- *    wins.
+ *  - Catch returns its fallback under `useDefault=true` and recurses the
+ *    inner under `useDefault=false`, where the leaf's empty value wins.
  *
- *  - `void` / `never` / the opaque kinds (`any` / `unknown` /
- *    `custom`) and the three kinds with no canonical empty member
- *    (`promise` / `symbol` / `function`) return `undefined` — the slot
- *    stays genuinely absent until the consumer writes one.
+ *  - `void`, `never`, the opaque kinds (`any` / `unknown` / `custom`) and
+ *    the three with no canonical empty member (`promise` / `symbol` /
+ *    `function`) return `undefined`, leaving the slot genuinely absent
+ *    until the consumer writes one.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { mergeDeep } from './merge-deep'
 import { safeAssign } from './safe-assign'
 
 /**
- * Sentinel for the chain-peel-default helper. Distinct from
- * `undefined`, which IS a legal returned default value (e.g.
- * `z.string().default(undefined)`).
+ * Sentinel for the chain-peel-default helper, distinct from `undefined`,
+ * which IS a legal returned default (`z.string().default(undefined)`).
  */
 const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
 
@@ -67,13 +60,12 @@ const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
  * nested default at the same depth). Returns the resolved value or
  * the sentinel `NO_EMBEDDED_DEFAULT` if none found.
  *
- * Mirrors v3's prior `unwrapDefault` loop and now applies on v4 too.
- * v4's kind set means `branded` / `effects` / `pipeline` peels
- * silently no-op (the introspector stubs return undefined).
+ * Applies on both majors. On v4 the `branded` / `effects` / `pipeline`
+ * peels silently no-op, their introspector stubs returning undefined.
  *
- * Bounded loop (32 iterations) matches the prior cap and acts as a
- * runaway guard for pathological wrapper stacks / self-referential
- * lazy loops resolved before their inner is constructed.
+ * The loop is bounded at 32 iterations as a runaway guard against a
+ * pathological wrapper stack, or a self-referential lazy resolved before
+ * its inner is constructed.
  *
  * Exported so the v3 fix-up loop in `zod-v3/index.ts` (the
  * `runGetDefaultsV3` validate-then-fix path) can reuse it for the
@@ -120,9 +112,8 @@ export function peelEmbeddedDefault<Schema>(
  * consumer-declared default the adapter should honor (recurse the
  * inner) or whether the slot is fully consumer-owned (`undefined`).
  *
- * Distinct from `peelEmbeddedDefault` in that the result is a
- * boolean — the caller decides what to do with it, not the value
- * itself.
+ * Distinct from `peelEmbeddedDefault` in returning a boolean: the caller
+ * decides what to do, rather than receiving the value itself.
  */
 function hasDeclaredDefaultInChain<Schema>(
   schema: Schema,
@@ -149,22 +140,20 @@ export function deriveDefaultWalk<Schema>(
   maxDepth: number,
   lazyDepth = 0
 ): unknown {
-  // Pre-check the wrapper chain for an embedded ZodDefault / ZodCatch
+  // Pre-check the wrapper chain for an embedded ZodDefault or ZodCatch
   // fallback. Returning it here is what makes
-  // `z.string().default('x').optional()` resolve to 'x' rather than
-  // undefined. Closes the v3↔v4 parity gap (v4 previously stopped at
-  // the outer Optional and returned undefined).
+  // `z.string().default('x').optional()` resolve to `'x'` on both majors,
+  // rather than stopping at the outer Optional.
   if (useDefault) {
     const peeled = peelEmbeddedDefault(schema, intro)
     if (peeled !== NO_EMBEDDED_DEFAULT) return peeled
   }
 
-  // `z.coerce.X()` flags the wrapped primitive's def with `coerce:
-  // true`; the consumer's pre-conversion input shape is unknown so
-  // synthesising the primitive's slim concrete (`''` / `0` / etc.)
-  // would claim a value the consumer never supplied. Leave the slot
-  // `undefined` so `defaultValues` or a later `setValue` owns what
-  // lands in storage. A consumer-declared `.default(x)` on the coerce
+  // `z.coerce.X()` flags the wrapped primitive's def with `coerce: true`.
+  // The consumer's pre-conversion input shape is unknown, so synthesising
+  // the primitive's slim concrete (`''`, `0`) would claim a value they
+  // never supplied. Leaving the slot `undefined` gives `defaultValues` or
+  // a later `setValue` ownership. A `.default(x)` declared on the coerce
   // primitive was already honored by the chain-peel above.
   if (intro.isCoercePrimitive(schema)) return undefined
 
@@ -172,13 +161,13 @@ export function deriveDefaultWalk<Schema>(
   switch (kind) {
     case 'object': {
       const shape = intro.getObjectShape(schema)
-      // Default container carries `Object.prototype`. The default
-      // flows directly into `form.values`; matching the rest of the
-      // value-write pipeline keeps the initial tree consistent with
-      // what `setAtPath` and `mergeDeep` produce. Schema field names
-      // can legitimately include `__proto__` (an architecture firm
-      // tracking prototypes; a Zod schema with `z.object({ __proto__: … })`);
-      // `safeAssign` lands such a key as an own data property.
+      // The default container carries `Object.prototype`. This flows
+      // straight into `form.values`, so matching the rest of the
+      // value-write pipeline keeps the initial tree consistent with what
+      // `setAtPath` and `mergeDeep` produce. A schema field name can
+      // legitimately be `__proto__` (an architecture firm tracking
+      // prototypes, say), and `safeAssign` lands such a key as an own
+      // data property.
       const out: Record<string, unknown> = {}
       for (const [key, subSchema] of Object.entries(shape)) {
         safeAssign(out, key, deriveDefaultWalk(subSchema, useDefault, intro, maxDepth, lazyDepth))
@@ -214,11 +203,10 @@ export function deriveDefaultWalk<Schema>(
     case 'nullable':
       return null
     case 'default': {
-      // `useDefault=false` path: the chain-peel above is suppressed,
-      // so a direct ZodDefault still lands here — recurse the inner
-      // to produce the leaf's bare empty value (the explicit default
-      // is the consumer's "starting state" intent, not the leaf's
-      // type-honest blank).
+      // `useDefault=false` suppresses the chain-peel above, so a direct
+      // ZodDefault lands here. Recurse the inner for the leaf's bare empty
+      // value: an explicit default states the consumer's starting state,
+      // not the leaf's type-honest blank.
       if (useDefault) return intro.getDefaultValue(schema)
       const inner = intro.unwrapInner(schema)
       return inner === undefined
@@ -229,8 +217,8 @@ export function deriveDefaultWalk<Schema>(
     case 'success':
     case 'readonly':
     case 'branded': {
-      // Readonly: v3 + v4 transparent wrapper.
-      // Branded: v3-only — `_def.type` carrier.
+      // Readonly is a transparent wrapper on both majors. Branded is
+      // v3-only, the `_def.type` carrier.
       const inner = kind === 'branded' ? intro.unwrapBranded(schema) : intro.unwrapInner(schema)
       return inner === undefined
         ? undefined
@@ -238,13 +226,15 @@ export function deriveDefaultWalk<Schema>(
     }
     case 'effects': {
       // v3-only. `ZodEffects` wraps refine / transform / preprocess.
-      // For `preprocess`: the input side is the user-supplied fn, so
-      // the slot has no canonical empty value the adapter can honestly
-      // synthesise. If the inner declares a default, recurse (the
-      // chain-peel finds it for useDefault=true; under useDefault=false
-      // we recurse to the leaf's empty). Otherwise return undefined so
-      // `defaultValues` or a later setValue owns the slot.
-      // For `refinement` / `transform`: recurse the structural source.
+      //
+      // For `preprocess` the input side is the user-supplied fn, so the
+      // slot has no canonical empty value the adapter can honestly
+      // synthesise. Recurse when the inner declares a default (the
+      // chain-peel finds it under useDefault=true, and under
+      // useDefault=false the recursion reaches the leaf's empty);
+      // otherwise return undefined and let `defaultValues` or a later
+      // setValue own the slot. For `refinement` and `transform`, recurse
+      // the structural source.
       const inner = intro.unwrapEffectsSource(schema)
       if (intro.isPreprocessNode(schema)) {
         if (inner !== undefined && hasDeclaredDefaultInChain(inner, intro)) {
@@ -267,12 +257,12 @@ export function deriveDefaultWalk<Schema>(
     case 'pipe': {
       // v4-only. Two sub-cases mirroring v3's preprocess branch:
       //
-      //   - `z.preprocess(fn, inner)` — `in` is a ZodTransform. The
-      //     input shape is unknown until the consumer writes. If the
-      //     inner carries a declared default, recurse; otherwise
+      //   - `z.preprocess(fn, inner)`, where `in` is a ZodTransform. The
+      //     input shape is unknown until the consumer writes, so recurse
+      //     when the inner carries a declared default and otherwise
       //     return undefined.
-      //   - `.transform(fn)` (transform on output) / generic / codec
-      //     pipes — the input side IS the source schema; peel to it.
+      //   - a `.transform(fn)` on output, a generic pipe, or a codec:
+      //     the input side IS the source schema, so peel to it.
       const inn = intro.unwrapPipeIn(schema)
       if (inn !== undefined && intro.kindOf(inn) === 'transform') {
         const out = intro.unwrapPipeOut(schema)
@@ -297,9 +287,9 @@ export function deriveDefaultWalk<Schema>(
     case 'number':
       return 0
     case 'bigint':
-      // z.bigint() strictly rejects numbers; the default must be a
-      // bigint literal. Using `0` here would fail the schema's own
-      // validation during default-values derivation.
+      // z.bigint() strictly rejects numbers, so the default must be a
+      // bigint literal. `0` here would fail the schema's own validation
+      // during default-values derivation.
       return 0n
     case 'boolean':
       return false
@@ -314,11 +304,11 @@ export function deriveDefaultWalk<Schema>(
       return values[0]
     }
     case 'native-enum': {
-      // v3-only. Numeric enums get reverse-mapped
-      // (`enum E { A }` → `{ A: 0, '0': 'A' }`); the valid runtime
-      // members are the keys whose VALUE'S key isn't itself a number.
-      // String enums have no reverse mapping, so every key is valid.
-      // Pick the first valid value.
+      // v3-only. A numeric enum is reverse-mapped
+      // (`enum E { A }` → `{ A: 0, '0': 'A' }`), so its valid runtime
+      // members are the keys whose VALUE's key is not itself a number. A
+      // string enum has no reverse mapping, making every key valid. Take
+      // the first valid value.
       const values = intro.getNativeEnumValues(schema)
       if (values === undefined) return undefined
       const validKeys = Object.keys(values).filter(
@@ -335,11 +325,10 @@ export function deriveDefaultWalk<Schema>(
     case 'nan':
       return NaN
     case 'lazy': {
-      // Bump the lazy counter ONLY here — structural recursion doesn't
-      // accumulate. Past the cap, return undefined so a recursive node
-      // ends in a non-fatal blank; `defaultValues` (consumer-supplied)
-      // is the authority for what the seed should be at the recursive
-      // boundary anyway.
+      // Bump the lazy counter ONLY here, since structural recursion does
+      // not accumulate. Past the cap, return undefined so a recursive node
+      // ends in a non-fatal blank; at a recursive boundary the
+      // consumer-supplied `defaultValues` is the authority on the seed.
       if (lazyDepth >= maxDepth) return undefined
       let inner: Schema | undefined
       try {
@@ -362,18 +351,18 @@ export function deriveDefaultWalk<Schema>(
         right === undefined
           ? undefined
           : deriveDefaultWalk(right, useDefault, intro, maxDepth, lazyDepth)
-      // `mergeDeep` prefers `right` where both sides carry a plain-
-      // record value at a key, and returns `right` wholesale when
-      // either side is a leaf. Matches parse-time semantics: an
-      // intersection of `{ a }` and `{ b }` must satisfy both, so the
-      // merged shape carries both keys' defaults.
+      // `mergeDeep` prefers `right` where both sides carry a plain-record
+      // value at a key, and returns `right` wholesale when either side is
+      // a leaf. That matches parse-time semantics: an intersection of
+      // `{ a }` and `{ b }` must satisfy both, so the merged shape carries
+      // both keys' defaults.
       return mergeDeep(l, r)
     }
     case 'catch': {
-      // `useDefault=true` was already caught by `peelEmbeddedDefault`
-      // at the top of the walker; on `useDefault=false` the catch is a
-      // default-like wrapper that gets skipped — the inner leaf's bare
-      // empty value wins (both majors, aligned in size-teardown P7).
+      // `peelEmbeddedDefault` at the top of the walker already caught
+      // `useDefault=true`. Under `useDefault=false` the catch is a
+      // default-like wrapper and is skipped, so the inner leaf's bare
+      // empty value wins on both majors (aligned in size-teardown P7).
       if (useDefault) return intro.getCatchDefault(schema)
       const inner = intro.unwrapInner(schema)
       return inner === undefined
@@ -381,23 +370,23 @@ export function deriveDefaultWalk<Schema>(
         : deriveDefaultWalk(inner, useDefault, intro, maxDepth, lazyDepth)
     }
     case 'file':
-      // `z.file()` has no canonical "empty file" — the user picks one
+      // `z.file()` has no canonical "empty file"; the user picks one
       // through the directive's change handler. `null` is the storage
-      // blank value the directive canonicalises to on register / clear;
-      // emitting `null` here keeps `getEmptyValueAtPath` aligned with
-      // what `form.clear(path)` writes.
+      // blank the directive canonicalises to on register and on clear, so
+      // emitting it here keeps `getEmptyValueAtPath` aligned with what
+      // `form.clear(path)` writes.
       return null
     case 'map':
       // The empty Map is as honest a blank as `[]` is for an array or
-      // `new Set()` for a set: the container exists, holds nothing,
-      // and satisfies `z.map(K, V)` outright.
+      // `new Set()` for a set: the container exists, holds nothing, and
+      // satisfies `z.map(K, V)` outright.
       return new Map()
     case 'template-literal':
       // A template literal parses strings against a pattern, so the
-      // string blank is the right one. `''` need not satisfy the
-      // pattern, exactly as `''` does not satisfy `z.string().min(5)`
-      // — refinement-level conformance is validation's business, not
-      // the blank walker's.
+      // string blank is the right one. `''` need not satisfy that pattern,
+      // exactly as `''` does not satisfy `z.string().min(5)`:
+      // refinement-level conformance is validation's business, not the
+      // blank walker's.
       return ''
     case 'any':
     case 'unknown':
@@ -419,26 +408,23 @@ export function deriveDefaultWalk<Schema>(
       //
       // `promise` / `symbol` / `function` are describable but have no
       // canonical empty member. There is no empty Promise, no empty
-      // function, and `Symbol()` mints a fresh value on every call —
+      // function, and `Symbol()` mints a fresh value on every call, so
       // seeding one would make the derived blank non-deterministic and
       // break reference stability between two structurally identical
-      // schemas. `undefined` leaves
-      // the slot genuinely absent until the consumer supplies a value,
-      // which is the truthful answer for all three.
+      // schemas. `undefined` leaves the slot genuinely absent until the
+      // consumer supplies a value, the truthful answer for all three.
       //
       // `transform` is the input side of a `z.preprocess(fn, inner)`
       // and has no own default: callers walk to `inner` via the
       // surrounding pipe / effects.
       return undefined
     default:
-      // Every kind the introspector can name has a case above, and an
-      // unrecognised spelling resolves to `'unknown'`, which has one of
-      // its own — so this is unreachable by construction rather than by
-      // convention. It used to be a per-adapter hook: v4 returned
-      // `undefined` silently, v3 wired a `console.warn` (AF13, now
-      // retired) whose own standing test existed to prove it never
-      // fired. A branch that cannot be reached is a better guarantee
-      // than a test asserting it is not.
+      // Unreachable by construction, not by convention: every kind the
+      // introspector can name has a case above, and an unrecognised
+      // spelling resolves to `'unknown'`, which has one of its own. Keep
+      // it that way rather than reinstating a dev-warn here; a branch that
+      // cannot be reached is a better guarantee than a test asserting that
+      // it never fires.
       return undefined
   }
 }

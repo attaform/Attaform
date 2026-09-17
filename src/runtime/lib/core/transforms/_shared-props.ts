@@ -3,15 +3,13 @@
  * transforms. `input-text-area-transform.ts` and
  * `component-bridge-transform.ts` both summarize their host element's
  * props into a uniform `{ key, value }` shape before deciding which
- * directive to inject, which props to strip, and how to construct the
- * synthesized binding.
- * The summarization rules are byte-identical across both transforms;
- * keeping two copies risked silent drift — particularly on key-shape
- * decisions (`isExactKey`) and quoting (`renderAsStatic`).
+ * directive to inject, which props to strip, and how to build the
+ * synthesized binding, and the rules are identical on both sides. Two
+ * copies would drift, particularly on the key-shape decision in
+ * `isExactKey` and the quoting in `renderAsStatic`.
  *
- * Consumers in the `transforms/` directory only — not exported from
- * any package barrel. The underscore prefix mirrors the existing
- * convention for transform-internal modules.
+ * For the `transforms/` directory only; no package barrel exports it,
+ * and the underscore prefix marks it transform-internal.
  */
 import type {
   AttributeNode,
@@ -25,12 +23,12 @@ import type {
 import { NodeTypes } from '@vue/compiler-core'
 
 /**
- * Uniform summary of a Vue-compiler AST prop. `key` is the prop name
- * (string for attributes, the rendered text of `arg` for directive
- * binds); `value` is either a string (attribute literal, simple
- * expression, or quoted static) or the children array of a
- * `CompoundExpressionNode` (template literals, interpolated
- * expressions, etc.).
+ * Uniform summary of a Vue-compiler AST prop. `key` is the prop name: a
+ * string for an attribute, the rendered text of `arg` for a directive
+ * bind. `value` is either a string, meaning an attribute literal, a
+ * simple expression or a quoted static, or the children array of a
+ * `CompoundExpressionNode`, meaning a template literal or an
+ * interpolated expression.
  */
 export type SummarizedProp = {
   key: string
@@ -38,9 +36,8 @@ export type SummarizedProp = {
 }
 
 /**
- * Summarize every prop on a Vue-compiler element node into the
- * `SummarizedProp` shape. Returns an empty array for nodes that don't
- * carry props (template / interpolation / comment).
+ * Summarize every prop on a Vue-compiler element node. An empty array for
+ * a node that carries none: template, interpolation, comment.
  */
 export function getSummarizedProps(node: RootNode | TemplateChildNode): SummarizedProp[] {
   if (!('props' in node)) return []
@@ -76,9 +73,9 @@ function renderAsStatic(val: string, isStatic: boolean): string {
 }
 
 /**
- * Resolve an ExpressionNode to its `SummarizedProp['value']` shape —
- * either a quoted static literal (for simple static expressions) or
- * the raw children array (for compound / interpolated expressions).
+ * Resolve an ExpressionNode to its `SummarizedProp['value']` shape:
+ * a quoted static literal for a simple static expression, the raw
+ * children array for a compound or interpolated one.
  */
 function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
   if (exp.type === NodeTypes.SIMPLE_EXPRESSION) {
@@ -89,10 +86,9 @@ function getSummarizedPropValue(exp: ExpressionNode): SummarizedProp['value'] {
 }
 
 /**
- * Mutate `props` in place to drop every entry whose name (or
- * directive-arg content) matches any of `propNames`. Indices are
- * collected high-to-low so the splice loop doesn't shift remaining
- * entries mid-iteration.
+ * Drop every entry from `props`, in place, whose name or directive-arg
+ * content matches one of `propNames`. Indices are collected high to low
+ * so the splice loop cannot shift a remaining entry mid-iteration.
  */
 export function removePropsByName(
   props: (AttributeNode | DirectiveNode)[],
@@ -118,9 +114,9 @@ export function removePropsByName(
 
 /**
  * A summarized prop's value as compound-expression children, ready to
- * splice into an injected expression. `undefined` in, `undefined` out,
- * so a caller can ask "did the author bind this?" and build the
- * fallback leg in one step.
+ * splice into an injected expression. `undefined` in, `undefined` out, so
+ * one call answers "did the author bind this?" and builds the fallback
+ * leg at once.
  */
 export function toExpressionArray(
   value: SummarizedProp['value'] | undefined
@@ -145,21 +141,20 @@ export function isExactKey(summarizedKey: string, name: string): boolean {
 }
 
 /**
- * Flatten an ExpressionNode (`SimpleExpressionNode` |
- * `CompoundExpressionNode`) back to its source-text string. Compound
- * nodes carry a list of strings interleaved with nested expression
- * nodes — concatenate the textual content to reconstruct the source.
+ * Flatten a `SimpleExpressionNode` or `CompoundExpressionNode` back to
+ * its source text. A compound node holds strings interleaved with nested
+ * expression nodes, so the textual content concatenates to reconstruct
+ * the source.
  *
- * Single source of truth for the component-bridge transform's
- * per-`<option>` processExpression input AND the v-register preamble
- * transform's pre-wrap binding capture. Both call sites built equivalent
- * inline helpers; the consolidation prevents drift in how a future Vue
- * node-type addition gets handled.
+ * It is the single source of truth for two call sites: the
+ * component-bridge transform's per-`<option>` `processExpression` input
+ * and the preamble transform's pre-wrap binding capture. One helper is
+ * what keeps them agreeing about a future Vue node-type addition.
  *
- * Children that aren't string / SIMPLE / COMPOUND (symbols from the
- * codegen helper indices; node types added in a future Vue) are
- * dropped silently — the serialized text is for downstream parsing,
- * not faithful round-trip.
+ * A child that is neither a string nor SIMPLE nor COMPOUND, a symbol
+ * from the codegen helper indices or a node type a future Vue adds, is
+ * dropped silently: the serialized text feeds downstream parsing, not a
+ * faithful round-trip.
  */
 export function flattenExpression(exp: ExpressionNode): string {
   if (exp.type === NodeTypes.SIMPLE_EXPRESSION) return exp.content

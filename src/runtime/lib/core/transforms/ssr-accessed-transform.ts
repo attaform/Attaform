@@ -1,18 +1,17 @@
 /**
- * SFC-level transform — injects `__ssrAccessed: true` into the
- * options bag of `useForm(...)` and `injectForm(...)` calls whose
- * binding the surrounding template references. Runs once per Vue
- * file during Vite's `transform(code, id)` hook (see `src/vite.ts`)
- * and is also pulled into Nuxt builds via `attaform/nuxt`.
+ * SFC-level transform that injects `__ssrAccessed: true` into the options
+ * bag of a `useForm(...)` or `injectForm(...)` call whose binding the
+ * surrounding template references. It runs once per Vue file inside
+ * Vite's `transform(code, id)` hook (see `src/vite.ts`), and
+ * `attaform/nuxt` pulls it into Nuxt builds.
  *
- * The injection lets the runtime registry enqueue the form on the
- * SSR prefetch queue BEFORE `onServerPrefetch` fires. Async
- * `defaultValues` factories then run inside the prefetch phase and
- * the resolved payload bakes into hydration transfer state — the
- * client never re-fetches.
+ * The injection lets the registry enqueue the form on the SSR prefetch
+ * queue BEFORE `onServerPrefetch` fires. An async `defaultValues`
+ * factory then runs inside the prefetch phase and its resolved payload
+ * bakes into hydration transfer state, so the client never re-fetches.
  *
- * Coverage details and the form-handle / cross-module fallback list
- * live in the implementation plan and in `docs/multistep/ssr.md`.
+ * `docs/multistep/ssr.md` carries the coverage details and the
+ * form-handle and cross-module fallback list.
  */
 import { parse as parseSfc, babelParse } from '@vue/compiler-sfc'
 import { NodeTypes, type RootNode, type TemplateChildNode } from '@vue/compiler-core'
@@ -101,29 +100,27 @@ class SourceEditor {
 }
 
 /**
- * Cheap rejection before either parser runs, and the reason this
- * pre-pass is affordable on a large project.
+ * Cheap rejection before either parser runs, and the reason this pre-pass
+ * is affordable on a large project.
  *
- * `collectImports` only ever matches an import whose source is one of
- * `TARGET_PACKAGES` and whose imported name is one of
- * `TARGET_FUNCTIONS`. Every one of those spellings is a literal in the
- * `<script setup>` source, so a file holding neither substring cannot
- * produce a binding, cannot produce a template reference, and cannot
- * be rewritten. Rejecting it here skips a full SFC parse plus a Babel
- * parse of the script block.
+ * `collectImports` only ever matches an import whose source is in
+ * `TARGET_PACKAGES` and whose imported name is in `TARGET_FUNCTIONS`.
+ * Every one of those spellings is a literal in the `<script setup>`
+ * source, so a file holding neither substring can produce no binding, no
+ * template reference, and no rewrite. Rejecting it here skips a full SFC
+ * parse plus a Babel parse of the script block.
  *
  * Measured over this repo's 130 `.vue` files it skips 41% of them and
- * takes the pass 35% faster; over the 6,529 `.vue` sources shipped
- * inside `node_modules` it skips every single one, which is where the
- * cost of parsing third-party SFCs went. That is deliberately done
- * with a content test rather than a `/node_modules/` path bail: a
- * component library that genuinely builds on Attaform still gets its
- * forms marked for SSR prefetch.
+ * runs the pass 35% faster; over the 6,529 `.vue` sources inside
+ * `node_modules` it skips every one, which is where the cost of parsing
+ * third-party SFCs went. It is a CONTENT test rather than a
+ * `/node_modules/` path bail on purpose: a component library that
+ * genuinely builds on Attaform still gets its forms marked for prefetch.
  *
- * Known boundary: Babel decodes escapes, this does not, so an imported
- * name or package specifier spelled with a unicode escape reads as
- * absent. That joins the shapes `injectMark` already declines, with
- * the same `form.activate()` remedy, and is pinned in
+ * Known boundary: Babel decodes escapes and this does not, so an
+ * imported name or package specifier spelled with a unicode escape reads
+ * as absent. It joins the shapes `injectMark` already declines, with the
+ * same `form.activate()` remedy, pinned in
  * `test/transforms/ssr-accessed-injection.test.ts`.
  */
 function canPossiblyInject(code: string): boolean {
@@ -154,9 +151,9 @@ export function transformSsrAccessed(code: string, id: string): SsrAccessedTrans
       plugins: ['typescript'],
     })
   } catch {
-    // A script-setup section that the consumer's tooling can't parse
-    // means the SFC will fail to compile anyway — bail and let the
-    // downstream Vue compile path emit the real diagnostic.
+    // A script-setup section the consumer's tooling cannot parse means
+    // the SFC will fail to compile anyway, so bail and let the downstream
+    // Vue compile path emit the real diagnostic.
     return null
   }
 
@@ -186,11 +183,10 @@ export function transformSsrAccessed(code: string, id: string): SsrAccessedTrans
 }
 
 /**
- * Walk top-level imports, recording the local names of `useForm` /
- * `injectForm` specifiers sourced from attaform-family packages.
- * Handles renamed imports (`import { useForm as makeForm }`) and
- * skips namespace + default imports (the runtime API surfaces both
- * functions as named exports).
+ * Walk the top-level imports, recording the local names of `useForm` and
+ * `injectForm` specifiers sourced from an attaform-family package. A
+ * renamed import works; a namespace or default import is skipped, the
+ * runtime surfacing both functions as named exports.
  */
 function collectImports(body: readonly BabelNode[]): Map<string, 'useForm' | 'injectForm'> {
   const locals = new Map<string, 'useForm' | 'injectForm'>()
@@ -212,10 +208,10 @@ function collectImports(body: readonly BabelNode[]): Map<string, 'useForm' | 'in
 }
 
 /**
- * Walk top-level `const`/`let`/`var` declarations and record bindings
- * whose initializer is a direct call to one of the tracked imports.
- * Destructured returns (`const { register } = useForm(...)`) carry
- * no handle name and are skipped per the form-handle discipline.
+ * Walk the top-level `const` / `let` / `var` declarations, recording a
+ * binding whose initializer is a direct call to a tracked import. A
+ * destructured return carries no handle name and is skipped, matching
+ * the form-handle discipline.
  */
 function collectBindings(
   body: readonly BabelNode[],
@@ -244,9 +240,9 @@ function collectBindings(
 
 /**
  * Walk the template AST collecting binding names referenced from any
- * expression slot — interpolations, directive expressions, attribute
- * bindings. Word-boundary matching against the expression source is
- * MVP-grade; the same lookup feeds the inject pass that follows.
+ * expression slot: interpolations, directive expressions, attribute
+ * bindings. The matching is word-boundary against the expression source,
+ * and the same lookup feeds the inject pass that follows.
  */
 function collectTemplateReferences(
   root: RootNode | undefined,
@@ -306,13 +302,13 @@ function collectFromExpression(
 }
 
 function matchesIdentifier(source: string, name: string): boolean {
-  // Word-boundary check against the expression's source. Covers
-  // `form.values.email`, `form?.values`, `form()`, etc. without
-  // false-matching `formData` or quoted-string occurrences in
-  // unrelated subexpressions. False positives skew toward marking
-  // forms that the template uses incidentally — acceptable because
-  // marking enqueues SSR prefetch on a form the SFC already knows
-  // about, not on any random form.
+  // A word-boundary check against the expression's source, so
+  // `form.values.email`, `form?.values` and `form()` all match while
+  // `formData` and a quoted-string occurrence in an unrelated
+  // subexpression do not. What false positives there are skew toward
+  // marking a form the template uses incidentally, which is acceptable:
+  // marking enqueues prefetch on a form the SFC already knows about,
+  // never on a random one.
   const pattern = new RegExp(`(?<![\\w$])${escapeForRegExp(name)}(?![\\w$])`)
   return pattern.test(source)
 }
@@ -322,13 +318,13 @@ function escapeForRegExp(value: string): string {
 }
 
 /**
- * Inject `__ssrAccessed: true` into the call's options literal.
- * Three shapes, in order of frequency:
- *  - existing object literal arg → prepend the property after `{`
- *  - string-shortcut for injectForm → upgrade to `{ key: ..., __ssrAccessed: true }`
- *  - no args → insert a fresh `{ __ssrAccessed: true }`
- * Other shapes (spread, computed identifier, function call) bail —
- * the consumer's `form.activate()` escape hatch covers them.
+ * Inject `__ssrAccessed: true` into the call's options literal. Three
+ * shapes, in order of frequency: an existing object literal arg gets the
+ * property prepended after `{`; `injectForm`'s string shortcut is
+ * upgraded to `{ key: ..., __ssrAccessed: true }`; and no args at all
+ * gets a fresh `{ __ssrAccessed: true }`. Anything else, a spread, a
+ * computed identifier, a function call, bails to the consumer's
+ * `form.activate()` escape hatch.
  */
 function injectMark(editor: SourceEditor, call: CallExpressionNode, scriptOffset: number): void {
   const args = call.arguments
@@ -361,8 +357,8 @@ function injectMark(editor: SourceEditor, call: CallExpressionNode, scriptOffset
     editor.overwrite(startAbs, endAbs, `{ key: ${original}, __ssrAccessed: true }`)
     return
   }
-  // Unsupported arg shape (spread, identifier, etc.) — caller falls
-  // back to explicit `form.activate()`.
+  // An unsupported arg shape; the caller falls back to an explicit
+  // `form.activate()`.
 }
 
 function findChar(source: string, target: string, from: number): number {

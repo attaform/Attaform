@@ -64,6 +64,25 @@ export type PathOutput<Schema extends z.ZodType, Path extends string> =
     : never
 
 /**
+ * `FormOf` / `OutOf` / `ReadOf` factor the three identical-shape
+ * conditionals out of `useForm`'s public signature. The bundled
+ * `.d.ts` then carries one alias per shape rather than re-inlining
+ * `z.input<Schema> extends GenericForm ? z.input<Schema> : never`
+ * four times — which is what produces TS2589 ("Type instantiation
+ * is excessively deep") on consumer call sites with complex schemas
+ * (discriminated unions, transform pipes, deep `.register()` chains).
+ * Each alias is computed once per `Schema` instantiation; downstream
+ * generics ride on the alias rather than re-evaluating the
+ * conditional from scratch.
+ */
+type FormOf<Schema extends SupportedRootSchema> =
+  z.input<Schema> extends GenericForm ? z.input<Schema> : never
+type OutOf<Schema extends SupportedRootSchema> =
+  z.output<Schema> extends GenericForm ? z.output<Schema> : never
+type ReadOf<Schema extends SupportedRootSchema> =
+  StorageShape<Schema> extends GenericForm ? StorageShape<Schema> : never
+
+/**
  * Create a form bound to a Zod v4 schema.
  *
  * ```ts
@@ -86,25 +105,6 @@ export type PathOutput<Schema extends z.ZodType, Path extends string> =
  *
  * For Zod v3, import from `attaform/zod-v3` instead.
  */
-/**
- * `FormOf` / `OutOf` / `ReadOf` factor the three identical-shape
- * conditionals out of `useForm`'s public signature. The bundled
- * `.d.ts` then carries one alias per shape rather than re-inlining
- * `z.input<Schema> extends GenericForm ? z.input<Schema> : never`
- * four times — which is what produces TS2589 ("Type instantiation
- * is excessively deep") on consumer call sites with complex schemas
- * (discriminated unions, transform pipes, deep `.register()` chains).
- * Each alias is computed once per `Schema` instantiation; downstream
- * generics ride on the alias rather than re-evaluating the
- * conditional from scratch.
- */
-type FormOf<Schema extends SupportedRootSchema> =
-  z.input<Schema> extends GenericForm ? z.input<Schema> : never
-type OutOf<Schema extends SupportedRootSchema> =
-  z.output<Schema> extends GenericForm ? z.output<Schema> : never
-type ReadOf<Schema extends SupportedRootSchema> =
-  StorageShape<Schema> extends GenericForm ? StorageShape<Schema> : never
-
 export function useForm<Schema extends SupportedRootSchema, K extends FormKey = FormKey>(
   configuration: Omit<
     UseFormConfiguration<

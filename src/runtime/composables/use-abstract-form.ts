@@ -55,7 +55,6 @@ import type { DeepPartial, DefaultValuesInput, GenericForm, WriteShape } from '.
  * Returns the same form API as the typed entry points; see
  * `UseFormReturnType` for the full surface.
  */
-
 export function useAbstractForm<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,

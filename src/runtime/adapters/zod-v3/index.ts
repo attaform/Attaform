@@ -132,13 +132,6 @@ export function zodAdapter<
 const sharedV3Schemas = createSharedSchemaStore()
 
 /**
- * Build the v3 `AbstractSchemaServices` instance. Services are stateless
- * — every method receives the schema it acts on plus the factory-supplied
- * `formKey` / `maxRecursionDepth`. Generic in `Form` / `GetValueFormType`
- * so the typed methods (`runGetDefaults` / `makeSubSchema`)
- * propagate the form shape correctly.
- */
-/**
  * Cache of promise-safe schema variants, keyed by the node handed in.
  *
  * Every SYNCHRONOUS parse the adapter performs has to go through here.
@@ -165,6 +158,13 @@ function syncSafe(schema: z.ZodTypeAny): z.ZodTypeAny {
   return wrapped
 }
 
+/**
+ * Build the v3 `AbstractSchemaServices` instance. Services are stateless
+ * — every method receives the schema it acts on plus the factory-supplied
+ * `formKey` / `maxRecursionDepth`. Generic in `Form` / `GetValueFormType`
+ * so the typed methods (`runGetDefaults` / `makeSubSchema`)
+ * propagate the form shape correctly.
+ */
 function buildV3Services<Form extends GenericForm, GetValueFormType extends GenericForm>(
   maxRecursionDepth: number
 ): AbstractSchemaServices<z.ZodTypeAny, Form, GetValueFormType> {

@@ -1,15 +1,3 @@
-import { computed, shallowRef } from 'vue'
-import type {
-  HistoryKernel,
-  HistoryModule,
-  HistoryPlugin,
-  ErrorCell,
-  WriteMeta,
-} from '../types/types-api'
-import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
-import { structuralSnapshot } from './diff-apply'
-import type { PathKey } from './paths'
-
 /**
  * Bounded undo/redo history for a form, delivered as the `attaform/history`
  * entry: `useForm({ history: historyPlugin({ max }) })`. The plugin object
@@ -40,6 +28,17 @@ import type { PathKey } from './paths'
  * history and shouldn't rewind when the user hits undo — a field that
  * was touched stays touched.
  */
+import { computed, shallowRef } from 'vue'
+import type {
+  HistoryKernel,
+  HistoryModule,
+  HistoryPlugin,
+  ErrorCell,
+  WriteMeta,
+} from '../types/types-api'
+import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
+import { structuralSnapshot } from './diff-apply'
+import type { PathKey } from './paths'
 
 export type HistoryPluginOptions = {
   /**

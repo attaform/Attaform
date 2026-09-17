@@ -1,15 +1,3 @@
-import {
-  createSimpleExpression,
-  NodeTypes,
-  type DirectiveNode,
-  type ElementNode,
-  type ExpressionNode,
-  type NodeTransform,
-  type RootNode,
-  type SimpleExpressionNode,
-} from '@vue/compiler-core'
-import { flattenExpression } from './_shared-props'
-
 /**
  * `vRegisterPreambleTransform` — closes the render-order edge that
  * `vRegisterHintTransform` alone leaves open.
@@ -55,6 +43,17 @@ import { flattenExpression } from './_shared-props'
  * be hoisted because their path expressions reference loop-scoped
  * identifiers (e.g. `form.register(`item.${i}`)`).
  */
+import {
+  createSimpleExpression,
+  NodeTypes,
+  type DirectiveNode,
+  type ElementNode,
+  type ExpressionNode,
+  type NodeTransform,
+  type RootNode,
+  type SimpleExpressionNode,
+} from '@vue/compiler-core'
+import { flattenExpression } from './_shared-props'
 
 /**
  * Per-root traversal state. Keyed by the RootNode object — stable for

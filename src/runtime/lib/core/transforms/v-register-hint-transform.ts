@@ -1,11 +1,3 @@
-import {
-  createCompoundExpression,
-  NodeTypes,
-  type CompoundExpressionNode,
-  type ExpressionNode,
-  type NodeTransform,
-} from '@vue/compiler-core'
-
 /**
  * `vRegisterHintTransform` — for every `<element v-register="<expr>">`,
  * rewrite the directive's binding expression to wrap `<expr>` in an
@@ -45,6 +37,13 @@ import {
  * bundler configurations do this), the second pass detects the marker
  * and skips re-wrapping.
  */
+import {
+  createCompoundExpression,
+  NodeTypes,
+  type CompoundExpressionNode,
+  type ExpressionNode,
+  type NodeTransform,
+} from '@vue/compiler-core'
 
 const HINT_MARKER = '__attaRv'
 const HINT_PREFIX = `((${HINT_MARKER}) => (${HINT_MARKER}?.markConnectedOptimistically?.(), ${HINT_MARKER}))(`

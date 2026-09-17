@@ -1,11 +1,3 @@
-import type {
-  AbstractSchema,
-  MaybePromise,
-  SchemaDefaultsResult,
-  SchemaParseResult,
-  SlimPrimitiveKind,
-} from '../types/types-api'
-
 /**
  * Minimal `AbstractSchema` implementation backing the wizard's noop
  * forms. String slots in `useWizard({ steps })` desugar to a form built
@@ -23,6 +15,13 @@ import type {
  *    form raises the standard schema-mismatch warning from
  *    `useAbstractForm`.
  */
+import type {
+  AbstractSchema,
+  MaybePromise,
+  SchemaDefaultsResult,
+  SchemaParseResult,
+  SlimPrimitiveKind,
+} from '../types/types-api'
 
 const EMPTY_SLIM_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set()
 

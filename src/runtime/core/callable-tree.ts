@@ -1,24 +1,3 @@
-import { computed, readonly, toRaw, type ComputedRef, type Ref } from 'vue'
-import type { ValidationError } from '../types/types-api'
-import type { GenericForm } from '../types/types-core'
-import type { FormStore } from './create-form-store'
-import type { DynamicPathSweep } from './dynamic-path-sweep'
-import { makeBlankRequiredError } from './error-codes'
-import { aggregateErrorsAt, type FieldState } from './field-state-api'
-import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
-import {
-  type Path,
-  type PathKey,
-  ROOT_PATH_KEY,
-  type Segment,
-  canonicalizePath,
-  isPathPrefix,
-  keyForSegments,
-} from './paths'
-import { isArrayPath, liveContainerHasKey, liveKeysAtPath } from './proxy-live-keys'
-import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
-import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
-
 /**
  * The callable-tree layer, building the three read surfaces (`form.values`,
  * `form.errors`, `form.fields`) as callable readonly Proxies. The two
@@ -60,6 +39,26 @@ import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
  * in-browser compiler, and under any sub-ES2020 build target. Below the root
  * the three names are ordinary keys through the truthful gate.
  */
+import { computed, readonly, toRaw, type ComputedRef, type Ref } from 'vue'
+import type { ValidationError } from '../types/types-api'
+import type { GenericForm } from '../types/types-core'
+import type { FormStore } from './create-form-store'
+import type { DynamicPathSweep } from './dynamic-path-sweep'
+import { makeBlankRequiredError } from './error-codes'
+import { aggregateErrorsAt, type FieldState } from './field-state-api'
+import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
+import {
+  type Path,
+  type PathKey,
+  ROOT_PATH_KEY,
+  type Segment,
+  canonicalizePath,
+  isPathPrefix,
+  keyForSegments,
+} from './paths'
+import { isArrayPath, liveContainerHasKey, liveKeysAtPath } from './proxy-live-keys'
+import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
+import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
 
 /**
  * Tests an integer-like string without leading zeros; mirrors

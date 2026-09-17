@@ -1,14 +1,3 @@
-import {
-  createSimpleExpression,
-  ElementTypes,
-  NodeTypes,
-  type AttributeNode,
-  type DirectiveNode,
-  type ElementNode,
-  type NodeTransform,
-} from '@vue/compiler-core'
-import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
-
 /**
  * `redundantBindingWarnTransform` — the compile-time half of the
  * redundant-binding guard (#464). For every element carrying a
@@ -52,6 +41,16 @@ import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
  * `attaform/nuxt`. Use directly only when integrating with a custom
  * bundler.
  */
+import {
+  createSimpleExpression,
+  ElementTypes,
+  NodeTypes,
+  type AttributeNode,
+  type DirectiveNode,
+  type ElementNode,
+  type NodeTransform,
+} from '@vue/compiler-core'
+import { V_REGISTER_COMPILED_MODIFIER } from '../../../core/register-protocol'
 
 /**
  * The author-facing display form of the first redundant STATE binding

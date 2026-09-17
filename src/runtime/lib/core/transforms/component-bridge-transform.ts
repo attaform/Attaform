@@ -1,3 +1,25 @@
+/**
+ * Vue compiler node transform that bridges `v-register` into the
+ * downstream binding shapes its consumers expect:
+ *
+ *   - `<select v-register>` — injects `:value` (single-select) and
+ *     per-`<option>` `:selected` so the runtime directive can pre-mark
+ *     selected options at SSR time.
+ *   - `<MyComponent v-register>` and kebab-case custom-element hosts
+ *     — injects a `:registerValue` bridge prop so `useRegister` inside
+ *     the child sees the parent's RegisterValue (the binding the audit
+ *     called out as the transform's "fires on every component" path),
+ *     and marks any parent-authored slotted `<option>`s with `:selected`
+ *     the same way the native path does, so a `<select>` wrapped in a
+ *     styled component keeps its SSR-selected option (#394).
+ *
+ * Wired automatically by `attaform/vite` and `attaform/nuxt`. Use
+ * directly only when integrating with a custom bundler.
+ *
+ * Renamed from `selectNodeTransform` (DIR-F6): the original name read
+ * as a `<select>`-only transform, but the component-bridge path is
+ * load-bearing for every `useRegister` consumer.
+ */
 import {
   createCompoundExpression,
   createSimpleExpression,
@@ -188,28 +210,6 @@ function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): strin
   return JSON.stringify(text)
 }
 
-/**
- * Vue compiler node transform that bridges `v-register` into the
- * downstream binding shapes its consumers expect:
- *
- *   - `<select v-register>` — injects `:value` (single-select) and
- *     per-`<option>` `:selected` so the runtime directive can pre-mark
- *     selected options at SSR time.
- *   - `<MyComponent v-register>` and kebab-case custom-element hosts
- *     — injects a `:registerValue` bridge prop so `useRegister` inside
- *     the child sees the parent's RegisterValue (the binding the audit
- *     called out as the transform's "fires on every component" path),
- *     and marks any parent-authored slotted `<option>`s with `:selected`
- *     the same way the native path does, so a `<select>` wrapped in a
- *     styled component keeps its SSR-selected option (#394).
- *
- * Wired automatically by `attaform/vite` and `attaform/nuxt`. Use
- * directly only when integrating with a custom bundler.
- *
- * Renamed from `selectNodeTransform` (DIR-F6): the original name read
- * as a `<select>`-only transform, but the component-bridge path is
- * load-bearing for every `useRegister` consumer.
- */
 /**
  * What an `<option>` needs from its enclosing `<select>` in order to
  * build its own `:selected` binding, parked on the option node until the

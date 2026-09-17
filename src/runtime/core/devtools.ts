@@ -1,10 +1,3 @@
-import type { App } from 'vue'
-import type { FormStore } from './create-form-store'
-import type { AttaformRegistry } from './registry'
-import type { GenericForm } from '../types/types-core'
-import type { FormKey } from '../types/types-api'
-import { canonicalizePath } from './paths'
-
 /**
  * Vue DevTools plugin wiring for attaform. Lazy-imported by
  * `createAttaform` under dev-mode guards so the production
@@ -23,6 +16,12 @@ import { canonicalizePath } from './paths'
  * no-ops so production builds / users without DevTools installed
  * don't see errors.
  */
+import type { App } from 'vue'
+import type { FormStore } from './create-form-store'
+import type { AttaformRegistry } from './registry'
+import type { GenericForm } from '../types/types-core'
+import type { FormKey } from '../types/types-api'
+import { canonicalizePath } from './paths'
 
 const INSPECTOR_ID = 'attaform'
 const TIMELINE_LAYER_ID = 'attaform:events'

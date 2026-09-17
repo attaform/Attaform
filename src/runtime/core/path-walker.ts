@@ -1,3 +1,18 @@
+/**
+ * Structured-path get and set primitives, for internal callers that speak
+ * `Path` rather than dotted strings.
+ *
+ * `getAtPath` returns `undefined` for any path traversing a non-descendable
+ * value (null, a primitive, a function). The distinction is preserved at the
+ * target itself: a `null` there comes back as `null`, and only a missing or
+ * non-descendable INTERMEDIATE collapses.
+ *
+ * `setAtPath` is copy-on-write at every level from root to target. A new
+ * intermediate container follows its segment type, a numeric segment
+ * producing an array and a string one a plain object. Siblings at each level
+ * are preserved by reference, so an untouched subtree stays reference-equal
+ * for `diffAndApply`'s `Object.is` checks.
+ */
 import type { Path, Segment } from './paths'
 import { consumerHas, consumerKeys, readConsumerIndex } from './consumer-code'
 import {
@@ -43,22 +58,6 @@ export type SchemaForFill = {
    */
   entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined
 }
-
-/**
- * Structured-path get and set primitives, for internal callers that speak
- * `Path` rather than dotted strings.
- *
- * `getAtPath` returns `undefined` for any path traversing a non-descendable
- * value (null, a primitive, a function). The distinction is preserved at the
- * target itself: a `null` there comes back as `null`, and only a missing or
- * non-descendable INTERMEDIATE collapses.
- *
- * `setAtPath` is copy-on-write at every level from root to target. A new
- * intermediate container follows its segment type, a numeric segment
- * producing an array and a string one a plain object. Siblings at each level
- * are preserved by reference, so an untouched subtree stays reference-equal
- * for `diffAndApply`'s `Object.is` checks.
- */
 
 const NOT_FOUND: unique symbol = Symbol('NOT_FOUND')
 

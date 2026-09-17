@@ -1,3 +1,17 @@
+/**
+ * Zod v4 adapter — implements `AbstractSchema` against Zod v4's public
+ * surface. Internal (`def.*`) access is quarantined to introspect.ts and
+ * the co-located modules (default-values, strip, path-walker, discriminator,
+ * errors). This file is the wiring layer between those modules and the
+ * framework's AbstractSchema contract.
+ *
+ * Feature parity with the v3 adapter:
+ * - getDefaultValues: validate-then-fix loop (delegated to
+ *   default-values.ts); discriminated-union-aware first-option
+ *   fallback for invalid_type issues.
+ * - getSchemasAtPath: discriminated-union-aware path walker.
+ * - validateAtPath: per-union-branch parse with aggregated errors.
+ */
 import type { z } from 'zod'
 import type {
   AbstractSchema,
@@ -42,21 +56,6 @@ import {
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
 import { V4_INTROSPECTOR } from './walker-introspector'
-
-/**
- * Zod v4 adapter — implements `AbstractSchema` against Zod v4's public
- * surface. Internal (`def.*`) access is quarantined to introspect.ts and
- * the co-located modules (default-values, strip, path-walker, discriminator,
- * errors). This file is the wiring layer between those modules and the
- * framework's AbstractSchema contract.
- *
- * Feature parity with the v3 adapter:
- * - getDefaultValues: validate-then-fix loop (delegated to
- *   default-values.ts); discriminated-union-aware first-option
- *   fallback for invalid_type issues.
- * - getSchemasAtPath: discriminated-union-aware path walker.
- * - validateAtPath: per-union-branch parse with aggregated errors.
- */
 
 /**
  * Peel `.optional()` / `.nullable()` wrappers off a leaf schema ONLY

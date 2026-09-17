@@ -1,14 +1,3 @@
-import type {
-  AttributeNode,
-  CompoundExpressionNode,
-  DirectiveNode,
-  ExpressionNode,
-  RootNode,
-  SimpleExpressionNode,
-  TemplateChildNode,
-} from '@vue/compiler-core'
-import { NodeTypes } from '@vue/compiler-core'
-
 /**
  * Shared prop-summarization toolkit for the compile-time node
  * transforms. `input-text-area-transform.ts` and
@@ -24,6 +13,16 @@ import { NodeTypes } from '@vue/compiler-core'
  * any package barrel. The underscore prefix mirrors the existing
  * convention for transform-internal modules.
  */
+import type {
+  AttributeNode,
+  CompoundExpressionNode,
+  DirectiveNode,
+  ExpressionNode,
+  RootNode,
+  SimpleExpressionNode,
+  TemplateChildNode,
+} from '@vue/compiler-core'
+import { NodeTypes } from '@vue/compiler-core'
 
 /**
  * Uniform summary of a Vue-compiler AST prop. `key` is the prop name

@@ -1,3 +1,21 @@
+/**
+ * The arrays engine: everything keeping per-element state truthful across a
+ * structural array mutation, in one module around one permutation core.
+ *
+ * A structural mutation, which the typed helpers below tag with an `arrayOp`,
+ * is decoded exactly once into an {@link IndexRemap}, and `remapForOp` is the
+ * single source of permutation truth. Every consumer derives from that remap:
+ *
+ *  - the identity tracker replays it onto its token lists (`permuteList`);
+ *  - per-element state relocation walks it (`migrateMapSubtree` /
+ *    `migrateSetSubtree`);
+ *  - derived-state eviction, schema verdicts and variant memory, drops at its
+ *    `changedIndices`;
+ *  - the write funnel scopes its per-element work to `remap.fresh`.
+ *
+ * One decode and many readers, so the permutation cannot drift between the
+ * consumer-facing `:key` token and the state that must travel with it.
+ */
 import { toRaw, type Ref } from 'vue'
 import type { ErrorCell, WriteMeta } from '../types/types-api'
 import { consumerKeys, readConsumerProp } from './consumer-code'
@@ -18,25 +36,6 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 
 type ArrayOp = NonNullable<WriteMeta['arrayOp']>
-
-/**
- * The arrays engine: everything keeping per-element state truthful across a
- * structural array mutation, in one module around one permutation core.
- *
- * A structural mutation, which the typed helpers below tag with an `arrayOp`,
- * is decoded exactly once into an {@link IndexRemap}, and `remapForOp` is the
- * single source of permutation truth. Every consumer derives from that remap:
- *
- *  - the identity tracker replays it onto its token lists (`permuteList`);
- *  - per-element state relocation walks it (`migrateMapSubtree` /
- *    `migrateSetSubtree`);
- *  - derived-state eviction, schema verdicts and variant memory, drops at its
- *    `changedIndices`;
- *  - the write funnel scopes its per-element work to `remap.fresh`.
- *
- * One decode and many readers, so the permutation cannot drift between the
- * consumer-facing `:key` token and the state that must travel with it.
- */
 
 /**
  * The exact index permutation an array operation produced, recovered from
@@ -299,7 +298,7 @@ function deleteKeysAtIndices(
   }
 }
 
-// ─── Element identity ───────────────────────────────────────────────
+// --- Element identity ---
 
 /**
  * Operation-maintained per-element identity for arrays. Each tracked
@@ -451,7 +450,7 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
   }
 }
 
-// ─── Variant memory ─────────────────────────────────────────────────
+// --- Variant memory ---
 
 /**
  * Per-(union-path, outgoing-disc-value) snapshot stashed on a
@@ -585,7 +584,7 @@ export function cloneVariantSnapshot(value: unknown): unknown {
   return out
 }
 
-// ─── Structural-op bookkeeping ──────────────────────────────────────
+// --- Structural-op bookkeeping ---
 
 /**
  * Per-path async validation entry, tracking the in-flight or scheduled run: a
@@ -787,7 +786,18 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
   }
 }
 
-// ─── The typed array helpers ────────────────────────────────────────
+// --- The typed array helpers ---
+
+/** The typed array helpers `buildFieldArrayApi` produces. */
+export type FieldArrayApi = {
+  append(path: string, value: unknown): boolean
+  prepend(path: string, value: unknown): boolean
+  insert(path: string, index: number, value: unknown): boolean
+  remove(path: string, index: number): boolean
+  swap(path: string, a: number, b: number): boolean
+  move(path: string, from: number, to: number): boolean
+  replace(path: string, index: number, value: unknown): boolean
+}
 
 /**
  * Typed array helpers on top of FormStore. Each reads the current array at the
@@ -808,17 +818,6 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
  * mutations should batch at the schema level instead, building the replacement
  * shape and calling `setValue(path, shape)` once.
  */
-
-export type FieldArrayApi = {
-  append(path: string, value: unknown): boolean
-  prepend(path: string, value: unknown): boolean
-  insert(path: string, index: number, value: unknown): boolean
-  remove(path: string, index: number): boolean
-  swap(path: string, a: number, b: number): boolean
-  move(path: string, from: number, to: number): boolean
-  replace(path: string, index: number, value: unknown): boolean
-}
-
 export function buildFieldArrayApi<F extends GenericForm>(
   state: FormStore<F, GenericForm>
 ): FieldArrayApi {

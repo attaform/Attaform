@@ -85,15 +85,7 @@ function deriveSubmitErrors(err: unknown): { entries: ValidationError[]; message
   }
 }
 
-/**
- * `validate` and `handleSubmit`, both built against a `FormStore<F>`.
- *
- * Validation is async end-to-end: `AbstractSchema.validateAtPath` returns a
- * promise, so every caller here awaits. The reactive `validate()` ref carries a
- * `pending` flag separating in-flight from settled, and a per-call generation
- * counter drops a stale result.
- */
-
+/** Everything `buildProcessForm` needs beyond the store itself. */
 export type BuildProcessFormOptions = {
   /**
    * Called inside `handleSubmit` when validation fails, after the error store
@@ -104,6 +96,14 @@ export type BuildProcessFormOptions = {
   applyInvalidSubmit?: () => void
 }
 
+/**
+ * `validate` and `handleSubmit`, both built against a `FormStore<F>`.
+ *
+ * Validation is async end-to-end: `AbstractSchema.validateAtPath` returns a
+ * promise, so every caller here awaits. The reactive `validate()` ref carries a
+ * `pending` flag separating in-flight from settled, and a per-call generation
+ * counter drops a stale result.
+ */
 export function buildProcessForm<F extends GenericForm, Out extends GenericForm = F>(
   state: FormStore<F, Out>,
   options: BuildProcessFormOptions = {}

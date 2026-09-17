@@ -1,14 +1,13 @@
-import type { AbstractSchema, UnionDiscriminatorContext } from '../types/types-api'
-import { isPlainRecord } from './path-walker'
-import { type Segment } from './paths'
-import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
-
 /**
  * Sparse-over-defaults hydration merge. Folds a partial value (a subset
  * of the form's paths) onto the schema's slim defaults during the
  * activate / rehydrate hydration path, with discriminated-union-aware
  * rebasing and prototype-pollution-safe key assignment.
  */
+import type { AbstractSchema, UnionDiscriminatorContext } from '../types/types-api'
+import { isPlainRecord } from './path-walker'
+import { type Segment } from './paths'
+import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 
 /**
  * Merge a sparse partial value over schema defaults. Returns a new

@@ -1,36 +1,30 @@
 /**
- * `createAbstractSchema` — the schema-agnostic factory that hosts every
- * `AbstractSchema` method whose implementation is identical-modulo-
- * introspector between the v3 and v4 adapters.
+ * `createAbstractSchema`, the schema-agnostic factory hosting every
+ * `AbstractSchema` method whose implementation is the same in the v3 and v4
+ * adapters once the introspector is swapped.
  *
- * Each adapter wires through two small contracts:
+ * Each adapter wires through two contracts.
  *
- *   - `SchemaIntrospector<Schema>` — pure, side-effect-free accessors
- *     that read schema shape. The factory branches on `kindOf`, walks
- *     discriminated-union literals via `getLiteralValues` /
- *     `getDiscriminatedOptions`, detects coerce / preprocess nodes,
- *     and consults the three async / container-refine flags.
+ *   - `SchemaIntrospector<Schema>`: pure, side-effect-free accessors over
+ *     schema shape. The factory branches on `kindOf`, walks
+ *     discriminated-union literals through `getLiteralValues` and
+ *     `getDiscriminatedOptions`, detects coerce and preprocess nodes, and
+ *     consults the async and container-refine flags.
+ *   - `AbstractSchemaServices<Schema, Form, GetValueFormType>`: the delegates
+ *     for everything that genuinely diverges per Zod version, namely path
+ *     walking, default-value derivation, the `getDefaultValues` flow, the
+ *     wrapper peeling tied to each version's wrapper set, field-meta
+ *     resolution and the `safeParse` boundary.
  *
- *   - `AbstractSchemaServices<Schema, Form, GetValueFormType>` — the
- *     adapter-specific delegates the factory calls for everything that
- *     genuinely diverges per Zod version: path-walking
- *     (the path walker itself has v3 / v4 quirks), default-value
- *     derivation, the `getDefaultValues` flow,
- *     wrapper-peeling that's tied to the per-version wrapper set,
- *     field-meta resolution, and the per-version `safeParse`
- *     boundary.
+ * The split is what keeps the introspector reusable by any other walker,
+ * slim-primitives and default-values among them, without dragging the
+ * side-effectful services along. Services consume the introspector as they
+ * wish; the factory consumes both.
  *
- * The two-interface split keeps the introspector reusable by any other
- * walker (slim-primitives, default-values) without dragging
- * in the side-effectful services. Services consume the introspector as
- * they wish; the factory consumes both.
- *
- * Behavior-neutral by design: the goal is one set of definitions for
- * the 13 structurally-parallel methods, with no observable change at
- * either adapter's `AbstractSchema` surface. Per-adapter caches keep
- * the same lifetime (one per `useForm()` call); `getSchemasAtPath`
- * preserves each adapter's prior sub-schema shape via the
- * `makeSubSchema` service (v3 recurses; v4 builds the 5-method stub).
+ * Per-adapter caches live one per `useForm()` call, and `getSchemasAtPath`
+ * hands sub-schema construction to the `makeSubSchema` service rather than
+ * picking one strategy: v3 recurses through the full factory, v4 builds a
+ * four-method stub.
  */
 import type {
   AbstractSchema,
@@ -50,13 +44,12 @@ import { canonicalizePath, type Path, type PathKey } from './paths'
 const PATH_SEPARATOR = '.'
 
 /**
- * Stable shape-discriminant the factory branches on. Adapters return
- * the union of v3 + v4 kinds plus `'unknown'` for anything they don't
- * recognise — the factory only inspects a small subset
- * (`'tuple'` / `'array'` for `arrayShapeAtPath`,
- * `'literal'` for the discriminated-union walk), so adapters can return
- * extra version-specific kinds (`'effects'` / `'pipeline'` / `'branded'`
- * / `'native-enum'` on v3) without confusing the factory.
+ * Stable shape-discriminant the factory branches on. Adapters return the union
+ * of v3 and v4 kinds plus `'unknown'` for anything unrecognised. The factory
+ * inspects only a small subset, `'tuple'` and `'array'` for
+ * `arrayShapeAtPath` and `'literal'` for the discriminated-union walk, so an
+ * adapter can return extra version-specific kinds (`'effects'`, `'pipeline'`,
+ * `'branded'`, `'native-enum'` on v3) without confusing it.
  */
 export type SharedZodKind =
   | 'string'
@@ -108,31 +101,27 @@ export type SharedZodKind =
 /**
  * A kind that declares a value without describing its shape.
  *
- * Nothing descends into an opaque leaf, and nothing can be inferred
- * about what a valid value looks like: the schema's own predicate is
- * the only authority, and it runs at parse time. `custom` is the kind
- * `z.instanceof(X)` and `z.custom<T>()` compile to on v4; on v3 those
- * spellings peel through `ZodEffects` to `any` (#542).
+ * Nothing descends into an opaque leaf, and nothing can be inferred about what
+ * a valid value looks like: the schema's own predicate is the only authority,
+ * and it runs at parse time. `custom` is what `z.instanceof(X)` and
+ * `z.custom<T>()` compile to on v4; on v3 those spellings peel through
+ * `ZodEffects` to `any` (#542).
  *
- * Three comparisons rather than a module-level `Set`: the membership
- * test is the whole predicate, and the eager bundle is measured in
- * bytes (see `.size-limit.js`).
+ * Three comparisons rather than a module-level `Set`: the membership test is
+ * the whole predicate, and the eager bundle is measured in bytes.
  */
 function isOpaqueKind(kind: SharedZodKind | string): boolean {
   return kind === 'any' || kind === 'unknown' || kind === 'custom'
 }
 
 /**
- * Pure schema-shape accessors. The factory consults these to branch on
- * structural facts about a schema node. Every member is side-effect-
- * free and idempotent.
+ * Pure schema-shape accessors, consulted to branch on structural facts about a
+ * node. Every member is side-effect-free and idempotent.
  *
- * `kindOf` returns the discriminant; the structural accessors
- * (`getObjectShape`, `getTupleItems`, `getDiscriminatedOptions`,
- * `getLiteralValues`) read a single field of the node's def shape.
- * The three boolean predicates summarise tree-walking detections each
- * adapter already exposes; both adapters memoise them at the
- * AbstractSchema level so calling per construction is cheap.
+ * `kindOf` returns the discriminant, and the structural accessors each read a
+ * single field of the node's def shape. The boolean predicates summarise
+ * tree-walking detections the adapters already expose and memoise at the
+ * AbstractSchema level, so calling one per construction is cheap.
  */
 export interface SchemaIntrospector<Schema> {
   /** Discriminant on schema shape. Adapters may return extra kinds. */
@@ -145,26 +134,25 @@ export interface SchemaIntrospector<Schema> {
   /** Returns the position-typed items of a `ZodTuple`. Empty for non-tuples. */
   getTupleItems(schema: Schema): readonly Schema[]
   /**
-   * Returns the option objects of a `ZodDiscriminatedUnion` — each one
-   * is itself a `ZodObject` whose `getObjectShape` includes the
-   * discriminator key as a `ZodLiteral`.
+   * The option objects of a `ZodDiscriminatedUnion`. Each is a `ZodObject`
+   * whose `getObjectShape` carries the discriminator key as a `ZodLiteral`.
    */
   getDiscriminatedOptions(schema: Schema): readonly Schema[]
   /** Returns the discriminator key of a `ZodDiscriminatedUnion`. */
   getDiscriminator(schema: Schema): string | undefined
   /**
-   * Returns the literal values a `ZodLiteral` admits. Multi-value
-   * literals (`z.literal(['a', 'b'])`) return both; single-value return
-   * the one. Empty for non-literals.
+   * The literal values a `ZodLiteral` admits: both for
+   * `z.literal(['a', 'b'])`, the one for a single-value literal, and empty for
+   * a non-literal.
    */
   getLiteralValues(schema: Schema): readonly unknown[]
   /**
-   * True iff the node is a preprocess-style schema-side normalizer:
-   * `z.preprocess(fn, inner)` in either version. v3's `ZodEffects`
-   * with `effect.type === 'preprocess'` and v4's `ZodPipe<ZodTransform,
-   * inner>` both collapse here. Coerce primitives go through
-   * `isCoercePrimitive` instead — they're not pipes in v4 and not
-   * effects in v3, but both adapters detect them off the same flag.
+   * True iff the node is a preprocess-style schema-side normalizer,
+   * `z.preprocess(fn, inner)` in either version: v3's `ZodEffects` with
+   * `effect.type === 'preprocess'` and v4's `ZodPipe<ZodTransform, inner>`
+   * both collapse here. A coerce primitive goes through `isCoercePrimitive`
+   * instead, being neither a pipe on v4 nor an effect on v3, though both
+   * adapters detect it off the same flag.
    */
   isPreprocessNode(schema: Schema): boolean
   /**
@@ -175,26 +163,24 @@ export interface SchemaIntrospector<Schema> {
   isCoercePrimitive(schema: Schema): boolean
   /**
    * True iff the schema tree contains a refine whose predicate can run
-   * asynchronously. v3 is conservative (every `.refine` flagged because
-   * the inner sync wrapper hides the user fn); v4 is exact (inspects
-   * `def.checks[].def.fn.constructor.name`). Either way the runtime
-   * uses this to decide whether a construction-time async pass is
-   * needed.
+   * asynchronously. v3 is conservative and flags every `.refine`, its inner
+   * sync wrapper hiding the user function; v4 is exact, inspecting
+   * `def.checks[].def.fn.constructor.name`. Either way the runtime reads it to
+   * decide whether a construction-time async pass is needed.
    */
   containsAsyncRefine(schema: Schema): boolean
   /**
-   * True iff the schema tree contains a `.transform(asyncFn)` /
-   * `z.preprocess(asyncFn, …)`. Statically detectable in both adapters
-   * via the user fn's `constructor.name === 'AsyncFunction'`. Disjoint
-   * from `containsAsyncRefine` — refines and transforms live in
-   * different slots.
+   * True iff the schema tree contains a `.transform(asyncFn)` or
+   * `z.preprocess(asyncFn, …)`, detectable statically in both adapters through
+   * the user function's `constructor.name`. Disjoint from
+   * `containsAsyncRefine`: refines and transforms live in different slots.
    */
   containsAsyncTransform(schema: Schema): boolean
   /**
-   * True iff any refine fires at a container node (object / array /
-   * tuple / union / discriminated-union / intersection / record / set)
-   * or the root. False means every refine is leaf-local, so per-keystroke
-   * subtree validation catches the same verdicts as a whole-form pass.
+   * True iff any refine fires at a container node (object, array, tuple, union,
+   * discriminated union, intersection, record, set) or at the root. False means
+   * every refine is leaf-local, so per-keystroke subtree validation catches the
+   * same verdicts a whole-form pass would.
    */
   hasContainerOrRootRefine(schema: Schema): boolean
   /**
@@ -204,13 +190,12 @@ export interface SchemaIntrospector<Schema> {
    */
   containsDiscriminatedUnion(schema: Schema): boolean
 
-  // ---------------------------------------------------------------------
-  // Walker accessors — consumed by the shared `core/walk-*` walkers (D2 /
-  // D3 / D5) so the path-walking / slim-primitive / default-derivation
-  // shapes don't fork per adapter. v3 / v4 each expose the full surface;
-  // members not applicable to one adapter return `undefined` (kept on the
-  // contract so the walkers don't branch on adapter identity).
-  // ---------------------------------------------------------------------
+  // --- Walker accessors ---
+  // Consumed by the shared `core/walk-*` walkers, so the path-walking,
+  // slim-primitive and default-derivation shapes do not fork per adapter. Both
+  // adapters expose the full surface, and a member that does not apply to one
+  // returns `undefined` rather than being absent, so the walkers never branch
+  // on adapter identity.
 
   /** Element schema of a `z.array(...)`. Undefined for non-arrays / malformed defs. */
   getArrayElement(schema: Schema): Schema | undefined
@@ -219,10 +204,10 @@ export interface SchemaIntrospector<Schema> {
   /** Value schema of a `z.record(...)`. Undefined for non-records / malformed defs. */
   getRecordValueType(schema: Schema): Schema | undefined
   /**
-   * Key schema of a `z.map(K, V)`. Undefined for non-maps. The walker
-   * consults it to decide whether a map's entries are addressable at
-   * all: a key a path segment cannot spell (an object, a symbol) has
-   * no path, so the map stays a whole value.
+   * Key schema of a `z.map(K, V)`, undefined for a non-map. The walker consults
+   * it to decide whether a map's entries are addressable at all: a key no path
+   * segment can spell, an object or a symbol, has no path, so the map stays a
+   * whole value.
    */
   getMapKeyType(schema: Schema): Schema | undefined
   /** Value schema of a `z.map(...)`. Undefined for non-maps. */
@@ -236,17 +221,17 @@ export interface SchemaIntrospector<Schema> {
   /** Values of a `z.enum(...)`. Empty for non-enums. */
   getEnumValues(schema: Schema): readonly (string | number)[]
   /**
-   * Raw reverse-mapped values object of a `z.nativeEnum(E)`. v3 returns
-   * the TS enum object directly; v4 always returns `undefined` because
-   * v4 folds nativeEnum into the regular `enum` kind.
+   * Raw reverse-mapped values object of a `z.nativeEnum(E)`. v3 returns the TS
+   * enum object directly; v4 always returns `undefined`, folding nativeEnum
+   * into the regular `enum` kind.
    */
   getNativeEnumValues(schema: Schema): Record<string, unknown> | undefined
 
   /**
-   * Inner schema of any wrapper exposing `def.innerType` — Optional /
-   * Nullable / Default / Readonly / Catch in both v3 and v4. Branded
-   * (v3-only) uses `def.type` instead — see `unwrapBranded`. Returns
-   * `undefined` when no inner is available.
+   * Inner schema of any wrapper exposing `def.innerType`: Optional, Nullable,
+   * Default, Readonly and Catch in both versions. Branded, v3-only, uses
+   * `def.type` instead; see `unwrapBranded`. `undefined` when no inner is
+   * available.
    */
   unwrapInner(schema: Schema): Schema | undefined
   /**
@@ -255,101 +240,85 @@ export interface SchemaIntrospector<Schema> {
    */
   unwrapBranded(schema: Schema): Schema | undefined
   /**
-   * v3-only: structural source of a `ZodEffects` (refine / transform /
-   * preprocess) — `_def.schema`. Returns `undefined` on v4 (no
-   * ZodEffects wrapper; effects live as pipe sides / leaf checks).
+   * v3-only: the structural source of a `ZodEffects` (refine, transform,
+   * preprocess), `_def.schema`. `undefined` on v4, which has no ZodEffects
+   * wrapper and keeps effects as pipe sides or leaf checks.
    */
   unwrapEffectsSource(schema: Schema): Schema | undefined
   /** Input side of v4's `z.pipe(IN, OUT)` (also v3's `z.pipeline(...)`). */
   unwrapPipeIn(schema: Schema): Schema | undefined
-  /** Output side of a pipe — undefined on v3's `ZodEffects`. */
+  /** Output side of a pipe; undefined on v3's `ZodEffects`. */
   unwrapPipeOut(schema: Schema): Schema | undefined
   /**
-   * Inner schema of a `z.lazy(() => inner)`. Each call invokes the
-   * getter fresh; if the getter throws (recursive cycle resolved before
-   * its target is constructed) returns `undefined`.
+   * Inner schema of a `z.lazy(() => inner)`. Each call invokes the getter
+   * fresh, and a getter that throws, a recursive cycle resolved before its
+   * target is constructed, yields `undefined`.
    */
   unwrapLazy(schema: Schema): Schema | undefined
 
   /**
-   * Resolve a `z.default(...)` wrapper to its declared default value.
-   * v3 stores the default as a thunk (`() => value`); v4 stores it as
-   * a getter that returns the value directly. Both adapters return the
-   * resolved value here.
+   * Resolve a `z.default(...)` wrapper to its declared default value. v3 stores
+   * it as a thunk and v4 as a getter; both adapters return the resolved value.
    */
   getDefaultValue(schema: Schema): unknown
   /**
-   * Resolve a `z.catch(inner, val)` wrapper to its fallback value.
-   * The catch slot stores a `(ctx) => value` function; both adapters
-   * invoke it with a placeholder context and surface `undefined` if
-   * the consumer's function throws.
+   * Resolve a `z.catch(inner, val)` wrapper to its fallback value. The catch
+   * slot holds a `(ctx) => value`, which both adapters invoke with a
+   * placeholder context, surfacing `undefined` when it throws.
    */
   getCatchDefault(schema: Schema): unknown
   /**
-   * True iff the schema carries a callable `z.catch(...)` fallback.
-   * Lets callers distinguish "no catch wrapper" from "catch wrapper
-   * whose value happens to be `undefined`."
+   * True iff the schema carries a callable `z.catch(...)` fallback, which
+   * separates "no catch wrapper" from "catch wrapper resolving to `undefined`".
    */
   hasCatchValue(schema: Schema): boolean
 }
 
 /**
- * Adapter-specific delegates the factory calls for operations that
- * genuinely differ per Zod version (path walking, default-value
- * derivation, wrapper-peeling, error normalization, sub-schema
- * construction). Each service is a thin wrapper around per-adapter
- * helpers; the factory composes them.
+ * The delegates for operations that genuinely differ per Zod version: path
+ * walking, default-value derivation, wrapper peeling, error normalization and
+ * sub-schema construction. Each is a thin wrapper around per-adapter helpers,
+ * and the factory composes them.
  *
- * `safeParseSync` / `safeParseAsync` abstract the per-version
- * `safeParse` / `safeParseAsync` calls so the factory can stay
- * version-agnostic. Both return a uniform success-discriminant shape;
- * `safeParseSync` is allowed to throw when the schema is async-only
- * (the factory catches and falls back to the async path).
+ * `safeParseSync` / `safeParseAsync` abstract the per-version parse calls so
+ * the factory stays version-agnostic. Both return a uniform
+ * success-discriminant shape, and `safeParseSync` may throw on an async-only
+ * schema, which the factory catches before falling back to the async path.
  *
- * `makeSubSchema` is the per-adapter sub-schema constructor for
- * `getSchemasAtPath`. v3 recurses through the full adapter factory
- * (sub-schemas expose the entire `AbstractSchema` surface). v4 builds
- * a 4-method stub (needsAsyncValidation /
- * getDefaultValues / getSchemasAtPath / validateAtPath) because none
- * of its consumers reach for the wider surface and the stub keeps
- * sub-walker allocation cheap. The factory preserves each adapter's
- * prior behavior by routing through this service rather than hard-
- * coding one strategy.
+ * `makeSubSchema` builds `getSchemasAtPath`'s sub-schemas. v3 recurses through
+ * the full factory, so its sub-schemas expose the entire `AbstractSchema`
+ * surface; v4 builds a four-method stub (`needsAsyncValidation`,
+ * `getDefaultValues`, `getSchemasAtPath`, `validateAtPath`), which is all its
+ * consumers reach for and keeps sub-walker allocation cheap.
  */
 export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
   /**
-   * Returns every sub-schema reachable at the given path. Multiple
-   * results indicate a union / discriminated-union split; empty
-   * indicates the path doesn't resolve. Adapters cap descent through
-   * `z.lazy(...)` via `maxRecursionDepth`.
+   * Every sub-schema reachable at the given path. Several results mean a union
+   * or discriminated-union split, and none means the path does not resolve.
+   * Adapters cap descent through `z.lazy(...)` with `maxRecursionDepth`.
    */
   getNestedSchemasAtPath(schema: Schema, path: Path, maxRecursionDepth: number): Schema[]
   /**
-   * "Slim-mode" path walk — the variant `getSlimPrimitiveTypesAtPath`
-   * and `getSchemasAtPath` consume. v3 strips refinements / defaults /
-   * optional / nullable / effects off the root before walking, so the
-   * yielded candidates reflect the slim shape (matches what the slim-
-   * primitive gate sees and what consumers expect when introspecting
-   * sub-schemas). v4 walks the original schema and aliases this to
-   * `getNestedSchemasAtPath` — its path walker already inlines the
-   * wrapper peeling.
+   * The slim-mode path walk `getSlimPrimitiveTypesAtPath` and
+   * `getSchemasAtPath` consume. v3 strips refinements, defaults, optional,
+   * nullable and effects off the root before walking, so the candidates reflect
+   * the slim shape the gate sees and consumers expect. v4 aliases this to
+   * `getNestedSchemasAtPath`, its path walker already inlining the peeling.
    */
   getNestedSchemasInSlimMode(schema: Schema, path: Path, maxRecursionDepth: number): Schema[]
   /** Returns the slim-primitive accept-set of a single sub-schema. */
   slimPrimitivesOf(schema: Schema, maxRecursionDepth: number): Set<SlimPrimitiveKind>
   /**
-   * Returns the schema's prescribed default at the given root. The
-   * runtime calls this in `getDefaultAtPath` (`useDefault=true` — honor
-   * `.default(x)`) and `getEmptyValueAtPath` (`useDefault=false` —
-   * yield the inner-schema's falsy concrete). v3 and v4 each implement
-   * their own walker; the factory only consumes the result.
+   * The schema's prescribed default at the given root. `getDefaultAtPath` calls
+   * it with `useDefault=true` to honour `.default(x)`, and
+   * `getEmptyValueAtPath` with `false` to yield the inner schema's falsy
+   * concrete. Each adapter implements its own walker.
    */
   deriveDefault(schema: Schema, useDefault: boolean, maxRecursionDepth: number): unknown
   /**
-   * Adapter-owned construction-time default-values flow. v3 runs a
-   * validate-then-fix loop against a slim schema, then parses the real
-   * one; v4 parses the real schema against the derived data. Both
-   * honour `config.constraints`.
+   * The construction-time default-values flow. v3 runs a validate-then-fix loop
+   * against a slim schema and then parses the real one; v4 parses the real
+   * schema against the derived data. Both honour `config.constraints`.
    */
   runGetDefaults(
     schema: Schema,
@@ -357,50 +326,46 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
     maxRecursionDepth: number
   ): SchemaDefaultsResult<Form>
   /**
-   * Peels `.optional()` / `.nullable()` only when the inner is
-   * structurally fillable (object / array / tuple / record /
-   * union / intersection or a chain of peelable wrappers that resolve
-   * to one of those). Used by `getDefaultAtPath` so partial writes
-   * through optional sub-schemas fill from the inner shape's defaults.
-   * `.default(x)` is preserved at every layer.
+   * Peels `.optional()` and `.nullable()` only when the inner is structurally
+   * fillable: an object, array, tuple, record, union or intersection, or a
+   * chain of peelable wrappers resolving to one. `getDefaultAtPath` uses it so
+   * a partial write through an optional sub-schema fills from the inner
+   * shape's defaults. `.default(x)` is preserved at every layer.
    */
   unwrapStructuralWrappers(schema: Schema): Schema
   /**
-   * Peels every transparent wrapper (optional / nullable / default /
-   * readonly / catch / pipe / lazy / branded / effects) and descends
-   * intersection sides looking for a single discriminated union.
-   * Returns the matching DU or `undefined` when no DU is found or
-   * when ambiguity bails (two different DUs both reachable).
+   * Peels every transparent wrapper (optional, nullable, default, readonly,
+   * catch, pipe, lazy, branded, effects) and descends intersection sides
+   * looking for a single discriminated union. Returns the match, or `undefined`
+   * when none is found or two different DUs are both reachable.
    */
   unwrapToDiscriminatedUnion(schema: Schema): Schema | undefined
   /**
-   * Peels every transparent wrapper off a schema — for `arrayShapeAtPath`
-   * the goal is the structural kind regardless of default-value
-   * semantics, so `.default(x)` / `.catch(x)` are peeled here whereas
-   * `unwrapStructuralWrappers` preserves them.
+   * Peels every transparent wrapper off a schema. `arrayShapeAtPath` wants the
+   * structural kind regardless of default-value semantics, so `.default(x)`
+   * and `.catch(x)` are peeled here where `unwrapStructuralWrappers` keeps
+   * them.
    */
   peelAllWrappers(schema: Schema): Schema
   /**
-   * Returns `true` iff the leaf schema is "required" at the
-   * union-aware sense documented on `AbstractSchema.isRequiredAtPath`:
-   * `.optional()` / `.nullable()` / `.default()` / `.catch()` at any
-   * wrapper layer make the leaf permissive; union requires every
-   * branch; intersection requires either side.
+   * True iff the leaf schema is required in the union-aware sense
+   * `AbstractSchema.isRequiredAtPath` documents: `.optional()`, `.nullable()`,
+   * `.default()` or `.catch()` at any wrapper layer makes the leaf permissive,
+   * a union requires every branch, and an intersection requires either side.
    */
   isLeafRequired(schema: Schema): boolean
   /** Returns the resolved field-meta payload for the schema at `path`. */
   resolveFieldMetaAtPath(schema: Schema, path: Path, maxRecursionDepth: number): ResolvedFieldMeta
   /**
-   * Normalise schema-library issues into the runtime's
-   * `ValidationError[]` shape. v3 and v4 have slightly different
-   * `ZodIssue` payloads; each adapter knows how to map its own.
+   * Normalise schema-library issues into `ValidationError[]`. The `ZodIssue`
+   * payload differs between versions, and each adapter maps its own.
    */
   issuesToValidationErrors(issues: readonly unknown[]): ValidationError[]
   /**
-   * Run a sync `safeParse` against the schema. Returns a tagged result
-   * the factory aggregates into a `SchemaParseResult`. MAY throw when
-   * the schema contains async-only refines / transforms (the factory
-   * catches and falls back to the async path).
+   * Run a sync `safeParse`, returning a tagged result the factory aggregates
+   * into a `SchemaParseResult`. MAY throw on a schema holding async-only
+   * refines or transforms, which the factory catches before falling back to
+   * the async path.
    */
   safeParseSync(
     schema: Schema,
@@ -412,12 +377,11 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
     data: unknown
   ): Promise<{ success: true; data: unknown } | { success: false; issues: readonly unknown[] }>
   /**
-   * Per-adapter sub-schema constructor for `getSchemasAtPath`. v3
-   * recurses through the full factory (sub-schemas carry the entire
-   * `AbstractSchema` surface). v4 returns a 5-method stub. The factory
-   * delegates here to preserve each adapter's prior shape; consumers
-   * across the runtime only reach for `needsAsyncValidation()` on
-   * sub-schemas, so both shapes are observationally interchangeable.
+   * Per-adapter sub-schema constructor for `getSchemasAtPath`. v3 recurses
+   * through the full factory, so its sub-schemas carry the entire
+   * `AbstractSchema` surface; v4 returns a four-method stub. Runtime consumers
+   * only reach for `needsAsyncValidation()` on a sub-schema, so the two shapes
+   * are observationally interchangeable.
    */
   makeSubSchema(
     schema: Schema,
@@ -426,12 +390,10 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
 }
 
 /**
- * Ceiling on any one per-path memo inside an `AbstractSchema`.
- *
- * Chosen to sit far above a real form's working set (the widest bench
- * form is 500 leaves) and far below anything worth holding, so in
- * practice the cap is never reached and, when it is, the thing that
- * reached it was a churn of invented keys rather than a working set.
+ * Ceiling on any one per-path memo inside an `AbstractSchema`. It sits far
+ * above a real form's working set, the widest bench form being 500 leaves, and
+ * far below anything worth holding, so reaching it means a churn of invented
+ * keys rather than a working set.
  */
 export const MEMO_CAP = 4096
 
@@ -441,14 +403,13 @@ const ROOT_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>(['
 const NO_KINDS: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>()
 
 /**
- * Record a memoised answer, dropping the whole memo once it outgrows
- * the cap.
+ * Record a memoised answer, dropping the whole memo once it outgrows the cap.
  *
- * Clearing rather than evicting one entry is deliberate: every value
- * here is a pure function of the schema and the path, so any of them is
- * free to recompute, and a size check plus an occasional clear is the
- * cheapest bound that exists. An LRU would cost a second structure per
- * cache per schema to protect answers that are not expensive.
+ * Clearing rather than evicting one entry is deliberate: every value here is a
+ * pure function of the schema and the path, so all are free to recompute, and
+ * a size check plus an occasional clear is the cheapest bound available. An
+ * LRU would cost a second structure per cache per schema to protect answers
+ * that are not expensive.
  */
 export function memoPut<V>(memo: Map<PathKey, V>, key: PathKey, value: V): V {
   if (memo.size >= MEMO_CAP) memo.clear()
@@ -460,20 +421,18 @@ export function memoPut<V>(memo: Map<PathKey, V>, key: PathKey, value: V): V {
  * Per-adapter store of shared `AbstractSchema` instances.
  *
  * An `AbstractSchema` is a pure function of `(rootSchema,
- * maxRecursionDepth)`: it answers questions about the SCHEMA, holds no
- * form state, and since the form key left the contract there is nothing
- * left in it that could differ between two forms declaring the same
- * schema. Building one per `useForm()` callsite therefore minted 19
- * methods, 18 service closures, 5 memos and 3 flags per form, 3,457 B,
- * to hold answers identical to the ones the form next door already had.
+ * maxRecursionDepth)`: it answers questions about the SCHEMA and holds no form
+ * state, so nothing in it can differ between two forms declaring the same
+ * schema. One per `useForm()` callsite mints 19 methods, 18 service closures,
+ * 5 memos and 3 flags per form, 3,457 B, to hold the answers the form next
+ * door already has.
  *
- * The map is weak on the schema, so a runtime-built schema still
- * releases with the last form that referenced it. Sharing also raises
- * the hit rate on the five memos: a second form on a known schema now
- * starts warm.
+ * The map is weak on the schema, so a runtime-built schema still releases with
+ * the last form that referenced it. Sharing also raises the hit rate on the
+ * memos, so a second form on a known schema starts warm.
  *
- * Each adapter calls this once at module scope to get its own store, so
- * two majors can never answer for each other's schema objects.
+ * Each adapter calls this once at module scope for its own store, so two
+ * majors can never answer for each other's schema objects.
  */
 export function createSharedSchemaStore(): <Built>(
   rootSchema: object,
@@ -488,11 +447,11 @@ export function createSharedSchemaStore(): <Built>(
       bySchema.set(rootSchema, byDepth)
     }
     const hit = byDepth.get(maxRecursionDepth)
-    // The one unchecked step, and it is sound by construction: a
-    // caller's `Built` is derived from the schema it passes (v4's
-    // `Form` is `z.input<FormSchema>`), so the same key cannot produce
-    // two different built types. Nothing weaker than a dependent type
-    // expresses that, and a `WeakMap` has none.
+    // The one unchecked step, sound by construction: a caller's `Built`
+    // derives from the schema it passes, v4's `Form` being
+    // `z.input<FormSchema>`, so one key cannot produce two built types.
+    // Nothing weaker than a dependent type expresses that, and a `WeakMap` has
+    // none.
     if (hit !== undefined) return hit as Built
     const built = build()
     byDepth.set(maxRecursionDepth, built)
@@ -501,12 +460,10 @@ export function createSharedSchemaStore(): <Built>(
 }
 
 /**
- * Build a runtime `AbstractSchema` for `rootSchema` by composing the
- * shared uniform-method implementations with the per-adapter introspector
- * + services. Each adapter calls this once per `useForm({ schema })` —
- * the returned object plus its three caches (`leafCache`,
- * `preprocessOrCoerceCache`, `discriminatorCache`) plus the two memoised
- * lazy flags live for the form's lifetime.
+ * Build a runtime `AbstractSchema` for `rootSchema`, composing the shared
+ * uniform-method implementations with the per-adapter introspector and
+ * services. The returned object, its three caches and its two memoised lazy
+ * flags live as long as the schema does; see `sharedAbstractSchema`.
  */
 export function createAbstractSchema<Schema, Form, GetValueFormType>(
   rootSchema: Schema,
@@ -516,34 +473,32 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
 ): AbstractSchema<Form, GetValueFormType> {
   const maxRecursionDepth = options.maxRecursionDepth
 
-  // Per-schema caches, memoising the schema walks that the proxy traps
-  // and reactive computeds hit on every read so the schema is not
-  // re-walked per keystroke / per field-state get.
+  // Per-schema caches over the walks the proxy traps and reactive computeds
+  // hit on every read, so the schema is not re-walked per keystroke or per
+  // field-state get.
   //
-  // Lifetime is the SCHEMA's, not a form's, since `sharedAbstractSchema`
-  // hands one instance to every form built on the same schema. That
-  // makes bounding them load-bearing rather than tidy: a path can carry
-  // a record key or an array index the consumer invents at runtime, so
-  // the key domain is unbounded even though the schema is finite, and
-  // what used to be growth released on unmount would otherwise become
-  // growth released never. See `memoPut`.
+  // Their lifetime is the SCHEMA's, not a form's, since `sharedAbstractSchema`
+  // hands one instance to every form on that schema. That makes bounding them
+  // load-bearing rather than tidy: a path can carry a record key or an array
+  // index the consumer invents at runtime, so the key domain is unbounded even
+  // though the schema is finite, and growth here is released never rather than
+  // on unmount. See `memoPut`.
   const leafCache = new Map<PathKey, boolean>()
   const preprocessOrCoerceCache = new Map<PathKey, boolean>()
   const opaqueLeafCache = new Map<PathKey, boolean>()
   const discriminatorCache = new Map<PathKey, UnionDiscriminatorContext | undefined>()
   const entryKeyKindCache = new Map<PathKey, 'string' | 'number' | undefined>()
-  // The accept-set at a path is a pure function of the schema, and it
-  // is asked for on the hot path: once per write by the slim-primitive
-  // gate, again per segment by the schema-filling writer, two or three
-  // more times by coercion. Each answer used to re-walk the schema from
-  // the root and allocate a fresh Set. Memoising it is what makes the
-  // set shared rather than copied, which is why the contract returns a
-  // `ReadonlySet`: the answer belongs to the schema, not to the caller.
+  // The accept-set at a path is a pure function of the schema and is asked for
+  // on the hot path: once per write by the slim-primitive gate, again per
+  // segment by the schema-filling writer, two or three more times by coercion.
+  // Computing it fresh re-walks from the root and allocates a Set each time.
+  // Memoising is what makes the set shared rather than copied, which is why
+  // the contract returns a `ReadonlySet`: the answer belongs to the schema,
+  // not to the caller.
   const slimKindsCache = new Map<PathKey, ReadonlySet<SlimPrimitiveKind>>()
-  // Memoised one-shot tree walks. `needsAsyncValidation` is queried at
-  // construction by the store (drives the construction-time async seed);
-  // `hasContainerOrRootRefine` is queried per keystroke (drives the
-  // subtree-vs-whole-form scope cut).
+  // Memoised one-shot tree walks. The store queries `needsAsyncValidation` at
+  // construction, driving the async seed, and `hasContainerOrRootRefine` per
+  // keystroke, driving the subtree-against-whole-form scope cut.
   let asyncValidationFlag: boolean | null = null
   let containerRefineFlag: boolean | null = null
   let discriminatedUnionFlag: boolean | null = null
@@ -560,9 +515,9 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
    * kinds a key value can actually take, so the test stays closed over
    * key types nobody here enumerated.
    *
-   * A key type admitting BOTH (`z.union([z.string(), z.number()])`)
-   * has no single spelling, and a segment that reached it could mean
-   * either entry, so it is not addressable either.
+   * A key type admitting BOTH, `z.union([z.string(), z.number()])`, has no
+   * single spelling, and a segment reaching it could mean either entry, so it
+   * is not addressable either.
    */
   function mapKeySegmentKind(schema: Schema): 'string' | 'number' | undefined {
     const keyType = intro.getMapKeyType(schema)
@@ -579,12 +534,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       path.length === 0
         ? [rootSchema]
         : services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
-    // `unwrapToDiscriminatedUnion` peels every transparent wrapper
-    // (Optional / Nullable / Default / Readonly / Catch / Effects /
-    // Pipeline / Branded) and descends Intersection sides looking for a
-    // single discriminated union. Ambiguous resolutions (two distinct
-    // DUs both reachable across candidates) bail — the runtime then
-    // falls back to a plain write.
+    // `unwrapToDiscriminatedUnion` peels every transparent wrapper and
+    // descends intersection sides looking for a single discriminated union.
+    // Two distinct DUs reachable across candidates is ambiguous and bails, and
+    // the runtime falls back to a plain write.
     let matchedUnion: Schema | undefined
     for (const candidate of candidates) {
       const du = services.unwrapToDiscriminatedUnion(candidate)
@@ -656,24 +609,22 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       }
       const [first] = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       if (first === undefined) return undefined
-      // STRUCTURAL default: peel `.optional()` / `.nullable()` so partial
-      // object writes through optional sub-schemas (`{ profile:
-      // z.object({...}).optional() }`) get the inner shape's defaults
-      // filled in. `.default(x)` is preserved so deriveDefault returns
-      // the explicit default. First candidate matches
+      // STRUCTURAL default: peel `.optional()` and `.nullable()`, so a partial
+      // object write through an optional sub-schema fills from the inner
+      // shape's defaults. `.default(x)` is preserved, so `deriveDefault`
+      // returns the explicit default. Taking the first candidate matches
       // `validateAtPath`'s first-success semantic.
       const peeled = services.unwrapStructuralWrappers(first)
       return services.deriveDefault(peeled, true, maxRecursionDepth)
     },
 
     getEmptyValueAtPath(path) {
-      // `clear`'s underlying value lookup. Same path-resolution flow as
-      // `getDefaultAtPath` but with `useDefault=false` so `.default(x)`
-      // / `.catch(x)` wrappers are skipped — the walker yields the
-      // inner-schema's empty concrete instead. Structural wrappers
-      // (`.optional()` / `.nullable()`) are NOT peeled: clearing an
-      // `.optional()` slot is legitimately `undefined`, clearing a
-      // `.nullable()` slot is `null`.
+      // `clear`'s underlying value lookup. The same path resolution as
+      // `getDefaultAtPath` with `useDefault=false`, so `.default(x)` and
+      // `.catch(x)` are skipped and the walker yields the inner schema's empty
+      // concrete. Structural wrappers are NOT peeled: clearing an
+      // `.optional()` slot is legitimately `undefined` and a `.nullable()` one
+      // is `null`.
       if (path.length === 0) {
         return services.deriveDefault(rootSchema, false, maxRecursionDepth)
       }
@@ -683,11 +634,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     arrayShapeAtPath(path) {
-      // Definitive per the contract: `null` is "not a tuple" — an
-      // unbounded array, a path that doesn't resolve, or a non-array
-      // kind (the root included). Callers only consult this while
-      // descending an array branch and treat `null` as consumer
-      // length + one shared element default.
+      // `null` means "not a tuple": an unbounded array, a path that does not
+      // resolve, or a non-array kind, the root included. Callers consult it
+      // only while descending an array branch and read `null` as consumer
+      // length plus one shared element default.
       if (path.length === 0) return null
       const [first] = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       if (first === undefined) return null
@@ -709,14 +659,13 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       // A path the schema doesn't declare is not a fixed object; the
       // proxy falls back to live keys there.
       if (resolved.length === 0) return false
-      // The walker returns the NODE itself at a terminal path (it only
-      // splits a union / DU into variants while descending THROUGH one),
-      // so a record / array / set / union / DU surfaces here as its own
-      // single non-object kind. Multiple candidates appear only when the
-      // path descended through a union and landed on a key present in
-      // several variants; that key is a fixed object iff it's an object
-      // in every variant. Peel wrappers first so `z.object().optional()`
-      // still reads as an object.
+      // The walker returns the NODE itself at a terminal path, splitting a
+      // union or DU into variants only while descending THROUGH one, so a
+      // record, array, set, union or DU surfaces as its own single non-object
+      // kind. Several candidates appear only where the path descended through
+      // a union and landed on a key several variants declare, and that key is
+      // a fixed object iff it is an object in every variant. Peel wrappers
+      // first, so `z.object().optional()` still reads as an object.
       return resolved.every((s) => intro.kindOf(services.peelAllWrappers(s)) === 'object')
     },
 
@@ -729,9 +678,8 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
           : services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       let answer: 'string' | 'number' | undefined
       // One candidate only. A union landing here means the same segment
-      // would address a different container in each arm, and the two
-      // could disagree about what spells a key; no single answer is
-      // true, so there isn't one.
+      // addresses a different container in each arm, and the arms can disagree
+      // about what spells a key, so no single answer is true.
       const only = resolved.length === 1 ? resolved[0] : undefined
       if (only !== undefined) {
         switch (intro.kindOf(services.peelAllWrappers(only))) {
@@ -756,16 +704,15 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     getSchemasAtPath(path) {
-      // Slim-mode walk: v3 strips refinements / defaults / wrappers off
-      // the root so the yielded sub-schemas reflect the slim shape (the
-      // shape the slim-primitive gate consults). v4 aliases the slim
-      // and unstripped walks to the same call. The factory uses one
-      // hook for both `getSlimPrimitiveTypesAtPath` and
-      // `getSchemasAtPath` — same v3 strip semantic, same v4 alias.
+      // Slim-mode walk: v3 strips refinements, defaults and wrappers off the
+      // root so the sub-schemas reflect the shape the slim-primitive gate
+      // consults, while v4 aliases the slim and unstripped walks to one call.
+      // Both `getSlimPrimitiveTypesAtPath` and `getSchemasAtPath` go through
+      // this one hook.
       const resolved = services.getNestedSchemasInSlimMode(rootSchema, path, maxRecursionDepth)
-      // Empty list is a valid result for paths the schema doesn't
-      // declare — callers (getValue / register / custom introspection)
-      // treat `[]` as "no sub-schema here". No warning needed.
+      // An empty list is a valid result for a path the schema does not
+      // declare; `getValue`, `register` and custom introspection all read it
+      // as "no sub-schema here".
       if (resolved.length === 0) return []
       return resolved.map((sub) => services.makeSubSchema(sub, maxRecursionDepth))
     },
@@ -777,9 +724,9 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       const hit = slimKindsCache.get(cacheKey)
       if (hit !== undefined) return hit
       const resolved = services.getNestedSchemasInSlimMode(rootSchema, path, maxRecursionDepth)
-      // Path doesn't resolve in the schema → no kinds accepted. The
-      // gate's membership check rejects every kind against an empty
-      // set, blocking writes to typo / unknown paths.
+      // A path the schema does not resolve accepts no kinds, so the gate's
+      // membership check rejects every one and a write to a typo'd or unknown
+      // path is blocked.
       if (resolved.length === 0) return memoPut(slimKindsCache, cacheKey, NO_KINDS)
       const out = new Set<SlimPrimitiveKind>()
       for (const candidate of resolved) {
@@ -794,18 +741,18 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       const cacheKey = canonicalizePath(path).key
       const cached = leafCache.get(cacheKey)
       if (cached !== undefined) return cached
-      // An opaque leaf declares a value without describing its shape,
-      // so it admits every kind INCLUDING the container ones and the
-      // slim-primitive test below reads it as a container. It has no
-      // sub-paths to descend into, which is what leafness answers, so
-      // it resolves ahead of that test. The root stays a container
-      // even when the adapter hands back an opaque root schema.
+      // An opaque leaf declares a value without describing its shape, so it
+      // admits every kind INCLUDING the container ones and the slim-primitive
+      // test below would read it as a container. It has no sub-paths to
+      // descend into, which is what leafness answers, so it resolves ahead of
+      // that test. The root stays a container even when the adapter hands back
+      // an opaque root schema.
       const opaque = path.length > 0 && this.isOpaqueLeafAtPath(path)
       const prim = opaque ? undefined : this.getSlimPrimitiveTypesAtPath(path)
-      // Empty set → path doesn't exist in schema → descend permissively
-      // (treat as container so schema-named reserved keys at depth 2+
-      // don't shadow). Any container kind in the set → descend.
-      // Otherwise every kind is a primitive → leaf.
+      // An empty set means the path is not in the schema, so descend
+      // permissively and treat it as a container, keeping schema-named
+      // reserved keys at depth 2 and below from shadowing. Any container kind
+      // in the set also descends; a set of primitives only is a leaf.
       const isLeaf =
         opaque ||
         (prim !== undefined &&
@@ -818,11 +765,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     isPreprocessOrCoerceLeaf(path): boolean {
-      // Walks prefixes of `path` looking for either shape adapters
-      // use for schema-side input normalizers (`z.preprocess(...)` or
-      // `z.coerce.X()`). Returns true at such a node OR anywhere
-      // underneath it; the slim-primitive gate uses this to accept
-      // raw consumer writes verbatim throughout that subtree.
+      // Walks prefixes of `path` for either shape a schema-side input
+      // normalizer takes, `z.preprocess(...)` or `z.coerce.X()`. True at such a
+      // node and anywhere under it, which is how the slim-primitive gate knows
+      // to accept raw consumer writes verbatim throughout that subtree.
       const cacheKey = canonicalizePath(path).key
       const cached = preprocessOrCoerceCache.get(cacheKey)
       if (cached !== undefined) return cached
@@ -851,9 +797,9 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
         path.length === 0
           ? [rootSchema]
           : services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
-      // Every candidate must be opaque. A union with one opaque arm
-      // still has arms that describe a shape, and those arms' sub-paths
-      // are real — the gate has to keep checking them.
+      // Every candidate must be opaque. A union with one opaque arm still has
+      // arms that describe a shape, and their sub-paths are real, so the gate
+      // has to keep checking them.
       const opaque =
         resolved.length > 0 &&
         resolved.every((candidate) =>
@@ -863,15 +809,14 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
     },
 
     isRequiredAtPath(path): boolean {
-      // Root form is structurally required (it's the parsed object).
-      // The required-empty check tracks primitive leaves only, so this
-      // branch is academic for the call sites that matter.
+      // The root form is structurally required, being the parsed object. The
+      // required-empty check tracks primitive leaves only, so this branch is
+      // academic for the call sites that matter.
       if (path.length === 0) return true
       const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
       if (resolved.length === 0) return false
-      // Every candidate must be required for the path overall to be
-      // required — matches the union "any-branch-permissive" rule
-      // when the path traverses a union.
+      // Every candidate must be required for the path to be, which is the
+      // union's any-branch-permissive rule where the path traverses one.
       return resolved.every((candidate) => services.isLeafRequired(candidate))
     },
 
@@ -892,11 +837,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       path: Path | undefined,
       validateOptions?: ValidateOptions
     ): ReturnType<AbstractSchema<Form, GetValueFormType>['validateAtPath']> {
-      // Sync attempt: when `options.sync === true`, try the sync parse.
-      // It throws on async refines / pipes / transforms; we catch and
-      // fall through to the async path. Without the flag the adapter
-      // goes straight to async — the historical contract every non-
-      // reshape callsite expects.
+      // With `options.sync === true`, try the sync parse first. It throws on
+      // async refines, pipes and transforms, which is caught here before
+      // falling through to async. Without the flag the adapter goes straight
+      // to async, which is what every callsite but the DU reshape wants.
       const trySync = validateOptions?.sync === true
       if (trySync) {
         try {
@@ -907,10 +851,9 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       }
       return runAsync()
 
-      // Post-parse aggregation core shared by runSync / runAsync: map a
-      // single safe-parse result to a SchemaParseResult. The parse call
-      // (sync vs async + its try/catch) stays in each runner; only the
-      // success/issues -> response shaping is shared here.
+      // Shared by the sync and async runners: map one safe-parse result to a
+      // `SchemaParseResult`. The parse call and its try/catch stay in each
+      // runner, and only the response shaping is shared.
       function parseResultToResponse(
         result: { success: true; data: unknown } | { success: false; issues: readonly unknown[] }
       ): SchemaParseResult<GetValueFormType> {
@@ -950,7 +893,7 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
         }
         const resolved = services.getNestedSchemasAtPath(rootSchema, path, maxRecursionDepth)
         if (resolved.length === 0) return pathNotFound(path)
-        // Sequential await — parallelising would run every branch's
+        // Sequential await: parallelising would run every branch's
         // async side effects on a value only one branch should see.
         const aggregated: ValidationError[] = []
         for (const candidate of resolved) {
@@ -967,14 +910,12 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
         return { data: undefined, errors: aggregated, success: false }
       }
 
-      // User code inside `z.preprocess` / `.refine` / `.transform` can
-      // throw (sync) or reject (async). Zod does NOT wrap these into
-      // issues; they propagate out of `safeParse` / `safeParseAsync`.
-      // Without this catch the throw bubbles through `validateAtPath`
-      // into the runtime's submit / change-mode pipelines as either a
-      // `submitError` (handleSubmit) or an unhandled rejection
-      // (scheduleFieldValidation), and the consumer would never see a
-      // path-scoped error message. Surface as a `ValidationError` at
+      // User code inside `z.preprocess`, `.refine` or `.transform` can throw
+      // or reject, and Zod does NOT wrap those into issues: they propagate out
+      // of `safeParse` and `safeParseAsync`. Uncaught, the throw bubbles
+      // through `validateAtPath` into the submit and change-mode pipelines as
+      // either a `submitError` or an unhandled rejection, and the consumer
+      // never sees a path-scoped message. Surface as a `ValidationError` at
       // the field path so the form's normal error pipeline handles it.
       function validatorThrewResponse(
         err: unknown,

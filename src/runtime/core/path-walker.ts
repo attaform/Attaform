@@ -10,60 +10,54 @@ import {
 } from './safe-assign'
 
 /**
- * The minimal slice of `AbstractSchema` the structural-completeness
- * helpers need. Declared inline (not imported from types-api) so this
- * file stays free of cyclic imports — types-api imports types-core,
- * types-core does not import types-api, and this file is consumed by
- * core/create-form-store.ts which sits between the two.
+ * The minimal slice of `AbstractSchema` the structural-completeness helpers
+ * need. Declared inline rather than imported from types-api so this file stays
+ * free of cyclic imports: types-api imports types-core, types-core imports
+ * neither, and `create-form-store.ts`, which consumes this file, sits between.
  */
 export type SchemaForFill = {
   getDefaultAtPath(path: Path): unknown
   /**
-   * Distinguish tuple (number — structural length) from everything
-   * else (null: unbounded array, or no array at `path` at all). The
-   * answer is definitive. See `AbstractSchema.arrayShapeAtPath` for
-   * the full contract.
+   * A number is a tuple's structural length; `null` is everything else, an
+   * unbounded array or no array at `path` at all. Definitive. See
+   * `AbstractSchema.arrayShapeAtPath`.
    */
   arrayShapeAtPath(path: Path): number | null
   /**
-   * Slim primitive set at `path`. Used by `mergeStructural` to
-   * distinguish "consumer omitted this key from a partial" (fill from
-   * schema default) from "consumer explicitly wrote undefined into a
-   * path that admits undefined" (preserve undefined). An empty set
-   * (path unknown to the schema) never contains `'undefined'`, so
-   * unknown paths keep the fill-with-default behavior.
-   * See `AbstractSchema.getSlimPrimitiveTypesAtPath` for the full
-   * contract.
+   * Slim primitive set at `path`. `mergeStructural` reads it to tell "consumer
+   * omitted this key from a partial", which fills from the schema default,
+   * from "consumer explicitly wrote undefined into a path that admits it",
+   * which preserves the undefined. An empty set, meaning a path the schema
+   * does not know, never contains `'undefined'`, so an unknown path keeps the
+   * fill-with-default behaviour. See
+   * `AbstractSchema.getSlimPrimitiveTypesAtPath`.
    */
   getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<string>
   /**
-   * How the container at `path` spells its own entry keys. The write
-   * walkers consult it at a `Map`, where a new entry has to be filed
-   * under a key of the declared type and the segment alone cannot say
-   * which: an integer-looking segment canonicalises to a number, so a
-   * map declared `z.map(z.string(), V)` would otherwise take a numeric
-   * key for `scores.42` and fail its own parse. See
-   * `AbstractSchema.entryKeyKindAtPath` for the full contract.
+   * How the container at `path` spells its own entry keys. The write walkers
+   * consult it at a `Map`, where a new entry must be filed under a key of the
+   * declared type and the segment alone cannot say which: an integer-looking
+   * segment canonicalises to a number, so a map declared
+   * `z.map(z.string(), V)` would take a numeric key for `scores.42` and fail
+   * its own parse. See `AbstractSchema.entryKeyKindAtPath`.
    */
   entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined
 }
 
 /**
- * Structured-path get/set primitives. Replace `lodash-es/get` and
- * `lodash-es/set` for internal callers that speak `Path` rather than
- * dotted strings.
+ * Structured-path get and set primitives, for internal callers that speak
+ * `Path` rather than dotted strings.
  *
- * Semantics:
- * - `getAtPath` returns `undefined` for any path that traverses through
- *   a non-descendable value (null, primitive, function). This preserves
- *   distinctions: `null` at the exact target is returned as `null`, not
- *   as `undefined`; only missing / non-descendable intermediates collapse.
- * - `setAtPath` is copy-on-write at every level from root to target. New
- *   intermediate containers are created according to the segment type:
- *   numeric segments produce arrays, string segments produce plain objects.
- *   Sibling values at each level are preserved by reference (structural
- *   sharing), so the non-touched subtrees stay reference-equal for
- *   downstream `Object.is` checks in `diffAndApply`.
+ * `getAtPath` returns `undefined` for any path traversing a non-descendable
+ * value (null, a primitive, a function). The distinction is preserved at the
+ * target itself: a `null` there comes back as `null`, and only a missing or
+ * non-descendable INTERMEDIATE collapses.
+ *
+ * `setAtPath` is copy-on-write at every level from root to target. A new
+ * intermediate container follows its segment type, a numeric segment
+ * producing an array and a string one a plain object. Siblings at each level
+ * are preserved by reference, so an untouched subtree stays reference-equal
+ * for `diffAndApply`'s `Object.is` checks.
  */
 
 const NOT_FOUND: unique symbol = Symbol('NOT_FOUND')
@@ -78,9 +72,9 @@ const NOT_FOUND: unique symbol = Symbol('NOT_FOUND')
  *
  * 1. The spelling the map already holds wins, so reading and
  *    overwriting an existing entry never depends on the schema.
- * 2. For a key the map does not hold yet, `declared` decides — it is
- *    the map's own key type, via `entryKeyKindAtPath`. A writer with
- *    no schema in hand passes `undefined` and the segment stands.
+ * 2. For a key the map does not hold yet, `declared` decides. It is the
+ *    map's own key type, from `entryKeyKindAtPath`; a writer with no schema
+ *    in hand passes `undefined` and the segment stands.
  *
  * The reverse direction needs no case: a non-integer-looking segment
  * is already a string, and a number-keyed map's segment is already a
@@ -99,27 +93,24 @@ function mapKeyForSegment(
 }
 
 /**
- * Whether a write may rebuild the container at `root` to hold
- * `segment`.
+ * Whether a write may rebuild the container at `root` to hold `segment`.
  *
- * Every write is copy-on-write from the root down, and the rebuild
- * knows two shapes: an array for a numeric segment, a plain record for
- * a string one (a `Map` is handled ahead of this, by its own branch).
- * Starting from a fresh empty container is the right answer for a slot
- * that is missing, null, or holds a scalar the write is replacing. It
- * is the wrong answer for a slot already holding an object of some
- * OTHER kind: the rebuild does not copy that object, it replaces it,
- * and everything the original held is gone.
+ * Every write is copy-on-write from the root down, and the rebuild knows two
+ * shapes: an array for a numeric segment, a plain record for a string one, a
+ * `Map` having been handled by its own branch ahead of this. A fresh empty
+ * container is the right answer for a slot that is missing, null, or holding a
+ * scalar the write replaces. It is the WRONG answer for a slot already holding
+ * an object of some other kind, because the rebuild replaces rather than
+ * copies and everything the original held is gone.
  *
- * `z.set` is how that was reachable. The schema walker consumes a
- * segment at a set to answer what its members look like, so `tags.0`
- * cleared the write gate, and the numeric rebuild turned a `Set` of
- * three into an `Array` of one. `entryKeyKindAtPath` is the loud half
- * of the rule now (a set has no addressable entry, so the gate refuses
- * and dev-warns before reaching here); this is the quiet half, so a
- * caller that arrives some other way leaves the tree alone instead of
- * destroying it. Structural rather than a list of refused classes, so
- * a container kind nobody here thought of is covered the same way.
+ * `z.set` is how that is reachable: the schema walker consumes a segment at a
+ * set to answer what its members look like, so `tags.0` clears the write gate
+ * and a numeric rebuild turns a `Set` of three into an `Array` of one.
+ * `entryKeyKindAtPath` is the loud half of the rule, refusing and dev-warning
+ * before reaching here, since a set has no addressable entry; this is the
+ * quiet half, so a caller arriving some other way leaves the tree alone.
+ * Structural rather than a list of refused classes, so a container kind nobody
+ * here thought of is covered the same way.
  */
 function isRebuildableContainer(root: unknown, segment: Segment): boolean {
   if (root === null || root === undefined || typeof root !== 'object') return true
@@ -129,21 +120,19 @@ function isRebuildableContainer(root: unknown, segment: Segment): boolean {
 /**
  * One step of a read descent.
  *
- * Every read here is of a container the CONSUMER supplied, so any of
- * them can throw: an index or key may be an accessor, and a Proxy (which
- * `reactive()` returns, so this is not hypothetical) traps `in` as
- * readily as a property read. This sits under `getAtPath`, which every
- * FieldState rollup calls during render, so an escape surfaces as the
- * host component's render throwing — the one thing library code must
- * never cause.
+ * Every read here is of a container the CONSUMER supplied, so any can throw:
+ * an index or key may be an accessor, and a Proxy, which `reactive()` returns,
+ * traps `in` as readily as a property read. This sits under `getAtPath`, which
+ * every FieldState rollup calls during render, so an escape surfaces as the
+ * host component's render throwing.
  *
- * The containment is therefore real, but it lives in the CALLERS, one
- * `try` around the whole descent rather than a guarded accessor per
- * segment. That shape was measured: per-segment guards cost 8% of a
- * one-segment read and 34% of a sixteen-segment one, because each guard
- * is a call into a function holding a `try` and the loop body stops
- * being inlinable. Cost per descent is what a path read can afford;
- * cost per segment is not, and this is the hottest read in the library.
+ * The containment is therefore real, but it lives in the CALLERS: one `try`
+ * around the whole descent rather than a guarded accessor per segment. That
+ * shape is measured. Per-segment guards cost 8% of a one-segment read and 34%
+ * of a sixteen-segment one, because each guard is a call into a function
+ * holding a `try` and the loop body stops being inlinable. Cost per descent is
+ * what a path read can afford; cost per segment is not, and this is the
+ * hottest read in Attaform.
  */
 function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOUND {
   if (value === null || value === undefined) return NOT_FOUND
@@ -151,44 +140,42 @@ function descendStep(value: unknown, segment: Segment): unknown | typeof NOT_FOU
   if (Array.isArray(value)) {
     if (typeof segment !== 'number') return NOT_FOUND
     // Presence-test the index rather than comparing it against `value.length`.
-    // On a reactive array the `in` check tracks only this index's dependency
-    // (Vue's `has` trap), whereas reading `.length` would subscribe the caller
-    // to the array length. Descending into an element must NOT couple the
-    // reader to the sibling count: a length read here makes every element's
-    // value access (and the FieldState rollup built on it) re-run on any
-    // append / remove, turning an array op into O(N x element-leaves). An
-    // out-of-range, negative, or hole index is absent, so `in` is false and we
-    // return NOT_FOUND exactly as the bounds comparison did.
+    // On a reactive array `in` hits Vue's `has` trap and tracks only this
+    // index, where reading `.length` would subscribe the caller to the array
+    // length. Descending into an element must NOT couple the reader to the
+    // sibling count: a length read makes every element's value access, and the
+    // FieldState rollup on it, re-run on any append or remove, turning an
+    // array op into O(N x element-leaves). An out-of-range, negative or hole
+    // index is absent, so `in` is false and NOT_FOUND comes back exactly as a
+    // bounds comparison would give.
     if (!(segment in value)) return NOT_FOUND
     return value[segment]
   }
   if (value instanceof Map) {
-    // A map's entries are real sub-paths: one segment addresses one
-    // entry, the same shape a record has (#614). `has` before `get`
-    // keeps "present and holding undefined" distinct from "absent",
-    // and on a reactive map both hit Vue's per-key traps, so a reader
-    // descending one entry does not subscribe to the map's size.
+    // A map's entries are real sub-paths: one segment addresses one entry, the
+    // shape a record has (#614). `has` before `get` keeps "present and holding
+    // undefined" apart from "absent", and on a reactive map both hit Vue's
+    // per-key traps, so descending one entry does not subscribe to the size.
     const key = mapKeyForSegment(value, segment)
     if (!value.has(key)) return NOT_FOUND
     return value.get(key)
   }
   const record = value as Record<string, unknown>
   const key = typeof segment === 'number' ? String(segment) : segment
-  // Own-property-safe descent for prototype-shadowed key names
-  // (`hasOwnProperty`, `toString`, `__proto__`, …): `key in record`
-  // answers `true` for the inherited member and `record[key]` returns
-  // it (or, through a Vue reactive proxy, Vue's instrumented
-  // `hasOwnProperty` shim) when no own data slot exists. The own-
-  // descriptor read returns the stored value (NOT_FOUND when purely
-  // inherited) and forwards to the raw descriptor on a reactive proxy.
+  // Own-property-safe descent for a prototype-shadowed key name
+  // (`hasOwnProperty`, `toString`, `__proto__`): `key in record` answers `true`
+  // for the inherited member and `record[key]` returns it, or Vue's
+  // instrumented `hasOwnProperty` shim through a reactive proxy, when no own
+  // data slot exists. The own-descriptor read returns the stored value,
+  // NOT_FOUND when purely inherited, and forwards to the raw descriptor on a
+  // reactive proxy.
   //
-  // That descriptor read bypasses Vue's reactive get-trap, so a reader
-  // descending a shadowed segment registers NO per-key dependency on it.
-  // Reactivity is carried at the write site instead: when a write changes a
-  // root-level shadowed key, `applyFormReplacement` fires the whole-`form`-
-  // ref explicitly (`triggerRef`); a shadowed key nested under a non-
-  // shadowed ancestor rides that ancestor's per-key dep, which the copy-on-
-  // write fallback reassigns. See create-form-store's `applyFormReplacement`.
+  // That descriptor read bypasses Vue's get trap, so descending a shadowed
+  // segment registers NO per-key dependency. Reactivity is carried at the
+  // write site instead: a write changing a root-level shadowed key makes
+  // `applyFormReplacement` fire the whole-`form` ref through `triggerRef`,
+  // while a shadowed key nested under a non-shadowed ancestor rides that
+  // ancestor's per-key dep, which the copy-on-write fallback reassigns.
   if (isShadowedKey(key)) {
     if (!safeOwnHas(record, key)) return NOT_FOUND
     return safeOwnRead(record, key)
@@ -209,27 +196,25 @@ export function getAtPath(root: unknown, path: Path): unknown {
     return current
   } catch {
     // A consumer accessor or Proxy trap threw somewhere in the descent.
-    // `undefined` is already this function's answer for a path that does
-    // not resolve, and every caller handles it, so the throw is absorbed
-    // into an answer the contract already allows rather than escaping
-    // into whatever render is reading this path.
+    // `undefined` is already this function's answer for a path that does not
+    // resolve and every caller handles it, so the throw is absorbed into an
+    // answer the contract allows rather than escaping into whatever render is
+    // reading this path.
     return undefined
   }
 }
 
 /**
- * Returns true iff `path` exists in `root` as a descendable chain to a leaf
- * or to a defined value. Distinguishes "exists and is undefined" (rare but
- * possible with explicit assignment) from "missing".
+ * True iff `path` exists in `root` as a descendable chain to a leaf or a
+ * defined value. "Exists and holds undefined" is distinct from "missing".
  */
 export function hasAtPath(root: unknown, path: Path): boolean {
   if (path.length === 0) return true
   try {
     return hasAtPathUnguarded(root, path)
   } catch {
-    // Same containment as `getAtPath`: an existence check is no safer
-    // than a read, and `false` is what this function already answers for
-    // a path that is not there.
+    // Same containment as `getAtPath`: an existence check is no safer than a
+    // read, and `false` is already the answer for a path that is not there.
     return false
   }
 }
@@ -246,24 +231,22 @@ function hasAtPathUnguarded(root: unknown, path: Path): boolean {
   if (current === null || current === undefined) return false
   if (typeof current !== 'object') return false
   if (Array.isArray(current)) {
-    // Presence-test the index rather than comparing it against `current.length`,
-    // for the same reason `descendStep` does: `in` hits Vue's `has` trap and
-    // tracks only this index, whereas a `.length` read would subscribe the caller
-    // to the array length. `hasAtPath` is the active-path gate for errors and
-    // field-state (errors-proxy, the field-state orphan check); an entry pinned
-    // directly at an array-index path (`rows.3`) must not re-run that gate on
-    // every append / remove just because a sibling changed the length. `in` is
-    // also truer to this function's own contract: a never-assigned hole is
-    // "missing", which the `< length` comparison wrongly reported as present.
+    // Presence-test the index rather than comparing it against
+    // `current.length`, for the reason `descendStep` gives. `hasAtPath` is the
+    // active-path gate for errors and field state, so an entry pinned directly
+    // at an array-index path must not re-run it on every append or remove just
+    // because a sibling changed the length. `in` is also truer to the
+    // contract: a never-assigned hole is missing, where a `< length`
+    // comparison reports it present.
     return typeof last === 'number' && consumerHas(current, last)
   }
   if (current instanceof Map) {
     return current.has(mapKeyForSegment(current, last))
   }
   const key = typeof last === 'number' ? String(last) : last
-  // Own-property existence for prototype-shadowed names — `key in
-  // current` would report `true` for an inherited slot the consumer
-  // never wrote (see descendStep / safeOwnHas).
+  // Own-property existence for a prototype-shadowed name: `key in current`
+  // reports `true` for an inherited slot the consumer never wrote. See
+  // `descendStep` and `safeOwnHas`.
   if (isShadowedKey(key)) return safeOwnHas(current as Record<string, unknown>, key)
   return consumerHas(current as Record<string, unknown>, key)
 }
@@ -278,17 +261,14 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
 const NO_SCHEMA_DEFAULTS: ReadonlySet<string> = new Set()
 
 /**
- * The empty schema: every structural question answers "nothing declared
- * at this path". It lets `setAtPath` run on the schema-aware writer's
- * spine instead of keeping a second copy of it.
+ * The empty schema: every structural question answers "nothing declared at
+ * this path". It lets `setAtPath` run on the schema-aware writer's spine
+ * rather than keeping a second copy of it.
  *
- * Keeping two was the actual defect. The prototype-pollution hardening
- * landed on `setAtPath`, and `setAtPath` then stopped being the writer
- * the form uses — every `setValue` goes through
- * `setAtPathWithSchemaFill`, which was still assigning through a raw
- * `rec[head]`. The suite guarding the hardening kept passing because it
- * pointed at the walker nobody calls. One spine cannot drift from
- * itself.
+ * ONE spine is the point. Every `setValue` goes through
+ * `setAtPathWithSchemaFill`, so hardening applied to a separate `setAtPath`
+ * body protects a walker nothing calls, and the suite guarding it keeps
+ * passing while the live writer assigns through a raw `rec[head]`.
  */
 const NO_SCHEMA_FILL: SchemaForFill = {
   getDefaultAtPath: () => undefined,
@@ -306,66 +286,62 @@ export type InPlaceWriteResult = { applied: true; old: unknown } | { applied: fa
 const NO_IN_PLACE: InPlaceWriteResult = { applied: false }
 
 /**
- * In-place leaf write that preserves ancestor container identity — the
- * fast path behind a single `setValue` keystroke. When the exact leaf
- * slot at `path` already exists and currently holds a non-container
- * value, mutate that slot directly on the live (reactive) tree and
- * return the prior value. Every ancestor container keeps its object
- * identity, so a by-reference watch on a container stays quiet on a
- * descendant edit while the leaf's own reactive dependency still fires.
+ * In-place leaf write preserving ancestor container identity, the fast path
+ * behind a single `setValue` keystroke. When the exact leaf slot at `path`
+ * exists and holds a non-container value, mutate it directly on the live
+ * reactive tree and return the prior value. Every ancestor keeps its object
+ * identity, so a by-reference watch on a container stays quiet on a descendant
+ * edit while the leaf's own dependency still fires.
  *
- * Returns `{ applied: false }` — caller must fall back to the
- * copy-on-write `setAtPathWithSchemaFill` + first-segment reassign — in
- * every case that is NOT a pure in-place leaf edit:
- * - empty `path` (root replacement),
- * - any prototype-shadowed segment (`__proto__`, `hasOwnProperty`, …):
- *   those bypass reactive `get`/`set` tracking, so their reactivity is
- *   carried by the copy-on-write fallback — a non-shadowed ancestor's
- *   reassign for a nested key, or the explicit `triggerRef` that
- *   `applyFormReplacement` fires for a changed root-level shadowed key,
- * - a missing / non-descendable ancestor, or an out-of-range array index
- *   (a structural change — the container SHOULD get a new reference),
- * - an absent target slot (adding a key/index is structural), or
- * - a container currently at the slot (a container-target write replaces
- *   the slot wholesale, same as the fallback — and the contract gives the
- *   write target a fresh reference either way).
+ * Returns `{ applied: false }` in every case that is NOT a pure in-place leaf
+ * edit, and the caller falls back to copy-on-write `setAtPathWithSchemaFill`
+ * plus a first-segment reassign:
+ * - an empty `path`, which is a root replacement;
+ * - any prototype-shadowed segment, which bypasses reactive get and set
+ *   tracking, so its reactivity is carried by the fallback: a non-shadowed
+ *   ancestor's reassign for a nested key, or the `triggerRef` that
+ *   `applyFormReplacement` fires for a changed root-level shadowed key;
+ * - a missing or non-descendable ancestor, or an out-of-range array index,
+ *   both structural changes where the container SHOULD get a new reference;
+ * - an absent target slot, since adding a key or index is structural;
+ * - a container already at the slot, which a container-target write replaces
+ *   wholesale, and the contract gives the write target a fresh reference
+ *   either way.
  *
- * `root` MUST be the reactive `form.value` (not a raw clone) so the
- * assignment fires Vue's dependency for the written key.
+ * `root` MUST be the reactive `form.value`, not a raw clone, so the assignment
+ * fires Vue's dependency for the written key.
  */
 export function tryInPlaceLeafWrite(root: unknown, path: Path, value: unknown): InPlaceWriteResult {
   if (path.length === 0) return NO_IN_PLACE
   try {
     return descendAndWrite(root, path, value)
   } catch {
-    // Every read and the final write below touch a container the
-    // consumer supplied, so any of them can be an accessor or a Proxy
-    // trap that throws. `NO_IN_PLACE` is already the answer for "this
-    // write cannot be done in place", and the copy-on-write fallback it
-    // sends the caller to walks through the guarded readers. Bailing
-    // here is therefore a downgrade in speed, never in correctness.
+    // Every read and the final write touch a container the consumer supplied,
+    // so any can be an accessor or a Proxy trap that throws. `NO_IN_PLACE` is
+    // already the answer for "this write cannot be done in place", and the
+    // copy-on-write fallback it sends the caller to walks through the guarded
+    // readers, so bailing here is a downgrade in speed, never in correctness.
     return NO_IN_PLACE
   }
 }
 
 function descendAndWrite(root: unknown, path: Path, value: unknown): InPlaceWriteResult {
   // Single validated descent: at each level the segment must address an
-  // existing slot on a descendable container. A missing/non-descendable
+  // existing slot on a descendable container. A missing or non-descendable
   // node, an out-of-range index, an absent key, or a prototype-shadowed
-  // segment (which bypasses reactive tracking) means a structural /
-  // non-fast-path write → fall back to copy-on-write.
+  // segment that bypasses reactive tracking all mean a structural write, so
+  // fall back to copy-on-write.
   let node: unknown = root
   for (let i = 0; i < path.length; i++) {
     const seg = path[i] as Segment
-    // A `Map` is never edited in place, unlike the array element one
-    // step down. `materializeFormValue` shares a map with the consumer
-    // BY REFERENCE (as it does a `Set`, `File`, `Blob` and `Date` —
-    // some of them cannot be copied at all), where it deep-copies a
-    // plain object or an array. So an in-place map write would reach
-    // straight back into the `defaultValues` the consumer still holds,
-    // mutating their object and, because `originals` was seeded from
-    // that same map, making the entry read `dirty: false` right after
-    // being edited. Copy-on-write gives the map a fresh identity on
+    // A `Map` is never edited in place, unlike the array element one step
+    // down. `materializeFormValue` shares a map with the consumer BY
+    // REFERENCE, as it does a `Set`, `File`, `Blob` and `Date`, some of which
+    // cannot be copied at all, where it deep-copies a plain object or array.
+    // So an in-place map write reaches back into the `defaultValues` the
+    // consumer still holds, mutating their object and, because `originals` was
+    // seeded from that same map, making the entry read `dirty: false` the
+    // instant it is edited. Copy-on-write gives the map a fresh identity on
     // the first write and leaves the consumer's original alone.
     if (node instanceof Map) return NO_IN_PLACE
     if (Array.isArray(node)) {
@@ -391,31 +367,27 @@ function descendAndWrite(root: unknown, path: Path, value: unknown): InPlaceWrit
 }
 
 /**
- * Recursive merge that fills consumer-supplied gaps with the schema's
- * prescribed defaults. The runtime calls this on every `setValueAtPath`
- * write (and on whole-form callback returns) so the form remains
- * structurally complete after the write.
+ * Recursive merge filling consumer-supplied gaps with the schema's prescribed
+ * defaults. Every `setValueAtPath` write goes through it, as does a whole-form
+ * callback return, so the form stays structurally complete afterwards.
  *
- * Semantics:
- * - Plain object: every schema-default key not present in `consumer`
- *   is filled with the schema default's value at that key. Schema-only
- *   keys recurse into structural completeness; consumer-only keys (not
- *   in the schema) survive untouched (validation flags them).
- * - Array: each consumer element is merged with the SCHEMA element
- *   default (looked up via `schema.getDefaultAtPath([...path, i])`).
- *   Length follows the consumer — padding past the consumer's length
- *   is `setAtPathWithSchemaFill`'s job, not this function's.
- * - `null` consumer wins (a deliberate "clear" signal — validation
- *   catches misuse against non-nullable shapes).
- * - `undefined` consumer falls back to the schema default (treats
- *   undefined as "missing"). When the schema default is also
- *   undefined the result is undefined — schema and consumer agree.
- * - Primitives, Date, RegExp, Map, Set, class instances: consumer
- *   wins; no recursion (these are leaves under `isPlainRecord`).
+ * - Plain object: every schema-default key absent from `consumer` is filled
+ *   from the schema default at that key. A schema-only key recurses into
+ *   structural completeness; a consumer-only key survives untouched, for
+ *   validation to flag.
+ * - Array: each consumer element merges with the SCHEMA element default at
+ *   its own index. Length follows the consumer, since padding past it is
+ *   `setAtPathWithSchemaFill`'s job.
+ * - A `null` consumer wins, being a deliberate clear signal that validation
+ *   catches against a non-nullable shape.
+ * - An `undefined` consumer falls back to the schema default, undefined
+ *   reading as missing. When that default is also undefined the result is
+ *   undefined, schema and consumer agreeing.
+ * - A primitive, Date, RegExp, Map, Set or class instance is a leaf under
+ *   `isPlainRecord`: the consumer wins and nothing recurses.
  *
- * Idempotent short-circuit: when consumer is structurally complete
- * relative to defaults the function returns `consumer` by reference,
- * so common-case writes (consumer already complete) allocate nothing.
+ * A consumer already structurally complete comes back BY REFERENCE, so the
+ * common write allocates nothing.
  */
 export function mergeStructural(
   schema: SchemaForFill,
@@ -423,14 +395,12 @@ export function mergeStructural(
   consumer: unknown,
   defaultValue: unknown = schema.getDefaultAtPath(path)
 ): unknown {
-  // Internal recursion uses a single mutable scratch path: each level
-  // pushes its segment before descending and pops on return. Eliminates
-  // the per-recursion `[...path, key]` / `[...path, i]` allocation
-  // that previously fired on every object key + every array element.
-  // Schema adapters (zod / standard-schema) read `getDefaultAtPath`
-  // synchronously and don't retain the path, so passing the live
-  // scratch is safe; if a future adapter needed retention, snapshot
-  // inside that adapter rather than allocating per-call here.
+  // The recursion shares one mutable scratch path: each level pushes its
+  // segment before descending and pops on return, which is what avoids a
+  // `[...path, key]` allocation per object key and per array element. Schema
+  // adapters read `getDefaultAtPath` synchronously and retain no path, so the
+  // live scratch is safe to pass; an adapter that needed to retain one would
+  // snapshot inside itself rather than have this allocate per call.
   const scratch: Segment[] = path.slice()
   return mergeStructuralImpl(schema, scratch, consumer, defaultValue)
 }
@@ -441,18 +411,16 @@ function mergeStructuralImpl(
   consumer: unknown,
   defaultValue: unknown
 ): unknown {
-  // Consumer is missing — fall back to the schema default. When the
-  // schema default itself is `undefined` (path doesn't exist in the
-  // schema), the result is `undefined` and we don't fight it.
+  // A missing consumer falls back to the schema default. When that default is
+  // itself `undefined`, the path not existing in the schema, the result is
+  // `undefined`.
   //
-  // Exception: when the schema's slim primitive set at this path
-  // admits `undefined` (e.g. `.optional()`), an explicit consumer
-  // undefined IS the intended value — preserve it. Otherwise the
-  // directive's optional-clear write (the user emptied an
-  // `.optional()` input) would get substituted with whatever the
-  // structural wrappers' default resolves to (`null` for
-  // `.nullable().optional()`), defeating the schema-aware DOM-clear
-  // mapping.
+  // Exception: where the schema's slim primitive set admits `undefined`, as
+  // `.optional()` does, an explicit consumer undefined IS the intended value.
+  // Otherwise the directive's optional-clear write, the user emptying an
+  // `.optional()` input, is substituted with whatever the structural wrappers
+  // resolve to, `null` for `.nullable().optional()`, defeating the
+  // schema-aware DOM clear.
   if (consumer === undefined) {
     if (schema.getSlimPrimitiveTypesAtPath(scratch).has('undefined')) {
       return undefined
@@ -464,19 +432,16 @@ function mergeStructuralImpl(
   // null-vs-non-nullable; runtime doesn't override consumer intent.
   if (consumer === null) return null
 
-  // Array branch: tuple-like (fixed length) vs unbounded array — see
-  // mergeStructuralArray.
+  // Array branch: tuple-like against unbounded; see `mergeStructuralArray`.
   if (Array.isArray(consumer)) {
     return mergeStructuralArray(schema, scratch, consumer)
   }
 
-  // Map: recurse into each entry against the schema's value default at
-  // that entry's own path, so a partial entry written wholesale gets
-  // the same structural completion a record entry gets. The map's key
-  // set follows the consumer — filling absent keys from a default has
-  // no meaning when every key is data. Returns `consumer` by reference
-  // when nothing under it changed, so the common write allocates
-  // nothing.
+  // Map: recurse into each entry against the schema's value default at that
+  // entry's own path, so a partial entry written wholesale gets the structural
+  // completion a record entry gets. The key set follows the consumer, since
+  // filling absent keys from a default means nothing when every key is data.
+  // Returns `consumer` by reference when nothing under it changed.
   if (consumer instanceof Map) {
     return mergeStructuralMap(schema, scratch, consumer)
   }
@@ -485,38 +450,37 @@ function mergeStructuralImpl(
   // keys. Consumer-only keys pass through.
   if (isPlainRecord(consumer)) {
     if (!isPlainRecord(defaultValue)) {
-      // Default is non-record (or undefined / leaf) — nothing to fill;
-      // consumer wins as-is. Recurse just in case consumer holds nested
-      // keys that the schema knows about at deeper paths (rare).
+      // The default is a non-record, undefined or a leaf, so there is nothing
+      // to fill and the consumer wins as-is. Recurse anyway, in case the
+      // consumer holds nested keys the schema knows about deeper down.
       return consumer
     }
-    // Merge target carries `Object.prototype`, matching `setAtPath` and
-    // `mergeDeep` elsewhere in the runtime. Object spread uses
-    // `CreateDataProperty` per the spec, which bypasses the inherited
-    // `__proto__` setter so a consumer carrying a literal `__proto__`
-    // own property survives the spread without reassigning the result's
+    // The merge target carries `Object.prototype`, matching `setAtPath`. Object
+    // spread uses `CreateDataProperty` per the spec, which bypasses the
+    // inherited `__proto__` setter, so a consumer carrying a literal
+    // `__proto__` own property survives without reassigning the result's
     // prototype chain.
-    // Spread via the guarded helper: a consumer object can carry an
-    // accessor that throws, and `{ ...consumer }` invokes every getter.
-    // The helper spreads first and only falls back to a guarded copy if
-    // that throws, so the per-write happy path is unchanged.
+    //
+    // Spread through the guarded helper, because a consumer object can carry a
+    // throwing accessor and `{ ...consumer }` invokes every getter. The helper
+    // spreads first and falls back to a guarded copy only on a throw, so the
+    // happy path is unchanged.
     const out: Record<string, unknown> = spreadConsumerRecord(consumer)
     const filledAny = fillMissingKeysFromDefault(schema, scratch, consumer, defaultValue, out)
     const recursedAny = recurseIntoConsumerKeys(schema, scratch, consumer, defaultValue, out)
     return filledAny || recursedAny ? out : consumer
   }
 
-  // Leaf-ish (primitives, Date, RegExp, Map, Set, class instances) —
-  // consumer wins, no recursion.
+  // Leaf-ish (a primitive, Date, RegExp, Map, Set or class instance): the
+  // consumer wins and nothing recurses.
   return consumer
 }
 
 /**
- * Merge a consumer map against the schema, entry by entry. Every entry
- * resolves to the same value schema, so the element default is queried
- * once and reused across keys — the same shape `mergeStructuralArray`
- * uses for an unbounded array. Returns the original `consumer` when no
- * entry changed.
+ * Merge a consumer map against the schema, entry by entry. Every entry resolves
+ * to the same value schema, so the element default is queried once and reused
+ * across keys, the shape `mergeStructuralArray` uses for an unbounded array.
+ * Returns the original `consumer` when no entry changed.
  */
 function mergeStructuralMap(
   schema: SchemaForFill,
@@ -528,9 +492,9 @@ function mergeStructuralMap(
   let entryDefaultRead = false
   let out: Map<unknown, unknown> | null = null
   for (const [key, entry] of consumer) {
-    // Only a key a segment can spell has a sub-path to complete
-    // against. An object- or symbol-keyed entry is carried through
-    // untouched, exactly as the leaf branch carries any other value.
+    // Only a key a segment can spell has a sub-path to complete against. An
+    // object- or symbol-keyed entry carries through untouched, as the leaf
+    // branch carries any other value.
     if (typeof key !== 'string' && typeof key !== 'number') continue
     scratch.push(key)
     if (!entryDefaultRead) {
@@ -547,12 +511,11 @@ function mergeStructuralMap(
 }
 
 /**
- * Merge a consumer array against the schema. Tuple-like paths (fixed
- * length via `arrayShapeAtPath`) pad the consumer up to the structural
- * length and query a per-position default; unbounded arrays follow the
- * consumer's length and reuse one element default across positions.
- * Returns the merged array, or the original `consumer` when nothing
- * changed.
+ * Merge a consumer array against the schema. A tuple-like path, fixed length
+ * per `arrayShapeAtPath`, pads the consumer up to the structural length and
+ * queries a per-position default; an unbounded array follows the consumer's
+ * length and reuses one element default. Returns the original `consumer` when
+ * nothing changed.
  */
 function mergeStructuralArray(
   schema: SchemaForFill,
@@ -562,9 +525,9 @@ function mergeStructuralArray(
   const shape = schema.arrayShapeAtPath(scratch)
   const isTuple = typeof shape === 'number'
   const targetLen = isTuple ? shape : consumer.length
-  // Unbounded array: every position resolves to the same element
-  // default — query once and reuse. Tuples query per-position
-  // since each slot carries its own default.
+  // Every position of an unbounded array resolves to the same element default,
+  // so query once and reuse. A tuple queries per position, each slot carrying
+  // its own.
   let cachedElementDefault: unknown
   let cachedElementDefaultRead = false
   let mutated = targetLen > consumer.length
@@ -594,14 +557,12 @@ function mergeStructuralArray(
 }
 
 /**
- * Fill the schema-default keys MISSING from `consumer` (key not present
- * at all) into `out`, recursing so each fill produces a
- * structurally-complete sub-tree (covers nested-object defaults that
- * themselves contain wrappers / unions). An explicit
- * `consumer[key] = undefined` means the consumer named the slot empty on
- * purpose — distinct from omitting the key — so the schema default does
- * NOT override it. Mutates `out` in place; returns whether anything was
- * filled.
+ * Fill the schema-default keys MISSING from `consumer`, meaning absent
+ * entirely, into `out`, recursing so each fill produces a structurally
+ * complete sub-tree, which covers a nested-object default holding wrappers or
+ * unions. An explicit `consumer[key] = undefined` names the slot empty on
+ * purpose, distinct from omitting the key, so the schema default does NOT
+ * override it. Mutates `out`; returns whether anything was filled.
  */
 function fillMissingKeysFromDefault(
   schema: SchemaForFill,
@@ -612,10 +573,9 @@ function fillMissingKeysFromDefault(
 ): boolean {
   let mutated = false
   for (const key of Object.keys(defaultValue)) {
-    // Own-property check — `'__proto__' in consumer` would always be
-    // `true` for a regular consumer record, falsely declaring "consumer
-    // wrote here" and skipping the default-fill for a legitimate
-    // `__proto__` schema field.
+    // Own-property check: `'__proto__' in consumer` is always `true` for a
+    // regular consumer record, which would falsely declare the consumer wrote
+    // there and skip the default-fill for a legitimate `__proto__` field.
     if (!safeOwnHas(consumer, key)) {
       const defAtKey = safeOwnRead(defaultValue, key)
       scratch.push(key)
@@ -631,12 +591,12 @@ function fillMissingKeysFromDefault(
 }
 
 /**
- * Recurse into every consumer-supplied key to catch nested gaps, writing
- * merged results into `out`. Keys whose consumer value is `undefined`
- * are skipped — the caller's spread already kept them, and recursing
- * would re-fill from the schema default (the leaf branch returns the
- * default for an undefined consumer), erasing the consumer's explicit
- * empty. Mutates `out` in place; returns whether anything changed.
+ * Recurse into every consumer-supplied key to catch nested gaps, writing the
+ * merged results into `out`. A key whose consumer value is `undefined` is
+ * skipped: the caller's spread already kept it, and recursing would re-fill
+ * from the schema default, since the leaf branch returns the default for an
+ * undefined consumer, erasing the consumer's explicit empty. Mutates `out`;
+ * returns whether anything changed.
  */
 function recurseIntoConsumerKeys(
   schema: SchemaForFill,
@@ -661,23 +621,20 @@ function recurseIntoConsumerKeys(
 }
 
 /**
- * Schema-aware variant of `setAtPath`. When extending past array
- * length, pads new positions with the schema's element default
- * instead of `undefined`. When descending into an object whose
- * intermediate property is missing, fills the intermediate with
- * the schema's default at that sub-path.
+ * Schema-aware variant of `setAtPath`. Extending past an array's length pads
+ * the new positions with the schema's element default rather than `undefined`,
+ * and descending into an object whose intermediate property is missing fills
+ * that intermediate from the schema's default at its sub-path.
  *
- * `value` is the already-mergeStructural'd target value — this
- * function only handles INTERMEDIATE fill. The caller (typically
- * `setValueAtPath` on the form store) is responsible for completing
- * the leaf.
+ * `value` has already been through `mergeStructural`: this function handles
+ * INTERMEDIATE fill only, and completing the leaf belongs to the caller,
+ * typically `setValueAtPath`.
  *
- * Performance: schema lookups happen only at gap sites. The common
- * case (write to existing slot) does a copy-on-write spread without
- * touching the schema. Misuse (`setValue('posts.21', x)` against an
- * empty array) costs `getDefaultAtPath` once for the array element
- * default (cached via `lastArrayDefault`/`lastArrayPathPrefix` for
- * the duration of the call) and N pad inserts.
+ * Schema lookups happen only at gap sites, so a write to an existing slot is a
+ * copy-on-write spread that never touches the schema. A
+ * `setValue('posts.21', x)` against an empty array costs one
+ * `getDefaultAtPath` for the element default, cached for the call, plus N pad
+ * inserts.
  */
 export function setAtPathWithSchemaFill(
   root: unknown,
@@ -708,11 +665,10 @@ function setAtPathWithSchemaFillImpl(
       next.set(key, value)
       return next
     }
-    // Intermediate step: fill a missing / non-descendable entry from
-    // the schema before recursing, so the levels below start from a
-    // structurally complete node instead of building a fresh one that
-    // holds only the keys this path touches. Same semantic the array
-    // and object branches apply.
+    // Fill a missing or non-descendable entry from the schema before
+    // recursing, so the levels below start from a structurally complete node
+    // rather than a fresh one holding only the keys this path touches. Same
+    // semantic as the array and object branches.
     let childRoot = next.get(key)
     if (childRoot === undefined || (childRoot !== null && typeof childRoot !== 'object')) {
       childRoot = schema.getDefaultAtPath(fullPath.slice(0, startIdx + 1))
@@ -726,19 +682,18 @@ function setAtPathWithSchemaFillImpl(
   if (typeof head === 'number') {
     const arr = Array.isArray(root) ? [...root] : []
     const prefix = fullPath.slice(0, startIdx)
-    // Pad with element defaults if extending past length. Tuple-vs-
-    // array detection comes from the schema's definitive
-    // `arrayShapeAtPath` — a value-based heuristic (compare two
-    // adjacent defaults via Object.is) gives wrong answers for arrays
-    // of objects (each call yields a fresh object, identity differs)
-    // AND for tuples of identical primitives (Object.is(0, 0) === true).
+    // Pad with element defaults when extending past the length. Tuple against
+    // array comes from the schema's definitive `arrayShapeAtPath`, because a
+    // value-based heuristic comparing two adjacent defaults by identity is
+    // wrong both ways: an array of objects yields a fresh object per call and
+    // differs, while a tuple of identical primitives compares equal.
     if (arr.length < head) {
       const scratch: Segment[] = prefix.slice() as Segment[]
       const shape = schema.arrayShapeAtPath(scratch)
       const tupleLike = typeof shape === 'number'
-      // For unbounded arrays, every position resolves to the same
-      // element default — cache the lookup once. For tuples, query
-      // per-position so each slot's default lands at its own index.
+      // Every position of an unbounded array resolves to the same element
+      // default, so cache the lookup; a tuple queries per position, so each
+      // slot's default lands at its own index.
       let cachedArrayDefault: unknown
       if (!tupleLike) {
         scratch.push(0)
@@ -762,13 +717,11 @@ function setAtPathWithSchemaFillImpl(
       return arr
     }
 
-    // Intermediate step: ensure the slot at `head` is structurally
-    // complete BEFORE recursing into the rest of the path. Without
-    // this fill, recursion starts from `undefined` and the next level
-    // builds a fresh `{}` populated only by the keys the path
-    // actually touches — sibling fields (other Person keys, other
-    // Address keys) get silently dropped. Same intermediate-fill
-    // semantic the object branch applies a few lines below.
+    // Make the slot at `head` structurally complete BEFORE recursing into the
+    // rest of the path. Without the fill, recursion starts from `undefined`
+    // and the next level builds a fresh `{}` holding only the keys this path
+    // touches, silently dropping every sibling field. Same intermediate-fill
+    // semantic as the object branch below.
     let childRoot = arr[head]
     if (childRoot === undefined || (childRoot !== null && typeof childRoot !== 'object')) {
       childRoot = schema.getDefaultAtPath([...prefix, head])
@@ -778,15 +731,13 @@ function setAtPathWithSchemaFillImpl(
   }
 
   // Object key. Reads and writes at the head segment route through
-  // `safeOwnRead` / `safeAssign`, because the segment is a consumer
-  // schema's field name and may be spelled `__proto__`. A plain
-  // `rec[head] = value` there invokes the setter inherited from
-  // `Object.prototype`, which silently discards the write and leaves the
-  // field reading back as whatever the prototype chain says; the
-  // own-property write lands it as a real data property instead. The
-  // spread above is already safe on its own (the spec uses
-  // `CreateDataProperty`, which bypasses the accessor), so it needs no
-  // guard — only the imperative write does.
+  // `safeOwnRead` and `safeAssign`, because the segment is a consumer schema's
+  // field name and may be spelled `__proto__`. A plain `rec[head] = value`
+  // there invokes the setter inherited from `Object.prototype`, silently
+  // discarding the write and leaving the field reading back whatever the
+  // prototype chain says, where the own-property write lands it as a real data
+  // property. The spread above is safe on its own, the spec using
+  // `CreateDataProperty`, so only the imperative write needs the guard.
   const rec: Record<string, unknown> = isPlainRecord(root) ? { ...root } : {}
   if (isLeafStep) {
     safeAssign(rec, head, value)

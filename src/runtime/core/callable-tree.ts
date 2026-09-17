@@ -20,49 +20,45 @@ import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
 import { isShadowedKey, safeAssign, safeOwnRead } from './safe-assign'
 
 /**
- * The callable-tree layer: one module building the three read surfaces
- * (`form.values`, `form.errors`, `form.fields`) as callable readonly
- * Proxies. Shared node machinery for the two schema-aware surfaces
- * (errors / fields); the values surface is a thin callable over Vue's
- * native `readonly`.
+ * The callable-tree layer, building the three read surfaces (`form.values`,
+ * `form.errors`, `form.fields`) as callable readonly Proxies. The two
+ * schema-aware surfaces, errors and fields, share the node machinery; values is
+ * a thin callable over Vue's native `readonly`.
  *
- * Surface contract (pinned in surface-contract-pins.test.ts):
+ * The surface contract, pinned in `surface-contract-pins.test.ts`:
  *
- * - Only the ROOT is callable (function target + `apply` trap); every
- *   non-root container is a plain object / Array target, so a node
- *   call throws like any non-function and `Array.isArray` holds on
- *   array-shaped paths (Vue's `renderList` takes its indexed branch).
- * - Truthful descend gate: a key that is neither a surface-declared
- *   terminal, a declared field of a FIXED object, nor a key the
- *   container currently holds reads `undefined` — no phantom nodes.
- *   Fixed-object gating matters because an open container's element
- *   schema matches ANY segment, so schema presence can't arbitrate
- *   there; open containers rely on live keys alone.
- * - Live enumeration: `Object.keys` / spread / `v-for` reflect the
- *   live form data (the errors surface unions in error-store keys so
- *   server errors at unknown keys stay enumerable).
- * - Coercion: `toJSON` / `toString` / `valueOf` / `Symbol.toPrimitive`
- *   resolve to the surface's materialiser at every node, so
- *   `JSON.stringify` and template interpolation never see a proxy.
- * - `form.values()` returns a detached snapshot, not the live proxy;
- *   dot access stays the reactive view. See `buildValuesSurface`.
- * - Writes are warn-and-noop at every node (strict-mode callers must
- *   not throw; the readonly contract is the absence of mutation).
- * - Per-path node memoisation, keyed by canonical path + live shape,
- *   so repeated reads return the same Proxy and a variant flip that
- *   swaps the shape at a path mints a freshly-targeted node.
+ * - Only the ROOT is callable, a function target with an `apply` trap. Every
+ *   non-root container is a plain object or Array target, so calling a node
+ *   throws like any non-function and `Array.isArray` holds on an array-shaped
+ *   path, which is what puts Vue's `renderList` on its indexed branch.
+ * - Truthful descend gate. A key that is neither a surface-declared terminal,
+ *   nor a declared field of a FIXED object, nor a key the container currently
+ *   holds reads `undefined`: no phantom nodes. Fixed-object gating matters
+ *   because an open container's element schema matches ANY segment, so schema
+ *   presence cannot arbitrate there and open containers rely on live keys.
+ * - Live enumeration. `Object.keys`, spread and `v-for` reflect the live form
+ *   data, and the errors surface unions in error-store keys so a server error
+ *   at an unknown key stays enumerable.
+ * - Coercion. `toJSON`, `toString`, `valueOf` and `Symbol.toPrimitive` resolve
+ *   to the surface's materialiser at every node, so `JSON.stringify` and
+ *   template interpolation never see a proxy.
+ * - `form.values()` returns a detached snapshot rather than the live proxy,
+ *   while dot access stays the reactive view. See `buildValuesSurface`.
+ * - Writes warn and no-op at every node: a strict-mode caller must not throw,
+ *   and the readonly contract is the absence of mutation.
+ * - Per-path node memoisation keyed by canonical path AND live shape, so
+ *   repeated reads return the same Proxy and a variant flip that swaps the
+ *   shape at a path mints a freshly-targeted node.
  *
- * Schema fields literally named after built-ins (`toString`,
- * `valueOf`, `hasOwnProperty`) are not reachable through dot access on
- * these surfaces (sign-off 8); the call form (`surface(path)`)
- * addresses any path regardless of name. `call` / `apply` / `bind` on
- * the ROOT resolve invoke shims (see `callableInvokeShim`) because a
- * transpiler that downlevels optional chaining compiles the documented
- * `surface(path)?.x` idiom into a helper that reads `.call` off the
- * surface and invokes it — without the shim that documented pattern
- * throws under sucrase (the docs playground's in-browser compiler) and
- * any sub-ES2020 build target. Below the root the three names are
- * ordinary keys through the truthful gate.
+ * A schema field literally named after a built-in (`toString`, `valueOf`,
+ * `hasOwnProperty`) is not reachable through dot access on these surfaces; the
+ * call form addresses any path regardless of name. `call`, `apply` and `bind`
+ * on the ROOT resolve invoke shims, because a transpiler that downlevels
+ * optional chaining compiles the documented `surface(path)?.x` idiom into a
+ * helper that reads `.call` off the surface and invokes it. Without the shim
+ * that documented pattern throws under sucrase, the docs playground's
+ * in-browser compiler, and under any sub-ES2020 build target. Below the root
+ * the three names are ordinary keys through the truthful gate.
  */
 
 /**
@@ -87,11 +83,10 @@ function keyToSegment(key: string): Segment {
 }
 
 /**
- * Vue probes these reactivity sigils as string keys on any object it
- * meets inside an effect. `__v_skip` opts the proxy out of reactive
- * wrapping (the reads inside the traps do the dependency tracking);
- * the rest must read `undefined` rather than descending into phantom
- * child nodes.
+ * Vue probes these reactivity sigils as string keys on any object it meets
+ * inside an effect. `__v_skip` opts the proxy out of reactive wrapping, the
+ * reads inside the traps doing the tracking; the rest must read `undefined`
+ * rather than descending into phantom child nodes.
  */
 function vueSigilRead(key: string): boolean | undefined {
   if (key === '__v_skip') return true
@@ -112,18 +107,15 @@ function vueSigilRead(key: string): boolean | undefined {
 export type CallableSurface = ((path?: string | Path) => unknown) & Record<string, unknown>
 
 /**
- * Callable shim returned for `call` / `apply` / `bind` read off a
- * callable ROOT surface. A transpiler that downlevels optional
- * chaining — sucrase (what the docs playground strips TS with), or any
- * bundler targeting below ES2020 — compiles `surface(path)?.x` into a
- * helper that READS `.call` off the surface and invokes the result to
- * call the surface. The shim is invokable as the matching
- * `Function.prototype` method against the surface, so the downleveled
- * call lands in the surface's `apply` trap, and it forwards every
- * other proxy operation to the descent value so a schema field
- * literally named `call` stays reachable through it. The descent
- * resolves lazily — the invoke-only path (the common one) touches no
- * child node.
+ * Callable shim returned for `call`, `apply` or `bind` read off a callable ROOT
+ * surface. A transpiler that downlevels optional chaining, sucrase or any
+ * bundler targeting below ES2020, compiles `surface(path)?.x` into a helper
+ * that READS `.call` off the surface and invokes the result to call it. The
+ * shim is invokable as the matching `Function.prototype` method against the
+ * surface, so the downleveled call lands in the surface's `apply` trap, and it
+ * forwards every other proxy operation to the descent value so a schema field
+ * literally named `call` stays reachable through it. The descent resolves
+ * lazily, so the common invoke-only path touches no child node.
  */
 function callableInvokeShim(
   method: 'call' | 'apply' | 'bind',
@@ -151,9 +143,9 @@ function callableInvokeShim(
 }
 
 /**
- * Per-surface configuration for the shared schema-aware node builder.
- * Every hook is required — the two surfaces supply all of them, and
- * the trap layer carries no fallback branches.
+ * Per-surface configuration for the shared schema-aware node builder. Every
+ * hook is required: both surfaces supply all of them, so the trap layer carries
+ * no fallback branches.
  */
 type TreeSpec = {
   readonly schema: {
@@ -197,12 +189,11 @@ function buildTree(spec: TreeSpec): CallableSurface {
   })
 
   function schemaHasPath(segs: readonly Segment[]): boolean {
-    // `keyToSegment` normalises an integer-looking key to a number
-    // exactly as `normalizeSegment` does, so these segments are already
-    // canonical and the bare stringify IS the canonical `PathKey` the
-    // sweep evicts by. Spelling it that way rather than routing through
-    // `canonicalizePath` keeps the descend gate, which runs on every
-    // dot access, off a re-normalise it cannot need.
+    // `keyToSegment` normalises an integer-looking key to a number exactly as
+    // `normalizeSegment` does, so these segments are already canonical and the
+    // bare stringify IS the `PathKey` the sweep evicts by. Spelling it that way
+    // rather than routing through `canonicalizePath` keeps the descend gate,
+    // which runs on every dot access, off a re-normalise it cannot need.
     const cacheKey = keyForSegments(segs).key
     const cached = existsCache.get(cacheKey)
     if (cached !== undefined) return cached
@@ -219,13 +210,12 @@ function buildTree(spec: TreeSpec): CallableSurface {
   }
 
   function containerAt(segments: readonly Segment[]): CallableSurface {
-    // Shape participates in the cache key: a variant switch that swaps
-    // the live shape at this path mints a freshly-targeted proxy on the
-    // next read, while a closed flip round-trip returns the original.
-    // Held references keep their minted target (proxy targets are
-    // immutable) but every trap re-evaluates live state per call, so
-    // `held.length` / `Object.keys(held)` / descent track reality;
-    // only host-level checks (`Array.isArray`, `typeof`) stay pinned.
+    // Shape participates in the cache key, so a variant switch that swaps the
+    // live shape at this path mints a freshly-targeted proxy on the next read
+    // while a flip and back returns the original. A held reference keeps its
+    // minted target, proxy targets being immutable, but every trap re-evaluates
+    // live state per call, so `held.length`, `Object.keys(held)` and descent
+    // all track reality; only host-level checks stay pinned.
     const isArrayLike = spec.isArrayAt(segments)
     const pathKey = keyForSegments(segments).key
     const cacheKey = `${pathKey}+${isArrayLike ? 'A' : 'O'}`
@@ -269,25 +259,25 @@ function buildTree(spec: TreeSpec): CallableSurface {
         // object-target proxy tracks a flip into an array.
         const arrayNow = isArrayLike || spec.isArrayAt(segments)
         if (key === 'length' && arrayNow) return spec.ownKeys(segments).length
-        // Array.prototype pass-through for non-integer keys on
-        // array-shaped paths (`.map`, `.forEach`, `.slice`, …). The
-        // methods read `this[i]` / `this.length` back through this
-        // trap; mutators are reachable but the write traps no-op them.
+        // `Array.prototype` pass-through for a non-integer key on an
+        // array-shaped path (`.map`, `.forEach`, `.slice`). Those methods read
+        // `this[i]` and `this.length` back through this trap, and a mutator is
+        // reachable but the write traps no-op it.
         if (arrayNow && typeof keyToSegment(key) === 'string' && key in Array.prototype) {
           return Reflect.get(Array.prototype, key)
         }
-        // Direct method-call coercion; a schema field with one of these
-        // names is not dot-reachable (sign-off 8) — use the call form.
+        // Direct method-call coercion. A schema field with one of these names
+        // is not dot-reachable; address it through the call form.
         if (key === 'toString') return containerToString
         if (key === 'valueOf') return containerValueOf
         // The real method, routed through this proxy's descriptor trap,
         // so `surface.hasOwnProperty(k)` agrees with `Object.keys`.
         if (key === 'hasOwnProperty') return Object.prototype.hasOwnProperty
         const childSegs = [...segments, keyToSegment(key)]
-        // Root-only invoke shims: downleveled `surface(path)?.x` reads
-        // `.call` off the surface to invoke it — see callableInvokeShim.
-        // Non-root nodes are not callable, so a nested `call` field
-        // keeps plain gated descent.
+        // Root-only invoke shims: a downleveled `surface(path)?.x` reads
+        // `.call` off the surface to invoke it. See `callableInvokeShim`. A
+        // non-root node is not callable, so a nested `call` field keeps plain
+        // gated descent.
         if (isRoot && (key === 'call' || key === 'apply' || key === 'bind')) {
           return callableInvokeShim(key, proxy, () => {
             if (
@@ -302,7 +292,7 @@ function buildTree(spec: TreeSpec): CallableSurface {
             return EMPTY_DESCENT
           })
         }
-        // Truthful descend gate — see the module docblock.
+        // Truthful descend gate; see the module docblock.
         if (
           spec.isTerminal(childSegs) ||
           (isFixedObject && schemaHasPath(childSegs)) ||
@@ -314,8 +304,8 @@ function buildTree(spec: TreeSpec): CallableSurface {
       },
       has(_, key: string | symbol): boolean {
         if (typeof key === 'symbol') return Reflect.has(target, key)
-        // Conservatively true — whether a path resolves is answered by
-        // the read (which returns `undefined` past the gate).
+        // Conservatively true: whether a path resolves is the read's answer,
+        // and it returns `undefined` past the gate.
         return true
       },
       ownKeys: () => {
@@ -370,22 +360,21 @@ function buildTree(spec: TreeSpec): CallableSurface {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the `form.errors` surface. Leaf reads merge the path's schema +
- * derived-blank + user buckets (active-path filter on the library-
- * produced classes only); a trailing-`''` path is the container-self
- * sentinel; the call form aggregates a subtree via `aggregateErrorsAt`;
- * enumeration unions live form keys with error-store keys; `toJSON`
- * materialises the sparse error tree through a per-container memoised
- * computed.
+ * Build the `form.errors` surface. A leaf read merges the path's schema,
+ * derived-blank and user buckets, applying the active-path filter to the
+ * library-produced classes only. A trailing `''` is the container-self
+ * sentinel, the call form aggregates a subtree, enumeration unions live form
+ * keys with error-store keys, and `toJSON` materialises the sparse error tree
+ * through a per-container memoised computed.
  */
 export function buildErrorsSurface<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   sweep: DynamicPathSweep
 ): CallableSurface {
-  // Lazily-allocated computed per materialised container path: the
-  // sparse tree rebuilds when a store / the form value changes, not on
-  // every stringify. Deps (error stores, form Ref, schema queries) are
-  // read inside the computed, so tracking is unchanged.
+  // One lazily-allocated computed per materialised container path, so the
+  // sparse tree rebuilds when a store or the form value changes rather than on
+  // every stringify. Its deps are read inside the computed, so tracking is
+  // unchanged.
   const treeCache = new Map<PathKey, ComputedRef<unknown>>()
   // Keyed per container path, so it is bounded by container count for a
   // fixed schema but not for a record of objects, where every entry is
@@ -404,12 +393,12 @@ export function buildErrorsSurface<F extends GenericForm>(
   }
 
   const resolveLeaf = (path: readonly Segment[]): ValidationError[] => {
-    // A length >= 2 path ending in `''` is the container-self sentinel
-    // for a depth >= 1 container: it surfaces errors stored at the
-    // parent container path (cross-field refines, server-side container
-    // marks) plus any literal-`''` leaf errors. A bare `['']` is the
-    // literal root `''` field, read from its own bucket. Global errors
-    // live at the root `[]` and are reached via `meta.ownErrors`.
+    // A path of two segments or more ending in `''` is the container-self
+    // sentinel: it surfaces errors stored at the parent container path, from a
+    // cross-field refine or a server-side container mark, plus any literal-`''`
+    // leaf errors. A bare `['']` is the literal root `''` field, read from its
+    // own bucket. Global errors live at the root and come through
+    // `meta.ownErrors`.
     const isContainerSelfAccess = path.length > 1 && path[path.length - 1] === ''
 
     const merged: ValidationError[] = []
@@ -447,9 +436,9 @@ export function buildErrorsSurface<F extends GenericForm>(
       liveContainerHasKey(state, segments, key) ||
       errorAwareContainerKeys(state, segments).includes(key),
     isArrayAt: (segments) => isArrayPath(state, segments),
-    // `errors()` / `errors([])` / `errors(path)` are all the subtree
-    // aggregate — the same helper `meta.errors` reads, so the surfaces
-    // never drift.
+    // `errors()`, `errors([])` and `errors(path)` are all the subtree
+    // aggregate, through the helper `meta.errors` reads, so they cannot
+    // drift.
     call: (path) => aggregateErrorsAt(state, path, keyForSegments(path).key),
     surface: 'form.errors',
     sweep,
@@ -457,22 +446,21 @@ export function buildErrorsSurface<F extends GenericForm>(
 }
 
 /**
- * Append the three error lists at one path, in store order, applying
- * the active-path filter per class: library verdicts (schema, blank)
- * stay hidden at an unreachable path, consumer-supplied user entries
- * surface unconditionally.
+ * Append the three error lists at one path, in store order, applying the
+ * active-path filter per class: a library verdict, schema or blank, stays
+ * hidden at an unreachable path, while a consumer-supplied user entry surfaces
+ * unconditionally.
  *
- * Blank is synthesized from this path's OWN `blankPaths` membership
- * rather than read out of the whole-form `derivedBlankErrors` map, for
- * the same reason `aggregateErrorsAt` does it: that map takes a fresh
- * identity on ANY blank transition anywhere in the form, so reading it
- * here would give every materialised tree node a dependency on every
- * other path's blanks. Same builder and same `isRequiredAtPath` gate,
- * so the entry is identical to the one the map would have held.
+ * Blank is synthesized from this path's OWN membership rather than read out of
+ * the whole-form `derivedBlankErrors` map, for the reason `aggregateErrorsAt`
+ * gives: that map takes a fresh identity on ANY blank transition in the form,
+ * so reading it here would give every materialised tree node a dependency on
+ * every other path's blanks. Same builder and same gate, so the entry is
+ * identical.
  *
- * One helper for all three `form.errors` readers (leaf resolution,
- * container key enumeration, tree materialisation) so the per-class
- * filter cannot drift between them.
+ * One helper for all three `form.errors` readers, leaf resolution, container
+ * key enumeration and tree materialisation, so the per-class filter cannot
+ * drift between them.
  */
 function collectErrorsAt<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -494,13 +482,12 @@ function collectErrorsAt<F extends GenericForm>(
 }
 
 /**
- * Container enumeration for `form.errors`: the union of live form-data
- * keys at the path and the first-child segments of every error-store
- * entry beneath it. Active-path filter mirrors leaf reads — library-
- * produced verdicts (schema + blank) at unreachable paths stay hidden;
- * user-supplied entries surface unconditionally. Equal-length entries
- * (the container's own bucket, including root `[]`) contribute no
- * child key. Two-class iteration preserves schema → blank → user order.
+ * Container enumeration for `form.errors`: the union of the live form-data keys
+ * at the path and the first-child segments of every error-store entry beneath
+ * it. The active-path filter mirrors a leaf read, so a library-produced verdict
+ * at an unreachable path stays hidden while a user-supplied entry surfaces. An
+ * equal-length entry, the container's own bucket, contributes no child key, and
+ * the two-class iteration preserves schema, blank, then user order.
  */
 function errorAwareContainerKeys<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -540,24 +527,23 @@ function errorAwareContainerKeys<F extends GenericForm>(
 
 /**
  * Build the sparse nested error tree under `containerSegments` for
- * `JSON.stringify(form.errors.<container>)`. Placement per entry at
- * `fullPath`:
+ * `JSON.stringify(form.errors.<container>)`. Each entry at `fullPath` is
+ * placed:
  *
- * - Root `[]` bucket — at the root materialisation, under the
- *   root-path key `'[]'` (never the `''` slot: `''` is a plain field
- *   key and conflating the two is a hard boundary); at a sub-container
- *   materialisation, out of scope.
- * - Container-self at the materialisation root (depth >= 1) — `tree['']`.
- * - Schema leaf descendant — at the relative path.
- * - Schema container descendant (a cross-field refine there) — at
- *   `[...relativePath, '']` so its self errors keep their own slot.
- * - Unknown path (user error at a key the schema doesn't know) — at
- *   the relative path, as a leaf.
+ * - The root bucket, at the root materialisation, under the root-path key,
+ *   never the `''` slot: `''` is a plain field key and conflating the two is a
+ *   hard boundary. At a sub-container materialisation it is out of scope.
+ * - The container-self bucket at the materialisation root, at `tree['']`.
+ * - A schema-leaf descendant, at its relative path.
+ * - A schema-container descendant, from a cross-field refine there, at
+ *   `[...relativePath, '']`, so its self errors keep their own slot.
+ * - An unknown path, a user error at a key the schema does not know, at its
+ *   relative path as a leaf.
  *
- * Sparse: a container with no self and no descendant errors does not
- * appear. Active-path filter matches leaf reads (schema-class stores
- * only). The tree mirrors the live shape at the root (array container →
- * array root) so shape parity with `form.values` holds.
+ * Sparse: a container with neither self nor descendant errors does not appear.
+ * The active-path filter matches a leaf read. The tree mirrors the live shape
+ * at the root, an array container giving an array root, so shape parity with
+ * `form.values` holds.
  */
 function materializeErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -577,10 +563,10 @@ function materializeErrors<F extends GenericForm>(
     containerSegments,
     keyForSegments(containerSegments).key
   )) {
-    // The root bucket (global / root `.refine()` errors, `setErrors`) is
-    // never variant-bound, so it is collected unfiltered, and only at the
-    // root materialisation. Everything else: the window is a key-range
-    // superset, so membership is decided here.
+    // The root bucket, holding global and root-refine errors and `setErrors`
+    // entries, is never variant-bound, so it is collected unfiltered and only
+    // at the root materialisation. For everything else the window is a
+    // key-range superset, so membership is decided here.
     const isRoot = fullPath.length === 0
     if (isRoot) {
       if (containerSegments.length !== 0) continue
@@ -609,23 +595,22 @@ function materializeErrors<F extends GenericForm>(
     placements.push({ placePath, errors, ordinal: state.ensurePathOrdinal(key) })
   }
 
-  // Placed in schema-declaration order (`pathOrdinals`), which is the
-  // order `meta.errors` and `aggregateErrorsAt` already use, so every
-  // error surface agrees on key order. The window is sorted by PATH,
-  // a different order, so placing straight from it would re-sort the
-  // tree. Ordinals are also stable across an error clearing and coming
-  // back, which the store's own insertion order was not.
+  // Placed in schema-declaration ordinal order, which `meta.errors` and
+  // `aggregateErrorsAt` already use, so every error surface agrees on key
+  // order. The window is sorted by PATH, a different order, so placing straight
+  // from it would re-sort the tree. Ordinals are also stable across an error
+  // clearing and coming back, where the store's own insertion order is not.
   placements.sort((a, b) => a.ordinal - b.ordinal)
   for (const { placePath, errors } of placements) placeAt(tree, placePath, errors)
   return tree
 }
 
 /**
- * Place `errors` at the relative `path` inside `tree`, allocating
- * intermediate containers (numeric segments produce arrays) and
- * concatenating when multiple stores land at one path. `safeOwnRead` /
- * `safeAssign` keep a literal `__proto__` segment an own data property
- * with no route to `Object.prototype`.
+ * Place `errors` at the relative `path` inside `tree`, allocating intermediate
+ * containers, where a numeric segment produces an array, and concatenating when
+ * several stores land at one path. `safeOwnRead` and `safeAssign` keep a
+ * literal `__proto__` segment an own data property with no route to
+ * `Object.prototype`.
  */
 function placeAt(
   tree: Record<string, unknown> | unknown[],
@@ -658,11 +643,10 @@ function placeAt(
 // ---------------------------------------------------------------------------
 
 /**
- * The FieldState key set exposed at a field view. At a leaf path,
- * reads of these keys terminate against the per-path computed's
- * reactive prop; container paths do NOT inject them via dot access
- * (the container's rolled-up state is the call form). Shared with the
- * build-form-api meta forests.
+ * The FieldState key set exposed at a field view. At a leaf path a read of one
+ * terminates against the per-path computed's reactive prop; a container path
+ * does NOT inject them through dot access, its rolled-up state being the call
+ * form. Shared with `build-form-api`'s meta surfaces.
  */
 export const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<unknown>>([
   'value',
@@ -705,13 +689,12 @@ export const FIELD_STATE_KEYS: ReadonlySet<string> = new Set<keyof FieldState<un
 ])
 
 /**
- * Build the `form.fields` surface over an existing field-state
- * accessor (the same memoised accessor build-form-api threads into
- * `meta` and register, so every consumer of a path shares one
- * computed). Dot descent terminates at schema leaves with a cached
- * field VIEW proxy; the call form resolves the same per-path view for
- * ANY schema-declared path (a container view carries the rollup), and
- * `undefined` for paths the schema doesn't have.
+ * Build the `form.fields` surface over an existing field-state accessor, the
+ * same memoised one `build-form-api` threads into `meta` and register, so every
+ * consumer of a path shares one computed. Dot descent terminates at a schema
+ * leaf with a cached field VIEW proxy; the call form resolves that same
+ * per-path view for ANY schema-declared path, a container view carrying the
+ * rollup, and `undefined` for a path the schema does not have.
  */
 export function buildFieldsSurface<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -729,11 +712,10 @@ export function buildFieldsSurface<F extends GenericForm>(
   // `form.fields('email')` resolve one identity-stable view per
   // canonical path.
   const viewCache = new Map<PathKey, CallableSurface>()
-  // Identity stability is the contract here, which is exactly why only
-  // a path the form no longer HAS may be dropped (#617). A dead path's
-  // view is unreachable through this surface, and a consumer still
-  // holding one keeps reading correctly: every trap re-resolves live
-  // state per hit rather than capturing anything.
+  // Identity stability is the contract, which is why only a path the form no
+  // longer HAS may be dropped (#617). A dead path's view is unreachable through
+  // this surface, and a consumer still holding one keeps reading correctly:
+  // every trap re-resolves live state per hit rather than capturing anything.
   sweep.onEvict((key) => viewCache.delete(key))
   function viewAt(segments: readonly Segment[]): CallableSurface {
     const cacheKey = keyForSegments(segments).key
@@ -813,11 +795,11 @@ export function buildFieldsSurface<F extends GenericForm>(
 
 /**
  * Dense `FieldState`-snapshot tree at `containerSegments` for
- * `JSON.stringify(form.fields.<container>)`: walks the live form value
- * and snapshots every schema-leaf descendant; containers recurse;
- * arrays produce arrays; a container with no live value surfaces that
- * value (`null` / `undefined`) so "never populated" stays
- * distinguishable from "empty". Schema-leaf wins over data shape.
+ * `JSON.stringify(form.fields.<container>)`. It walks the live form value and
+ * snapshots every schema-leaf descendant, recursing through containers and
+ * producing arrays for arrays. A container with no live value surfaces that
+ * value, so "never populated" stays distinguishable from "empty", and a schema
+ * leaf wins over the data shape.
  */
 function materializeFields<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -845,13 +827,13 @@ function materializeFields<F extends GenericForm>(
 // ---------------------------------------------------------------------------
 
 /**
- * Materialise the reactive form value into a plain (proxy-free) tree
- * for faithful serialisation: `safeOwnRead` recovers data fields whose
- * names Vue shims on reactive proxies (`hasOwnProperty`), and the
- * rebuild via `safeAssign` keeps a literal `__proto__` key an own data
- * property. Every descent reads THROUGH the reactive proxy, so the
- * serialising effect re-runs on writes. Non-plain objects (Date, File,
- * Map, class instances) unwrap via `toRaw` and serialise themselves.
+ * Materialise the reactive form value into a plain, proxy-free tree for
+ * faithful serialisation. `safeOwnRead` recovers a data field whose name Vue
+ * shims on a reactive proxy, and the rebuild through `safeAssign` keeps a
+ * literal `__proto__` key an own data property. Every descent reads THROUGH the
+ * reactive proxy, so the serialising effect re-runs on writes. A non-plain
+ * object (Date, File, Map, a class instance) unwraps through `toRaw` and
+ * serialises itself.
  */
 function materializeFormValue(node: unknown): unknown {
   if (node === null || typeof node !== 'object') return node
@@ -870,43 +852,38 @@ function materializeFormValue(node: unknown): unknown {
 }
 
 /**
- * Build the `form.values` surface: a thin callable over Vue's native
- * `readonly` proxy. Dot reads delegate to the readonly proxy (per-key
- * dependency tracking lands in the consumer's effect); enumeration
- * reflects the readonly proxy; writes are warn-and-noop. The wrapping
- * computed re-mints the inner readonly proxy on whole-form swaps while
- * the callable stays identity-stable.
+ * Build the `form.values` surface: a thin callable over Vue's native `readonly`
+ * proxy. Dot reads delegate to that proxy, so per-key dependency tracking lands
+ * in the consumer's effect; enumeration reflects it; writes warn and no-op. The
+ * wrapping computed re-mints the inner readonly proxy on a whole-form swap
+ * while the callable stays identity-stable.
  *
  * The two read shapes answer different questions, and the split is the
  * documented contract:
  *
- * - `form.values.email` is the REACTIVE view. Per-key tracking, no
- *   copying, the value is always the live one.
- * - `form.values()` is a SNAPSHOT. It materialises a detached plain
- *   object, so a captured result keeps the values it held at capture
- *   time even as the form moves on.
+ * - `form.values.email` is the REACTIVE view: per-key tracking, no copying,
+ *   always the live value.
+ * - `form.values()` is a SNAPSHOT: a detached plain object, so a captured
+ *   result keeps what it held at capture time as the form moves on.
  *
- * The call form used to return `inner.value`, the live readonly proxy,
- * which made every documented use of it wrong in the same silent way:
- * `api.save(form.values())` handed an async call an object that kept
- * mutating underneath it, `structuredClone(form.values())` threw on the
- * proxy, and `watch(() => form.values(), cb)` never fired once, because
- * the identity never changed (#567). Nothing pinned the old behaviour
- * and the whole suite passed on the change.
+ * Returning the live readonly proxy from the call form instead makes every
+ * documented use of it silently wrong: `api.save(form.values())` hands an async
+ * call an object that keeps mutating underneath it,
+ * `structuredClone(form.values())` throws on the proxy, and
+ * `watch(() => form.values(), cb)` never fires, the identity never changing
+ * (#567).
  *
- * Memoised through a computed rather than materialised per call. A deep
- * walk of the form is ~1400x the cost of handing back the proxy, which
- * is a real regression when the call sits in a render; behind a
- * computed it is paid once per write instead of once per call, and not
- * at all until someone reads. Repeated calls between writes measured at
- * parity with the old proxy return.
+ * Memoised through a computed rather than materialised per call. A deep walk of
+ * the form is some 1400x the cost of handing back the proxy, a real regression
+ * when the call sits in a render; behind a computed it is paid once per write
+ * rather than once per call, and not at all until someone reads. Repeated calls
+ * between writes measure at parity with returning the proxy.
  *
- * The copy is deep across the plain-data spine. Non-plain instances
- * (Map, Set, File, Date) pass through `toRaw` by reference, matching
- * what `toJSON` has always done: cloning a File would be both expensive
- * and wrong, since identity is what an upload needs. Callers who want a
- * fully detached copy can `structuredClone` the result, which the live
- * proxy never allowed.
+ * The copy is deep across the plain-data spine. A non-plain instance (Map, Set,
+ * File, Date) passes through `toRaw` by reference, matching what `toJSON` does:
+ * cloning a File would be expensive and wrong, identity being what an upload
+ * needs. A caller wanting a fully detached copy can `structuredClone` the
+ * result, which the live proxy never allowed.
  */
 export function buildValuesSurface<F extends GenericForm>(
   form: Ref<F>,
@@ -914,15 +891,13 @@ export function buildValuesSurface<F extends GenericForm>(
 ): CallableSurface {
   const inner = computed(() => readonly(form.value))
 
-  // The materialised copy lives in a box the computed hands back, so a
-  // write can drop the payload while the computed still holds the box.
-  // Vue keeps a computed's last value until something reads it again,
-  // which would leave the previous snapshot pinning whatever the form
-  // used to hold. That is invisible for the plain-data spine (it is a
-  // copy, and it is replaced) but not for the instances materialise
-  // shares by reference: a cleared 50 MB File stayed reachable through
-  // the stale copy until the next read or teardown, where the live
-  // proxy this replaced released it at once.
+  // The materialised copy lives in a box the computed hands back, so a write
+  // can drop the payload while the computed still holds the box. Vue keeps a
+  // computed's last value until something reads it again, which would leave the
+  // previous snapshot pinning whatever the form used to hold. That is invisible
+  // for the plain-data spine, which is a copy and is replaced, but not for the
+  // instances materialise shares by reference: a cleared 50 MB File stays
+  // reachable through the stale copy until the next read or teardown.
   let held: { value: unknown } | null = null
   const snapshot = computed(() => {
     const box = { value: materializeFormValue(inner.value) as unknown }
@@ -935,10 +910,10 @@ export function buildValuesSurface<F extends GenericForm>(
     held = null
   })
 
-  // Every write that releases also invalidates the computed, so a
-  // released box is not reachable through this read. The branch is the
-  // guard for that invariant rather than an expected path: degrade to a
-  // fresh materialisation, never serve an emptied box.
+  // Every write that releases also invalidates the computed, so a released box
+  // is not reachable through this read. The branch guards that invariant rather
+  // than being an expected path: degrade to a fresh materialisation, never
+  // serve an emptied box.
   const readSnapshot = (): unknown => {
     const box = snapshot.value
     return box.value === RELEASED ? materializeFormValue(inner.value) : box.value
@@ -952,12 +927,11 @@ export function buildValuesSurface<F extends GenericForm>(
       const arg = args[0] as string | Path | undefined
       if (arg === undefined) return readSnapshot()
       const segments = canonicalizePath(arg).segments
-      // A leaf needs no copy, so it walks the live tree and skips
-      // building the root snapshot entirely. A container resolves out
-      // of the memoised snapshot instead of materialising per call:
-      // copying a subtree on every call measured ~250x the old live
-      // return on a 27-row form, and handed back a fresh object each
-      // time, so the same unchanged state compared unequal to itself.
+      // A leaf needs no copy, so it walks the live tree and never builds the
+      // root snapshot. A container resolves out of the memoised snapshot rather
+      // than materialising per call: copying a subtree on every call measures
+      // some 250x returning the proxy on a 27-row form, and hands back a fresh
+      // object each time, so unchanged state compares unequal to itself.
       const node = getAtPath(inner.value, segments)
       if (node === null || typeof node !== 'object') return node
       return getAtPath(readSnapshot(), segments)
@@ -970,11 +944,10 @@ export function buildValuesSurface<F extends GenericForm>(
       if (key === 'toJSON') return toJSON
       if (key === 'toString') return toString
       if (key === 'valueOf') return valueOf
-      // Prototype-shadowed names read off the RAW target so a data
-      // field by that name returns its stored value while the real
-      // inherited member resolves otherwise (dodges Vue's
-      // `hasOwnProperty` shim). Ordinary keys read through the
-      // readonly proxy for per-key tracking.
+      // A prototype-shadowed name reads off the RAW target, so a data field by
+      // that name returns its stored value while the real inherited member
+      // resolves otherwise, dodging Vue's `hasOwnProperty` shim. An ordinary
+      // key reads through the readonly proxy for per-key tracking.
       return isShadowedKey(key)
         ? (toRaw(inner.value) as Record<string, unknown>)[key]
         : (inner.value as Record<string, unknown>)[key]

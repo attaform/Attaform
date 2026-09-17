@@ -16,10 +16,10 @@
  *
  * Companion fixture `mixed-wizard.ts` covers the v2-specific surfaces
  * (string / function / lazy slots, namespaced aggregation, the
- * universal handleSubmit context) — this file stays narrowly focused
+ * universal handleSubmit context): this file stays narrowly focused
  * on instantiation depth so a regression there isolates cleanly.
  *
- * The fixture is never executed at runtime — `_neverInvoked` shapes
+ * The fixture is never executed at runtime, `_neverInvoked` shapes
  * the call-site inference so the typechecker exercises each surface
  * end-to-end without needing a Vue app context.
  */

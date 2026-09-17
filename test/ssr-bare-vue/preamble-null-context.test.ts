@@ -14,7 +14,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  * The preamble transform hoists every captured `v-register` expression
  * to a `:data-atta-pre-mark` directive on the first root element so the
  * mark fires before any descendant template expression evaluates.
- * That hoist runs unconditionally — a `v-if` guard on the input itself
+ * That hoist runs unconditionally: a `v-if` guard on the input itself
  * fires LATER in render order, so a nullable `injectForm()`
  * return that the consumer guarded around the input would still
  * dereference null in the preamble.
@@ -82,7 +82,7 @@ describe('SSR preamble null-safety', () => {
     // The v-if guard meant the input never entered the rendered tree.
     expect(html).not.toContain('<input')
 
-    // SSR-side warn is suppressed — see warnMiss in use-form-context.ts.
+    // SSR-side warn is suppressed, see warnMiss in use-form-context.ts.
     // The client-hydration setup re-runs and surfaces the same warn
     // there, so silencing the SSR pass is lossless and halves dev noise.
     const ourWarns = warnSpy.mock.calls.filter((args: readonly unknown[]) =>
@@ -95,7 +95,7 @@ describe('SSR preamble null-safety', () => {
     // Two v-register sites in one template: the first against a null
     // context, the second against a (parent-provided) form context. The
     // try/catch must absorb the first throw without preventing the
-    // second mark from firing — the per-entry isolation is the whole
+    // second mark from firing: the per-entry isolation is the whole
     // point of wrapping each call individually rather than the whole
     // chain in one try.
     //

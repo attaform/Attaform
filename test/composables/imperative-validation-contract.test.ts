@@ -8,7 +8,7 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * P6 characterization pin — the imperative-validation contract.
+ * P6 characterization pin: the imperative-validation contract.
  *
  * Pins the observable behaviors of the store-committing imperative
  * validation path so they survive the P6 fold verbatim: the verdict is
@@ -89,7 +89,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     expect(committed.length).toBeGreaterThan(0)
     expect(committed.every((e: { path: unknown[] }) => e.path[0] === 'email')).toBe(true)
 
-    // Re-running against a now-valid value REPLACES the stale entry —
+    // Re-running against a now-valid value REPLACES the stale entry,
     // the committed scope drops to clean.
     api.setValue('email', 'alice@example.com')
     const passing = await api.parse('email', { commit: true })
@@ -117,7 +117,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     api.setValue('username', 'slow-user')
     expect(api.fields.username.validating).toBe(true)
 
-    // Path-scoped to the OTHER field, whose refinement is sync — but the
+    // Path-scoped to the OTHER field, whose refinement is sync, but the
     // imperative call cancels ALL in-flight field runs (mirroring
     // handleSubmit), so username's gated run is dropped, not awaited.
     const response = await api.parse('password', { commit: true })
@@ -204,7 +204,7 @@ describe.each(adapters)('imperative validation contract — $name', ({ useForm, 
     expect(api.fields.username.validating).toBe(true)
 
     // Path-scoped parse of the sync field: resolves while the gated run
-    // stays in flight — parse never touches other fields' runs.
+    // stays in flight, parse never touches other fields' runs.
     const response = await api.parse('password')
     expect(response.success).toBe(false)
     expect(api.fields.username.validating).toBe(true)

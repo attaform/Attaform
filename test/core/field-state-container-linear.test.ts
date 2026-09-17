@@ -78,7 +78,7 @@ describe('container field-state aggregation — linear in array length', () => {
     void s0.value.dirty // prime
     // Mutate a SIBLING row; the value-walk for rows.0 never read rows.1, so
     // rows.0's computed must stay cached. (The whole-`originals` scan read
-    // every row, so this used to re-invalidate every element each op — the
+    // every row, so this used to re-invalidate every element each op: the
     // quadratic.)
     state.setValueAtPath(['rows', 1, 'c0'], 'changed')
     const spy = vi.spyOn(paths, 'keyForSegments')
@@ -98,7 +98,7 @@ describe('container field-state aggregation — linear in array length', () => {
     expect(after).not.toBe(before) // recomputed
     expect(after.dirty).toBe(true)
     expect(after.pristine).toBe(false)
-    // A different row stays pristine — no cross-element bleed.
+    // A different row stays pristine: no cross-element bleed.
     expect(getFieldState(['rows', 1]).value.dirty).toBe(false)
   })
 

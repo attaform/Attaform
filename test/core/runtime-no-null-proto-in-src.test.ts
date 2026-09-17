@@ -1,5 +1,5 @@
 /**
- * Standing diagnostic for issue #314 — `Object.create(null)` must not
+ * Standing diagnostic for issue #314, `Object.create(null)` must not
  * reappear inside `src/runtime/` as a defensive idiom.
  *
  * The prototype-pollution hardening that landed in PRs #308-310 used

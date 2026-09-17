@@ -11,14 +11,14 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Shared-key collision detection.
  *
  * Two `useForm({ key: 'x', schema })` calls resolve to the same
- * `FormStore` by design — the shared-store semantic. When the second
+ * `FormStore` by design: the shared-store semantic. When the second
  * call's schema is structurally different from the first's, the library
  * emits a dev-mode `console.warn` showing both sketches. The second
  * call's schema is silently ignored in favour of the first's (matching
  * the existing "only first caller wires the state" behaviour).
  *
  * The comparison is a sketch taken over the public `AbstractSchema`
- * surface — accepted primitive kinds, requiredness, leaf-ness and tuple
+ * surface, accepted primitive kinds, requiredness, leaf-ness and tuple
  * arity at every path reachable from the schema's own default shape.
  * That is the same surface the form runtime itself walks, so the check
  * cannot disagree with the behaviour it is diagnosing. It replaced a
@@ -26,13 +26,13 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * NOTE: `injectForm()` (no key) emits a separate `console.warn`
  * lazily when it walks up to an ancestor that registered multiple
- * useForm() calls (covers the anonymous-forms footgun — see PR
+ * useForm() calls (covers the anonymous-forms footgun, see PR
  * #117). The fixtures here drive shared-store resolution by calling
  * `useForm()` twice with the same key in one component; that pattern
  * doesn't itself trigger the ambient warning (which now only fires
  * when a descendant consumes ambient context), but the filter on
  * `warnSpy.mock.calls` by marker stays as a defensive guard. The
- * mismatch-warning marker is `"use different schemas"` — unique to
+ * mismatch-warning marker is `"use different schemas"`, unique to
  * this subsystem.
  */
 
@@ -161,7 +161,7 @@ describe('schema-mismatch shared-key warning', () => {
 
   it('catches a throwing adapter method and surfaces it in dev', async () => {
     // A custom adapter whose introspection throws is third-party code
-    // running inside our walk. It must NOT crash the form lifecycle — we
+    // running inside our walk. It must NOT crash the form lifecycle: we
     // allow the inconsistency and skip the mismatch check. In dev the
     // exception is logged via console.error so the adapter bug is
     // visible; no mismatch warning fires because the comparison never ran.

@@ -5,7 +5,7 @@ import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transform
 /*
  * Compile a template through @vue/compiler-core with our transform registered,
  * then inspect the generated render code string for the expected injected
- * binding. We don't eval the template — the generated code is inspected as
+ * binding. We don't eval the template: the generated code is inspected as
  * a source-level check, which is far less flaky than a full mount test.
  */
 
@@ -55,7 +55,7 @@ describe('inputTextAreaNodeTransform', () => {
       // Compile-time skip; the runtime directive also routes to a no-op.
       const code = compileWithTransform(`<input type="file" v-register="upload" />`)
       // The generated render code should NOT reference innerRef for a file
-      // input — setting el.value throws DOMException on file inputs.
+      // input, setting el.value throws DOMException on file inputs.
       expect(code).not.toContain('innerRef')
     })
 
@@ -66,7 +66,7 @@ describe('inputTextAreaNodeTransform', () => {
 
     // Dynamic / template-literal type bindings can't be classified at
     // compile time, so the transform no longer bails on them (that left
-    // every dynamically-typed wrapper input without an SSR value — a
+    // every dynamically-typed wrapper input without an SSR value: a
     // first-paint flash). Instead it injects the binding AND guards it
     // with a runtime file-exclusion (`type === 'file' ? undefined`) so a
     // type that resolves to "file" still emits no value (browsers reject
@@ -123,7 +123,7 @@ describe('inputTextAreaNodeTransform', () => {
    * option-value of the checkbox in an array group.
    *
    * The static `value=` on a checkbox / radio is the OPTION-value (a
-   * discriminator within the group), not display state — it must
+   * discriminator within the group), not display state: it must
    * survive the transform. The synthesized binding the transform
    * injects resolves to `:checked` for checkbox / radio at runtime,
    * which is a different attribute key from `value`, so keeping the
@@ -150,13 +150,13 @@ describe('inputTextAreaNodeTransform', () => {
     })
 
     it('still strips a colliding value attr on a text-type input', () => {
-      // Negative case — for text inputs, the synthesized binding
+      // Negative case, for text inputs, the synthesized binding
       // resolves to `:value` and would clash with a static `value`.
       // The transform's removal still applies there.
       const code = compileWithTransform(`<input type="text" value="ignored" v-register="email" />`)
       // The static `value: "ignored"` key-value pair must NOT appear
       // in the props object. (The literal `"ignored"` itself does
-      // appear inside the synthesized conditional's equality leg —
+      // appear inside the synthesized conditional's equality leg,
       // that's expected and unrelated.)
       expect(code).not.toMatch(/\bvalue:\s*"ignored"/)
     })
@@ -165,7 +165,7 @@ describe('inputTextAreaNodeTransform', () => {
       // HTML spec: `type` is ASCII case-insensitive. The compile-time
       // `isStaticTypeOneOf` already normalises, but the runtime
       // selection-label expression compares the type string against
-      // lowercase 'checkbox' / 'radio' — without case folding there,
+      // lowercase 'checkbox' / 'radio', without case folding there,
       // a `type="CHECKBOX"` input has its static `value` preserved
       // (per `keepStaticValue`) but still emits `:value=` instead of
       // `:checked=`, breaking SSR initial checked state. Both halves
@@ -175,7 +175,7 @@ describe('inputTextAreaNodeTransform', () => {
       )
       expect(upperCheckbox).toMatch(/\bvalue:\s*"apple"/)
       // Selection-label expression must lowercase the type before
-      // comparing — String(...).toLowerCase() shows up in the
+      // comparing, String(...).toLowerCase() shows up in the
       // generated render code.
       expect(upperCheckbox).toContain('.toLowerCase()')
 
@@ -213,7 +213,7 @@ describe('inputTextAreaNodeTransform', () => {
       )
       // The scalar leg should compare against 'subscribe', not ''.
       // DIR-F4: the scalar branch routes both sides through `String(...)`
-      // before comparing — mirroring the runtime `looseEqual` so SSR and
+      // before comparing, mirroring the runtime `looseEqual` so SSR and
       // hydration agree on the rendered `checked` state.
       expect(code).toMatch(/===\s*String\(\('subscribe'\)\)/)
     })
@@ -238,7 +238,7 @@ describe('inputTextAreaNodeTransform', () => {
 
     it('checkbox group keeps option-value for the array/Set legs', () => {
       // The group case must still use `value="apple"` for
-      // includes / has — only the scalar branch changes.
+      // includes / has, only the scalar branch changes.
       const code = compileWithTransform(
         `<input type="checkbox" value="apple" v-register="fruits" />`
       )

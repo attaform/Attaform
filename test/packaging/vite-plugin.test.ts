@@ -41,7 +41,7 @@ describe('attaform/vite — plugin registration', () => {
     const api = getVueApi(config)
     const nodeTransforms = api?.options?.template?.compilerOptions?.nodeTransforms ?? []
 
-    // Reference identity — the plugin must register OUR transform functions,
+    // Reference identity: the plugin must register OUR transform functions,
     // not wrappers. This rules out a regression where a bundler (e.g.
     // unbuild) accidentally wraps the export.
     expect(nodeTransforms).toContain(componentBridgeTransform)

@@ -15,9 +15,9 @@ import { waitUntil } from '../utils/form-harness'
  * Fire-time contract for consumer-supplied assigners.
  *
  * The library exposes two install paths for an assigner override:
- *   1. `@update:registerValue` vnode-prop listener — wrapped at
+ *   1. `@update:registerValue` vnode-prop listener, wrapped at
  *      `created`-time by `getModelAssigner`.
- *   2. `el[assignKey] = fn` symbol assignment — installed pre- (a
+ *   2. `el[assignKey] = fn` symbol assignment, installed pre- (a
  *      companion directive ordered first) or post- (`onMounted` /
  *      ref-callback).
  *

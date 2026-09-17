@@ -9,14 +9,14 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * `useWizard` exposes the current step as a triple:
  *
- *   - `currentStep` — the active step's key. Always defined (steps list
+ *   - `currentStep`: the active step's key. Always defined (steps list
  *                     is non-empty by construction).
- *   - `activeForm`  — a live facade over the active step's form. Always
+ *   - `activeForm`: a live facade over the active step's form. Always
  *                     defined (noop forms cover string slots); reports
  *                     the active step but is not `===` the raw handle.
- *   - `activeIndex` — the active step's 0-based index.
+ *   - `activeIndex`: the active step's 0-based index.
  *
- * `activeForm` and `activeIndex` are derived getters — they update
+ * `activeForm` and `activeIndex` are derived getters: they update
  * synchronously when `goTo` / `next` / `back` flips `currentStep`. The
  * `activeForm` facade is built once and late-binds `handleSubmit`, so a
  * handler captured at setup time always targets the current step.

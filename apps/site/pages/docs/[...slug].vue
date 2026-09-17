@@ -22,7 +22,7 @@
   //
   // Previously this branch did `throw createError({ statusCode: 404,
   // fatal: true })`. The throw fires inside an `async setup`, mid-
-  // Suspense-resolve, in the middle of a vue-router navigation —
+  // Suspense-resolve, in the middle of a vue-router navigation,
   // and the rest of the page template still expects `page.value`
   // to be non-null. The result is a cascade of "Invalid vnode type"
   // warnings as the template renders against null, followed by
@@ -45,7 +45,7 @@
   }
 
   // Dev-branch gate for the not-found callout. `import.meta.dev`
-  // is the Vite-stamped dev flag, constant-folded at build time —
+  // is the Vite-stamped dev flag, constant-folded at build time,
   // the production bundle ships a literal `false` here and the
   // dev-only callout template branch tree-shakes out entirely.
   const isDev = import.meta.dev
@@ -57,7 +57,7 @@
   // components bare in the body; explicit `:rows` / `:href` props
   // still win for the rare case a page computes meta dynamically.
   //
-  // The frontmatter key is `metaRows`, not `meta` — `meta` is
+  // The frontmatter key is `metaRows`, not `meta`, `meta` is
   // already claimed by @nuxtjs/seo's frontmatter shape and gets
   // mapped onto SEO meta tags rather than reaching `page.value`.
   provide(
@@ -93,7 +93,7 @@
 
   // Structured data per doc page. Two nodes:
   //
-  //   1. BreadcrumbList — drives the breadcrumb display in SERPs
+  //   1. BreadcrumbList, drives the breadcrumb display in SERPs
   //      (replaces the URL line under the result title with a
   //      readable trail). Reuses the same segment array as the on-
   //      page <DocsBreadcrumb> via useDocsBreadcrumb so on-page text
@@ -104,7 +104,7 @@
   //      BreadcrumbList parser expects every non-final item to
   //      resolve to a page.
   //
-  //   2. TechArticle — adds article-class signals (headline, author,
+  //   2. TechArticle, adds article-class signals (headline, author,
   //      description, mainEntityOfPage) so a docs page reads as
   //      "technical article about a software topic" rather than a
   //      generic page. Pairs with the SoftwareApplication node on
@@ -113,7 +113,7 @@
   // defineBreadcrumb / defineArticle come from nuxt-schema-org's
   // auto-imports (registered by @nuxtjs/seo). They handle the
   // @context / @type boilerplate and resolve relative URLs against
-  // site.url. Both nodes are emitted only when a page exists —
+  // site.url. Both nodes are emitted only when a page exists,
   // emitting Article schema for a 404 path would feed crawlers
   // false structured data about content that isn't there.
   const breadcrumbs = useDocsBreadcrumb()
@@ -143,7 +143,7 @@
               description: page.value?.description ?? '',
               author: { '@type': 'Person', name: 'Oswald Chisala' },
               // mainEntityOfPage is inferred from the current route by
-              // defineArticle when omitted — let it resolve against
+              // defineArticle when omitted, let it resolve against
               // site.url so we don't have to construct the canonical
               // URL ourselves.
             }),

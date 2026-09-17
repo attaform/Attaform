@@ -9,7 +9,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { ValidationError } from '../../src'
 
 /**
- * `ownErrors` / `firstOwnError` — exact-path error accessors.
+ * `ownErrors` / `firstOwnError`, exact-path error accessors.
  *
  * The exact-path counterpart to the subtree-scoped `errors` /
  * `firstError`. `ownErrors` is the errors at THIS path's own bucket

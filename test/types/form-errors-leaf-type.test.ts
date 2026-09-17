@@ -9,7 +9,7 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * Statically-known leaves must surface as `readonly ValidationError[]`.
  * The `| undefined` branch in `LeafSchemeFor.errors` is reserved for
  * dynamic-key boundaries (array indices, record keys) where the proxy
- * genuinely can't promise an array — never for leaves whose StorageShape
+ * genuinely can't promise an array, never for leaves whose StorageShape
  * happens to be `unknown` (preprocess / coerce wrappers).
  *
  * Mirrors the consumer ergonomic where `form.errors.email.length` should

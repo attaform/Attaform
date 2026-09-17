@@ -8,9 +8,9 @@ import type { UseFormConfig, UseFormReturn } from '../../src/zod'
  *
  * These assertions run at typecheck time: the file only compiles if
  * every inferred type matches the expectation. Catches silent inference
- * regressions — e.g. a refactor to FlatPath/NestedType that widens a
+ * regressions, e.g. a refactor to FlatPath/NestedType that widens a
  * leaf to `any`, or a wrapper-layer generic that drops z.output<Schema>
- * along the way — long before a consumer reports "my IDE stopped
+ * along the way, long before a consumer reports "my IDE stopped
  * suggesting field names".
  *
  * Structure: one describe block per public API method. Uses vitest's
@@ -18,8 +18,8 @@ import type { UseFormConfig, UseFormReturn } from '../../src/zod'
  * negative cases where a compile error IS the success signal.
  *
  * The useForm composable depends on a Vue app context at runtime, so we
- * only reference its TYPE here via `declare const form: ReturnType<...>`
- * — the file never calls useForm, so vitest can load it without a
+ * only reference its TYPE here via `declare const form: ReturnType<...>`:
+ * the file never calls useForm, so vitest can load it without a
  * mounted Vue app.
  */
 
@@ -51,13 +51,13 @@ type ExpectedForm = {
   posts: { title: string; views: number }[]
 }
 
-// The public factory's return type — what a consumer sees when they call
+// The public factory's return type, what a consumer sees when they call
 // `useForm({ schema, key })`. We bind the generic to our Schema to
 // exercise the full inference pipeline (Schema → z.output<Schema> →
 // Form → FlatPath/NestedType).
 type Form = UseFormReturn<Schema>
 
-// The public factory's *parameter* type — used to test the type-level
+// The public factory's *parameter* type, used to test the type-level
 // requirement on `key` without actually invoking useForm at runtime.
 type UseFormOptions = UseFormConfig<Schema>
 
@@ -65,7 +65,7 @@ type UseFormOptions = UseFormConfig<Schema>
 // cares about the type. We can't call the real `useForm` here (no Vue
 // app context), so we fake a `form` whose property/method access never
 // crashes. A recursive Proxy returns itself for every get/apply, which
-// is enough to keep vitest's runtime happy — only the static types the
+// is enough to keep vitest's runtime happy, only the static types the
 // checker sees matter.
 const form: Form = (() => {
   const handler: ProxyHandler<() => unknown> = {
@@ -84,12 +84,12 @@ describe('useForm type inference — factory signature', () => {
     const anonymousConfig: UseFormOptions = { schema }
     void anonymousConfig
 
-    // Explicit keys still typecheck — the string form is required
+    // Explicit keys still typecheck: the string form is required
     // when supplied (not `FormKey | undefined`).
     const namedConfig: UseFormOptions = { schema, key: 'test' }
     void namedConfig
 
-    // `schema` remains required — omitting it should still fail.
+    // `schema` remains required, omitting it should still fail.
     // @ts-expect-error - missing required `schema`
     const missingSchemaConfig: UseFormOptions = { key: 'test' }
     void missingSchemaConfig
@@ -98,7 +98,7 @@ describe('useForm type inference — factory signature', () => {
   it('returns the inferred Form shape on form.values', () => {
     // `form.values` is a callable readonly proxy over the form. Array
     // element types are strict (`tags: string[]`, not
-    // `(string | undefined)[]`) — the safety on `arr[N]` reads is
+    // `(string | undefined)[]`): the safety on `arr[N]` reads is
     // delegated to the consumer's `noUncheckedIndexedAccess: true`
     // tsconfig flag, which TypeScript already correctly suppresses on
     // iteration (`for (const x of arr)` keeps `x: T`). Baking
@@ -127,8 +127,8 @@ describe('useForm type inference — form.values', () => {
   it('array index is undefined-tainted (out-of-bounds is honest)', () => {
     // Numeric index access on an unbounded array returns `T | undefined`
     // because this repo's tsconfig sets `noUncheckedIndexedAccess: true`.
-    // The lib doesn't bake `| undefined` into the element type itself
-    // — that would also taint iteration, which is wrong (every iterated
+    // The lib doesn't bake `| undefined` into the element type itself:
+    // that would also taint iteration, which is wrong (every iterated
     // element exists by definition).
     expectTypeOf(form.values.tags[0]).toEqualTypeOf<string | undefined>()
   })
@@ -189,7 +189,7 @@ describe('useForm type inference — setValue', () => {
 describe('useForm type inference — register', () => {
   it('non-array paths are STRICT — register returns the leaf type without taint', () => {
     // Phase 4: register read shape is now `NestedReadType<Form, Path>`.
-    // Paths that don't cross a numeric segment stay strict — runtime
+    // Paths that don't cross a numeric segment stay strict, runtime
     // structural-completeness guarantees the slot is populated.
     const r = form.register('email')
     expectTypeOf(r.innerRef.value).toEqualTypeOf<string>()
@@ -212,13 +212,13 @@ describe('Phase 4: strict SetValuePayload', () => {
       // Array index reads are honestly tainted via the consumer's
       // `noUncheckedIndexedAccess: true` tsconfig flag. `prev.posts[5]`
       // could be out-of-bounds at runtime, so the type includes undefined.
-      // (Iteration over `prev.posts` keeps the strict element type — the
+      // (Iteration over `prev.posts` keeps the strict element type: the
       // flag scopes to indexed access only.)
       expectTypeOf(prev.posts[5]).toEqualTypeOf<{ title: string; views: number } | undefined>()
       expectTypeOf(prev.tags[0]).toEqualTypeOf<string | undefined>()
       // Non-array properties remain strict.
       expectTypeOf(prev.email).toEqualTypeOf<string>()
-      // Spread is fine — the return type matches the read shape and
+      // Spread is fine: the return type matches the read shape and
       // mergeStructural fills any structural gaps at the runtime layer.
       return { ...prev, email: 'updated@example.com' }
     })
@@ -226,11 +226,11 @@ describe('Phase 4: strict SetValuePayload', () => {
 
   it('path-form callback prev is STRICT (runtime auto-defaults)', () => {
     // The runtime hands the consumer the schema default at the path
-    // when the slot is unpopulated, so prev is genuinely populated —
+    // when the slot is unpopulated, so prev is genuinely populated,
     // strict NestedType (not undefined-tainted) is honest.
     form.setValue('posts.0', (prev) => {
       expectTypeOf(prev).toEqualTypeOf<{ title: string; views: number }>()
-      // No `?.` or fallback needed — `prev.title` is `string`, not
+      // No `?.` or fallback needed, `prev.title` is `string`, not
       // `string | undefined`.
       return { ...prev, title: prev.title.toUpperCase() }
     })
@@ -341,7 +341,7 @@ describe('useForm type inference — fields() callable tuple form', () => {
 
 describe('useForm type inference — fields() string call-form (precise + invalid→undefined)', () => {
   it('a valid literal leaf resolves to its precise FieldState, no guard', () => {
-    // No `?.` — a schema-declared path is never undefined, and the value
+    // No `?.`: a schema-declared path is never undefined, and the value
     // type is precise.
     expectTypeOf(form.fields('email').value).toEqualTypeOf<string>()
     expectTypeOf(form.fields('profile.name').value).toEqualTypeOf<string>()
@@ -364,7 +364,7 @@ describe('useForm type inference — errors() callable tuple form', () => {
     const errs = form.errors(['email'])
     // Match shape (the public ValidationError type is exported, but
     // accessing the imported alias here would couple the test to its
-    // import path — toMatchTypeOf is enough).
+    // import path, toMatchTypeOf is enough).
     expectTypeOf(errs).toMatchTypeOf<readonly { message: string }[] | undefined>()
   })
 
@@ -446,15 +446,15 @@ describe('useForm type inference — setValue at honest-input paths', () => {
   // `z.any()`, `z.unknown()`, and `z.preprocess(fn, X)`. Each maps to
   // a distinct setValue callback `prev` typing:
   //
-  //   - `z.any()`   — schema input is `any`; the entire form API
+  //   - `z.any()`, schema input is `any`; the entire form API
   //                   surface (`form.values`, `register`, `fields`,
   //                   setValue) stays `any` at this path. Callsites
   //                   that pass an unannotated `(prev) => ...` may
   //                   surface `noImplicitAny` under the consumer's
-  //                   tsconfig — annotate `(prev: any) => ...` to opt
+  //                   tsconfig, annotate `(prev: any) => ...` to opt
   //                   into the looser shape explicitly.
   //
-  //   - `z.unknown()`, `z.preprocess(fn, X)` — schema input is
+  //   - `z.unknown()`, `z.preprocess(fn, X)`, schema input is
   //                   `unknown`. The setValue callback's `prev` is
   //                   `unknown` so reading a property off it
   //                   compile-errors until narrowed.
@@ -506,7 +506,7 @@ describe('useForm type inference — setValue at honest-input paths', () => {
   })
 
   it('z.any(): the entire path API stays `any` end-to-end', () => {
-    // The `any` usages below are intentional — they pin that the
+    // The `any` usages below are intentional: they pin that the
     // resolved type at a z.any() path is literally `any` (the dev's
     // explicit schema choice), not `unknown` or anything narrower.
     /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -520,7 +520,7 @@ describe('useForm type inference — setValue at honest-input paths', () => {
 
     // Callback `prev` is `any` when annotated explicitly. Unannotated
     // `(prev) => ...` callsites may surface noImplicitAny under the
-    // consumer's tsconfig — the annotation opts into the `any` shape.
+    // consumer's tsconfig: the annotation opts into the `any` shape.
     honestForm.setValue('anyThing', (prev: any) => {
       expectTypeOf(prev).toEqualTypeOf<any>()
       return prev
@@ -530,7 +530,7 @@ describe('useForm type inference — setValue at honest-input paths', () => {
 
   it('strict paths in the same schema still infer their concrete leaf type', () => {
     // Mixing honest-input fields with strict fields in one schema
-    // doesn't bleed into the strict path's inference — `prev: string`
+    // doesn't bleed into the strict path's inference, `prev: string`
     // for `name`, not `unknown`.
     honestForm.setValue('name', (prev) => {
       expectTypeOf(prev).toEqualTypeOf<string>()
@@ -557,8 +557,8 @@ describe('useForm type inference — fields + errors', () => {
     expectTypeOf(form.errors.email).toMatchTypeOf<readonly { message: string }[]>()
     // Callable signature exists on the surface itself.
     expectTypeOf(form.errors).toBeCallableWith('email')
-    // No `.value` — the proxy is not a Ref.
-    // @ts-expect-error — errors is not a Ref.
+    // No `.value`: the proxy is not a Ref.
+    // @ts-expect-error, errors is not a Ref.
     void form.errors.value
   })
 
@@ -584,7 +584,7 @@ describe('useForm type inference — form-level state bundle', () => {
   it('scalar leaves are primitives, not Refs', () => {
     // These are the 9 fields that used to live at the top level as
     // `Readonly<ComputedRef<X>>`. Inside reactive() they auto-unwrap
-    // on access — so the template footgun (binding to the wrapper
+    // on access: so the template footgun (binding to the wrapper
     // object instead of its .value) is gone at the type level too.
     expectTypeOf(form.meta.dirty).toEqualTypeOf<boolean>()
     expectTypeOf(form.meta.valid).toEqualTypeOf<boolean>()
@@ -598,14 +598,14 @@ describe('useForm type inference — form-level state bundle', () => {
   })
 
   it('rejects writes (state is readonly at the type level)', () => {
-    // @ts-expect-error — state is readonly; prefer setValue / handleSubmit
+    // @ts-expect-error, state is readonly; prefer setValue / handleSubmit
     form.meta.submitting = true
-    // @ts-expect-error — same for counters
+    // @ts-expect-error, same for counters
     form.meta.submissionAttempts = 5
   })
 
   it('rejects unknown keys', () => {
-    // @ts-expect-error — `foo` is not a FormMeta key
+    // @ts-expect-error, `foo` is not a FormMeta key
     void form.meta.foo
   })
 })

@@ -98,8 +98,8 @@ describe('handleSubmit success semantics (#438)', () => {
     // so onSubmit ran; the setErrors inside it is the dev's own state
     // write, not a re-verdict, and must not route back through onError.
     expect(onError).not.toHaveBeenCalled()
-    // The error the callback set is still recorded — submitted stays false
-    // and it shows in the user-error layer — it just doesn't fire onError.
+    // The error the callback set is still recorded, submitted stays false
+    // and it shows in the user-error layer: it just doesn't fire onError.
     expect(api.meta.submitted).toBe(false)
     expect(
       api.meta.errors.some(

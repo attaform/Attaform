@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
  * `apps/site/content.config.ts` declares a `description` contract on
  * every docs page: a min (below which a SERP snippet collapses to a
  * headline) and a max (above which Google truncates it). Nuxt Content
- * validates that zod schema at parse time, but a violation only WARNS —
+ * validates that zod schema at parse time, but a violation only WARNS,
  * the page still ships. So an over-cap description never fails the
  * build, and 17 pages had silently drifted past the max before this
  * gate existed.

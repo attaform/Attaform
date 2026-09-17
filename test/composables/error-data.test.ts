@@ -17,7 +17,7 @@ import type { Json, ValidationError } from '../../src/runtime/types/types-api'
  * `ValidationError.data` is an opaque JSON passthrough: the consumer
  * attaches a structured server payload (a captcha challenge, a lockout
  * `unlocks_at` timestamp, an MFA step-up descriptor) and Attaform
- * carries it untouched across every surface — the manual setters, the
+ * carries it untouched across every surface: the manual setters, the
  * aggregate reads, the SSR serialise / hydrate round-trip, and the
  * undo / redo restore.
  */

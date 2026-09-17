@@ -5,8 +5,8 @@ import { useWizard } from '../../src'
 import type { FormStatus } from '../../src/zod-v4'
 
 /**
- * Type-pressure regression test for the 4-form `useWizard` pattern
- * — the synthetic version of the shipment-demo restructure. Validates
+ * Type-pressure regression test for the 4-form `useWizard` pattern:
+ * the synthetic version of the shipment-demo restructure. Validates
  * that the type system holds together when consumers wire 3+ forms
  * with moderately-complex schemas (nested objects, arrays, tuples,
  * discriminated unions) in one scope.
@@ -149,7 +149,7 @@ describe('Type-pressure — 4 useForm calls + useWizard composition', () => {
     function _neverInvoked() {
       const refForm = useForm({ schema: referenceSchema, key: 'reference' as const })
       refForm.setValue('shipperRef', 'TRACK-001')
-      // @ts-expect-error — number not assignable to string at shipperRef
+      // @ts-expect-error, number not assignable to string at shipperRef
       refForm.setValue('shipperRef', 42)
     }
     void _neverInvoked

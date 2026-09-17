@@ -8,7 +8,7 @@
 
   // Header always carries the translucent fill + 1px hairline so it
   // reads as a sticky element from the first paint. The shadow only
-  // appears once content has scrolled beneath — it's what registers
+  // appears once content has scrolled beneath: it's what registers
   // the "lifted" depth, and at scroll=0 there's nothing to lift over,
   // so a constant shadow there reads as a flat panel rather than a
   // sticky bar.
@@ -24,7 +24,7 @@
     window.removeEventListener('scroll', onScroll)
   })
 
-  // Mobile sheet — translucent backdrop + solid right-side drawer.
+  // Mobile sheet, translucent backdrop + solid right-side drawer.
   // Closes via Esc, the X button inside the drawer, link tap (route
   // watcher catches both NuxtLink internal nav and we close the
   // external GitHub link manually), or backdrop click. Body scroll

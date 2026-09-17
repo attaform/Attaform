@@ -1,7 +1,7 @@
 <script setup lang="ts">
   // Override Nuxt Content's default <a> rendering inside markdown.
   //
-  // External http(s) links open in a new tab — the docs corpus
+  // External http(s) links open in a new tab: the docs corpus
   // legitimately points at github.com (repo source, issues, releases),
   // npm, MDN, etc., and pulling readers off the docs page on those
   // links is rude. In-site routes (Nuxt Content's normalised paths)

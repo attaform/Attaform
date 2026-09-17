@@ -7,14 +7,14 @@ import { useWizard } from '../../src/runtime/composables/use-wizard'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `useWizard` — basic navigation. Three forms keyed `a / b / c` listed
+ * `useWizard`, basic navigation. Three forms keyed `a / b / c` listed
  * positionally on the wizard's `steps` array. The wizard exposes:
  *
  *   - `count`, `currentStep`, `activeForm`, `activeIndex`, `isFinalStep`,
  *     `steps`, `forms` (introspection)
- *   - `next()` / `back()` — silent no-op past ends with a dev-warn
- *   - `goTo(key)` — silent no-op + dev-warn on unknown key
- *   - bare string slots — desugared to noop forms uniformly
+ *   - `next()` / `back()`, silent no-op past ends with a dev-warn
+ *   - `goTo(key)`, silent no-op + dev-warn on unknown key
+ *   - bare string slots, desugared to noop forms uniformly
  */
 
 const schema = z.object({ email: z.string().optional() })

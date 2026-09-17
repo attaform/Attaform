@@ -19,7 +19,7 @@ function compileWithTransform(template: string): string {
   return result.code
 }
 
-// Vue's compiler emits the injected directive as a JS object key —
+// Vue's compiler emits the injected directive as a JS object key,
 // `{ selected: ... }`, unquoted. We assert against the unquoted form
 // (`/\bselected:/`) so a future generator change to quoting style
 // doesn't false-fail. Counting via String.match() rather than
@@ -32,8 +32,8 @@ describe('componentBridgeTransform — `:value` injection on the select element'
   // Patching `select.value` on a `<select multiple>` runs the spec's
   // value-setter loop and DESELECTS every option whose value isn't
   // case-equal to the new string. Our `displayValue.value` for an
-  // array model is `String(arr)` like "red,blue" — matches no option
-  // — so injecting `:value` on a multi-select clobbers the per-option
+  // array model is `String(arr)` like "red,blue", matches no option:
+  // so injecting `:value` on a multi-select clobbers the per-option
   // `:selected` SSR state at hydration. The transform must skip
   // `:value` on multi-selects; the per-option bindings carry the
   // correct initial state on their own.
@@ -96,7 +96,7 @@ describe('componentBridgeTransform — option value fallback (D3)', () => {
 
   it('escapes single quotes in the synthesised text literal', () => {
     const code = compileWithTransform(`<select v-register="kind"><option>a'b</option></select>`)
-    // JSON.stringify wraps in double quotes — single quotes inside don't need escaping.
+    // JSON.stringify wraps in double quotes, single quotes inside don't need escaping.
     expect(code).toContain('"a\'b"')
   })
 
@@ -114,7 +114,7 @@ describe('componentBridgeTransform — option value fallback (D3)', () => {
   it('skips :selected binding when option children are interpolated', () => {
     // `<option>{{ x }}</option>` has a single INTERPOLATION child,
     // not a TEXT child. The transform can't synthesize a static
-    // value, so it bails — better than emitting a wrong binding.
+    // value, so it bails, better than emitting a wrong binding.
     const code = compileWithTransform(
       `<select v-register="fruit"><option>{{ x }}</option></select>`
     )
@@ -139,8 +139,8 @@ describe('componentBridgeTransform — option value fallback (D3)', () => {
 
 describe('componentBridgeTransform — E1 source-location fidelity', () => {
   it('preserves a non-zero source location on the injected :value binding', () => {
-    // Pad the template so the <select> doesn't sit at line/column 0
-    // — this lets us assert that the injected directive's loc matches
+    // Pad the template so the <select> doesn't sit at line/column 0:
+    // this lets us assert that the injected directive's loc matches
     // a non-trivial position rather than the deleted dummyLoc.
     const template = `<div>\n  <select v-register="fruit"><option value="apple">A</option></select>\n</div>`
     // baseCompile preserves AST node `loc` fields; we walk the AST and
@@ -170,7 +170,7 @@ describe('componentBridgeTransform — slotted options on a component host (#394
   // whose template is `<select><slot/></select>`) projects its `<option>`s
   // as parent-authored slot content. Those options are still present in the
   // host's `node.children` at transform time, so they must be marked with
-  // `:selected` exactly like the inline-`<select>` path — otherwise the SSR
+  // `:selected` exactly like the inline-`<select>` path, otherwise the SSR
   // HTML omits the selected option and the browser flashes the first option
   // until hydration corrects it.
   it('marks a slotted option under a component host (the bug: was 0)', () => {

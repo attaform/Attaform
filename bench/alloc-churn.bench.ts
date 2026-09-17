@@ -1,11 +1,11 @@
 /**
- * P1 allocation probe — per-keystroke alloc churn on the validation scheduler.
+ * P1 allocation probe, per-keystroke alloc churn on the validation scheduler.
  *
  * The complexity ledger (PERF-ANALYSIS.md row P1) flags `scheduleFieldValidation`
  * (create-form-store.ts:2589) for allocating fresh objects on every change/blur
  * keystroke with no pool. This bench MEASURES whether that churn is worth busting.
  *
- * STATUS: Bust B SHIPPED 2026-06-09 — the per-keystroke `new AbortController()`
+ * STATUS: Bust B SHIPPED 2026-06-09: the per-keystroke `new AbortController()`
  * was swapped for a one-shot `aborted` boolean on the entry (the `flag` cell,
  * the live scheduler's pattern). Bust A (pool the entry) stays DECLINED: pooled
  * ≈ current, so the entry object is not the cost. The controller cells below are
@@ -13,13 +13,13 @@
  *
  * Why a primitive microbench, not an end-to-end keystroke loop: P1's allocations
  * only fire in 'change'/'blur' mode (submit-mode early-returns at :2595, which is
- * exactly why the matrix keystroke sweeps — all `validateOn: 'submit'` — never
+ * exactly why the matrix keystroke sweeps, all `validateOn: 'submit'`, never
  * exercise P1). A 'change'-mode end-to-end loop queues a setTimeout per write that
  * never flushes inside a tight bench, accumulating timers and skewing later
  * iterations (the same skew the matrix bench and the T4 probe call out). So we
  * follow the established Bust-3 / T4 discipline: time the exact SCHEDULING-TIME
  * primitive directly. The bustable work is synchronous and lives at
- * create-form-store.ts:2597-2612 — this models those lines faithfully:
+ * create-form-store.ts:2597-2612: this models those lines faithfully:
  *
  *     const prev = state.get(key)
  *     if (prev !== undefined) {
@@ -54,7 +54,7 @@
  *                      run's OWN entry instead (see `flag`).
  *   flag            -> bust B AS SHIPPED: drop the AbortController, cancel via a
  *                      one-shot `aborted` boolean on the entry. Byte-identical
- *                      because the validation controller's signal never escapes —
+ *                      because the validation controller's signal never escapes,
  *                      `validateAtPath` (:2655) takes no signal, and the signal
  *                      was checked only internally (:2613 / :2657) to drop a
  *                      superseded verdict, which `fresh.aborted` reproduces.
@@ -66,11 +66,11 @@
  *        floor      = hz(controller-only)        (cost the entry-pool can't shed)
  * Bust A bought nothing (current ≈ pooled). Bust B is the realized win: `flag`
  * vs `current` is exactly the `new AbortController()` removal (both allocate a
- * fresh entry + closure + map.set). Weigh it in ABSOLUTE per-keystroke terms —
+ * fresh entry + closure + map.set). Weigh it in ABSOLUTE per-keystroke terms,
  * it fires change/blur only, against a deferred parse that dominates the
- * keystroke — not by the headline ratio.
+ * keystroke: not by the headline ratio.
  *
- * NOTE: no `old:`/`new:` cells here, so scripts/check-bench.mjs skips this file —
+ * NOTE: no `old:`/`new:` cells here, so scripts/check-bench.mjs skips this file,
  * these are absolute-ops probes for the dashboard, like matrix.bench.ts.
  */
 
@@ -185,7 +185,7 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
     })
   }
 
-  // Bust B: no AbortController at all. Cancellation rides a generation counter —
+  // Bust B: no AbortController at all. Cancellation rides a generation counter,
   // the run drops its verdict when a newer schedule has bumped `gen`, the same
   // outcome `controller.signal.aborted` gates today. Reuses the entry too, so
   // this isolates the controller-removal prize on top of the entry pool.
@@ -217,7 +217,7 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
   }
 
   // Bust B AS SHIPPED: drop the AbortController, cancel via a one-shot
-  // `aborted` boolean on the entry — NOT a generation counter (the
+  // `aborted` boolean on the entry: NOT a generation counter (the
   // epoch-only cell above models that rejected alternative). A fresh
   // schedule still allocates a fresh entry + run closure + map.set (same
   // as `current`); the ONLY removed work is the `new AbortController()`,

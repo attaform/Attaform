@@ -2,7 +2,7 @@
 /**
  * Prototype-pollution gate for `placeAt` (errors-proxy.ts).
  *
- * `setErrors` accepts a `path` from consumer input — server
+ * `setErrors` accepts a `path` from consumer input, server
  * replies, manual marks. Without protection, a path whose first segment
  * is `__proto__` reaches `placeAt`'s `cursorRecord[lastKey] = errors`
  * write and pollutes `Object.prototype` for the whole process (CodeQL
@@ -18,13 +18,13 @@
  * dangerous-segment guard.
  *
  * Each special-key case asserts two invariants in sequence:
- *   1. Positive roundtrip — the errors are present in the materialised
+ *   1. Positive roundtrip: the errors are present in the materialised
  *      error tree at the path the consumer set them at. Probed via
  *      `form.errors.toJSON()` because the `form.errors(path)` callable
  *      applies the active-path filter for unreachable paths (correct
  *      for the schema-error case it's tuned for, irrelevant for raw
  *      placement verification here).
- *   2. No pollution — a fresh plain `{}` does NOT inherit the canary
+ *   2. No pollution: a fresh plain `{}` does NOT inherit the canary
  *      property, confirming the write never reached `Object.prototype`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -49,7 +49,7 @@ const adapters = [
 ] as const
 
 // Sentinel property name unique to this test run. If pollution lands,
-// every plain object inherits this key — easy to detect from a fresh
+// every plain object inherits this key, easy to detect from a fresh
 // `{}` without disturbing global state for unrelated suites.
 const SENTINEL = 'attaformProtoPollutionCanary'
 
@@ -91,13 +91,13 @@ describe.each(adapters)('errors-proxy `placeAt` proto-less storage — $name', (
       },
     ])
 
-    // Positive roundtrip — the materialised tree carries the entry as
+    // Positive roundtrip: the materialised tree carries the entry as
     // a plain own-property pair on prototype-less containers, so
     // bracket access lands exactly where the consumer set the path.
     const tree = materialisedErrorTree(api)
     const protoSlot = tree['__proto__'] as ErrorTree | undefined
 
-    // Negative invariant — Object.prototype is unchanged. A plain `{}`
+    // Negative invariant, Object.prototype is unchanged. A plain `{}`
     // probe inherits nothing because the tree's `__proto__` slot is a
     // regular own property on a prototype-less container, not the
     // accessor that would walk into Object.prototype.

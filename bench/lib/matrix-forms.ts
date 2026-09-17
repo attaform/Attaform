@@ -56,14 +56,14 @@ export function flat(z: any, fieldCount: number): MatrixForm {
  * true, which denies the validation scheduler its subtree scope
  * (create-form-store.ts:2651): every keystroke runs a WHOLE-FORM parse
  * (`validateAtPath(form.value, undefined)`) that re-validates every unchanged
- * sibling leaf. Sweeps field count for T4 — the redundant sibling re-parse.
+ * sibling leaf. Sweeps field count for T4: the redundant sibling re-parse.
  *
  * The predicate is kept O(1) (reads f0/f1 only) so the measured cost is the
  * sibling leaf-parses, NOT the refine's own work; an aggregate refine that
  * genuinely reads all F fields keeps an irreducible O(F) floor (the verdict
  * depends on every field), so T4's prize there is constant-factor, not
  * asymptotic. f0/f1 are seeded equal so the refine PASSES on the baseline
- * tree — a failing root refine aborts before the full successful parse we
+ * tree: a failing root refine aborts before the full successful parse we
  * want to time.
  */
 export function flatRefined(z: any, fieldCount: number): MatrixForm {
@@ -97,12 +97,12 @@ export type RefinedPair = {
 
 /**
  * F leaves, each with TWO built-in checks (`.min(2).regex(/^[a-z]+$/)`), plus one
- * O(1) root refine — paired with its Variant A'' refines-only reduction (each leaf
+ * O(1) root refine, paired with its Variant A'' refines-only reduction (each leaf
  * stripped to base `z.string()`, built-ins dropped, the refine kept).
  *
  * This measures what the byte-identical T4 decomposition actually BUYS. A'' keeps
  * base types + coercion + custom refines (it reproduces zod's abort short-circuit
- * structurally rather than detecting fatal/abort flags — which differ by adapter and
+ * structurally rather than detecting fatal/abort flags: which differ by adapter and
  * hide in a closure on v3), so it can shed ONLY the per-leaf built-in checks. Its
  * parse floor is therefore the base-type whole-form parse, NOT the O(1) subtree branch
  * a refine-free form enjoys. Plain `z.string()` leaves (`flatRefined`) would show no

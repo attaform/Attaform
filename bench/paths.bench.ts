@@ -3,16 +3,16 @@
  *
  * Gated old/new pairs (scripts/check-bench.mjs asserts new ≥ 3× old):
  *
- *   - canonicalizePath: repeated-input cost before vs after the LRU cache
- *     — a cache hit vs a full parse + normalize + stringify.
+ *   - canonicalizePath: repeated-input cost before vs after the LRU cache:
+ * a cache hit vs a full parse + normalize + stringify.
  *   - isDirty recovery: recovering each tracked entry's `Path` during the
- *     dirty walk — `JSON.parse(pathKey)` per entry (pre-5.1) vs reading
+ *     dirty walk, `JSON.parse(pathKey)` per entry (pre-5.1) vs reading
  *     the stored `segments` off the `{ segments, value }` record (post-5.1).
  *
  * The recovery pair isolates ONLY the segment-recovery step. Both dirty
  * walks call `getAtPath(form, segments)` identically once segments are in
  * hand, so folding that shared cost into both arms makes the ratio
- * `1 + parse/walk` — which decays toward 1 as the walk grows. That is how
+ * `1 + parse/walk`: which decays toward 1 as the walk grows. That is how
  * the previous end-to-end form let the prototype-shadow guard added to
  * `descendStep` (a cost both arms pay equally) drag the ratio under the
  * 3× floor, with the recovery optimization itself fully intact. The thing
@@ -98,7 +98,7 @@ function makeOriginalsNew(): Map<PathKey, { segments: readonly Segment[]; value:
 // The LRU makes repeat calls O(Map hit) instead of parse + normalize +
 // stringify. A deeper path (8 segments, representative of nested
 // arrays-of-objects forms like `items.0.variants.0.pricing.regions.0.amount`)
-// widens the gap between the cached and uncached paths — parse + stringify
+// widens the gap between the cached and uncached paths, parse + stringify
 // grow linearly with segment count, while the LRU remains O(1).
 
 const HOT_PATH = 'items.0.variants.0.pricing.regions.0.amount'
@@ -123,7 +123,7 @@ describe('canonicalizePath: repeated dotted input', () => {
 // This pair isolates EXACTLY that recovery step and nothing else. The
 // downstream `getAtPath(form, segments)` is identical in both walks, so
 // seating it in both arms would pin a large shared cost under the ratio
-// and pull it toward 1 as the walk grows — which is precisely how the
+// and pull it toward 1 as the walk grows: which is precisely how the
 // prototype-shadow guard in `descendStep` (paid equally by both arms)
 // dragged the old end-to-end ratio under the 3× floor. Recovery is a
 // class difference (parse + allocate vs an O(1) property load), so the
@@ -156,8 +156,8 @@ describe('isDirty recovery: 100-entry originals', () => {
 // ---------- Group 3 (ungated): end-to-end dirty walk ----------
 //
 // Not an old/new pair, so check-bench skips it. This tracks the FULL
-// dirty walk on the current stored-segments shape — recover segments,
-// `getAtPath`, `Object.is` — so the walk's absolute cost (including the
+// dirty walk on the current stored-segments shape, recover segments,
+// `getAtPath`, `Object.is`: so the walk's absolute cost (including the
 // prototype-shadow guard in `descendStep`) stays visible over time
 // without gating a fragile ratio against it.
 

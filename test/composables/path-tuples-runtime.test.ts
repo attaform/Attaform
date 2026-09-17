@@ -12,7 +12,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * (`canonicalizePath` in `src/runtime/core/paths.ts`) already accepts
  * both dotted-string and segment-array forms; these tests confirm the
  * tuple form produces an equivalent `RegisterValue` to the dotted
- * form — same resolved path key, same value reads, same write
+ * form, same resolved path key, same value reads, same write
  * propagation.
  */
 

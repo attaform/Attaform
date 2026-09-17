@@ -24,7 +24,7 @@ describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', (
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
       const resolved = adapter.getSchemasAtPath(['value', 'x'])
-      // Both branches expose `x` — both should resolve.
+      // Both branches expose `x`, both should resolve.
       expect(resolved.length).toBeGreaterThanOrEqual(1)
     })
 
@@ -126,7 +126,7 @@ describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', (
       )
       const schema = z.object({ root: treeSchema })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 2 })
-      // Two-level recursion: root.children.0.children.0.name — within depth 2 still resolves.
+      // Two-level recursion: root.children.0.children.0.name, within depth 2 still resolves.
       const within = adapter.getSchemasAtPath(['root', 'children', '0', 'name'])
       expect(within.length).toBeGreaterThanOrEqual(1)
       // Past the cap, the walker returns []; the slim gate falls back to

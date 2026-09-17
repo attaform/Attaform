@@ -9,7 +9,7 @@ import type {
  * Type-level checks for the wizard's status surface. `FormStatus` is
  * the per-form summary derived from `form.meta`. `wizard.statuses` and
  * the `defaultStatuses` seed option are loosely keyed
- * (`Record<string, FormStatus>`) — cross-component graphs threaded
+ * (`Record<string, FormStatus>`), cross-component graphs threaded
  * through `injectWizard` lose lexical key knowledge, so the public
  * surface settles on the loose shape. `WizardAggregateError` is the
  * flattened shape returned by `wizard.allErrors`. `WizardStatusesProxy`

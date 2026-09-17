@@ -25,15 +25,15 @@ import { fileURLToPath } from 'node:url'
 //
 // Two parallel pipelines, both watch-aware:
 //
-// 1. Runtime JS (esbuild) — bundles attaform + attaform/zod from src/
+// 1. Runtime JS (esbuild), bundles attaform + attaform/zod from src/
 //    plus a fresh zod, and copies vue's prebuilt browser ESM. These
 //    are what the REPL preview iframe actually executes. We bundle
 //    attaform from src/ (not dist/) because dist/ in dev is jiti-
-//    shimmed for Node consumers — those shims don't run in the
+//    shimmed for Node consumers, those shims don't run in the
 //    browser. esbuild handles TS natively, so source bundling is fast
 //    and produces a real browser ESM.
 //
-// 2. Type bundles (rollup-plugin-dts) — single-file `.d.ts` per
+// 2. Type bundles (rollup-plugin-dts), single-file `.d.ts` per
 //    package, served from `/lib/types/<pkg>/index.d.ts` and consumed
 //    by the Monaco editor's Volar language service via @vue/repl's
 //    `pkgFileTextUrl` hook. Bundling means the LSP fetches one file
@@ -65,7 +65,7 @@ const zodPkg = requireFromHere('zod/package.json')
 // resolves to the v3 install via the alias.
 const zodV3Pkg = requireFromHere('zod-v3/package.json')
 // attaform's package.json sits at the monorepo root, not in
-// node_modules — resolve it by absolute path so we don't rely on a
+// node_modules, resolve it by absolute path so we don't rely on a
 // hoisting layout that the workspace might restructure later.
 const attaformPkg = JSON.parse(await readFile(resolve(repoRoot, 'package.json'), 'utf8'))
 const runtimeDomDts = resolve(
@@ -80,7 +80,7 @@ const watch = process.argv.includes('--watch')
 
 // `tsconfig` is set explicitly to the workspace-root config. Without
 // this, esbuild auto-discovers `apps/site/tsconfig.json` (the cwd this
-// script runs in), which extends `./.nuxt/tsconfig.json` — and `.nuxt/`
+// script runs in), which extends `./.nuxt/tsconfig.json`, and `.nuxt/`
 // hasn't been generated yet at this point in the build pipeline
 // (bundle:repl runs BEFORE nuxi build). The auto-discovery path then
 // emits "Cannot find base config file './.nuxt/tsconfig.json'" three
@@ -102,7 +102,7 @@ const sharedEsbuildOpts = {
 // fresh; without this hook the rolled-up declaration bundles would
 // stay stuck at whatever shape src/ had when the script started, so
 // the REPL's Volar serves stale types until the dev server is
-// manually restarted. Fire-and-forget — we don't want a slow
+// manually restarted. Fire-and-forget: we don't want a slow
 // rollup-plugin-dts pass to stall esbuild's pipeline.
 function attaformTypeWatchPlugin() {
   let initial = true
@@ -126,16 +126,16 @@ function attaformTypeWatchPlugin() {
 }
 
 const ctxs = await Promise.all([
-  // attaform core — externalize vue + zod (loaded separately via import map)
+  // attaform core, externalize vue + zod (loaded separately via import map)
   esbuild.context({
     ...sharedEsbuildOpts,
     entryPoints: { attaform: resolve(repoRoot, 'src/index.ts') },
     external: ['vue', 'zod'],
     plugins: [attaformTypeWatchPlugin()],
   }),
-  // attaform/zod adapter — also externalize attaform itself so the import
+  // attaform/zod adapter, also externalize attaform itself so the import
   // map cross-resolves to the core bundle (single registry instance).
-  // Only the core context owns the type-re-emit hook — both attaform
+  // Only the core context owns the type-re-emit hook, both attaform
   // entries are bundled in a single emitAttaformTypeBundles() call,
   // so duplicating the trigger here would just double the work.
   esbuild.context({
@@ -143,7 +143,7 @@ const ctxs = await Promise.all([
     entryPoints: { 'attaform-zod': resolve(repoRoot, 'src/zod.ts') },
     external: ['vue', 'zod', 'attaform'],
   }),
-  // attaform/history — the undo/redo plugin entry. Externalizes only vue:
+  // attaform/history: the undo/redo plugin entry. Externalizes only vue:
   // the entry pulls a few pure core helpers (structuralSnapshot, option
   // normalization, path decoding) that esbuild inlines; none carry mutable
   // module state, so duplicating them against the core bundle is safe.
@@ -152,7 +152,7 @@ const ctxs = await Promise.all([
     entryPoints: { 'attaform-history': resolve(repoRoot, 'src/history.ts') },
     external: ['vue'],
   }),
-  // zod v4 — bundled fresh because zod's subpath exports defeat raw copy
+  // zod v4, bundled fresh because zod's subpath exports defeat raw copy
   esbuild.context({
     ...sharedEsbuildOpts,
     entryPoints: { zod: resolve(repoRoot, 'node_modules/zod/index.js') },
@@ -161,7 +161,7 @@ const ctxs = await Promise.all([
 
 await Promise.all(ctxs.map((c) => c.rebuild()))
 
-// Vue ships a ready-to-go browser ESM — copy it verbatim
+// Vue ships a ready-to-go browser ESM, copy it verbatim
 await copyFile(
   resolve(repoRoot, 'node_modules/vue/dist/vue.esm-browser.prod.js'),
   resolve(outDir, 'vue.esm-browser.prod.js')
@@ -176,7 +176,7 @@ await copyFile(
 // and resolved through the iframe's import map (see DemoReplEditor).
 //
 // `vue` is externalized so every library shares the SINGLE Vue instance
-// the import map already provides — two Vue copies break provide/inject,
+// the import map already provides, two Vue copies break provide/inject,
 // which both libraries lean on. Transitive deps (floating-ui, the
 // PrimeVue style engine, the theme presets, etc.) are bundled in.
 //
@@ -217,7 +217,7 @@ await esbuild.build({
 // @vue/repl's Monaco preset spawns workers via
 // `new Worker(new URL("assets/<chunk>.js", import.meta.url), { type: 'module' })`.
 // In dev, Vite serves those worker chunks but injects its `@vite/client`
-// HMR bootstrap into them — and `@vite/client`'s module-level WebSocket
+// HMR bootstrap into them, and `@vite/client`'s module-level WebSocket
 // setup fails to handshake from a worker context, killing the worker
 // at startup ("Could not create web worker(s)" + "Uncaught Event …
 // target: Worker"). Monaco then falls back to running the language
@@ -230,8 +230,8 @@ await esbuild.build({
 // from these clean URLs, sidestepping both the @vite/client injection
 // and the path-fragility of `import.meta.url` in dev.
 //
-// Filenames are renamed to stable names — `editor.worker.js` and
-// `vue.worker.js` — so DemoRepl doesn't have to track @vue/repl's
+// Filenames are renamed to stable names, `editor.worker.js` and
+// `vue.worker.js`: so DemoRepl doesn't have to track @vue/repl's
 // content-hash names. The hash will rotate when @vue/repl publishes
 // new versions; we just keep walking the assets/ directory by glob.
 const workerOutDir = resolve(outDir, 'repl-workers')
@@ -288,7 +288,7 @@ for (const entry of workerEntries) {
 //
 // Each `bundleDts` call rolls up an entry's whole declaration graph
 // into a single self-contained `.d.ts`. Volar (via @vue/repl) fetches
-// these on demand when the user hovers / autocompletes — providing
+// these on demand when the user hovers / autocompletes, providing
 // just one file per package means the LSP doesn't have to walk a tree
 // of 88 zod declaration files at type-check time.
 //
@@ -305,7 +305,7 @@ for (const entry of workerEntries) {
 //     errors in the editor.
 //
 // `tsconfig: false` keeps rollup-plugin-dts from inheriting the lib's
-// strict `noImplicitAny` etc. — those rules don't apply when bundling
+// strict `noImplicitAny` etc., those rules don't apply when bundling
 // already-emitted .d.ts (and they reject some patterns that are valid
 // in declaration files).
 
@@ -320,7 +320,7 @@ async function bundleDts({ input, output, name, respectExternal = false, include
         // we want the deep tree (`@vue/runtime-dom`, `@vue/runtime-core`,
         // zod's internal `./v4/...` path imports etc.) inlined into a
         // single self-contained file. attaform's own bundle leaves
-        // these as externals — the LSP resolves them via separate
+        // these as externals: the LSP resolves them via separate
         // type bundles.
         includeExternal,
         tsconfig: false,
@@ -347,7 +347,7 @@ async function bundleDts({ input, output, name, respectExternal = false, include
 // attaform) the `exports` map that resolves the `attaform/zod`
 // subpath.
 //
-// We don't read these package.json values from the real lockfile —
+// We don't read these package.json values from the real lockfile,
 // the REPL pins to the bundled-at-build-time version, and version
 // drift in the type bundle is its own follow-up problem.
 //
@@ -356,7 +356,7 @@ async function bundleDts({ input, output, name, respectExternal = false, include
 //   1. `exports` entries declare BOTH `types` and a runtime condition
 //      (`import`). The @vue/repl Monaco preset uses TypeScript with
 //      `moduleResolution: "Bundler"`, which under `exports` requires
-//      a runtime resolution to consider the subpath valid — `types`
+//      a runtime resolution to consider the subpath valid, `types`
 //      alone produces `Cannot find module 'attaform/zod'` (ts(2307))
 //      even though the .d.ts is right there. We point `import` at a
 //      stub `.js` (written below) just to satisfy the existence check;
@@ -406,7 +406,7 @@ const packageManifests = {
   // `zod-v3` is consumed by the unified `attaform/zod` entry's type
   // bundle (the V3 overload references `z as zV3 from 'zod-v3'`).
   // Volar's LSP resolves that bare import against the package manifest
-  // here — without this, the LSP falls back to fetching from unpkg
+  // here, without this, the LSP falls back to fetching from unpkg
   // (which 404s + CORS-blocks the request, polluting the console).
   // The runtime side doesn't need a `/lib/zod-v3.js` because esbuild
   // inlines zod-v3 into `attaform-zod.js` (no external marker).
@@ -423,7 +423,7 @@ const packageManifests = {
 // duplicates a handful of `unique symbol`-branded types (PathKey, Unset)
 // across `attaform/index.d.ts` and `attaform/zod.d.ts`. Each `unique
 // symbol` declaration has its own nominal identity, so the two bundles'
-// `PathKey` resolve as DIFFERENT types in Volar — a demo that pulls
+// `PathKey` resolve as DIFFERENT types in Volar: a demo that pulls
 // `useForm` from `attaform/zod` and `useRegister` from `attaform`
 // produces a "Two different types with this name exist" error on
 // `v-register="rv"` even though the runtime types are identical.
@@ -433,7 +433,7 @@ const packageManifests = {
 // branded-type declarations and re-import them from `./index`. The
 // bundles then share one brand identity, so the "incompatible
 // PathKey" error goes away. The published lib's source is
-// unaffected — this only adjusts the REPL's flattened bundles.
+// unaffected: this only adjusts the REPL's flattened bundles.
 const SHARED_BRANDED_TYPE_BLOCKS = [
   {
     typeName: 'Unset',
@@ -448,15 +448,15 @@ const SHARED_BRANDED_TYPE_BLOCKS = [
 ]
 
 async function unifyAttaformBrandedTypes() {
-  // `expected` names the brands the file's surface is known to inline —
+  // `expected` names the brands the file's surface is known to inline,
   // a missing expected block means the rolled-up output changed shape
   // and the regex needs a look. Any OTHER block that happens to match
   // is stripped too (harmless: the re-import restores one identity).
   await unifyBrandedTypesIn('attaform/zod.d.ts', ['Unset', 'PathKey'])
   // history.d.ts reaches PathKey through the HistoryKernel maps/sets,
   // but the roll now emits it as `import type { PathKey } from
-  // './index'` — already the unified identity this step exists to
-  // produce — so no inline block is expected there. If a future roll
+  // './index'`, already the unified identity this step exists to
+  // produce: so no inline block is expected there. If a future roll
   // regresses to inlining, the block is still stripped and re-imported
   // by the shared pass; nothing is `expected`, so no warning either way.
   await unifyBrandedTypesIn('attaform/history.d.ts', [])
@@ -505,7 +505,7 @@ async function emitAttaformTypeBundles() {
       input: resolve(repoRoot, 'src/index.ts'),
       output: resolve(typesDir, 'attaform/index.d.ts'),
       name: 'attaform',
-      // Default respectExternal: false — keep `vue` / `zod` imports as
+      // Default respectExternal: false, keep `vue` / `zod` imports as
       // bare imports so the LSP resolves them through our separate
       // type bundles. Inlining would create duplicate `Ref` symbols.
     }),
@@ -548,7 +548,7 @@ async function emitTypeBundles() {
       // zod-v3's root `index.d.ts` re-exports through an `import * as
       // z` / `export { z }` namespace shape that rollup-plugin-dts
       // chokes on (it emits getter syntax in its namespace fixer that
-      // its own parser can't re-parse — UnsupportedSyntaxError). The
+      // its own parser can't re-parse, UnsupportedSyntaxError). The
       // `v3/external.d.ts` sub-entry has the same surface (everything
       // the public `z` namespace contains) via plain `export *`
       // statements, which bundles cleanly. We then rewrite a fresh
@@ -572,7 +572,7 @@ async function emitTypeBundles() {
   // Stub runtime entries. Volar 404s harmlessly when these are missing,
   // but the LSP also performs a "module exists" probe on the `import`
   // path declared in `exports`/`main` before it accepts the package as
-  // resolvable. An empty file is enough — the actual code that runs in
+  // resolvable. An empty file is enough: the actual code that runs in
   // the preview iframe comes from the `/lib/<pkg>.js` esbuild bundles
   // mapped via the import map, not from these stubs.
   await Promise.all([
@@ -619,13 +619,13 @@ async function emitTypeBundles() {
   // Directory listing JSON per package, mimicking unpkg's `?meta`
   // endpoint shape: `{ files: [{ path, type }] }`. Volar's worker
   // (`createNpmFileSystem` in @vue/repl's vue.worker) calls our
-  // pkgDirUrl callback for *every* file existence check — `_stat`
+  // pkgDirUrl callback for *every* file existence check, `_stat`
   // for `<pkg>/<file>` doesn't fetch the file directly, it lists the
   // package directory and looks for the entry by name. Without this
   // listing the LSP can't confirm that `attaform/zod.d.ts` exists,
   // so module resolution returns "Cannot find module" even though
   // the file is right there. Default behaviour is to query
-  // unpkg.com — which doesn't have our pre-release `attaform@0.14`,
+  // unpkg.com: which doesn't have our pre-release `attaform@0.14`,
   // so the listing comes back empty.
   //
   // Volar filters this list against the requested pkgPath (root vs.
@@ -672,7 +672,7 @@ if (watch) {
   // esbuild's watch keeps the runtime JS bundles fresh incrementally;
   // the attaform .d.ts re-emit fires from the `attaform-type-watch`
   // esbuild plugin (above) on each post-initial rebuild. vue + zod
-  // type bundles are static — they come from node_modules and only
+  // type bundles are static: they come from node_modules and only
   // need to rebuild when this script is re-run (e.g. after a deps
   // upgrade).
   console.log('[bundle-repl-deps] watching src/ for runtime + type changes')

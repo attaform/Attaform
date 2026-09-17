@@ -11,7 +11,7 @@ import MyModule from '../../../src/nuxt'
 // "unbuild --stub jiti leak".
 const zodEntry = fileURLToPath(new URL('../../../src/zod.ts', import.meta.url))
 // The module's Vite plugin rewrites each compiled template's v-register
-// to an `attaform/directive` import — alias it to src for the same
+// to an `attaform/directive` import, alias it to src for the same
 // stub-shim reason as `attaform/zod` above.
 const directiveEntry = fileURLToPath(new URL('../../../src/directive.ts', import.meta.url))
 

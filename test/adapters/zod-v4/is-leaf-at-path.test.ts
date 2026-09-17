@@ -176,7 +176,7 @@ describe('zod v4: isLeafAtPath — cache behaviour', () => {
     expect(adapter.isLeafAtPath(['email'])).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)
     expect(adapter.isLeafAtPath(['email'])).toBe(true)
-    expect(spy).toHaveBeenCalledTimes(1) // cache hit — no extra walk
+    expect(spy).toHaveBeenCalledTimes(1) // cache hit: no extra walk
 
     // Different path → cold miss → spy advances by one.
     expect(adapter.isLeafAtPath(['address'])).toBe(false)
@@ -192,13 +192,13 @@ describe('zod v4: isLeafAtPath — cache behaviour', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const spy = vi.spyOn(adapter, 'getSlimPrimitiveTypesAtPath')
 
-    // Array-form first — populates the cache under the canonical key.
+    // Array-form first, populates the cache under the canonical key.
     expect(adapter.isLeafAtPath(['users', 0, 'name'])).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)
 
     // Repeated array-form must hit the cache (canonicalises to the
     // same key). If the cache key changed shape between calls the
-    // spy would advance — which is exactly the regression the title
+    // spy would advance: which is exactly the regression the title
     // claims this test prevents.
     expect(adapter.isLeafAtPath(['users', 0, 'name'])).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)

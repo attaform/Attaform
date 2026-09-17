@@ -100,7 +100,7 @@ describe.each(adapters)('a <select> on a path the form does not hold ($name)', (
   it('shows the empty option wherever the author put it, not the first', async () => {
     // The browser's own fallback is "the first option". The directive's
     // answer is "the option that carries the empty value", which is the
-    // one an author writes as the placeholder — it does not have to lead
+    // one an author writes as the placeholder: it does not have to lead
     // the list.
     const { el } = await mountSelect('color', ['red', '', 'blue'], {})
     expect(el.selectedIndex).toBe(1)
@@ -115,7 +115,7 @@ describe.each(adapters)('a <select> on a path the form does not hold ($name)', (
 
   it('shows nothing when no option carries the empty value', async () => {
     // Falling back to the first option here would record a choice the
-    // user never made — `us` because it sorts first. Blank is the
+    // user never made, `us` because it sorts first. Blank is the
     // truthful paint, and the author's fix is a placeholder option.
     const { api, el } = await mountSelect('color', ['us', 'uk'], {})
     expect(el.selectedIndex).toBe(-1)
@@ -129,7 +129,7 @@ describe.each(adapters)('a <select> on a path the form does not hold ($name)', (
 
   it('shows the empty option for a path the `unset` sentinel marked blank', async () => {
     // `unset` writes the schema's slim value and joins the path to
-    // `blankPaths`, and `displayValue` reads that set — so a blank
+    // `blankPaths`, and `displayValue` reads that set: so a blank
     // numeric select shows the placeholder rather than highlighting
     // `<option value="0">`, which is the slim value storage now holds.
     const { api, el } = await mountSelect('rating', ['', '0', '1'], { rating: 1 })

@@ -8,7 +8,7 @@
  * surface at each labeled checkpoint.
  *
  * Slice 1 covers S0 (flat scalars) and S1 (nested objects) via programmatic
- * writes + submit + reset — enough to lock value/dirty/touched, the
+ * writes + submit + reset, enough to lock value/dirty/touched, the
  * displayState reveal gate (hidden pre-submit, revealed after), validation
  * structure, and reset restoration. Arrays (S4, key identity) and
  * event-driven focus/blur land in later slices.

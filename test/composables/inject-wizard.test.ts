@@ -10,7 +10,7 @@ import type { AttaformRegistry } from '../../src/runtime/core/registry'
 import type { UseWizardReturnType } from '../../src/runtime/types/types-wizard'
 
 /**
- * `injectWizard` — cross-component access for wizard handles. Two
+ * `injectWizard`, cross-component access for wizard handles. Two
  * resolution modes:
  *   - keyed: `injectWizard('key')` looks up the registry directly
  *   - ambient: `injectWizard()` reaches the nearest ancestor wizard
@@ -282,7 +282,7 @@ describe('injectWizard — miss modes (keyed warns, ambient silent)', () => {
   })
 
   it('returns null silently when called with no ancestor wizard', () => {
-    // Ambient lookup is opportunistic — orphan calls of `injectWizard()`
+    // Ambient lookup is opportunistic, orphan calls of `injectWizard()`
     // return `null` without warning so floating components rendered in
     // trees without a wizard stay quiet on consumers' consoles.
     const shared: { child?: UseWizardReturnType | null } = {}

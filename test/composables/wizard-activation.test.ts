@@ -15,7 +15,7 @@ import { waitUntil } from '../utils/form-harness'
  * but on the client every async `defaultValues` factory fires once at
  * construction.
  *
- * Activation is idempotent — navigating to a step whose factory has
+ * Activation is idempotent, navigating to a step whose factory has
  * already resolved does not re-fire it. `form.rehydrate()` is the
  * explicit re-fire escape hatch.
  */

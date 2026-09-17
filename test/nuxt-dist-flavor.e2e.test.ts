@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
  * app's own `attaform/zod-v4` import resolves the `development`
  * condition. If those two routes loaded different module graphs, there
  * would be two registries and `useForm` would throw `Registry not found`
- * during SSR — so the rendered marker IS the single-registry assertion.
+ * during SSR: so the rendered marker IS the single-registry assertion.
  *
  * Also covers the P2 v-register delivery end to end: the fixture's
  * template binds `v-register`, the module's Vite plugin rewrites the
@@ -52,7 +52,7 @@ describe.skipIf(!isRealBuild)('dist dev flavor: single registry in a dev boot (e
     // injected `attaform/directive` import didn't resolve through the
     // real exports map, this SSR render would fail outright. The value=
     // assertion then locks the full v-register SSR pipeline (transforms
-    // + directive) working against the shipped dist — the template
+    // + directive) working against the shipped dist: the template
     // authors no :value of its own.
     const html = await $fetch('/')
     expect(html).toMatch(/<input[^>]*id="probe-input"[^>]*value="dist-flavor-ok"/)

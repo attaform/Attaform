@@ -147,7 +147,7 @@ describe('useWizard — what a whole-wizard submit writes', () => {
 
     // The noop form behind a string slot is processed like any other step:
     // it validates trivially, and its `submitted` is left alone too. (Its
-    // own meta is unreachable by design — a string slot's entry in
+    // own meta is unreachable by design: a string slot's entry in
     // `wizard.forms` is typed `AnyForm`, which carries no schema surface.)
     expect(result.wizard.done).toBe(true)
     expect(result.wizard.statuses['wsb-noop-review']?.submitted).toBe(false)

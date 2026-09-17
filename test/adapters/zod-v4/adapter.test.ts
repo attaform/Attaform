@@ -217,8 +217,8 @@ describe('zod v4 adapter', () => {
     })
 
     it('distinguishes a literal-dot key from a sibling pair', async () => {
-      // The structured path `['user.name']` — a top-level key containing
-      // a literal `.` — must NOT collide with `['user', 'name']`. Before
+      // The structured path `['user.name']`: a top-level key containing
+      // a literal `.`, must NOT collide with `['user', 'name']`. Before
       // the AbstractSchema widening both collapsed to the same dotted
       // string and the walker resolved whichever branch was first. We
       // probe each resolved sub-schema with data the OTHER branch would

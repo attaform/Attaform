@@ -9,8 +9,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * Regression guard: under eager activation, sync `defaultValues` on
  * every step (current and non-current) must be visible immediately
- * at construction. Sync values resolve at `buildFreshState` — before
- * any microtask flush — so they are already in `form.values` by the
+ * at construction. Sync values resolve at `buildFreshState`, before
+ * any microtask flush: so they are already in `form.values` by the
  * time `useWizard` initialises.
  */
 

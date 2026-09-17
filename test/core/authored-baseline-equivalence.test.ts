@@ -6,8 +6,8 @@
  * schema author declared a `.default()` at by diffing the with-defaults
  * value tree against the schema's BLANK baseline. That baseline used to
  * come from a second full `getDefaultValues({ useDefaultSchemaValues:
- * false })` pass — a whole-schema clone (`getSlimSchema`) plus up to two
- * `safeParse`s — even though the diff only ever reads the value tree.
+ * false })` pass: a whole-schema clone (`getSlimSchema`) plus up to two
+ * `safeParse`s, even though the diff only ever reads the value tree.
  *
  * Bust 3 swaps that pass for the raw `deriveDefault(false)` walk the
  * factory already exposes as `getEmptyValueAtPath([])`, which is ~32x
@@ -19,7 +19,7 @@
  * them and the equivalence has to hold for each.
  *
  * If a future change makes `getEmptyValueAtPath([])` and the slim
- * `getDefaultValues(false)` pass drift, this fails — that drift would
+ * `getDefaultValues(false)` pass drift, this fails: that drift would
  * silently move authored-path filtering, so it must surface here.
  */
 import { describe, it, expect } from 'vitest'

@@ -23,7 +23,7 @@ import type {
  * `lastTypedForm` lives on the directive-private `InternalRegisterValue`
  * extension. These tests exercise the typed-form contract directly,
  * so they reach through the public RV to that internal slot via a
- * targeted cast — the runtime field is always present (every RV is
+ * targeted cast: the runtime field is always present (every RV is
  * an `InternalRegisterValue` underneath), but the public type omits
  * it to keep the surface focused on wrapper-component primitives.
  */
@@ -91,13 +91,13 @@ describe('displayValue', () => {
 
   it('returns "" when the path is in blankPaths', () => {
     const schema = z.object({ count: z.number() })
-    // Pass explicit defaults to opt out of construction-time auto-mark
-    // — this test isolates the markBlank() flip path.
+    // Pass explicit defaults to opt out of construction-time auto-mark:
+    // this test isolates the markBlank() flip path.
     const { app, form } = setupForm(schema, { count: 0 })
     apps.push(app)
     const binding = form.register('count')
     expect(binding.displayValue.value).toBe('0')
-    // Mark blank — storage stays at slim default but
+    // Mark blank, storage stays at slim default but
     // displayValue switches to ''.
     binding.markBlank()
     expect(binding.displayValue.value).toBe('')
@@ -154,7 +154,7 @@ describe('displayValue', () => {
 
   it('falls back to `String(storage)` when `lastTypedForm` no longer parses to current storage', () => {
     // Programmatic `setValue` (or hydration / reset) advances storage
-    // out from under a stale `lastTypedForm` — the parse-equality
+    // out from under a stale `lastTypedForm`: the parse-equality
     // check naturally invalidates without explicit reset wiring.
     const schema = z.object({ count: z.number() })
     const { app, form } = setupForm(schema, { count: 0 })
@@ -171,7 +171,7 @@ describe('displayValue', () => {
 
   it('shares `lastTypedForm` across multiple register() calls for the same path', () => {
     // Two `<input v-register>` bindings to the same path each call
-    // `register('count')` — every render produces fresh RegisterValue
+    // `register('count')`: every render produces fresh RegisterValue
     // objects, but they must share the typed-form state so the
     // sibling input doesn't desync mid-typing. Storage updates live;
     // both bindings' displayValue must surface the typed form.
@@ -180,7 +180,7 @@ describe('displayValue', () => {
     apps.push(app)
     const a = asInternal(form.register('count'))
     const b = asInternal(form.register('count'))
-    // Same ref instance — sharing is by identity, not by copy.
+    // Same ref instance, sharing is by identity, not by copy.
     expect(a.lastTypedForm).toBe(b.lastTypedForm)
     form.setValue('count', 100)
     a.lastTypedForm.value = '1e2'

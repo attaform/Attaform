@@ -22,8 +22,8 @@ vi.setConfig({ testTimeout: 15_000 })
  * demo is mounted, its documented gesture is dispatched, and the
  * rendered DOM (or storage) is compared to the documented promise.
  *
- * The goal isn't deep behavior coverage — each surface has its own
- * unit-test layer — but a standing tripwire that catches the class of
+ * The goal isn't deep behavior coverage: each surface has its own
+ * unit-test layer, but a standing tripwire that catches the class of
  * regression the `custom-assigners` bug demonstrated: a documented
  * gesture that silently stops doing the thing the docs page promises.
  *
@@ -43,7 +43,7 @@ vi.setConfig({ testTimeout: 15_000 })
  * registration fails the meta-test in CI.
  */
 
-// Lazy globs — `Object.keys()` enumerates every demo path on disk for
+// Lazy globs, `Object.keys()` enumerates every demo path on disk for
 // the meta-test, but only the demos whose loaders are actually called
 // (covered ones) get compiled. Eager globs would compile every SFC at
 // test-load time, which slows the suite and turns a single
@@ -147,7 +147,7 @@ const entries: SmokeEntry[] = [
     },
   },
   {
-    // Type an invalid email and blur — the field's per-field
+    // Type an invalid email and blur: the field's per-field
     // validation pipeline renders the schema's error message under
     // the input. The button-driven `parse({ commit: true })` flow is the
     // demo's pedagogical centerpiece but its result settles via a
@@ -240,7 +240,7 @@ const entries: SmokeEntry[] = [
       next.click()
       // `wizard.next()` awaits step validation before swapping the
       // active step; the email input belongs to step 1 and is gone
-      // once step 2 mounts. Poll for that disappearance — the
+      // once step 2 mounts. Poll for that disappearance: the
       // shared `waitUntil` ceiling caps a runaway hang.
       await waitUntil(() =>
         root.querySelector('input[autocomplete="email"]') === null ? true : null
@@ -254,7 +254,7 @@ const entries: SmokeEntry[] = [
   {
     // Cross-component injection: type into the `ProfileFieldset`'s
     // Name input (a child component) and confirm the readout in
-    // the parent reflects the write — proves `injectForm` wires
+    // the parent reflects the write, proves `injectForm` wires
     // the child to the same reactive form the parent owns.
     slug: 'inject-form',
     gesture: async (root) => {
@@ -323,7 +323,7 @@ const entries: SmokeEntry[] = [
     slug: 'modifiers',
     gesture: async (root) => {
       const inputs = root.querySelectorAll<HTMLInputElement>('input')
-      // 0: .lazy, 1: .trim, 2: .number — the trim input is the
+      // 0: .lazy, 1: .trim, 2: .number: the trim input is the
       // second one declared in the template.
       const trim = inputs.item(1)
       if (trim === null) throw new Error('trim input not found')
@@ -430,7 +430,7 @@ const entries: SmokeEntry[] = [
   },
   {
     // No readout on the quick-start demo. Smoke just verifies the
-    // typed value sticks in the input — proves `v-register` mounted
+    // typed value sticks in the input, proves `v-register` mounted
     // and the binding accepted the keystroke.
     slug: 'quick-start',
     gesture: async (root) => {
@@ -490,11 +490,11 @@ const entries: SmokeEntry[] = [
   },
   {
     // The middle section uses `defaultValues` overlay to set count = 42.
-    // Smoke just verifies that overlay reached the middle readout —
+    // Smoke just verifies that overlay reached the middle readout,
     // the demo renders three side-by-side forms with independent pres.
     slug: 'schema-defaults',
     gesture: async () => {
-      // No gesture — the demo's payoff is the rendered defaults.
+      // No gesture: the demo's payoff is the rendered defaults.
     },
     assert: async (root) => {
       const pres = root.querySelectorAll<HTMLPreElement>('pre')
@@ -511,7 +511,7 @@ const entries: SmokeEntry[] = [
     slug: 'defaults-sync-factory',
     gesture: async (root) => {
       // The activation orchestrator is a lazy chunk, so the mount-time
-      // factory run lands asynchronously — wait for the first
+      // factory run lands asynchronously, wait for the first
       // invocation before clicking.
       await waitUntil(() => {
         const text = root.textContent ?? ''
@@ -528,7 +528,7 @@ const entries: SmokeEntry[] = [
     },
     assert: async (root) => {
       // After "New session", the factory invocations dl row should
-      // show a count >= 2 (one initial mount, one explicit reset) —
+      // show a count >= 2 (one initial mount, one explicit reset),
       // poll, since the reset's factory run also rides the lazy chunk.
       await waitUntil(() => {
         const text = root.textContent ?? ''
@@ -540,12 +540,12 @@ const entries: SmokeEntry[] = [
   },
   {
     // Wait for async hydrate to settle, then verify the readout
-    // shows the hydrated values. Skip the rehydrate-button branch
-    // — its timing depends on a second async tick after the
+    // shows the hydrated values. Skip the rehydrate-button branch,
+    // its timing depends on a second async tick after the
     // hydration toggle, which adds flakiness without smoke value.
     slug: 'defaults-async-factory',
     gesture: async (root) => {
-      // Poll for `hydrating: false` — the dl text reports the
+      // Poll for `hydrating: false`: the dl text reports the
       // signal as a row.
       await waitUntil(() => {
         const text = root.textContent ?? ''
@@ -560,12 +560,12 @@ const entries: SmokeEntry[] = [
     },
   },
   {
-    // No gesture — the demo's payoff is the rendered table showing
+    // No gesture: the demo's payoff is the rendered table showing
     // four blank-state variants side by side. Smoke verifies the
     // table mounted with the documented row labels.
     slug: 'optional-nullable',
     gesture: async () => {
-      // No interaction — the demo is a state-display table.
+      // No interaction: the demo is a state-display table.
     },
     assert: async (root) => {
       const text = root.textContent ?? ''
@@ -608,7 +608,7 @@ const entries: SmokeEntry[] = [
       await nextTick()
     },
     assert: async (root) => {
-      // Default-populated row plus the appended one — count two
+      // Default-populated row plus the appended one, count two
       // todo blocks in the pre. The schema default is `[]`, so
       // before the click there are 0 entries; after, 1.
       const text = pre(root).textContent ?? ''
@@ -770,7 +770,7 @@ const entries: SmokeEntry[] = [
     },
   },
   {
-    // No gesture — the errors demo seeds default values that fail
+    // No gesture: the errors demo seeds default values that fail
     // validation and renders the resulting error tree. Smoke
     // verifies the error pre is populated.
     slug: 'errors',
@@ -815,7 +815,7 @@ const entries: SmokeEntry[] = [
   {
     // Click the per-row "form.interact(['members', 1])" button. That row's
     // seeded-invalid email must reveal its error WITHOUT the untouched Team
-    // field revealing anything — the subtree scoping is the whole point.
+    // field revealing anything: the subtree scoping is the whole point.
     slug: 'interact',
     gesture: async (root) => {
       const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button'))
@@ -887,7 +887,7 @@ const entries: SmokeEntry[] = [
       expect(cards.length).toBe(3)
       const textOf = (i: number) => cards.item(i)?.textContent ?? ''
 
-      // validateOn: 'change' — the keystroke ran validation, so the verdict
+      // validateOn: 'change': the keystroke ran validation, so the verdict
       // is readable immediately...
       expect(textOf(0)).toContain('At least 3 characters')
       // ...but nothing was blurred or submitted, so the field still shows
@@ -905,7 +905,7 @@ const entries: SmokeEntry[] = [
     },
   },
   {
-    // No gesture — the blank-field-state demo shows blank
+    // No gesture: the blank-field-state demo shows blank
     // marking across four field shapes. Smoke verifies the table
     // mounts with all four rows.
     slug: 'blank-field-state',
@@ -1032,7 +1032,7 @@ const entries: SmokeEntry[] = [
     // tests.
     slug: 'variant-memory',
     gesture: async (root) => {
-      // Find the first radio with value="bank" — the variant
+      // Find the first radio with value="bank": the variant
       // switch flips the visible card branch out, proving the
       // discriminated-union swap fired.
       const bank = root.querySelector<HTMLInputElement>('input[type="radio"][value="bank"]')
@@ -1260,10 +1260,10 @@ const entries: SmokeEntry[] = [
     // multi-step navigation is covered by the use-wizard entry.
     slug: 'step-slots',
     gesture: async () => {
-      // No interaction — the welcome step renders at mount.
+      // No interaction: the welcome step renders at mount.
     },
     assert: async (root) => {
-      // The welcome card mentions either "Welcome" or "step" — the
+      // The welcome card mentions either "Welcome" or "step": the
       // demo's first slot uses welcome-language.
       const text = root.textContent ?? ''
       expect(text.toLowerCase()).toMatch(/welcome|attendee|sponsor|speaker/)
@@ -1272,7 +1272,7 @@ const entries: SmokeEntry[] = [
   {
     // Click submit with an empty form; the focus-scroll utilities
     // run and the first error <em> renders. Focus itself is hard
-    // to assert reliably in jsdom — the rendered error is the
+    // to assert reliably in jsdom: the rendered error is the
     // load-bearing signal.
     slug: 'focus-scroll',
     gesture: async (root) => {
@@ -1364,7 +1364,7 @@ const entries: SmokeEntry[] = [
   {
     // Freeze the form, then type into the (now disabled) name input.
     // useForm({ disabled }) no-ops the write at the data layer, so the
-    // values readout keeps the seeded name — the bypass-proof freeze,
+    // values readout keeps the seeded name: the bypass-proof freeze,
     // independent of the native disabled attribute.
     slug: 'disabled-form',
     gesture: async (root) => {
@@ -1384,7 +1384,7 @@ const entries: SmokeEntry[] = [
 
 /**
  * Demos genuinely deferred from gesture-and-assert coverage. The
- * meta-test still treats each as tracked — a new demo on disk that
+ * meta-test still treats each as tracked: a new demo on disk that
  * isn't in `entries` or `deferred` fails CI. Each entry carries a
  * reason for the deferral so the next reviewer doesn't have to
  * re-discover the constraint.

@@ -35,7 +35,7 @@ describe('attaformAutoImports manifest', () => {
 
   it('only names bindings that attaform/zod actually exports', () => {
     // Catches a typo or a rename that leaves the manifest pointing at a
-    // symbol the entry no longer ships — unimport would inject a dead
+    // symbol the entry no longer ships, unimport would inject a dead
     // import that fails at build time in the consumer, not here.
     for (const entry of attaformAutoImports) {
       expect(zodEntry).toHaveProperty(entry.name)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
   // The nav structure is hand-curated in `composables/useDocsNavigation.ts`
   // so the sidebar, pager, and breadcrumb all walk the same source.
-  // Auto-imported by Nuxt — re-aliased onto a script-local const so
+  // Auto-imported by Nuxt, re-aliased onto a script-local const so
   // vue-tsc resolves it from the component instance type when checking
   // the template (it doesn't see Nuxt's global auto-import declarations
   // through the template compiler at type time).
@@ -11,7 +11,7 @@
   // compare the current path to each `to` with the trailing slash
   // normalized away, so a reader who landed on the canonical `/docs/foo/`
   // URL (via search or a shared link) still lights up the right entry.
-  // `exact-active-class` can't do this — its comparison is verbatim, so
+  // `exact-active-class` can't do this, its comparison is verbatim, so
   // the slash slips through and the sidebar deselects.
   const route = useRoute()
   const isActive = (to: string) => normalizePath(route.path) === normalizePath(to)

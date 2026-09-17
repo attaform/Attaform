@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
  *
  *   2. SSR keeps reusing those frozen transforms. Server-rendered
  *      pages ship stale form state into hydration; the client
- *      preserves it. Hard-reload doesn't help — the dev server
+ *      preserves it. Hard-reload doesn't help: the dev server
  *      itself is the staleness source.
  *
  * The silent-failure mode is the worst part: the playground at

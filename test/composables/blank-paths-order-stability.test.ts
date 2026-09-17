@@ -11,7 +11,7 @@ import { waitUntil } from '../utils/form-harness'
  * `derivedBlankErrors` (computed off `blankPaths`) feeds
  * `form.meta.errors` alongside schemaErrors and userErrors. The
  * `reshapeUnionVariant` flow deletes every blank path under the
- * union's parentPath and unconditionally re-adds the new ones —
+ * union's parentPath and unconditionally re-adds the new ones,
  * which, when a blank survives the reshape (same-discriminator
  * Case B write, or memory-restored variant), is a delete-then-add
  * on the same key. `Set.add` on a deleted key re-inserts at the END
@@ -58,8 +58,8 @@ describe('derivedBlankErrors — insertion-order stability across DU reshape', (
   // primitive leaves auto-mark in walk order (notify.n first, age
   // second). A same-disc Case B write to `notify` runs
   // `reshapeUnionVariant`, which drops every blank under `notify`
-  // unconditionally and re-adds the new pass. `notify.n` survives
-  // — Set.add on a deleted key re-inserts at the END, so insertion
+  // unconditionally and re-adds the new pass. `notify.n` survives,
+  // Set.add on a deleted key re-inserts at the END, so insertion
   // order flips to [age, notify.n].
   const schema = z.object({
     notify: z.discriminatedUnion('kind', [
@@ -70,7 +70,7 @@ describe('derivedBlankErrors — insertion-order stability across DU reshape', (
   })
 
   it('same-disc Case B reshape preserves blankPaths order', async () => {
-    // Omitted defaults — the construction-time walker auto-marks
+    // Omitted defaults: the construction-time walker auto-marks
     // every numeric primitive leaf in schema-declaration order.
     const { app, api } = mountForm(schema)
     apps.push(app)

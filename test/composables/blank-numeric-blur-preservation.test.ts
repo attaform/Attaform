@@ -14,15 +14,15 @@ import { waitUntil } from '../utils/form-harness'
  * empty (`el.value === ''`) regardless of which DOM events have just
  * fired. Storage holding the slim default `0` is the storage-side
  * truth; the UI side has to honour `displayValue === ''` whenever
- * `blank === true` — that's the whole point of the unset/blank
+ * `blank === true`: that's the whole point of the unset/blank
  * side-channel.
  *
  * The bug repro on the homepage REPL: open Step 2, switch to
  * Oversized, click into Length (cm), click out. The field reverts
- * from `''` to `'0'` — the change handler's blur normalizer runs
+ * from `''` to `'0'`: the change handler's blur normalizer runs
  * `looseToNumber('')` which returns `''` (NaN passthrough); falls
  * into the "uncastable mid-edit residue" branch which DOES re-mark
- * blank — but only when `validity.badInput` is false. jsdom's
+ * blank, but only when `validity.badInput` is false. jsdom's
  * `<input type="number">` doesn't track `validity.badInput`
  * accurately, so the test environment exercises the same path the
  * real browser hits when the input is empty.
@@ -128,7 +128,7 @@ describe('blank-marked number leaf — blur preserves empty display', () => {
     await waitUntil(() => (input.value === '' ? true : null))
 
     // After clear+blur, storage is the slim default (0) but the path
-    // is in blankPaths — display must stay ''.
+    // is in blankPaths, display must stay ''.
     expect(input.value).toBe('')
   })
 })

@@ -22,7 +22,7 @@ import * as v4Walker from '../../src/runtime/adapters/zod-v4/path-walker'
 
 describe('getUnionDiscriminatorAtPath cache', () => {
   it('v4: second lookup for the same path does not re-walk the schema', () => {
-    // A schema with no discriminated union anywhere — the hot real
+    // A schema with no discriminated union anywhere: the hot real
     // case the audit calls out (every ancestor walk on every
     // keystroke pays the full walker cost).
     const schema = zV4.object({

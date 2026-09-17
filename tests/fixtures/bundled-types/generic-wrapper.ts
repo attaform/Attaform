@@ -1,11 +1,11 @@
 /**
- * Bundled-types regression fixture for #422 — generic form wrappers, Zod v4
+ * Bundled-types regression fixture for #422, generic form wrappers, Zod v4
  * consumer. Imports by package name, resolved through the exports map
  * to the published `dist/*.d.mts`, NOT `src/*`, so it guards what a real consumer sees through `attaform/zod` (unified) and
  * `attaform/zod-v4` (direct). The companion `bundled-types-v3/generic-wrapper.ts`
  * covers the Zod v3 path (unified + v3-direct) under a single-major install.
  *
- * Scenario: the natural way to share form plumbing — a generic helper that
+ * Scenario: the natural way to share form plumbing: a generic helper that
  * takes a schema `S` and forwards a schema-derived `defaultValues`. Before the
  * fix this tripped TS2769 ("no overload matches") / TS2589 ("excessively
  * deep") because the `defaultValues` slot was a `DefaultValuesInput`
@@ -59,7 +59,7 @@ function _neverInvoked() {
   // TS2769 "no overload matches" whose error elaboration over both overloads
   // is heavy, and stacking several such elaborations in one fixture program
   // inflates instantiation depth artificially (a single such call in
-  // isolation compiles fine). This fixture stays focused on its job — proving
+  // isolation compiles fine). This fixture stays focused on its job, proving
   // the generic wrappers compile against the bundled `.d.ts` without TS2589.
 
   // ---- parse call forms under a free generic form (the autosave shape) ----

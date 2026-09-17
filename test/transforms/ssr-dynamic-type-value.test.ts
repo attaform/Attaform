@@ -17,7 +17,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
 
 /**
  * SSR value/checked emission for `<input>` / `<textarea>` carrying a
- * DYNAMIC `:type` binding — the wrapper-component shape (e.g. a
+ * DYNAMIC `:type` binding: the wrapper-component shape (e.g. a
  * `UiTextField` re-binding its inner `<input v-register :type="type">`).
  *
  * `inputTextAreaNodeTransform` injects the value binding for a dynamic

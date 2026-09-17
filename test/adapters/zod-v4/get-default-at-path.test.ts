@@ -239,7 +239,7 @@ describe('zod v4: getDefaultAtPath', () => {
 
     it('returns the schema-prescribed default even for unpopulated array indices', () => {
       // The runtime needs this to fill posts[0..N-1] when consumer writes
-      // to posts[N] against an empty array — the schema must answer
+      // to posts[N] against an empty array: the schema must answer
       // "what's the element default at index 0?" identically for any N.
       const schema = z.object({
         posts: z.array(z.object({ title: z.string().default('untitled') })),

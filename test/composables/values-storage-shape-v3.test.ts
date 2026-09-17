@@ -7,7 +7,7 @@ import { useForm as useFormUnified } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Storage-shape invariant probes — Zod v3 mirror of
+ * Storage-shape invariant probes, Zod v3 mirror of
  * `values-storage-shape.test.ts`. Same invariant ("`form.values.<path>`
  * always returns the resolved concrete type storage holds"), pinned
  * against the v3 adapter via `ReadShape<Schema>` from
@@ -18,7 +18,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * top level of an object's shape and descends one further level into
  * nested `ZodObject` / `ZodArray`. Deeper-nested wrapper peeling
  * intentionally stays at `z.input<Inner>` to keep TS instantiation
- * depth bounded — see the doc on `ReadShape` for the rationale.
+ * depth bounded, see the doc on `ReadShape` for the rationale.
  *
  * v3's `useForm` has multiple overloads, so the proxy-based
  * `UseFormReturn<...>` pattern used by the v4 matrix
@@ -53,7 +53,7 @@ function uniqueKey(prefix: string): string {
   return `v3-${prefix}-${Math.random().toString(36).slice(2)}`
 }
 
-// ZodDefault — type peels `| undefined`; runtime resolves the default.
+// ZodDefault, type peels `| undefined`; runtime resolves the default.
 
 const defaultsSchema = z.object({
   flag: z.boolean().default(true),
@@ -127,7 +127,7 @@ describe('v3 — ZodDefault peels `| undefined`, runtime resolves the default', 
   })
 })
 
-// Bare-required fields — synthesis resolves to falsy concrete.
+// Bare-required fields, synthesis resolves to falsy concrete.
 
 const bareRequiredSchema = z.object({
   s: z.string(),
@@ -156,7 +156,7 @@ describe('v3 — Bare-required fields resolve to a falsy concrete value', () => 
   })
 })
 
-// Nested object descent — one level deep is peeled at the type level.
+// Nested object descent: one level deep is peeled at the type level.
 
 const nestedSchema = z.object({
   user: z.object({
@@ -181,7 +181,7 @@ describe('v3 — Nested object descent (one level)', () => {
   })
 })
 
-// Genuinely uncertain — invariant does NOT promise to peel.
+// Genuinely uncertain, invariant does NOT promise to peel.
 
 describe('v3 — Genuinely uncertain edges', () => {
   it('z.string().optional() keeps `| undefined`', () => {
@@ -207,7 +207,7 @@ describe('v3 — Genuinely uncertain edges', () => {
 
 // Unified entry (`attaform/zod`) + v3 schema. The unified entry's
 // `StorageShape` previously resolved against v4's `_zod.def.*`
-// discriminant only — v3 schemas missed every branch and collapsed
+// discriminant only, v3 schemas missed every branch and collapsed
 // `form.values` to `never`. These probes pin that regression: v3
 // schemas reaching the unified entry must resolve through v3's own
 // storage-shape via the discriminating dispatch in
@@ -253,7 +253,7 @@ describe('Unified entry — v3 schema inference (Friction 1 regression)', () => 
   })
 })
 
-// Depth-pressure regression — multi-step booking schema (v3 mirror of
+// Depth-pressure regression, multi-step booking schema (v3 mirror of
 // the shipment-demo probe in `values-storage-shape.test.ts`). The v3
 // `StorageShape` is a single mapped type with a per-key conditional
 // (`ZodEffects | ZodPipeline` vs not). This probe holds the TS2589
@@ -393,10 +393,10 @@ describe('Depth pressure — multi-step booking schema (unified entry + v3)', ()
   })
 })
 
-// `handleSubmit` callback data — must match `z.output<Schema>`, not
+// `handleSubmit` callback data, must match `z.output<Schema>`, not
 // `TypeWithNullableDynamicKeys<Schema>`. Previously the v3
 // `useForm`'s second generic defaulted to the widening type,
-// surfacing `(T | undefined)[]` for any array leaf post-parse — a
+// surfacing `(T | undefined)[]` for any array leaf post-parse: a
 // type-lie at the most consumer-facing surface in the v3 path.
 
 describe('v3 — handleSubmit callback data matches z.output<Schema> (Friction 2 regression)', () => {

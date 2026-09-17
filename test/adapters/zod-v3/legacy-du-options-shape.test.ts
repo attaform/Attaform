@@ -5,7 +5,7 @@
  * release `_def.options` was a `Map` keyed by discriminator value and
  * there was no `_def.optionsMap`; from 3.20.0 on it is an array beside a
  * separate map. The adapter read it as an array through an `as` cast,
- * which compiles against either — so on an older zod the walk saw a Map,
+ * which compiles against either: so on an older zod the walk saw a Map,
  * found no entries, and every consumer `.default()` inside a DU branch
  * was silently dropped. `peerDependencies.zod` permitted those versions.
  *

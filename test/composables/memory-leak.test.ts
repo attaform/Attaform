@@ -40,7 +40,7 @@ function mountProbe(registry: ReturnType<typeof createRegistry>, key: string) {
 
 describe('useForm — registry cleanup on scope dispose', () => {
   // Eviction is deferred to the next microtask once the last consumer
-  // disposes — a new consumer claiming the same key in the same tick
+  // disposes: a new consumer claiming the same key in the same tick
   // cancels the schedule and reuses the live FormStore (HMR / KeepAlive
   // safety). `await Promise.resolve()` drains the microtask queue so
   // we can assert post-eviction state in tests.
@@ -51,7 +51,7 @@ describe('useForm — registry cleanup on scope dispose', () => {
 
     expect(registry.forms.has('gc-solo')).toBe(true)
     app.unmount()
-    // Synchronous read still sees the store — eviction is queued, not
+    // Synchronous read still sees the store, eviction is queued, not
     // applied.
     expect(registry.forms.has('gc-solo')).toBe(true)
     await Promise.resolve()
@@ -113,7 +113,7 @@ describe('useForm — registry cleanup on scope dispose', () => {
     expect(secondState).toBe(firstState)
 
     await Promise.resolve()
-    // Microtask fires but the schedule was cancelled — store stays.
+    // Microtask fires but the schedule was cancelled, store stays.
     expect(registry.forms.get('gc-cancel')).toBe(firstState)
     app2.unmount()
   })

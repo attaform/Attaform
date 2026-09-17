@@ -1,4 +1,4 @@
-// Hand-curated docs nav — the canonical reading order. The sidebar
+// Hand-curated docs nav: the canonical reading order. The sidebar
 // renders these top-to-bottom; the pager (prev/next) walks the
 // flattened list in this order; the breadcrumb derives "Docs /
 // Section / Page" from this structure.
@@ -6,7 +6,7 @@
 // IA doctrine: one concept per page, ~70 pages total, twelve top-level
 // categories that read as a learning narrative top-to-bottom. The first
 // link of each category, read in order, is the library's elevator
-// pitch — see the rebuild plan for the editorial argument.
+// pitch, see the rebuild plan for the editorial argument.
 //
 // Stubbed during the docs rebuild. Phase 1 lands the spine pages
 // (Introduction, Quick start, Schema contract, v-register overview,
@@ -61,7 +61,7 @@ export const docsNavigation: DocsSection[] = [
   },
   // Phase 1 fills in the remaining categories below as each page
   // lands. Empty `links` arrays render the heading as a disabled
-  // sidebar group — visually placeholding the IA without surfacing
+  // sidebar group, visually placeholding the IA without surfacing
   // 404-bound URLs.
   {
     heading: 'Schemas',
@@ -215,7 +215,7 @@ export function normalizePath(path: string): string {
 }
 
 // Returns the prev/next link for the current route. Composables that
-// rely on `useRoute` only work inside Nuxt's reactivity scope — so
+// rely on `useRoute` only work inside Nuxt's reactivity scope: so
 // pager components import and call this directly. Returns nulls at
 // the start and end of the list.
 export function useDocsPagination() {

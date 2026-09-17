@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Test #10 from the transforms plan: smoke test that the same transforms
-// pipeline applies uniformly across all four `v-register` element variants —
+// pipeline applies uniformly across all four `v-register` element variants,
 // text input, select, checkbox, radio. They each route through
 // `el[assignKey]?.(value)` (text→515, checkbox→693+, radio→772, select→813
 // in directive.ts). If a future refactor splits the assigner path per
@@ -32,7 +32,7 @@ describe('register({ transforms }) — applies to all four element variants', ()
     const tag = (v: unknown): unknown => {
       if (typeof v === 'string') return `tagged:${v}`
       if (Array.isArray(v)) return v.map((x) => `tagged:${String(x)}`)
-      if (typeof v === 'boolean') return !v // flip — anything we can detect
+      if (typeof v === 'boolean') return !v // flip, anything we can detect
       return v
     }
 
@@ -87,14 +87,14 @@ describe('register({ transforms }) — applies to all four element variants', ()
 
     if (handle.api === undefined) throw new Error('api never set')
 
-    // Text — input event with value 'abc' → transform tags → 'tagged:abc'.
+    // Text, input event with value 'abc' → transform tags → 'tagged:abc'.
     const text = root.querySelector('[data-field="text"]') as HTMLInputElement
     text.value = 'abc'
     text.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (handle.api?.values.text === 'tagged:abc' ? true : null))
     expect(handle.api.values.text).toBe('tagged:abc')
 
-    // Select — change event after picking 'b' → transform tags → 'tagged:b'.
+    // Select, change event after picking 'b' → transform tags → 'tagged:b'.
     // The slim-primitive gate checks JS type (string), not enum
     // membership; refinement-level violations surface via field
     // validation on submit, not at the write boundary. So the post-
@@ -105,7 +105,7 @@ describe('register({ transforms }) — applies to all four element variants', ()
     await waitUntil(() => (handle.api?.values.pick === 'tagged:b' ? true : null))
     expect(handle.api.values.pick).toBe('tagged:b')
 
-    // Checkbox — clicking flips storage from false → true; transform's
+    // Checkbox, clicking flips storage from false → true; transform's
     // boolean-flip turns it back to false at write time.
     const box = root.querySelector('[data-field="box"]') as HTMLInputElement
     box.checked = true
@@ -113,7 +113,7 @@ describe('register({ transforms }) — applies to all four element variants', ()
     await waitUntil(() => (handle.api?.values.box === false ? true : null))
     expect(handle.api.values.box).toBe(false)
 
-    // Radio — clicking dispatches change; transform tags 'one' → 'tagged:one'.
+    // Radio, clicking dispatches change; transform tags 'one' → 'tagged:one'.
     const radio = root.querySelector('[data-field="radio"]') as HTMLInputElement
     radio.checked = true
     radio.dispatchEvent(new Event('change', { bubbles: true }))

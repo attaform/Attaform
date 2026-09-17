@@ -2,7 +2,7 @@
   import { Rocket, Code, Wrench, Zap, ArrowRight } from 'lucide-vue-next'
 
   // Render inside the docs shell so the full sidebar is present the
-  // moment a reader lands on /docs — no click through Quick start just
+  // moment a reader lands on /docs: no click through Quick start just
   // to reach the nav. The landing content still reads as its own page;
   // it just flows into the layout's content column beside the sidebar.
   definePageMeta({ layout: 'docs' })

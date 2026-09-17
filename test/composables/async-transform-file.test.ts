@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
-// Stage 2 — vRegisterFile unified with the transform pipeline.
+// Stage 2, vRegisterFile unified with the transform pipeline.
 //
 // A file selection now flows through the same assigner every other input
 // variant uses: `transforms: [...]` runs (sync or async), `coerce` post-fixes
 // the normalized result, and an async transform drives the busy / pending /
-// settle / transformError machinery exactly as on a text input — the "drop a
+// settle / transformError machinery exactly as on a text input: the "drop a
 // file, normalize it inline into canonical state" case. A cleared selection
 // stays a direct blank commit (no pipeline), and a consumer
 // `@update:registerValue` override now works on file inputs too. Verified
@@ -248,7 +248,7 @@ describe.each(adapters)('async file transforms — $name', ({ useForm, z }) => {
     await nextTick()
 
     expect(calls.length).toBe(2)
-    // Resolve the SECOND (live) run, then the FIRST (superseded) run — the
+    // Resolve the SECOND (live) run, then the FIRST (superseded) run: the
     // stale resolve must be discarded, leaving the latest pick's result.
     calls[1]?.resolve(['second'])
     calls[0]?.resolve(['first'])
@@ -405,7 +405,7 @@ describe.each(adapters)('async file transforms — $name', ({ useForm, z }) => {
     dispatchChange(input)
     await nextTick()
 
-    // In flight on the override path too — busy tracks the window even though
+    // In flight on the override path too, busy tracks the window even though
     // the consumer owns the write, and the handler has NOT fired yet.
     expect(api.fields('field').transforming).toBe(true)
     expect(captured).toEqual([])
@@ -479,7 +479,7 @@ describe.each(adapters)('async file transform — gated display ($name)', ({ use
     await nextTick()
     expect(api.fields('field').transforming).toBe(true)
 
-    // Inside the show-delay the prior success is HELD — no spinner flash.
+    // Inside the show-delay the prior success is HELD: no spinner flash.
     expect(api.fields('field').displayState).toBe('success')
     expect(input.hasAttribute('aria-busy')).toBe(false)
 

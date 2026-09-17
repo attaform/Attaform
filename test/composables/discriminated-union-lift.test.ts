@@ -13,7 +13,7 @@ import type { UseFormReturn } from '../../src/zod'
  * `FieldStateMapEntry` (form.fields chained) and `ErrorsProxyShape`
  * (form.errors chained). The lift merges keys across object-union
  * members so per-variant leaves are addressable through one chained
- * shape, regardless of which discriminant is currently active —
+ * shape, regardless of which discriminant is currently active,
  * matching the runtime's stable-stub semantics for inactive paths.
  *
  * Single-object types must NOT regress: the homomorphic branch is
@@ -91,7 +91,7 @@ describe('FieldStateMapEntry — discriminated-union lift (synthetic fixtures)',
     // Model P: the NODE is absent when its variant is inactive, so the
     // key carries node-optionality (`FieldState<T> | undefined`), not
     // value-optionality (`FieldState<T | undefined>`). The present node's
-    // value type is precise — the synthetic absent-variant `undefined`
+    // value type is precise: the synthetic absent-variant `undefined`
     // is stripped.
     type FragileLeaf = FieldStateMapEntry<Cargo>['fragile']
     expectTypeOf<FragileLeaf>().toEqualTypeOf<FieldState<boolean> | undefined>()
@@ -214,7 +214,7 @@ describe('useForm — discriminator literals widen to string by design (in-fligh
 
 describe('form.values discriminated-union lift (LiftedValueShape)', () => {
   // form.values uses LiftedValueShape so per-variant keys are
-  // reachable through chained access — matching the runtime, where
+  // reachable through chained access, matching the runtime, where
   // plain JS object access on a missing variant key returns
   // `undefined` rather than throwing. WriteShape (the underlying
   // shape used by setValue / defaultValues) stays distributive so

@@ -1,6 +1,6 @@
 <script setup lang="ts">
   // ─────────────────────────────────────────────────────────────────
-  // Cargo shipment booking — multistep wizard built on `useWizard`
+  // Cargo shipment booking, multistep wizard built on `useWizard`
   // composing four `useForm` instances. Each step owns its own schema,
   // history, and validation cadence; the wizard orchestrates navigation,
   // status aggregation, and the cross-form submit.
@@ -60,7 +60,7 @@
     })
   }
 
-  // Aggregate capacity check — wired to cargo.items via .superRefine.
+  // Aggregate capacity check, wired to cargo.items via .superRefine.
   function checkCapacity(totalLb: number): Promise<boolean> {
     return new Promise((resolve) => {
       setTimeout(() => resolve(totalLb <= 6500), 800)
@@ -80,7 +80,7 @@
     "I accept the carrier's terms of service and rate schedule.",
   ] as const
 
-  // ─── Step 1 — reference + pickup + delivery ──────────────────────
+  // ─── Step 1, reference + pickup + delivery ──────────────────────
   const addressSchema = z.object({
     line1: z
       .string()
@@ -123,7 +123,7 @@
     useSameDeliveryAddress: z.boolean().register(fieldMeta, { label: 'Same as pickup address' }),
   })
 
-  // ─── Step 2 — cargo line items + discriminated details ───────────
+  // ─── Step 2, cargo line items + discriminated details ───────────
   const lineItemSchema = z.object({
     sku: z
       .string()
@@ -147,7 +147,7 @@
       .register(fieldMeta, { label: 'Wt (lb)' }),
   })
 
-  // Manifest array — lifted out of the cargo discriminated union so
+  // Manifest array, lifted out of the cargo discriminated union so
   // "dry → hazmat" reclassification keeps whatever items the user
   // already typed instead of resetting items: [] on each variant
   // reshape. The async .superRefine attaches the capacity error at
@@ -230,7 +230,7 @@
       .register(fieldMeta, { label: 'Cargo details' }),
   })
 
-  // ─── Step 3 — service mode + dates + insurance + notes ───────────
+  // ─── Step 3, service mode + dates + insurance + notes ───────────
   const truckServiceSchema = z.object({
     mode: z.literal('truck'),
     truckType: z.enum(TRUCK_TYPES).register(fieldMeta, { label: 'Truck type' }),
@@ -272,7 +272,7 @@
       .register(fieldMeta, { label: 'Delivery date' }),
     // Inference stress test: `.transform()`-wrapped object with a
     // `.default()`-ed leaf inside. The read view recurses through the
-    // pipe so `currency` types as `string` — not `string | undefined`.
+    // pipe so `currency` types as `string`: not `string | undefined`.
     // The transform fires at submit, so handleSubmit's payload also
     // carries the derived `tier`.
     insurance: z
@@ -307,7 +307,7 @@
       .register(fieldMeta, { label: 'Notes', description: 'Optional handling instructions.' }),
   })
 
-  // ─── Step 4 — review form (terms + signature + acknowledgements) ─
+  // ─── Step 4, review form (terms + signature + acknowledgements) ─
   const reviewSchema = z.object({
     termsAccepted: z
       .literal(true, { message: 'Accept the terms to book the shipment.' })
@@ -324,7 +324,7 @@
 
   // ─── Forms ──────────────────────────────────────────────────────
   // Each form owns its own schema, history, and validation cadence. Sequence
-  // ownership lives on the wizard's `steps` list further down — forms
+  // ownership lives on the wizard's `steps` list further down, forms
   // stay decoupled from flow shape so any one is reusable elsewhere.
   const refForm = useForm({
     schema: referenceSchema,
@@ -391,7 +391,7 @@
   // ─── Pickup → delivery live mirror ───────────────────────────────
   // While the flag is on, copy pickup → delivery via the whole-form
   // callback variant of setValue. Both fields live in refForm so this
-  // mirror is self-contained — no cross-form plumbing.
+  // mirror is self-contained: no cross-form plumbing.
   watch(
     [() => refForm.values.useSameDeliveryAddress, () => refForm.values.pickup],
     ([same]) => {
@@ -406,7 +406,7 @@
   ]
 
   // ─── Step metadata ───────────────────────────────────────────────
-  // The wizard drives the nav — `current` is the active form's key, and
+  // The wizard drives the nav, `current` is the active form's key, and
   // `statuses[key].valid` is what gates the Next button.
   const STEP_TITLES = {
     reference: 'Origin & destination',
@@ -583,7 +583,7 @@
   // `field.showErrors` is the heuristic-gated render flag (library
   // default: submit-or-touched-and-dirty); `firstError` is the top
   // error in schema order. The two compose into a single readable
-  // call site — no per-template repetition of the heuristic.
+  // call site: no per-template repetition of the heuristic.
   function fieldClasses(field: FieldState<unknown> | undefined) {
     if (!field) return {}
     return {
@@ -629,7 +629,7 @@
     )
   )
 
-  // Acknowledgement multi-checkbox helper — read / write the array via
+  // Acknowledgement multi-checkbox helper, read / write the array via
   // setValue. `register()` doesn't bind multi-checkboxes natively in
   // the demo's HTML; managing it imperatively keeps the surface tight.
   function toggleAcknowledgement(ack: (typeof ACKNOWLEDGEMENTS)[number], checked: boolean) {

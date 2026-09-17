@@ -5,7 +5,7 @@
  * `*ByKey` accessors, because every runtime caller already holds the key
  * and a second `canonicalizePath` per read showed up on the field-state
  * hot path. It used to also carry path-taking wrappers, which nothing
- * but these assertions still called — shipped bytes kept alive by the
+ * but these assertions still called, shipped bytes kept alive by the
  * test suite. Canonicalising here instead keeps the assertions reading
  * in path terms without the store paying for it.
  */

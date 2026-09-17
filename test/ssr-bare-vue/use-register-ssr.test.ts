@@ -12,7 +12,7 @@ import { fakeSchema } from '../utils/fake-schema'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 
 /**
- * SSR coverage for `useRegister()` — closes the gap left by
+ * SSR coverage for `useRegister()`, closes the gap left by
  * `use-register.test.ts`, which mounts via `createApp(...).mount(root)`
  * under jsdom (jsdom's prop-patch + lifecycle order matches CSR closely
  * enough that the SSR-specific failure mode never surfaced). Reproduces
@@ -26,7 +26,7 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
  * `instance.attrs.registerValue` leaves the captured value at
  * `undefined`. The first server-side template read of the returned
  * `ComputedRef<RegisterValue | undefined>` then fires the
- * no-parent-RV warn — a confusing diagnostic for the consumer who
+ * no-parent-RV warn: a confusing diagnostic for the consumer who
  * passed `v-register` correctly. Fix: capture synchronously in setup
  * (when `initProps` has already populated `instance.attrs`), retain
  * `onBeforeMount` + `onBeforeUpdate` as defence-in-depth.
@@ -35,7 +35,7 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
 type Form = { email: string; password: string; color: string }
 
 function compileWithTransforms(template: string): (this: unknown, ctx: unknown) => unknown {
-  // Full transform stack — `componentBridgeTransform` is what injects
+  // Full transform stack, `componentBridgeTransform` is what injects
   // `:registerValue` on a `<MyChild v-register="...">` component vnode,
   // and that's the binding `useRegister` reads back via
   // `instance.attrs.registerValue`. Without it the parent's directive
@@ -140,8 +140,8 @@ describe('useRegister — SSR (renderToString)', () => {
   it('strips bridge keys (`registerValue`, `value`) so the child root does not leak them as DOM attrs', async () => {
     // The strip is the second job of `refreshAndStripBridgeAttrs`. If
     // sync-stripping regresses, the child's `<label>` root would render
-    // as `<label registerValue="[object Object]" value="">` server-side
-    // — ugly DOM, hydration mismatch on every paint.
+    // as `<label registerValue="[object Object]" value="">` server-side,
+    // ugly DOM, hydration mismatch on every paint.
     const app = makeAppWithParentChildTemplate(
       `<div>
          <RegisterChild v-register="form.register('email')" />
@@ -150,13 +150,13 @@ describe('useRegister — SSR (renderToString)', () => {
     const html = await renderToString(app)
     expect(html).not.toContain('registerValue')
     // The `value=""` attribute would only appear on the OUTER label
-    // (the child's root) — the inner `<input>` has no value binding in
+    // (the child's root): the inner `<input>` has no value binding in
     // this fixture. So any `value=` in the rendered HTML is the leak.
     expect(html).not.toMatch(/<label[^>]*\svalue=/)
   })
 
   it('rv.path / rv.segments / rv.formKey are readable during SSR render and land in markup', async () => {
-    // Wrapper-component primitives need to survive the SSR pass — a
+    // Wrapper-component primitives need to survive the SSR pass: a
     // child component using `useRegister()` to derive field state via
     // `rv.segments` should work server-side without flicker on
     // hydration. A new child template that emits `rv.path` /
@@ -201,7 +201,7 @@ describe('useRegister — SSR (renderToString)', () => {
     // Path is the canonical PathKey (JSON-encoded). Vue's HTML
     // serializer escapes `"` as `&quot;`, so check the escaped form.
     // The path attribute carries the canonical `PathKey`, which is
-    // opaque by contract — asserted through the canonicaliser so a
+    // opaque by contract, asserted through the canonicaliser so a
     // change of encoding does not have to come through this file.
     expect(html).toContain(`data-atta-path="${escapeAttr(canonicalizePath(['email']).key)}"`)
     expect(html).toContain('data-atta-segments="[&quot;email&quot;]"')

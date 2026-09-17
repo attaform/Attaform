@@ -39,7 +39,7 @@ describe('buildRegister', () => {
       expect(typeof rv.registerElement).toBe('function')
       expect(typeof rv.deregisterElement).toBe('function')
       expect(typeof rv.setValueWithInternalPath).toBe('function')
-      // Tightened from `.toBeDefined()` — the contract is a Vue Ref,
+      // Tightened from `.toBeDefined()`: the contract is a Vue Ref,
       // not an arbitrary non-undefined value.
       expect(isRef(rv.innerRef)).toBe(true)
     })
@@ -68,7 +68,7 @@ describe('buildRegister', () => {
     it('exposes the canonical PathKey string', () => {
       const { register } = makeRegister()
       const rv = register(['email'])
-      // PathKey is opaque by contract — stable for Map/Set keys,
+      // PathKey is opaque by contract, stable for Map/Set keys,
       // equality and log strings, and nothing may parse it. Asserted
       // against the canonicaliser rather than a literal, so the encoding
       // stays free to change without this file being the thing that
@@ -111,7 +111,7 @@ describe('buildRegister', () => {
       // Vue's shallowReadonly proxy registers reads as dependencies.
       // The values themselves never mutate within an RV's lifetime
       // (path / formKey / formInstanceId are baked at construction),
-      // but the tracking pass should still visit them — important
+      // but the tracking pass should still visit them, important
       // for wrapper-component patterns that read these inside a
       // `computed(() => form.fields(rv.value?.segments))` derivation.
       const { register } = makeRegister({ formKey: 'k', instanceId: 'i' })
@@ -126,7 +126,7 @@ describe('buildRegister', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       try {
         // Vue's readonly proxies log a console.warn and silently drop
-        // the write — the value is unchanged, no exception thrown.
+        // the write: the value is unchanged, no exception thrown.
         ;(rv as unknown as { path: string }).path = 'phone' as never
         expect(rv.path).toBe(canonicalizePath(['email']).key)
         expect(warn).toHaveBeenCalled()
@@ -189,7 +189,7 @@ describe('buildRegister', () => {
       document.body.appendChild(input)
       input.focus()
       expect(document.activeElement).toBe(input)
-      // Sanity: the FormStore has not seen any focus signal yet — the
+      // Sanity: the FormStore has not seen any focus signal yet: the
       // listener isn't attached and `input.focus()` above only fired a
       // native DOM event no one was listening to.
       expect(state.getFieldRecord(['email'])?.focused).toBe(null)
@@ -205,7 +205,7 @@ describe('buildRegister', () => {
     })
 
     it('does not flip focused when registering an element that is NOT the active one', () => {
-      // Negative case for the autofocus probe — pin that we don't
+      // Negative case for the autofocus probe, pin that we don't
       // false-positive when a sibling input happens to be focused.
       const { state, register } = makeRegister()
       const rv = register(['email'])

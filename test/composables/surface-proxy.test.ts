@@ -76,7 +76,7 @@ describe('form.fields — shadowing immunity (FIELD_STATE_KEYS only inject at le
     })
     const form = mount(schema, { address: { valid: true, city: 'NYC' } })
 
-    // address.valid is a leaf (boolean) — exposed as a FieldState.
+    // address.valid is a leaf (boolean), exposed as a FieldState.
     expect(form.fields.address.valid.value).toBe(true)
     expect(form.fields.address.valid.path).toEqual(['address', 'valid'])
   })
@@ -147,7 +147,7 @@ describe('form.fields — callable form', () => {
     expect(fromCall.path).toEqual(fromDot.path)
   })
 
-  // No-arg call returns the root FieldState terminal — equivalent to
+  // No-arg call returns the root FieldState terminal, equivalent to
   // `form.fields([])`. Same shape `form.meta` exposes (FormMeta is
   // FieldState<F> at the root with lifecycle scalars layered on).
   it('form.fields() returns the root FieldState terminal (aggregation over the whole form)', () => {
@@ -217,7 +217,7 @@ describe('form.errors — callable form', () => {
   })
 
   it('form.errors() with no arg returns the form-level error aggregate', () => {
-    // `form.errors()` is shorthand for `form.errors([])` — the same
+    // `form.errors()` is shorthand for `form.errors([])`: the same
     // aggregated array `form.meta.errors` exposes. `undefined` when
     // no errors exist.
     const form = mount(schema, { email: 'a@b.com', address: { city: 'NYC' } })
@@ -300,7 +300,7 @@ describe('form.fields — JSON.stringify behaviour', () => {
       city: { value: 'NYC', dirty: false, errors: [] },
     })
     // The same shape JSON.stringify(form.fields.address.city) would
-    // produce — leaf snapshots are nested under their relative key.
+    // produce, leaf snapshots are nested under their relative key.
     expect(snapshot.city).toMatchObject(JSON.parse(JSON.stringify(form.fields.address.city)))
   })
 })
@@ -546,7 +546,7 @@ describe('surface proxies — hasOwnProperty resolves to the real method (not a 
   // is a universal Object method that tooling (Vue's reactivity) and
   // consumers call against any object-like value. The surfaces hand back
   // the real `Object.prototype.hasOwnProperty`, which routes through
-  // their own-key traps — so the result agrees with `Object.keys(...)`
+  // their own-key traps: so the result agrees with `Object.keys(...)`
   // (containers) / the exposed FieldState keys (leaf-views) instead of
   // throwing "not a function".
   const schema = z.object({
@@ -608,7 +608,7 @@ describe('surface proxies — hasOwnProperty resolves to the real method (not a 
     // tooling that probes membership never gets a non-callable node.
     expect(form.fields.wrap.hasOwnProperty).toBe(Object.prototype.hasOwnProperty)
     // The call form addresses the field by path. (Assert on `path`,
-    // which derives from the segments — a field literally named
+    // which derives from the segments: a field literally named
     // `hasOwnProperty` trips a separate, pre-existing storage-layer
     // collision this test deliberately does not depend on.)
     expect(form.fields('wrap.hasOwnProperty').path).toEqual(['wrap', 'hasOwnProperty'])
@@ -639,7 +639,7 @@ describe('form.fields — discriminated unions (DU)', () => {
       name: '',
       notify: { channel: 'email', address: 'a@b.com' },
     })
-    // address is a leaf (string) — leaf-view exposed.
+    // address is a leaf (string), leaf-view exposed.
     const view = (form.fields as unknown as (p: string) => unknown)('notify.address') as {
       value: string
     }
@@ -731,8 +731,8 @@ describe('form.errors — container materialisation (toJSON / String / `{{ }}`)'
   })
 
   it('user errors at inactive DU variant paths still surface (consumer data, not filtered)', () => {
-    // Updated contract: user-injected errors are consumer data —
-    // server replies, manual marks, programmatic warnings — and the
+    // Updated contract: user-injected errors are consumer data,
+    // server replies, manual marks, programmatic warnings, and the
     // library never silently drops them, including at paths the
     // current DU variant doesn't cover. Schema errors (library-
     // produced verdicts) still respect the active-path filter; see
@@ -860,8 +860,8 @@ describe('form.fields — container materialisation (toJSON / String / `{{ }}`)'
 describe('surface materialisation — predictable representations + complex errors', () => {
   // These tests pin exact stringified output for non-trivial shapes
   // (deep nesting, arrays, discriminated unions). If the materialiser
-  // ever drifts — wrong key ordering at the schema level, lost
-  // FieldState fields, mis-shaped error nesting — these break first.
+  // ever drifts, wrong key ordering at the schema level, lost
+  // FieldState fields, mis-shaped error nesting, these break first.
 
   it('form.values prints an exact deep-equal copy of the form data (root + nested)', () => {
     const schema = z.object({
@@ -910,12 +910,12 @@ describe('surface materialisation — predictable representations + complex erro
 
     const tree = JSON.parse(JSON.stringify(form.fields)) as Record<string, unknown>
 
-    // Every schema-leaf carries the full FieldState surface — `value`
+    // Every schema-leaf carries the full FieldState surface, `value`
     // matches storage, `path` is the absolute path, `pristine` reflects
     // the un-mutated initial state. `focused` / `blurred` start as
     // `null` (no DOM connected, so the DOM-state concepts don't apply
     // yet); `touched` starts as `false` (interaction history is a
-    // boolean — no event yet means `false`, not "unknown");
+    // boolean: no event yet means `false`, not "unknown");
     // `updatedAt` is the construction timestamp until the first write.
     const expectedLeafShape = {
       value: expect.anything(),
@@ -1080,7 +1080,7 @@ describe('surface materialisation — predictable representations + complex erro
     // a schema verdict against the email variant becomes unreachable
     // when the discriminator flips to sms, so it stops appearing in
     // the serialised tree. User-injected errors are consumer data
-    // and survive the switch — see the surface-serialization probe
+    // and survive the switch, see the surface-serialization probe
     // for the unknown-key / form-level companions to this rule.
     const schema = z.object({
       notify: z.discriminatedUnion('channel', [
@@ -1109,7 +1109,7 @@ describe('surface materialisation — predictable representations + complex erro
     // Form-level user entries (set via `setErrors`, or arriving
     // through `setErrors([{ path: [] }])`) live at the root `[]`.
     // They are NOT a child key, so the serialised `form.errors` tree has
-    // no slot for them — read them via `form.meta.ownErrors` and the flat
+    // no slot for them, read them via `form.meta.ownErrors` and the flat
     // `form.meta.errors`. Field errors still serialise normally.
     const schema = z.object({ name: z.string() })
     const form = mount(schema, { name: '' })

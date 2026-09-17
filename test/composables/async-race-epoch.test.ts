@@ -41,8 +41,8 @@ async function drainMicrotasks(rounds = 8): Promise<void> {
 function buildSchemaV4() {
   const resolvers: Array<(v: boolean) => void> = []
   // Container refine on the root forces the runtime's per-keystroke
-  // scope to stay whole-form (CORE-P1a's predicate returns `true`)
-  // — which is the regime PASS2-2's cross-path clobber lived in.
+  // scope to stay whole-form (CORE-P1a's predicate returns `true`):
+  // which is the regime PASS2-2's cross-path clobber lived in.
   // The trivial sync `() => true` is enough to flip the predicate
   // without polluting the resolvers queue.
   const schema = zV4
@@ -103,7 +103,7 @@ describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
 
   it('drops a stale call-1 commit that resolves AFTER a fresher call-2 commit', async () => {
     const { schema, resolvers } = build()
-    // useForm has v3-or-v4 union under describe.each — single inline
+    // useForm has v3-or-v4 union under describe.each, single inline
     // cast is the cleanest tool here (mirrors the
     // field-validation-counts-migration pattern).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

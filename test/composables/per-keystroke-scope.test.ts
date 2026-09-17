@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * CORE-P1a — every per-keystroke `scheduleFieldValidation` ran
+ * CORE-P1a: every per-keystroke `scheduleFieldValidation` ran
  * `validateAtPath(form, undefined)` (whole-form), re-parsing every
  * leaf on every character. For a 200-field flat schema, typing one
  * character did 200 leaf parses; for any schema that only carries
@@ -10,8 +10,8 @@
  * Fix: route the per-keystroke run through the new adapter
  * predicate `hasContainerOrRootRefine`. When it returns `false`
  * (no ancestor or root effect), validate only the edited subtree.
- * When it returns `true` (or is missing), fall back to whole-form
- * — ancestor refines stay correct under cross-field writes.
+ * When it returns `true` (or is missing), fall back to whole-form,
+ * ancestor refines stay correct under cross-field writes.
  *
  * Red-green: leaf refine on `refined`, an unrefined sibling
  * `sibling`. Type into `sibling`. Old whole-form pass invokes

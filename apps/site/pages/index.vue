@@ -78,7 +78,7 @@
 
   // Shiki's `codeToHast` returns the syntax-highlight AST. Pairing
   // it with `<AppHighlighted />` lets us render through Vue's normal
-  // vnode pipeline instead of `v-html` — same visual result, no
+  // vnode pipeline instead of `v-html`, same visual result, no
   // raw-HTML directive, full SSR support.
   const highlight = (source: string, lang: 'vue' | 'ts') =>
     codeToHast(source, {
@@ -107,7 +107,7 @@
   const registerLineTwoTree = registerLineTree('lineTwo')
   const registerLineThreeTree = registerLineTree('lineThree')
 
-  // Schema.org SoftwareApplication entry — the canonical structured-
+  // Schema.org SoftwareApplication entry: the canonical structured-
   // data shape for a developer library / dev-tool. Eligible for
   // Google's software rich card (the side panel that shows name,
   // category, rating, license, and a screenshot when present). Even
@@ -124,7 +124,7 @@
       description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
       url: 'https://attaform.dev',
       author: { '@type': 'Person', name: 'Oswald Chisala' },
-      // MIT-licensed and free — surface the price-zero offer so the
+      // MIT-licensed and free, surface the price-zero offer so the
       // SoftwareApplication node validates against Google's required
       // properties (name, description, applicationCategory, offers).
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },

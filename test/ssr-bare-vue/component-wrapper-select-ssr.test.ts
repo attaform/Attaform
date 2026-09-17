@@ -51,7 +51,7 @@ const CustomSelect = defineComponent({
 })
 
 // Extract the full `<option ...>` open tag carrying value="<value>", whatever
-// the attribute order — so the `selected` assertion is order-independent.
+// the attribute order: so the `selected` assertion is order-independent.
 function optionTag(html: string, value: string): string {
   const match = html.match(new RegExp(`<option\\b[^>]*\\bvalue="${value}"[^>]*>`))
   return match ? match[0] : ''

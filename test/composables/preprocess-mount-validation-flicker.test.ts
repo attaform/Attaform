@@ -16,7 +16,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * seed runs against the no-write-mutation default (`undefined` at
  * those leaves), the preprocess fn returns its INVALID-shape sentinel,
  * refine rejects, and the verdict lands in `schemaErrors` invisible
- * until the field is touched-and-dirty — flickering into view the
+ * until the field is touched-and-dirty, flickering into view the
  * moment the consumer starts typing.
  *
  * Suppression is targeted: as soon as the consumer supplies a value

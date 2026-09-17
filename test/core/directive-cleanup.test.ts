@@ -33,7 +33,7 @@ function makeRegisterValue<T>(
   const setValue = vi.fn(() => true)
   // Typed as InternalRegisterValue so the mock can carry `lastTypedForm`
   // (directive-private; off the public RegisterValue type). `path`
-  // accepts an override because the production RV is `shallowReadonly` —
+  // accepts an override because the production RV is `shallowReadonly`,
   // tests that need to simulate "fresh RV at the same path" or "path
   // migration" build a new mock with the desired value rather than
   // mutating after construction.
@@ -167,7 +167,7 @@ describe('v-register directive — listener teardown on unmount', () => {
 
     hooks.created?.(input, binding, vnode, null)
     const addedCount = spy.added
-    // Single `change` listener — checkbox/radio/select each register
+    // Single `change` listener, checkbox/radio/select each register
     // one listener for the model write.
     expect(addedCount).toBe(1)
 
@@ -220,7 +220,7 @@ describe('v-register directive — listener teardown on unmount', () => {
 
     spy.reset()
     hooks.created?.(input, binding, vnode, null)
-    // Same four-listener inventory as the first cycle — the count must
+    // Same four-listener inventory as the first cycle: the count must
     // be stable across re-creates, not merely "non-zero".
     expect(spy.added).toBe(4)
     hooks.beforeUnmount?.(input, binding, vnode, null)
@@ -242,7 +242,7 @@ describe('v-register directive — listener teardown on unmount', () => {
     unknownInput._assigning = true
     // `created` calls setAssignFunction, which writes the assigner
     // onto `el[assignKey]`. The teardown guarantees this is wiped
-    // too — otherwise a reused element would keep dispatching DOM
+    // too, otherwise a reused element would keep dispatching DOM
     // events to the prior form's assigner.
     expect(unknownInput[assignKey]).toBeDefined()
 
@@ -256,7 +256,7 @@ describe('v-register directive — listener teardown on unmount', () => {
   it('beforeUnmount drains listeners even if value is no longer a RegisterValue', () => {
     // A binding can receive an invalid value right before teardown (e.g.,
     // parent component state went null). We still need to remove every
-    // listener we added — otherwise the leak survives the teardown.
+    // listener we added, otherwise the leak survives the teardown.
     const { value } = makeRegisterValue('')
     const created = makeBinding(value)
     const vnode = makeVNode({ type: 'text' })
@@ -289,7 +289,7 @@ describe('v-register directive — D2 unsupported-element warning', () => {
     hooks.created?.(div, binding, vnode, null)
     hooks.mounted?.(div, binding, vnode, null)
     // Same element re-fires the lifecycle (KeepAlive case); the warn
-    // must not double-fire — WeakSet dedupe. The warn-check lives in
+    // must not double-fire, WeakSet dedupe. The warn-check lives in
     // `mounted` (not `created`), so re-fire that hook.
     hooks.mounted?.(div, binding, vnode, null)
     // The warn is deferred a tick past `mounted` so `useRegister`'s
@@ -304,7 +304,7 @@ describe('v-register directive — D2 unsupported-element warning', () => {
   it('does NOT warn when an assigner is installed via assignKey before mount', async () => {
     const div = document.createElement('div')
     document.body.appendChild(div)
-    // Consumer-installed assigner — escape hatch for custom components
+    // Consumer-installed assigner, escape hatch for custom components
     // / non-input elements that handle the binding manually.
     ;(div as unknown as { [k: symbol]: unknown })[assignKey] = (_v: unknown) => undefined
     const { value } = makeRegisterValue('hello')
@@ -341,7 +341,7 @@ describe('v-register directive — D2 unsupported-element warning', () => {
  * `useRegister()` may return `undefined` (a wrapper component
  * rendered without a parent `registerValue`); `<input v-register="register" />`
  * inside that wrapper passes `undefined` through to the directive,
- * and the binding must be a silent no-op (no warn — useRegister has
+ * and the binding must be a silent no-op (no warn, useRegister has
  * already warned at the call site, no listener attachment that would
  * later read off a stale `undefined` value).
  */
@@ -371,7 +371,7 @@ describe('v-register directive — undefined binding (inert)', () => {
     const vnode = makeVNode({})
     hooks.created?.(input, binding, vnode, null)
 
-    // Native input fires its `input` event — listener uses `?.()` on the
+    // Native input fires its `input` event, listener uses `?.()` on the
     // assigner, so undefined assigner is a silent no-op rather than a
     // throw.
     expect(() => input.dispatchEvent(new Event('input'))).not.toThrow()
@@ -405,7 +405,7 @@ describe('v-register directive — undefined binding (inert)', () => {
 
 /**
  * Runtime swap: the binding value changes between renders. The
- * primary trigger is the `useRegister` flow — a wrapper component
+ * primary trigger is the `useRegister` flow: a wrapper component
  * mounts before its parent passes `registerValue`, so the directive
  * sees `undefined` on `created` and a real `RegisterValue` on the
  * next `beforeUpdate`. The reverse (RV → undefined) is symmetric.
@@ -413,7 +413,7 @@ describe('v-register directive — undefined binding (inert)', () => {
  * Two contracts the swap must satisfy:
  *
  * 1. The assigner installed on the element must reflect the latest
- *    value — input events route writes to the new RV's
+ *    value, input events route writes to the new RV's
  *    `setValueWithInternalPath`, not the old one.
  * 2. Element registration must mirror the binding's lifecycle:
  *    transitioning to a real RV calls `registerElement` (so the
@@ -555,7 +555,7 @@ describe('v-register directive — runtime value swap', () => {
     hooks.created?.(input, makeBinding(first.value), vnode, null)
     expect(first.register).toHaveBeenCalledTimes(1)
 
-    // Build a second RV that mirrors the first's path — simulates
+    // Build a second RV that mirrors the first's path, simulates
     // `form.register('email')` returning a fresh object on the next
     // render but resolving the same field.
     const fresh = makeRegisterValue('a', {
@@ -570,7 +570,7 @@ describe('v-register directive — runtime value swap', () => {
   })
 
   it('same form, different path (dynamic v-register expression): deregisters old path, registers new', () => {
-    // `<input v-register="form.register(`item.${i}`)" />` — the path
+    // `<input v-register="form.register(`item.${i}`)" />`: the path
     // is dynamic and changes when `i` updates. The element must
     // migrate its registration entry from the old path to the new
     // one so `getFieldState`'s `connected` flag and
@@ -583,7 +583,7 @@ describe('v-register directive — runtime value swap', () => {
     hooks.created?.(input, makeBinding(oldPath.value), vnode, null)
     expect(oldPath.register).toHaveBeenCalledTimes(1)
 
-    // Same form (shared formKey) — only the path changes.
+    // Same form (shared formKey), only the path changes.
     const newPath = makeRegisterValue('a', {
       path: 'item.1' as PathKey,
     })

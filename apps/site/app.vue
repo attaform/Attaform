@@ -17,7 +17,7 @@
   // title (if any) through "page · Attaform"; pages that set no
   // title fall through to the homepage tagline. seoMeta fills in
   // the Open Graph + Twitter card defaults that link previews
-  // (Slack, Twitter, Discord, iMessage) read at unfurl time —
+  // (Slack, Twitter, Discord, iMessage) read at unfurl time,
   // individual pages override the description on a case-by-case
   // basis via their own useSeoMeta call.
   useHead({
@@ -25,7 +25,7 @@
     titleTemplate: (title) =>
       title ? `${title} · Attaform` : 'Attaform — Type-safe forms for Vue 3 and Nuxt',
     link: [
-      // SVG favicon — modern evergreen browsers render it crisply at
+      // SVG favicon, modern evergreen browsers render it crisply at
       // every tab size and adapt to high-DPI without a fallback PNG.
       // Hardcoded accent fill (#6938ef) + white "A" strokes so the
       // mark reads cleanly on both light and dark browser chrome.
@@ -36,7 +36,7 @@
       // older browsers. The matching `apple-touch-icon.png` for
       // iOS home-screen bookmarks is auto-injected by
       // `nuxt-seo-utils` (via @nuxtjs/seo) when it scans
-      // `public/` — no explicit <link> needed for that one.
+      // `public/`: no explicit <link> needed for that one.
       // All three rasters come from `favicon.svg` via
       // `scripts/generate-favicons.mjs`.
       { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico', sizes: 'any' },

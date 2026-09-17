@@ -14,7 +14,7 @@ import { ROOT_PATH_KEY } from '../../src/runtime/core/paths'
  *
  * The slot names below come from `ROOT_PATH_KEY` rather than a literal.
  * `PathKey` is opaque by contract, and pinning its spelling here made
- * this file the thing that had to change when the encoding did — while
+ * this file the thing that had to change when the encoding did, while
  * the boundary it actually guards is between two DIFFERENT keys, not
  * between two particular strings.
  *

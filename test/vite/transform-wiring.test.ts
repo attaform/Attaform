@@ -16,7 +16,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  *   1. After `configResolved`, all four compile-time node transforms
  *      land in `api.options.template.compilerOptions.nodeTransforms`.
  *   2. The preamble transform comes BEFORE the hint transform
- *      (`vite.ts`) — reversed order double-wraps every
+ *      (`vite.ts`), reversed order double-wraps every
  *      v-register IIFE because the preamble's pre-order capture would
  *      pick up an already-wrapped expression.
  *   3. The push is idempotent. A second `configResolved` invocation
@@ -24,10 +24,10 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  *      pipeline) must not re-append the same transforms.
  *   4. The `transform(code, id)` hook invokes `transformSsrAccessed`
  *      for an SFC whose `<script setup>` binds `useForm` and whose
- *      `<template>` references it — the only path that injects
+ *      `<template>` references it: the only path that injects
  *      `__ssrAccessed: true` into the call's options literal.
  *
- * No prior coverage existed for any of this — the resolve-alias suite
+ * No prior coverage existed for any of this: the resolve-alias suite
  * (`resolve-alias.test.ts`) only exercises the build-time zod rewrite.
  * Pinning these invariants now so every subsequent transform-layer
  * dedup is guarded by behavior-locking tests rather than guesses.
@@ -111,7 +111,7 @@ describe('attaform/vite — node-transform wiring', () => {
   })
 
   it('does not re-push when the same nodeTransforms array already carries the sentinel', async () => {
-    // Two plugin instances sharing the same vue() — exercises the
+    // Two plugin instances sharing the same vue(), exercises the
     // `if (!existing.includes(...))` idempotency gate that protects
     // against vite + nuxt + manual `plugins: [attaform()]` stacking.
     const sharedVue = vue()

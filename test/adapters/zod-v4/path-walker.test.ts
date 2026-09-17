@@ -43,7 +43,7 @@ describe('getNestedZodSchemasAtPath', () => {
       ]),
     })
     const resolved = getNestedZodSchemasAtPath(schema, 'value.x', 64)
-    // Both union branches have an x — both resolve.
+    // Both union branches have an x, both resolve.
     expect(resolved.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -54,7 +54,7 @@ describe('getNestedZodSchemasAtPath', () => {
         z.object({ kind: z.literal('err'), message: z.string() }),
       ]),
     })
-    // "value" only lives in the ok branch — expect exactly one match.
+    // "value" only lives in the ok branch, expect exactly one match.
     const resolved = getNestedZodSchemasAtPath(schema, 'result.value', 64)
     expect(resolved).toHaveLength(1)
     expect(resolved[0]?.safeParse('x').success).toBe(true)
@@ -78,8 +78,8 @@ describe('getNestedZodSchemasAtPath', () => {
     expect(byArray).toHaveLength(1)
   })
 
-  // Set-member queries. A set's members are not addressable — a member
-  // IS its own key, so no address survives writing to one — and the
+  // Set-member queries. A set's members are not addressable: a member
+  // IS its own key, so no address survives writing to one, and the
   // walker says so for every ordinary segment. The one question a set
   // answers is what a member looks like, which schema-coerce asks
   // through the reserved `SET_MEMBER_SEGMENT`. A plain index used to

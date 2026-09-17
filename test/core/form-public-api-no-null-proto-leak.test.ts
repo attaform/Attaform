@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Class-of-bug coverage for issue #314 — beyond the SSR snapshot, the
+ * Class-of-bug coverage for issue #314, beyond the SSR snapshot, the
  * other consumer-facing surfaces (`form.values`, `form.record(path)`,
  * `form.errors`) also need to carry `Object.prototype` so any
  * third-party code that calls `.hasOwnProperty()` against them works.
@@ -12,7 +12,7 @@
  * object.
  *
  * Each adapter (zod v3 + v4) gets the same coverage per
- * `feedback_zod_v3_v4_parity` — both are first-class peers.
+ * `feedback_zod_v3_v4_parity`, both are first-class peers.
  */
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'

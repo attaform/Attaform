@@ -10,7 +10,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * `''` is a real one-segment path (the literal empty-key field `['']`),
  * distinct from the root `[]`. Form-level (global) errors live at the
- * root `[]`, NOT at `['']` — so `''` is a free, ordinary field key. The
+ * root `[]`, NOT at `['']`: so `''` is a free, ordinary field key. The
  * contract:
  *
  *   - `errors()` → all errors (full aggregate, == `meta.errors`)
@@ -230,7 +230,7 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
   })
 })
 
-// Literal root '' field — proves '' is free of form-level duty. errors('')
+// Literal root '' field, proves '' is free of form-level duty. errors('')
 // reads THIS field; meta.ownErrors returns the root [] bucket alone, and
 // errors([]) is the full aggregate like errors().
 

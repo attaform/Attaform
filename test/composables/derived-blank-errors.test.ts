@@ -9,7 +9,7 @@ import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Reactive `derivedBlankErrors` contract — `errors = f(schema, state)`.
+ * Reactive `derivedBlankErrors` contract, `errors = f(schema, state)`.
  *
  * The blank-required class is purely derivable from
  * `(blankPaths, schema.isRequiredAtPath)`, so it lives on the
@@ -17,12 +17,12 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * `fields.<path>.errors`, and `getErrorsForPath` all merge it in
  * alongside `schemaErrors` (refinement, written by validation) and
  * `userErrors` (server / manual). The error appears the moment a
- * required path becomes blank, vanishes the moment it's filled — no
+ * required path becomes blank, vanishes the moment it's filled: no
  * `validate()` / `handleSubmit` call required.
  *
  * Auto-mark for `blankPaths` is **numeric-only**: `number` and
  * `bigint` leaves where storage and DOM display diverge. Strings and
- * booleans don't auto-mark — the schema is the authority on whether
+ * booleans don't auto-mark: the schema is the authority on whether
  * `''` / `false` is acceptable. Explicit `unset` is the universal
  * opt-in for any primitive type. See `docs/blank.md` for the full
  * conceptual model.
@@ -63,11 +63,11 @@ describe('derivedBlankErrors — auto-mark fires for numeric primitives', () => 
     const { app, api } = mountNumeric()
     apps.push(app)
 
-    // `income` is `z.number()` (slim default `0`, DOM input `''`) —
+    // `income` is `z.number()` (slim default `0`, DOM input `''`),
     // storage / display diverge, blank auto-marks, derived error fires.
     expect(api.errors.income?.[0]?.message).toBe('No value supplied')
     expect(api.errors.income?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
-    // `netWorth` is `z.bigint()` (slim default `0n`, DOM input `''`) —
+    // `netWorth` is `z.bigint()` (slim default `0n`, DOM input `''`),
     // same divergence, same auto-mark.
     expect(api.errors.netWorth?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
   })
@@ -187,14 +187,14 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
     // (`z.string()`) accepts `''` as a valid string; the runtime does
     // NOT inject a "required string must be non-empty" rule that the
     // schema author didn't write. If the consumer wants non-empty
-    // required, that's `z.string().min(1)` — a refinement error, not
+    // required, that's `z.string().min(1)`: a refinement error, not
     // a blank error.
     handle.api?.setValue('name', 'A')
     await nextTick()
     expect(handle.api?.errors.name).toEqual([])
 
     handle.api?.setValue('name', '')
-    // `meta.valid` is the strict signal — drain the per-field run
+    // `meta.valid` is the strict signal, drain the per-field run
     // scheduled by `setValue` before asserting validity.
     for (let i = 0; i < 16 && handle.api?.meta.validating; i++) {
       await Promise.resolve()
@@ -264,7 +264,7 @@ describe('derivedBlankErrors — string / boolean leaves do NOT auto-mark', () =
     apps.push(app)
 
     // construction seeds schemaErrors with the refinement
-    // failure for `''`. blank stays false — the schema is the
+    // failure for `''`. blank stays false: the schema is the
     // authority on what "non-empty required" means.
     expect(handle.api?.errors.name?.[0]?.message).toBe('name required')
     expect(handle.api?.errors.name?.[0]?.code).not.toBe(AttaformErrorCode.NoValueSupplied)
@@ -340,7 +340,7 @@ describe('derivedBlankErrors — schema modifiers gate the synthesis', () => {
         handle.api = useForm({
           schema: numericSchema,
           key: 'derived-blank-explicit-defaults',
-          // Explicit values opt out of auto-blank — the consumer
+          // Explicit values opt out of auto-blank: the consumer
           // signalled "this default is intentional, not a placeholder."
           defaultValues: { income: 0, netWorth: 0n },
         })
@@ -370,7 +370,7 @@ describe('derivedBlankErrors — independent of imperative writers', () => {
     expect(api.errors.income?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)
     api.clearErrors('income')
     await nextTick()
-    // Derived class is a pure function of state — clearing the
+    // Derived class is a pure function of state, clearing the
     // imperative stores can't make it go away. Only changing the
     // underlying state (filling the field) does.
     expect(api.errors.income?.[0]?.code).toBe(AttaformErrorCode.NoValueSupplied)

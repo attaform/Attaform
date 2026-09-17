@@ -10,7 +10,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
  * a hand-rolled `UseFormConfigurationWithZod` that listed every option
  * by hand and silently dropped fields v4 + the abstract
  * `UseFormConfiguration` accept. Runtime already spread the full config
- * through to `useAbstractForm`, so the gap was purely type-level —
+ * through to `useAbstractForm`, so the gap was purely type-level,
  * v3-direct callers got an excess-property error on options that worked
  * at runtime.
  *
@@ -24,7 +24,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
  *
  * The dual-green proof: every typed entry point (`attaform/zod`,
  * `attaform/zod-v3`, `attaform/zod-v4`) accepts the same fields with no
- * excess-property errors. Runs at typecheck time only — the
+ * excess-property errors. Runs at typecheck time only: the
  * `_neverInvoked` wrappers declare real calls so TypeScript exercises
  * call-site inference, but the functions are never invoked.
  */

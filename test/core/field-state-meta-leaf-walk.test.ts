@@ -59,11 +59,11 @@ describe('buildContainerFieldStateBase — leaf-walk canonicalize budget', () =>
     // The leaf walk visits LEAVES entries; before CORE-P1b each leaf
     // re-canonicalizes its segments. The fixed loop reads the Map's
     // own key. A handful of incidental canonicalizes elsewhere on the
-    // path is fine — the gate is that the count is decoupled from N.
+    // path is fine: the gate is that the count is decoupled from N.
     // Set well below `LEAVES` so a regression that re-introduces a
     // per-leaf canonicalize fails loudly. Picked at LEAVES/50 = 10 so
     // the bound is decoupled from the leaf count by an order of
-    // magnitude; the post-fix observed count is 0 — every avoidable
+    // magnitude; the post-fix observed count is 0: every avoidable
     // call removed.
     expect(calls).toBeLessThan(LEAVES / 50)
   })

@@ -35,8 +35,8 @@ import { awaitSettle, waitUntil } from '../utils/form-harness'
  * host and injects the value channel. The directive supplies the rich
  * FieldState: at `mounted` it discovers the real inner control and registers
  * it (connected + focus/blur + the aria / scroll-to-error target), telling a
- * `useRegister` wrapper (Case A — inner control self-registered) apart from a
- * third-party component (Case B — nothing registered yet).
+ * `useRegister` wrapper (Case A, inner control self-registered) apart from a
+ * third-party component (Case B, nothing registered yet).
  *
  * Two test surfaces:
  *   - store-level, driving the directive hooks against a real FormStore for

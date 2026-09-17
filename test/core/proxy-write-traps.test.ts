@@ -57,7 +57,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     warnSpy.mockRestore()
   })
 
-  // PASS2-4 — surface-proxy container path: `form.fields.X = …` / `delete form.fields.X`
+  // PASS2-4, surface-proxy container path: `form.fields.X = …` / `delete form.fields.X`
   it('form.fields container set + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const fields = api.fields as Record<string, unknown>
@@ -71,7 +71,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-4 — leaf-view path: `form.fields.email.value = …` / `delete form.fields.email.value`
+  // PASS2-4, leaf-view path: `form.fields.email.value = …` / `delete form.fields.email.value`
   it('form.fields.<leaf>.value assign + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const leaf = api.fields.email as Record<string, unknown>
@@ -85,7 +85,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-4 — call-form terminal: `form.fields('email').value = …`
+  // PASS2-4, call-form terminal: `form.fields('email').value = …`
   it('form.fields(path) terminal assign + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const terminal = api.fields('email') as Record<string, unknown>
@@ -114,7 +114,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-12 — defineProperty on `form.values` claimed success silently;
+  // PASS2-12, defineProperty on `form.values` claimed success silently;
   // pin the honest signal so a consumer probing the proxy with
   // `Object.defineProperty` sees the warn at dev time.
   it('Object.defineProperty on form.values warns in dev', () => {

@@ -3728,7 +3728,7 @@ describe('chaos — setValue called after the host component unmounts', () => {
   it('does not throw a crash; either no-ops or surfaces a clear error', async () => {
     const { app, api } = mountProfile()
     apps.push(app)
-    apps.pop() // remove from cleanup list — we'll unmount manually
+    apps.pop() // remove from cleanup list: we'll unmount manually
     app.unmount()
 
     // Caller still holds the api. setValue should be safe to call.
@@ -4428,7 +4428,7 @@ describe('chaos — history (undo/redo) × discriminated unions', () => {
     apps.push(app)
 
     api.setValue('name', 'Ada')
-    api.setValue('notify.channel', 'sms') // schema requires number.min(7) — '' fails
+    api.setValue('notify.channel', 'sms') // schema requires number.min(7), '' fails
     await nextTick()
 
     const pending = api.parse({ commit: true })

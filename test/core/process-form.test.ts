@@ -31,7 +31,7 @@ async function waitUntilSettled<F>(r: Ref<ReactiveValidationStatus<F>>): Promise
  * registers a reactive watcher; running it here ties that watcher to the
  * scope (disposed on `scope.stop()`) instead of leaking it and tripping the
  * outside-scope dev warning. `EffectScope.run` returns `undefined` only for an
- * already-stopped scope, which never happens for a fresh one — narrow it away
+ * already-stopped scope, which never happens for a fresh one, narrow it away
  * rather than asserting non-null.
  */
 function runScoped<T>(scope: EffectScope, fn: () => T): T {
@@ -86,7 +86,7 @@ describe('buildProcessForm', () => {
       const state = alwaysValid()
       const { validate } = buildProcessForm(state)
       const r = runScoped(scope, validate)
-      // Initial synchronous read — the async parse hasn't settled yet.
+      // Initial synchronous read: the async parse hasn't settled yet.
       expect(r.value.pending).toBe(true)
       // Await the microtask pump so the Promise returned by the fake
       // schema resolves and the watchEffect writes the settled status.
@@ -121,7 +121,7 @@ describe('buildProcessForm', () => {
       const r = runScoped(scope, validate)
       // The watchEffect defers the counter bump to a microtask (so the
       // write doesn't re-trigger the effect). Drain one microtask,
-      // then the counter must be exactly 1 while the parse is in flight —
+      // then the counter must be exactly 1 while the parse is in flight,
       // this test fires a single validate(), so any other value would
       // mean a leak or an extra concurrent validation.
       await Promise.resolve()
@@ -160,7 +160,7 @@ describe('buildProcessForm', () => {
     it('decrements activeValidations back to 0 on completion', async () => {
       const state = alwaysValid()
       const { parse } = buildProcessForm(state)
-      // The committing parse runs synchronously to the first await —
+      // The committing parse runs synchronously to the first await,
       // its counter bump happens before the returned promise resolves.
       const pending = parse(undefined, { commit: true })
       expect(state.activeValidations.value).toBe(1)
@@ -169,7 +169,7 @@ describe('buildProcessForm', () => {
     })
 
     it('translates an adapter throw into an AdapterThrew failure response (does NOT reject)', async () => {
-      // A misbehaving adapter throws from validateAtPath — contract
+      // A misbehaving adapter throws from validateAtPath, contract
       // forbids this, but the library must NOT rely on the adapter
       // doing its thing. The promise resolves with a structured
       // failure response carrying the AdapterThrew code; the consumer
@@ -219,7 +219,7 @@ describe('buildProcessForm', () => {
 
     it('translates an adapter throw into an AdapterThrew failure response (does NOT reject)', async () => {
       // Symmetric with commit mode's adapter-throw test. The pure
-      // read must also defend against bad adapters — a throwing adapter
+      // read must also defend against bad adapters: a throwing adapter
       // can't be allowed to wreck consumer await chains, especially
       // when parse() is invoked imperatively from UI handlers.
       const throwingValidator = (_data: unknown, _path: Path | undefined): never => {
@@ -394,7 +394,7 @@ describe('buildProcessForm', () => {
       await expect(failing()).resolves.toBeUndefined()
       expect(state.submitError.value).toBeInstanceOf(Error)
 
-      // Second run: callback succeeds — prior error must be cleared.
+      // Second run: callback succeeds, prior error must be cleared.
       await handleSubmit(async () => {})()
       expect(state.submitError.value).toBeNull()
     })
@@ -421,7 +421,7 @@ describe('buildProcessForm', () => {
     })
 
     it('rejects re-entry: a second submit fired while one is in flight is a no-op', async () => {
-      // Re-entry guard: classic double-click case — `submit()` fires
+      // Re-entry guard: classic double-click case, `submit()` fires
       // while a prior call is still awaiting validation or onSuccess.
       // The second call returns early so onSuccess fires once and
       // side-effects (POSTs, etc) don't duplicate. `submitting` stays
@@ -445,7 +445,7 @@ describe('buildProcessForm', () => {
       expect(state.submitting.value).toBe(true)
       expect(state.activeSubmissions.value).toBe(1)
 
-      // Second submit while the first is in flight — returns immediately
+      // Second submit while the first is in flight, returns immediately
       // without invoking the user's callback.
       await handleSubmit(() => {
         secondCalls++
@@ -455,7 +455,7 @@ describe('buildProcessForm', () => {
       expect(state.submitting.value).toBe(true)
       expect(state.activeSubmissions.value).toBe(1)
 
-      // Resolve the first — counter drops to 0, flag flips false.
+      // Resolve the first, counter drops to 0, flag flips false.
       resolveFirst()
       await Promise.resolve()
       await Promise.resolve()
@@ -472,7 +472,7 @@ describe('buildProcessForm', () => {
       // Regression: previously `reset()` zeroed `activeSubmissions` and
       // the in-flight submission's finally-block then decremented into
       // a negative value (clamped to 0 by Math.max but still a messy
-      // state). With the clamp in place, submitting stays false —
+      // state). With the clamp in place, submitting stays false,
       // this test pins that guarantee.
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state)
@@ -498,7 +498,7 @@ describe('buildProcessForm', () => {
       await Promise.resolve()
 
       // In-flight finally ran, but all visible lifecycle counters stay
-      // at their post-reset values — the completion belongs to the
+      // at their post-reset values: the completion belongs to the
       // prior generation, so submitting, submissionAttempts, and submitError
       // remain the "fresh form" state the consumer asked for.
       expect(state.submitting.value).toBe(false)
@@ -509,7 +509,7 @@ describe('buildProcessForm', () => {
 
     it('reset() keeps submitError null even if the in-flight submission later throws', async () => {
       // Without the generation guard, the catch block re-populates
-      // submitError with the thrown value after reset cleared it —
+      // submitError with the thrown value after reset cleared it,
       // visually "unfocusing" the reset the consumer just triggered.
       const state = alwaysValid()
       const { handleSubmit } = buildProcessForm(state)
@@ -522,7 +522,7 @@ describe('buildProcessForm', () => {
           resolve()
           await blocker
         })().catch(() => {
-          /* ignore — the test inspects state, not the rejected promise */
+          /* ignore: the test inspects state, not the rejected promise */
         })
       })
       await started
@@ -576,7 +576,7 @@ describe('buildProcessForm', () => {
       // Start a submit; awaits validation.
       const submitPromise = handleSubmit(async () => {})()
       await Promise.resolve()
-      // Reset while validation is in-flight — bumps generation.
+      // Reset while validation is in-flight, bumps generation.
       state.reset()
       expect(state.submissionGeneration.value).toBe(1)
 
@@ -590,7 +590,7 @@ describe('buildProcessForm', () => {
       })
       await submitPromise.catch(() => undefined)
 
-      // Reset's empty error store wins — no stale write.
+      // Reset's empty error store wins: no stale write.
       expect(state.errorCells.size).toBe(0)
     })
 
@@ -634,7 +634,7 @@ describe('buildProcessForm', () => {
   // That consumer-side write is integration territory, covered in
   // `test/composables/field-errors-view.test.ts`.
 
-  // C3 — sharpened dev-warn when validate() is called outside an
+  // C3, sharpened dev-warn when validate() is called outside an
   // effect scope. The watcher leaks (intentional behaviour), but the
   // first warn per FormStore tells the consumer about the leak so
   // they can wrap in effectScope().

@@ -8,7 +8,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * Pins the URL-availability demo's TLD policy: a parsed URL must have
  * a TLD of at least two characters. Mirrors the demo's own `formatUrl`
- * semantic — the demo claims to gate against "real-world domain
+ * semantic: the demo claims to gate against "real-world domain
  * shapes," and 1-character TLDs (`https://a.b`) are not real.
  *
  * Without this gate, the WHATWG URL parser accepts `https://a.b` as a
@@ -107,7 +107,7 @@ describe('URL-availability demo: TLD must be at least two characters', () => {
     api.setValue('url', 'something.co')
     await api.parse('url', { commit: true })
 
-    // Either no error (available) or the "taken" message — never the
+    // Either no error (available) or the "taken" message, never the
     // "doesn't look like a URL" branch.
     expect(api.errors.url[0]?.message).not.toBe("That doesn't look like a URL.")
   })

@@ -229,7 +229,7 @@ describe('useWizard — SSR-to-client hydration through the resolver', () => {
       },
     })
 
-    // Server-side render with the resolver wired — picks 'hyd-b'.
+    // Server-side render with the resolver wired, picks 'hyd-b'.
     const ssrApp = createSSRApp(WizardSfc).use(createAttaform({ ssr: true }))
     ssrApp.provide(kAttaformWizardActiveStepResolver, resolver)
     const ssrHtml = await renderToString(ssrApp)

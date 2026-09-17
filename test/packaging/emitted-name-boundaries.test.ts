@@ -20,7 +20,7 @@
  *
  * Both are read out of the source here and checked against the real
  * objects, so a rename fails at test time rather than in a consumer's
- * browser. This is the gate that makes renaming those members safe —
+ * browser. This is the gate that makes renaming those members safe,
  * including, but not only, renaming them for a minifier.
  */
 import { describe, expect, it } from 'vitest'
@@ -101,7 +101,7 @@ describe('names the compiler transforms emit as text still resolve', () => {
     const { rv } = mountProbe()
     // `findIndex` is called on an array the emitted code builds, not on
     // the RegisterValue; check it against `Array.prototype` for the same
-    // reason — a rename there is not ours to make, but a typo is.
+    // reason: a rename there is not ours to make, but a typo is.
     const missing = emittedOptionalCalls().filter((name) => {
       if (name in rv) return false
       return !(name in Array.prototype)

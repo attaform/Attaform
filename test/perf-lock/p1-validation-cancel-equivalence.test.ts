@@ -22,7 +22,7 @@
  * remove. The flag is read pre-parse and again post-resolve.
  *
  * WHY THIS HARNESS EXISTS: the existing field-validation suite only
- * exercises the cancellation sites through the TIMER path — a debounced
+ * exercises the cancellation sites through the TIMER path: a debounced
  * run whose `clearTimeout` fires before `run()` ever starts, so the
  * `.signal.aborted` reads are never reached. The load-bearing read is the
  * POST-RESOLVE one at :2658: `run()` has already fired, passed the
@@ -39,8 +39,8 @@
  * it. Non-vacuity (that the lock can fail) is carried by the reset (:2772)
  * and resetField (:2797) cases: there the abort latch is the SOLE guard, so
  * neutering the :2662 drop turns exactly those two red (verified). Neither
- * schedules a later run that would win on the form-level epoch gate (:2670) —
- * reset even zeroes lastCommittedEpoch — so a no-op abort lets the stale
+ * schedules a later run that would win on the form-level epoch gate (:2670),
+ * reset even zeroes lastCommittedEpoch: so a no-op abort lets the stale
  * `async-invalid` COMMIT onto the just-reset field.
  *
  * The supersede (:2601), array-remove (array-engine's vacated-abort) and DU
@@ -51,10 +51,10 @@
  *     verdict can't surface in `meta.errors` even with the abort no-op'd.
  *     Array-remove: the vacated index is cleared by the engine's
  *     schema-verdict eviction. DU: the variant reshape replaces notify.token
- *     with the sync variant's shape. Verified — both stay green with BOTH the
- *     :2662 drop AND the :2670 epoch gate neutered, so neither isolates the
+ *     with the sync variant's shape. Verified, both stay green with BOTH the:
+ * 2662 drop AND the :2670 epoch gate neutered, so neither isolates the
  *     abort; they lock the integration. (The abort is still load-bearing there
- *     for counter bookkeeping — released explicitly by the vacated-abort —
+ *     for counter bookkeeping, released explicitly by the vacated-abort,
  *     and as defense-in-depth against a future reshape that stops clearing.)
  */
 import { afterEach, describe, expect, it } from 'vitest'
@@ -66,7 +66,7 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 type Gate = {
-  /** The async refine body — resolves only when the test releases it. */
+  /** The async refine body, resolves only when the test releases it. */
   refine: () => Promise<boolean>
   /** How many refine invocations are currently parked (in-flight). */
   pending: () => number

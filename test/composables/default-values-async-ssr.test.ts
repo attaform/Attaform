@@ -18,7 +18,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  * resolve before the payload is serialised, so the resolved values
  * bake into the hydration transfer state. On the client, the matching
  * `useForm({ key })` call consumes `pendingHydration` at construction
- * time AND skips re-firing the factory — same data, no double-fetch.
+ * time AND skips re-firing the factory, same data, no double-fetch.
  *
  * Tests run under @vitest-environment node so `@vue/server-renderer`'s
  * `renderToString` can run.
@@ -58,7 +58,7 @@ describe('async-defaults SSR + hydration', () => {
     if (entry === undefined) return
     const [key, data] = entry
     expect(key).toBe('ssr-async-defaults')
-    // Resolved values rode the payload — proves `onServerPrefetch`
+    // Resolved values rode the payload, proves `onServerPrefetch`
     // awaited the factory before serialization.
     expect(data.form).toMatchObject({ email: 'server@example.com', name: 'Ada' })
   })
@@ -283,7 +283,7 @@ describe('async-defaults SSR rejection path', () => {
     // the factory. hydrateError stays null on the client because the
     // raw error doesn't ride the payload. The server-side failure
     // crosses the wire via the HydrationFailed entry in schemaErrors,
-    // surfacing through form.meta.errors — consumers render an error
+    // surfacing through form.meta.errors, consumers render an error
     // banner / retry button off this entry.
     expect(clientCalls).toBe(0)
     expect(api.hydrating).toBe(false)

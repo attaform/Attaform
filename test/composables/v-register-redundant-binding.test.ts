@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Runtime half of the #464 redundant-binding guard. These mount via `h()`
-// + `withDirectives` — no compiler plugin runs, so the compile-active
+// + `withDirectives`: no compiler plugin runs, so the compile-active
 // marker is ABSENT and the runtime detection path is live (the CSR-only
 // consumer, "most apps" per the docs). The compile layer is covered by
 // test/transforms/redundant-binding-warn.test.ts.
@@ -9,7 +9,7 @@
 // The runtime dedupe is keyed by a coarse `tag:type:binding` signature and
 // lives at module scope, so every case below is chosen to have a DISTINCT
 // signature (or to add none at all). That keeps the suite robust under
-// vitest's shuffled order — no two tests race on the same key.
+// vitest's shuffled order: no two tests race on the same key.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App, type VNode } from 'vue'
 import { z } from 'zod'
@@ -143,7 +143,7 @@ describe('v-register runtime redundant-binding warn — dedupe and stand-down', 
 
   it('stands down when the compile-active marker is present (no double-warn, no false positive)', async () => {
     // A plugin consumer's compiled directive carries the marker. The
-    // runtime must not read vnode.props (post-injection there) — the
+    // runtime must not read vnode.props (post-injection there): the
     // compile layer already owns detection.
     const warns = await redundantWarnsFromRender((form) => {
       const rv = form.register('name')
@@ -157,7 +157,7 @@ describe('v-register runtime redundant-binding warn — dedupe and stand-down', 
 
   it('is silent on a non-interactive host root (component-binding channel)', async () => {
     // A v-register on a <div> host with a :value is the component-binding
-    // path, not a redundant native binding — the runtime guard only fires
+    // path, not a redundant native binding: the runtime guard only fires
     // on INPUT / SELECT / TEXTAREA.
     const warns = await redundantWarnsFromRender((form) => {
       const rv = form.register('name')

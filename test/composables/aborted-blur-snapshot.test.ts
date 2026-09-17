@@ -97,7 +97,7 @@ describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSche
 
     const aInput = root.querySelector('input[data-id="a"]') as HTMLInputElement
 
-    // Edit A invalid through the DOM — the directive flips `interacted`
+    // Edit A invalid through the DOM: the directive flips `interacted`
     // on path 'a', which arms the upcoming blur to be an interactive blur.
     aInput.dispatchEvent(new FocusEvent('focus'))
     aInput.value = 'invalid'
@@ -115,7 +115,7 @@ describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSche
     void api.parse('b', { commit: true })
 
     await drainMicrotasks()
-    // Sanity — A's verdict was aborted, so A's bucket stays empty.
+    // Sanity: A's verdict was aborted, so A's bucket stays empty.
     expect(api.errors.a).toEqual([])
 
     // Refocus A and blur without typing. The blur-dedup compares

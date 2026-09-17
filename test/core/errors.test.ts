@@ -63,7 +63,7 @@ describe('error classes', () => {
 
     it('message names the lifecycle constraint and the recommended fix', () => {
       const err = new OutsideSetupError()
-      // Surface the actual cause — not "install the plugin", which was
+      // Surface the actual cause: not "install the plugin", which was
       // the misleading message before the disambiguation.
       expect(err.message).toContain('outside Vue setup')
       // Point at the recovery path users actually need.
@@ -74,7 +74,7 @@ describe('error classes', () => {
   // AttaformError is the shared parent of every library-emitted error class so
   // consumers can write a single polymorphic catch (`catch (e) { if (e
   // instanceof AttaformError) ... }`) instead of OR-chaining instanceof
-  // checks for every subclass. The migration is a clean break — the
+  // checks for every subclass. The migration is a clean break: the
   // class shape is additive (Error stays in the prototype chain) but the
   // public surface gains a new symbol.
   describe('AttaformError base class', () => {

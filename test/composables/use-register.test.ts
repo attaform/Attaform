@@ -34,7 +34,7 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
  * Rationale for the "always degrade" stance: the recent injectForm
  * shift (PR #149) traded a throw for warn-and-null so a typo'd key in
  * a deeply nested component doesn't take the whole page down. The
- * same reasoning applies here — a parent that forgot to pass v-register
+ * same reasoning applies here: a parent that forgot to pass v-register
  * shouldn't crash production, just nag in dev.
  */
 
@@ -80,7 +80,7 @@ describe('useRegister — inside child setup', () => {
     // Diagnostic shape: the warn fires once per instance in the
     // `onMounted` hook, after the parent has had its full mount
     // lifecycle to bind v-register. Reading `.value` does NOT fire the
-    // warn — the computed factory is pure, so consumers that handle
+    // warn: the computed factory is pure, so consumers that handle
     // the undefined branch (storybook, preview pages, conditional
     // bindings) read freely. Re-reads on the same instance never
     // re-warn.
@@ -123,7 +123,7 @@ describe('useRegister — inside child setup', () => {
   })
 
   it('with NO parent registerValue → re-reading the computed many times produces exactly one warn', async () => {
-    // The computed factory is pure — only the `onMounted` hook emits
+    // The computed factory is pure, only the `onMounted` hook emits
     // the diagnostic. A consumer that reads `register.value` in a
     // conditional, a watcher, and a render must not see the warn
     // multiplied per read.
@@ -165,7 +165,7 @@ describe('useRegister — inside child setup', () => {
   it('with parent registerValue → does NOT emit the no-parent-RV warn during initial render (regression: pre-onBeforeMount capture race)', async () => {
     // Setup-time reads of `instance.attrs.registerValue` race Vue's
     // prop-patch lifecycle. Before this test was added, useRegister
-    // captured the binding synchronously in setup — under SSR (and
+    // captured the binding synchronously in setup, under SSR (and
     // some CSR patterns) the binding wasn't on attrs yet, so the
     // captured value was `undefined` and the computed warned on the
     // first read despite the parent passing v-register correctly.
@@ -179,7 +179,7 @@ describe('useRegister — inside child setup', () => {
       inheritAttrs: false,
       setup() {
         captured.childRegister = useRegister()
-        // Read the computed inside the render function — same pattern
+        // Read the computed inside the render function, same pattern
         // a real consumer's template uses.
         return () => {
           const rv = captured.childRegister?.value
@@ -214,7 +214,7 @@ describe('useRegister — inside child setup', () => {
     warnSpy.mockRestore()
 
     // The render-time read of `captured.childRegister.value` should
-    // have produced a non-undefined RV — no warn fired.
+    // have produced a non-undefined RV: no warn fired.
     const noParentRvWarn = warnings.filter((w) =>
       w.includes('useRegister: no parent registerValue prop')
     )
@@ -330,7 +330,7 @@ describe('useRegister — inside child setup', () => {
   it('wrapper-component pattern: child derives field state from rv.segments without a path prop', async () => {
     // Generic wrapper components built on `useRegister()` should be
     // able to look up `form.fields(...)` (and any other path-keyed
-    // surface) from the bound RV alone — no separate `path` prop
+    // surface) from the bound RV alone: no separate `path` prop
     // re-threaded from the parent. `rv.segments` is the consumer-
     // friendly path array; `rv.path` is the canonical PathKey for
     // diagnostics / equality. Both should land on the child's RV.
@@ -382,7 +382,7 @@ describe('useRegister — inside child setup', () => {
     // in time. This test exercises reactive TRACKING: a `computed()` and
     // a `watchEffect()` reading `rv.path` (and its siblings) must re-run
     // when the parent rotates the binding. That confirms the proxy's
-    // `get` participates in dep collection — which is the whole point
+    // `get` participates in dep collection: which is the whole point
     // of the `shallowReadonly(shallowReactive(...))` factory.
     const captured: { childRegister?: ReturnType<typeof useRegister> } = {}
     const fieldName = ref<'email' | 'name'>('email')
@@ -451,7 +451,7 @@ describe('useRegister — inside child setup', () => {
     )
 
     // Initial reads: at least one `path` capture for `email`. The
-    // exact count depends on Vue's flush pipeline — both watchEffects
+    // exact count depends on Vue's flush pipeline, both watchEffects
     // run at setup, then re-run when the parent's render commits the
     // first non-undefined RV. We assert the LAST entry (the one that
     // matters for "what's the current path?") and that all reads so
@@ -561,7 +561,7 @@ describe('useRegister — sentinel suppresses parent-directive warn', () => {
   /**
    * The sentinel WeakSet entry that `useRegister` sets on the child
    * instance is what tells the parent's `vRegisterDynamic.created`
-   * "this child handles binding internally — don't warn, don't attach
+   * "this child handles binding internally, don't warn, don't attach
    * listeners". This test verifies the sentinel is set even when the
    * child renders a non-supported root (div, span, kebab-element).
    */
@@ -615,7 +615,7 @@ describe('useRegister — sentinel suppresses parent-directive warn', () => {
   })
 
   it("listeners attached to a sentinel-marked child's root BAIL on bubbled events (no clobber)", async () => {
-    // The directive attaches listeners on every rendered root —
+    // The directive attaches listeners on every rendered root,
     // including a useRegister'd component's wrapper element. On
     // bubbled events from descendants, those listeners check the
     // assigner identity and bail when the default is still installed
@@ -753,7 +753,7 @@ describe('useRegister — strips bridge keys from attrs (no inheritAttrs needed)
    * rendered root and pollute the DOM as stringified attributes
    * (`<label registerValue="[object Object]">`). `useRegister`
    * captures `registerValue` into a local ref then deletes both
-   * bridge keys from `instance.attrs` before render — so the
+   * bridge keys from `instance.attrs` before render: so the
    * rendered root has no leak, AND class/style/aria/data fallthrough
    * still works. The consumer doesn't need
    * `defineOptions({ inheritAttrs: false })`.
@@ -799,7 +799,7 @@ describe('useRegister — strips bridge keys from attrs (no inheritAttrs needed)
 
   it('class / style / aria fallthrough still lands on the rendered root', async () => {
     // Verify the surgical-strip approach preserves what the consumer
-    // legitimately wants — only the bridge keys are removed.
+    // legitimately wants, only the bridge keys are removed.
     const Child = defineComponent({
       name: 'Child',
       setup() {
@@ -848,7 +848,7 @@ describe('useRegister — strips bridge keys from attrs (no inheritAttrs needed)
   it('strip survives parent re-render (onBeforeUpdate re-strips after setFullProps repopulates)', async () => {
     // Vue's setFullProps re-assigns attrs[key] on every parent
     // re-render. onBeforeUpdate fires after that and before
-    // renderComponentRoot — that's where the strip re-runs.
+    // renderComponentRoot: that's where the strip re-runs.
     const tick = ref(0)
     const Child = defineComponent({
       name: 'Child',

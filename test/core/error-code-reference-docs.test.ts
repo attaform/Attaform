@@ -8,7 +8,7 @@ import { AttaformErrorCode } from '../../src/runtime/core/error-codes'
  * readers to branch on `code` rather than on message strings. It listed
  * six of nine. The three it omitted were `atta:user-error` (on every
  * `setErrors` entry), `atta:submit-error` (a thrown `onSubmit`), and
- * `atta:gate-not-cleared` (an unsubmitted wizard gate) — which is to say,
+ * `atta:gate-not-cleared` (an unsubmitted wizard gate): which is to say,
  * the three a consumer template is most likely to want.
  *
  * `error-code-pages.test.ts` does this job for the `AF##` throw codes and

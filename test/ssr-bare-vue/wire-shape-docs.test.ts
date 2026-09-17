@@ -15,7 +15,7 @@ import { fakeSchema } from '../utils/fake-schema'
  *
  * Both tables drifted. `FieldRecord` gained `interacted` and
  * `blurredAfterInteraction` with the display-state work in #285, and the
- * per-field row still named five of the seven flags two majors later —
+ * per-field row still named five of the seven flags two majors later,
  * the same enumeration-drift shape as the auto-import manifest, the
  * `AbstractSchema` contract, `DisplayCtx`, and `FormStatus`. Nothing tied
  * the prose to the record.

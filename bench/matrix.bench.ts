@@ -169,24 +169,24 @@ describe('keystroke: row-field write, wide array (T2 diff vs N)', () => {
 })
 
 /**
- * T4 — the per-keystroke validation cost a CONTAINER/ROOT REFINE forces. When
+ * T4: the per-keystroke validation cost a CONTAINER/ROOT REFINE forces. When
  * `hasContainerOrRootRefine()` is true the scheduler cannot subtree-scope
  * (create-form-store.ts:2651): every keystroke runs a whole-form parse
  * (`validateAtPath(form.value, undefined)`), re-validating every unchanged
  * sibling leaf's own constraints. The refine itself genuinely MUST re-run
- * (its verdict depends on any field) — the bustable waste is the sibling
+ * (its verdict depends on any field): the bustable waste is the sibling
  * re-parse.
  *
  * This is a COMPONENT probe on the exact primitive the scheduler calls, NOT
  * an end-to-end keystroke loop. The scheduler runs `validateAtPath` inside a
  * microtask chain (`Promise.resolve().then(...)`); a tight synchronous bench
  * loop would never flush those microtasks (the same skew the `validateOn:
- * 'submit'` note above avoids), so we time `validateAtPath` directly — the
+ * 'submit'` note above avoids), so we time `validateAtPath` directly: the
  * Bust-3 component-probe discipline. The default async path is awaited, so a
  * constant await/microtask cost rides each cell; read the SLOPE vs F (it
  * compresses small F), not the small-F absolutes.
  *
- * Three cells decompose the cost (per adapter — validation parse is exactly
+ * Three cells decompose the cost (per adapter, validation parse is exactly
  * where the v4/v3 asymmetry T6 lives, so unlike the write sweeps this is NOT
  * adapter-independent):
  *
@@ -214,7 +214,7 @@ describe('validate: whole-form parse forced by a container refine (T4 vs F)', ()
       const builtPlain = a.build(plain.schema)('t4-plain-probe', { maxRecursionDepth: 64 })
 
       // Premise guards: the refined shape MUST trip the whole-form branch and
-      // the plain shape MUST NOT, on BOTH adapters — otherwise the cells below
+      // the plain shape MUST NOT, on BOTH adapters, otherwise the cells below
       // silently measure the wrong scheduler path.
       if (builtRefined.hasContainerOrRootRefine() !== true)
         throw new Error(`flatRefined must trip hasContainerOrRootRefine [${a.tag} F=${F}]`)
@@ -243,13 +243,13 @@ describe('validate: whole-form parse forced by a container refine (T4 vs F)', ()
 })
 
 /**
- * T4 A'' — what the byte-identical refines-only decomposition actually BUYS.
+ * T4 A'', what the byte-identical refines-only decomposition actually BUYS.
  *
  * The T4 group above measures the COST (whole-form parse, O(F)). This measures the
  * achievable WIN of the proven-equivalent reduction (Variant A''): leaves keep their
  * base type + coercion + custom refines but SHED built-in format/range checks. Both
  * cells carry the same root refine, so both trip `hasContainerOrRootRefine` and take
- * the whole-form branch — the only difference is the per-leaf built-in checks.
+ * the whole-form branch: the only difference is the per-leaf built-in checks.
  *
  *   t4 fmt full         -> base type + `.min(2).regex(...)` per leaf + refine (today)
  *   t4 fmt refines-only -> base type per leaf + refine (A'' sheds the built-ins)

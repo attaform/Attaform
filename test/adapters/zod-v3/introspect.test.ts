@@ -41,7 +41,7 @@ import {
 /*
  * Version-pin tests for the zod v3 internals layer. If zod v3 ever changes
  * its `_def.typeName` strings or accessor shapes, this file fails first
- * and localises the breakage to introspect.ts — every other adapter file
+ * and localises the breakage to introspect.ts: every other adapter file
  * speaks kindOf() + the stable-shape accessors.
  */
 

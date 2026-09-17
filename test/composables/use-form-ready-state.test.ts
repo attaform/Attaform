@@ -196,7 +196,7 @@ describe('useForm — activate() idempotency', () => {
     expect(calls).toBe(1)
     expect(api.hydrateError?.message).toBe('first-fail')
 
-    // activate() is idempotent — does NOT replay a previous failure.
+    // activate() is idempotent, does NOT replay a previous failure.
     await api.activate()
     expect(calls).toBe(1)
 

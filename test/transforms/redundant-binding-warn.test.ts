@@ -9,13 +9,13 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
 /**
  * The compile-time half of the #464 redundant-binding guard. Compile a
  * template through @vue/compiler-core with the transform registered and
- * capture the `console.warn` output (the diagnostic channel — the Vue
+ * capture the `console.warn` output (the diagnostic channel: the Vue
  * compiler gives transforms no onWarn hook).
  */
 
 // The transforms in the exact production order attaform/vite installs
 // them. redundantBindingWarnTransform runs FIRST, before the two that
-// strip/inject the value channel — the ordering this suite locks in.
+// strip/inject the value channel: the ordering this suite locks in.
 const FULL_PIPELINE = [
   redundantBindingWarnTransform,
   componentBridgeTransform,
@@ -214,7 +214,7 @@ describe('redundantBindingWarnTransform — ordering / full pipeline (load-beari
 
   it('warns once for a v-for of identical redundant inputs (one template node)', () => {
     // A v-for compiles the inner <input> to a single template node, so
-    // the build-time warning fires once no matter the row count — the
+    // the build-time warning fires once no matter the row count: the
     // clean "warn once for the pattern" story the runtime can't give a
     // non-plugin consumer.
     const warns = redundantWarnsFor(

@@ -65,7 +65,7 @@ describe('DefaultValuesShape — WriteShape topology + `| Unset` everywhere', ()
   })
 
   it('preserves symbol leaves (no `| Unset` widening)', () => {
-    // Symbol is excluded — the runtime sentinel never carries symbol
+    // Symbol is excluded: the runtime sentinel never carries symbol
     // semantics, and `setValue('foo', unset)` shouldn't tempt the type
     // system into treating a symbol leaf as Unset-admissible.
     expectTypeOf<DefaultValuesShape<{ s: symbol }>>().toEqualTypeOf<{ s: symbol } | Unset>()

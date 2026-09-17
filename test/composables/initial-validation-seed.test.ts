@@ -70,7 +70,7 @@ describe('initial validation seed', () => {
     // time async-validation seed (the runtime asks the schema's
     // `needsAsyncValidation()` and queues a full validation pass when
     // true). The synchronous post-mount assertion below still sees
-    // `errors.email === undefined` — the microtask hasn't run yet at
+    // `errors.email === undefined`: the microtask hasn't run yet at
     // this point.
     const asyncSchema = z.object({
       email: z.email().refine(async () => Promise.resolve(true), 'taken'),
@@ -171,7 +171,7 @@ describe('initial validation seed — async-refine schema', () => {
     apps.push(app)
     const api = handle.api
     if (api === undefined) throw new Error('unreachable')
-    // Synchronously, the form looks valid — the async pass hasn't run.
+    // Synchronously, the form looks valid: the async pass hasn't run.
     expect(api.errors.email).toEqual([])
     // After microtasks settle, the refine error lands.
     const message = await waitFor(() => api.errors.email?.[0]?.message ?? null)
@@ -204,7 +204,7 @@ describe('initial validation seed — async-refine schema', () => {
         return () => h('div')
       },
     })
-    // Override the registry to SSR mode — `createAttaform({
+    // Override the registry to SSR mode, `createAttaform({
     // ssr: true })` flips `detectSSR` to true, matching what
     // happens during a Nuxt server pass.
     const app = createApp(App).use(createAttaform({ ssr: true }))
@@ -234,7 +234,7 @@ describe('initial validation seed — async-refine schema', () => {
     // so synchronous post-mount reads (matching what Vue's first-render
     // sees during hydration) observe `activeValidations: 0`. Without the
     // deferral, a CSR-only mount of an async-refine schema would flash
-    // `validating: true` synchronously — and any SSR→CSR pair would
+    // `validating: true` synchronously, and any SSR→CSR pair would
     // disagree on first-render output.
     const asyncSchema = z.object({
       email: z.email().refine(async (v) => v !== 'taken@example.com', 'taken'),
@@ -365,7 +365,7 @@ describe('initial validation seed — async-refine schema', () => {
     // (`applySchemaErrorsForSubtree` runs sync and Vue batches per
     // microtask, so the wipe-then-apply window is invisible to a
     // render). The visible cost would be `meta.validating` flashing
-    // true at mount for every sync form — `scheduleFieldValidation`
+    // true at mount for every sync form, `scheduleFieldValidation`
     // increments `activeValidations` synchronously when called, then
     // decrements after the async safeParseAsync resolves. That'd
     // misrepresent "validation is running" when nothing async is
@@ -399,8 +399,8 @@ describe('initial validation seed — async-refine schema', () => {
 
 describe('initial validation seed — hydration takes precedence', () => {
   it('skips the seed when hydration is provided (server is authoritative)', () => {
-    // Hand-roll a fakeSchema whose getDefaultValues reports a failure
-    // — proves the seed code path WOULD fire if hydration weren't
+    // Hand-roll a fakeSchema whose getDefaultValues reports a failure,
+    // proves the seed code path WOULD fire if hydration weren't
     // taking precedence. Hydration carries an explicit empty errors
     // slot, modelling "the server validated and decided it was OK."
     type Form = { email: string; password: string }
@@ -433,7 +433,7 @@ describe('initial validation seed — hydration takes precedence', () => {
       schema: failingDefaultsSchema,
       hydration: {
         form: { email: 'server@x.com', password: 'serverpw' },
-        // Empty stores — hydration says the server saw a valid form.
+        // Empty stores, hydration says the server saw a valid form.
         // The seed must NOT fire and overwrite this with the schema's
         // errors-on-empty-defaults.
         schemaErrors: [],
@@ -448,7 +448,7 @@ describe('initial validation seed — hydration takes precedence', () => {
   it('replays hydrated schema errors verbatim, ignoring the seed', () => {
     // Same schema (would seed two errors on empty defaults), but
     // hydration carries ONE error at a different path. The hydrated
-    // shape wins — the seed doesn't get to add its own entries on top.
+    // shape wins: the seed doesn't get to add its own entries on top.
     type Form = { email: string; password: string }
     const failingDefaultsSchema = fakeSchema<Form>({ email: '', password: '' })
     failingDefaultsSchema.getDefaultValues = () => ({

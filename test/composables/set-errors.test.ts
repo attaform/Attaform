@@ -9,7 +9,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { ErrorInput, ValidationError } from '../../src/runtime/types/types-api'
 
 /**
- * `form.setErrors` / `form.clearErrors` — the single surface for the
+ * `form.setErrors` / `form.clearErrors`: the single surface for the
  * manual error layer (server responses, optimistic UI, form banners).
  * Lenient input (`ErrorInput`): an `Error`, a partial object, or an
  * array of either; firm output (`ValidationError`, formKey always

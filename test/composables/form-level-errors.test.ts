@@ -13,15 +13,15 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * There is no separate form-level setter; `setErrors` covers field and
  * global errors alike. Global entries are visible across these reads:
  *
- *   - `form.meta.errors` — the flat aggregate, unfiltered.
- *   - `form.meta.ownErrors` — the root `[]` bucket alone (the dedicated
+ *   - `form.meta.errors`: the flat aggregate, unfiltered.
+ *   - `form.meta.ownErrors`: the root `[]` bucket alone (the dedicated
  *     global read).
- *   - `form.errors()` / `form.errors([])` — the full aggregate (every
+ *   - `form.errors()` / `form.errors([])`: the full aggregate (every
  *     field error plus the root bucket; the two coincide).
  *
  * They are NOT a child key of the errors proxy: `JSON.stringify(form.
  * errors)` and proxy iteration don't surface them under `''` (the root
- * `[]` bucket has no `''` slot — `''` is a free field key), and
+ * `[]` bucket has no `''` slot, `''` is a free field key), and
  * `form.errors('')` reads the unrelated literal `''` field.
  */
 

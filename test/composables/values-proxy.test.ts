@@ -8,7 +8,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * `form.values` — Pinia-style reactive readonly proxy over the form
+ * `form.values`, Pinia-style reactive readonly proxy over the form
  * value. Read identically in script + template (no `.value`), writes
  * blocked at the proxy boundary, deeply reactive, identity-stable
  * across `reset()` swaps.

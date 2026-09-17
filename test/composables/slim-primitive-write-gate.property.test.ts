@@ -19,7 +19,7 @@ import {
  * Property tests for the slim-primitive write gate (zod v4 adapter).
  *
  * Three properties cover the gate's contract end-to-end. The "manifest
- * sanity" property must run first conceptually — if it fails, the
+ * sanity" property must run first conceptually, if it fails, the
  * generator (and therefore the other two properties) is testing the
  * wrong thing.
  *
@@ -36,7 +36,7 @@ const arbSchema = buildSchemaWithManifest(z, 3)
 type SetValueFn = (path: string, value: unknown) => boolean
 
 describe('slim-primitive write gate — property: manifest sanity (v4)', () => {
-  // No setValue here — directly reconciles the generator's recorded
+  // No setValue here, directly reconciles the generator's recorded
   // accept-set against the adapter's `getSlimPrimitiveTypesAtPath`.
   // Failure means the generator (the test's oracle) is wrong.
   test.prop([arbSchema])(
@@ -166,7 +166,7 @@ describe('slim-primitive write gate — property: unknown paths (v4)', () => {
 
       // Append a sentinel segment that the schema generator can never
       // emit. The object-key arbitrary requires
-      // `^[a-zA-Z_][a-zA-Z0-9_]*$` with maxLength 4 — `__unknown_xx`
+      // `^[a-zA-Z_][a-zA-Z0-9_]*$` with maxLength 4, `__unknown_xx`
       // is 12 chars, so it cannot match a generated key regardless of
       // schema shape. Tacking it onto a real path produces "real
       // parent + unknown tail" coverage; the schema variation across

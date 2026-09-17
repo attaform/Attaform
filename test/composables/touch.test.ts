@@ -8,7 +8,7 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `form.touch(path?)` — programmatic mark-as-interacted.
+ * `form.touch(path?)`, programmatic mark-as-interacted.
  *
  * The maintainer's gap: when a field is populated programmatically
  * (file import, paste, autofill), there's no ergonomic way to mark
@@ -164,7 +164,7 @@ describe('form.touch — zod-v3 adapter', () => {
     const baseline = runs
     form.touch('profile')
     await nextTick()
-    // Vue may run the computed once (re-evaluation) — anything more
+    // Vue may run the computed once (re-evaluation), anything more
     // means we're firing per-leaf instead of batching.
     expect(watcher.value).toBe(true)
     expect(runs - baseline).toBeLessThanOrEqual(2)

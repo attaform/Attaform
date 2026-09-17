@@ -75,7 +75,7 @@ describe('zod v3: validateAtPath wraps user-validator throws as atta:validator-t
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
 
     // `data` at a leaf path is the leaf value itself, not the full
-    // form — `validateAtPath` resolves candidates at the path and runs
+    // form, `validateAtPath` resolves candidates at the path and runs
     // `safeParseAsync(data)` against each. The path on the error is
     // the requested path, set by `validatorThrewResponse`.
     const result = await adapter.validateAtPath('whatever', ['profile', 'name'])

@@ -9,7 +9,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 
 /**
- * Phase 5.10 — Vue DevTools plugin contract tests.
+ * Phase 5.10, Vue DevTools plugin contract tests.
  *
  * We mock `@vue/devtools-api`'s `setupDevtoolsPlugin` via vi.mock so
  * the setup callback fires synchronously against a spied-upon
@@ -137,7 +137,7 @@ describe('DevTools plugin — inspector + timeline wiring', () => {
   })
 
   it('exposes registered forms as root nodes in the inspector tree', async () => {
-    // Bare app — no plugin install — so we can attach a registry we
+    // Bare app, no plugin install, so we can attach a registry we
     // fully control without double-provide warnings.
     const regApp = createApp(defineComponent({ setup: () => () => h('div') }))
     const registry = createRegistry({})

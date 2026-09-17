@@ -6,7 +6,7 @@ import { useForm } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `form.clear(path?)` — Zod v3 mirror of `clear.test.ts`. Pins the
+ * `form.clear(path?)`, Zod v3 mirror of `clear.test.ts`. Pins the
  * same orthogonality with `reset`: clear wipes to falsy-for-type,
  * reset restores declared defaults.
  */

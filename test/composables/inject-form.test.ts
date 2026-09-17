@@ -35,7 +35,7 @@ describe('injectForm — ambient provide/inject', () => {
       },
     })
 
-    // Anonymous useForm — no key — fills the ambient slot. Keyed forms
+    // Anonymous useForm, no key, fills the ambient slot. Keyed forms
     // are not addressable via ambient `injectForm()`; descendants
     // must call `injectForm<F>('that-key')` instead.
     const Parent = defineComponent({
@@ -49,7 +49,7 @@ describe('injectForm — ambient provide/inject', () => {
     const root = document.createElement('div')
     app.mount(root)
 
-    // Both APIs must reflect the same underlying FormStore — writing via
+    // Both APIs must reflect the same underlying FormStore, writing via
     // the parent's setValue should surface in the child's getValue.
     expect(shared.parent).toBeDefined()
     expect(shared.child).toBeDefined()
@@ -102,7 +102,7 @@ describe('injectForm — ambient provide/inject', () => {
       )
 
     it('returns null silently when there is no ancestor form', () => {
-      // Ambient lookup is opportunistic — a component library calling
+      // Ambient lookup is opportunistic: a component library calling
       // injectForm() in arbitrary trees should not spam consumers'
       // consoles when no parent has provided a form. Descendants
       // narrow on `null` and degrade.
@@ -121,7 +121,7 @@ describe('injectForm — ambient provide/inject', () => {
     })
 
     it('returns null silently when the only ancestor form is keyed', () => {
-      // Keyed useForm() does NOT fill the ambient slot — descendants
+      // Keyed useForm() does NOT fill the ambient slot, descendants
       // must address it explicitly by key. `injectForm()` (no key)
       // gets the same null-without-warn it would get with no parent.
       let captured: ReturnType<typeof injectForm<Form>> | undefined
@@ -219,8 +219,8 @@ describe('injectForm — ambient provide/inject', () => {
     // The warn embeds a `(<path>:<line>)` user call-site frame via
     // `captureUserCallSite()`. We don't unit-test that here: the
     // capture's regex deliberately skips any frame matching
-    // `/attaform[/-]forms?/i`, which includes this very test file
-    // — there's no "user frame" outside the lib workspace to attach.
+    // `/attaform[/-]forms?/i`, which includes this very test file:
+    // there's no "user frame" outside the lib workspace to attach.
     // End-to-end verification lives in the attaform spike, where
     // the warn renders as e.g. `(.../SpikeChild.vue:19)`.
   })
@@ -253,7 +253,7 @@ describe('injectForm — ambient provide/inject', () => {
 
   // Three-level nesting where two ancestors each register an anonymous
   // useForm(). Vue's `inject` walks up from the calling component and
-  // returns the FIRST match — so a grandchild's `injectForm()` resolves
+  // returns the FIRST match: so a grandchild's `injectForm()` resolves
   // to the parent (closer ancestor), shadowing the grandparent's
   // anonymous form for descendants of the parent. Standard Vue
   // provide/inject semantics; this test pins the behavior so a
@@ -297,7 +297,7 @@ describe('injectForm — ambient provide/inject', () => {
     expect(shared.grandchild?.key).toBe(shared.parent?.key)
     expect(shared.grandchild?.key).not.toBe(shared.grandparent?.key)
 
-    // State sharing confirms it's actually the parent's FormStore — a
+    // State sharing confirms it's actually the parent's FormStore: a
     // write through the parent surfaces in the grandchild's read, and
     // does NOT leak into the grandparent.
     shared.parent?.setValue('email', 'parent-write@x')
@@ -307,7 +307,7 @@ describe('injectForm — ambient provide/inject', () => {
     app.unmount()
   })
 
-  // A keyed useForm() does NOT fill the ambient slot — its provide is
+  // A keyed useForm() does NOT fill the ambient slot, its provide is
   // skipped entirely (see useAbstractForm: `if (configuration.key ===
   // undefined) provide(kFormContext, ...)`). So a chain
   // Grandparent(anon) → Parent(keyed) → Grandchild(injectForm()) skips
@@ -328,7 +328,7 @@ describe('injectForm — ambient provide/inject', () => {
     })
     const Parent = defineComponent({
       setup() {
-        // Keyed — does NOT fill the ambient slot. Grandchild's
+        // Keyed, does NOT fill the ambient slot. Grandchild's
         // `injectForm()` (no key) walks past this provide.
         useForm<Form>({ schema: fakeSchema(defaults), key: 'middle-keyed' })
         return () => h(Grandchild)
@@ -348,7 +348,7 @@ describe('injectForm — ambient provide/inject', () => {
     expect(shared.grandchild).toBeDefined()
     expect(shared.grandchild?.key).toBe(shared.grandparent?.key)
 
-    // Confirm the resolved store is grandparent's — write surfaces
+    // Confirm the resolved store is grandparent's, write surfaces
     // through both, the keyed form in the middle stays untouched (it's
     // addressable via injectForm('middle-keyed') only).
     shared.grandparent?.setValue('email', 'grandparent@x')
@@ -445,7 +445,7 @@ describe('injectForm — explicit key resolution', () => {
 
     expect(shared.sibling).toBeDefined()
     expect(shared.sibling?.key).toBe('owner-form')
-    // Mutation round-trip — sibling's setValue must surface wherever else
+    // Mutation round-trip, sibling's setValue must surface wherever else
     // the same key is read. We prove that by reading back via the same
     // sibling handle; the registry is a single source of truth.
     shared.sibling?.setValue('email', 'from-sibling@x')
@@ -479,7 +479,7 @@ describe('injectForm — consumer ref-counting', () => {
   it('keeps the form alive while any child holds it; evicts after last unmount', async () => {
     // We ref-count via the trackConsumer path in injectForm. Unmount
     // the parent after the child while the underlying form is still
-    // needed — the registry must keep the state alive as long as any
+    // needed: the registry must keep the state alive as long as any
     // consumer (direct or via context) is mounted.
     //
     // Vue's component teardown order is child-first-then-parent, so the

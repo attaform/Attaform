@@ -13,13 +13,13 @@ import { describe, expect, it } from 'vitest'
  * actual default on client hydration.
  *
  * Nuxt consumers receive the Vite plugin automatically by listing
- * `attaform/nuxt` in `modules` — the module's setup calls
+ * `attaform/nuxt` in `modules`: the module's setup calls
  * `addVitePlugin(attaformVitePlugin(...))` for them. The docs site
  * MUST do the same; we missed it once and the schema-to-inputs
  * country dropdown visibly flickered on hydration.
  *
  * The behavioural side of this contract (transforms produce correct
- * SSR attributes when wired) lives in `test/ssr.test.ts` —
+ * SSR attributes when wired) lives in `test/ssr.test.ts`,
  * specifically the `refined-default-select` case. This test pins the
  * *configuration* side: `apps/site/nuxt.config.ts` imports and uses
  * the attaform Nuxt module.
@@ -37,7 +37,7 @@ describe('docs-site config: attaform/nuxt is wired into modules', () => {
   const source = readFileSync(configPath, 'utf8')
 
   it('imports the attaform Nuxt module', () => {
-    // The docs site dogfoods the published package shape — `attaform/nuxt`
+    // The docs site dogfoods the published package shape, `attaform/nuxt`
     // is the workspace package export, aliased at the Vite layer to the
     // local source so live edits still reach the dev server. Asserting
     // on the package specifier keeps the test honest about what the

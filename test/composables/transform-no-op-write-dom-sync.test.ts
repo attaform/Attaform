@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// Regression: the "no-op write strands the DOM" bug class —
+// Regression: the "no-op write strands the DOM" bug class,
 // originally surfaced by the spike's clamp transform on a numeric
-// text input — applies identically to checkbox, radio, and select
+// text input, applies identically to checkbox, radio, and select
 // variants. Shape: the change handler runs the assigner, the
 // assigner's transform mutates the write to a value identical to
 // current storage, no patch fires, no Vue re-render, and the

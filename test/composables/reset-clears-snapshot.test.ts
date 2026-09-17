@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * PASS2-14 — `reset()` cleared field records, errors, and pending
+ * PASS2-14, `reset()` cleared field records, errors, and pending
  * validations but did NOT clear the per-path snapshot map. A reset
  * back to a value that happens to equal the pre-reset state then
  * had a survivor entry in `pathSnapshots` matching the post-reset
  * form, so the next focus/blur cycle's dedup found "no change"
- * against a stale snapshot and SKIPPED revalidation — leaving the
+ * against a stale snapshot and SKIPPED revalidation, leaving the
  * cleared error bucket cleared and the refine never re-running.
  * The audit calls this latent: today's first-interactive-blur
  * force-run masks it for the most common tab-through, but any

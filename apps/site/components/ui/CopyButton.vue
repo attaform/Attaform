@@ -5,7 +5,7 @@
   // Small reusable copy-to-clipboard affordance. Renders a square
   // icon button that toggles Copy → Check on success and auto-
   // resets after 1.5s. Clipboard access is gated on `import.meta.client`
-  // and wrapped in try/catch — the API can throw in private mode or
+  // and wrapped in try/catch: the API can throw in private mode or
   // insecure contexts; we silently no-op so the reader can fall back
   // to selecting by hand.
   const props = withDefaults(
@@ -27,7 +27,7 @@
       if (resetTimer) clearTimeout(resetTimer)
       resetTimer = setTimeout(() => (copied.value = false), 1500)
     } catch {
-      // Silent fallback — see comment above.
+      // Silent fallback, see comment above.
     }
   }
 

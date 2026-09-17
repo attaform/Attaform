@@ -8,9 +8,9 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Introspection surfaces that survived the v2 cutover:
- *   - `wizard.steps` — ordered list of compiled `{ key, form }` slots.
- *   - `wizard.forms` — keyed record indexable by step key.
- *   - `wizard.visited` — append-only audit log of navigated step keys.
+ *   - `wizard.steps`, ordered list of compiled `{ key, form }` slots.
+ *   - `wizard.forms`, keyed record indexable by step key.
+ *   - `wizard.visited`, append-only audit log of navigated step keys.
  *
  * Static graph machinery (`flow.tree`, `flow.allForms`, `flow.diagnose`)
  * is retired with v1; only the data that maps cleanly to a positional

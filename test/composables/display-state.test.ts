@@ -35,7 +35,7 @@ import type { DisplayCtx, DisplayMachine } from '../../src/runtime/types/types-a
  * `DisplayMachine` and resolves through three tiers:
  *   1. Library default: one timing gate
  *      (`submissionAttempts > 0 || blurredAfterInteraction`), then
- *      precedence — a validation in flight surfaces a delayed, then held,
+ *      precedence: a validation in flight surfaces a delayed, then held,
  *      `'pending'` (the anti-flash spinner); own-path error → error;
  *      earned (`valid && !blank && dirty`) → success; else idle.
  *      Containers (intermediate AND root, including `form.meta`) roll up
@@ -419,7 +419,7 @@ describe('anti-flash spinner timing (integration)', () => {
     form.setValue('email', 'a@b.c')
     await nextTick()
     expect(form.fields('email').validating).toBe(true)
-    // Inside the show-delay window: the prior verdict is HELD — no spinner
+    // Inside the show-delay window: the prior verdict is HELD: no spinner
     // flash even though a validation is genuinely in flight. SWR keeps the
     // stale error in `errors` for direct readers.
     expect(form.fields('email').errors.length).toBeGreaterThan(0)
@@ -473,12 +473,12 @@ describe('anti-flash spinner timing (integration)', () => {
   it('a long-running client-side async check surfaces pending (async-ness drives it, not a network round-trip)', async () => {
     // The UX story: `pending` reflects "validation is in flight across event-loop
     // turns," NOT "a request is open to a server." A heavy on-device computation
-    // that yields — any non-blocking async work; here a timer stands in for it,
-    // no fetch anywhere — drives the spinner exactly as a remote check would, so
+    // that yields, any non-blocking async work; here a timer stands in for it,
+    // no fetch anywhere, drives the spinner exactly as a remote check would, so
     // the consumer never has to care whether validation runs on the client or
     // the server. (A synchronous BLOCKING computation is the one case that can't
     // show a spinner: it freezes the thread, so nothing renders until it returns.
-    // The remedy is to run it async — off the main thread or yielding — which
+    // The remedy is to run it async, off the main thread or yielding, which
     // earns pending for free.)
     const schema = zV4.object({
       email: zV4
@@ -510,7 +510,7 @@ describe('anti-flash spinner timing (integration)', () => {
     form.setValue('email', 'available')
     await nextTick()
     expect(form.fields('email').validating).toBe(true)
-    // Held through the show-delay — a fast result would never flash here.
+    // Held through the show-delay: a fast result would never flash here.
     expect(form.fields('email').displayState).not.toBe('pending')
 
     // Past the show-delay, the LOCAL computation is still churning → spinner.
@@ -527,7 +527,7 @@ describe('anti-flash spinner timing (integration)', () => {
   it('a burst of keystrokes keeps re-arming the show-delay (no spinner mid-typing)', async () => {
     // Regression for the live /demos/display-state report: typing showed the
     // spinner with no perceptible delay. `validatingSince` re-anchors on every
-    // run start, not just the streak's 0 → 1 edge — with `debounceMs: 0` a fast
+    // run start, not just the streak's 0 → 1 edge, with `debounceMs: 0` a fast
     // burst keeps the validation count above 0 (the aborted run's decrement
     // lands a microtask AFTER the next run's increment), so anchoring at the
     // streak start would pin the show-delay to the FIRST keystroke and surface
@@ -538,8 +538,8 @@ describe('anti-flash spinner timing (integration)', () => {
     await nextTick()
     expect(form.fields('email').displayState).toBe('error')
 
-    // Type continuously: a fresh value every 40ms across 200ms — twice the
-    // 100ms show-delay — each edit aborting the prior parked validation and
+    // Type continuously: a fresh value every 40ms across 200ms, twice the
+    // 100ms show-delay: each edit aborting the prior parked validation and
     // starting a new one. The spinner must stay suppressed the whole time.
     for (const v of ['a@b.c', 'a@b.cc', 'a@b.ccc', 'a@b.cccc', 'a@b.ccccc']) {
       form.setValue('email', v)
@@ -561,7 +561,7 @@ describe('anti-flash spinner timing (integration)', () => {
   it('releases a held spinner when a long validation settles with an UNCHANGED verdict', async () => {
     // Locks the continuity-branch release path: a validation longer than
     // showDelay + minVisible holds `pending`, and the settle MUST re-run the
-    // display computed to release the spinner — promptly, on the reactive
+    // display computed to release the spinner, promptly, on the reactive
     // event, with no timer advanced, even when the verdict is unchanged
     // (same error). That is the guarantee here and it is asserted below by
     // advancing timers by 0.
@@ -593,7 +593,7 @@ describe('anti-flash spinner timing (integration)', () => {
     expect(vi.getTimerCount()).toBe(1)
 
     // Settle with the SAME verdict. The reactive `validatingSince` delete is
-    // what re-runs the computed — flush microtasks only, advance no timers,
+    // what re-runs the computed, flush microtasks only, advance no timers,
     // so the backstop review cannot be what releases the spinner.
     resolve(false)
     await vi.advanceTimersByTimeAsync(0)
@@ -628,7 +628,7 @@ describe('anti-flash spinner timing (integration)', () => {
 
     // A synchronous subscriber records every display frame. The transient idle
     // exists only for one synchronous re-eval between the two bookkeeping
-    // writes, so a flush:'pre' template smooths over it — a sync watch is what
+    // writes, so a flush:'pre' template smooths over it: a sync watch is what
     // surfaces the defect (and what a consumer's own sync watch would hit).
     const frames: DisplayState[] = []
     const stop = watch(
@@ -668,7 +668,7 @@ describe('anti-flash spinner timing (integration)', () => {
     api.reset()
     await nextTick()
     // After reset the gate is closed again and nothing is in flight, so the
-    // verdict is idle — and the engine timer was cleared.
+    // verdict is idle, and the engine timer was cleared.
     expect(form.fields('email').displayState).toBe('idle')
     expect(vi.getTimerCount()).toBe(0)
     // Settle the now-orphaned validation so it can't write post-reset.
@@ -694,7 +694,7 @@ describe('anti-flash spinner timing (integration)', () => {
     form.setValue('email', 'a@b.cd')
     await nextTick()
     expect(form.fields('email').displayState).toBe('pending')
-    // It stays pending while validation remains in flight — never a verdict
+    // It stays pending while validation remains in flight, never a verdict
     // frame between the two keystrokes.
     await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay + DEFAULT_TIMINGS.minVisible)
     expect(form.fields('email').displayState).toBe('pending')
@@ -1042,7 +1042,7 @@ describe('display timing — focus-out collapses the show-delay', () => {
   it('blurring mid-validation surfaces the spinner within the settle grace (not the full window)', async () => {
     // UX: the show-delay only swallows the spinner during active typing. Focus
     // out while a slow check is in flight and the spinner appears within the
-    // brief settle grace — not after the rest of a window the user has already
+    // brief settle grace: not after the rest of a window the user has already
     // left. A fast check settles inside the grace and never flashes (the
     // sync-field DOM-gate test above covers that no-flash path).
     let resolveValidation: (ok: boolean) => void = () => {}
@@ -1079,7 +1079,7 @@ describe('display timing — focus-out collapses the show-delay', () => {
     apps.push(app)
     const input = root.querySelector('input') as HTMLInputElement
 
-    // Type, then focus out — blur mode starts the (parked, slow) validation.
+    // Type, then focus out, blur mode starts the (parked, slow) validation.
     input.value = 'a@b.c'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
@@ -1087,7 +1087,7 @@ describe('display timing — focus-out collapses the show-delay', () => {
     input.dispatchEvent(new FocusEvent('blur'))
     await nextTick()
 
-    // One settle grace later — far short of the show-delay — the spinner is up.
+    // One settle grace later, far short of the show-delay, the spinner is up.
     await vi.advanceTimersByTimeAsync(FOCUS_OUT_GRACE)
     expect(api.fields('email').validating).toBe(true)
     expect(api.fields('email').displayState).toBe('pending')
@@ -1214,7 +1214,7 @@ describe('display verdict — reward early, punish late (DOM gate)', () => {
   // Regression: an earlier tab-through must not arm the error for the first
   // real edit. `touched` is sticky after the tab-through's blur, so the gate
   // `interacted && touched` fires the instant `interacted` flips on the first
-  // keystroke — scolding the user mid-first-entry. Punish late means the
+  // keystroke, scolding the user mid-first-entry. Punish late means the
   // error should wait until the user leaves the field AFTER editing it.
   it('does not fire the error on the first keystroke after an earlier tab-through', async () => {
     const { api, input } = mountInput()
@@ -1402,7 +1402,7 @@ describe('container & form.meta rollup — gated, DOM-driven', () => {
       // Blur A (opens the container gate) without ever touching B.
       editAndBlur(input('a'), 'x')
       await vi.advanceTimersByTimeAsync(0)
-      // Kick B's async validation programmatically — no interaction, gate closed.
+      // Kick B's async validation programmatically: no interaction, gate closed.
       api.setValue('b', 'y')
       await nextTick()
       await vi.advanceTimersByTimeAsync(DEFAULT_TIMINGS.showDelay + 50)
@@ -1421,17 +1421,17 @@ describe('DisplayCtx — type-level guards', () => {
     type Field = DisplayCtx['field']
     type Meta = DisplayCtx['formMeta']
 
-    // @ts-expect-error — `displayState` is omitted from ctx.field
+    // @ts-expect-error, `displayState` is omitted from ctx.field
     expectTypeOf<Field['displayState']>()
-    // @ts-expect-error — `showErrors` is omitted from ctx.field
+    // @ts-expect-error, `showErrors` is omitted from ctx.field
     expectTypeOf<Field['showErrors']>()
-    // @ts-expect-error — `showPending` is omitted from ctx.field
+    // @ts-expect-error, `showPending` is omitted from ctx.field
     expectTypeOf<Field['showPending']>()
-    // @ts-expect-error — `firstError` is omitted from ctx.field
+    // @ts-expect-error, `firstError` is omitted from ctx.field
     expectTypeOf<Field['firstError']>()
-    // @ts-expect-error — `displayState` is omitted from ctx.formMeta
+    // @ts-expect-error, `displayState` is omitted from ctx.formMeta
     expectTypeOf<Meta['displayState']>()
-    // @ts-expect-error — `showSuccess` is omitted from ctx.formMeta
+    // @ts-expect-error, `showSuccess` is omitted from ctx.formMeta
     expectTypeOf<Meta['showSuccess']>()
 
     // Every other FieldState key still reaches through, so authors keep

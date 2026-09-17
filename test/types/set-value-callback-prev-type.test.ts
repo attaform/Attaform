@@ -40,7 +40,7 @@ describe('setValue callback `prev` stays strict against the schema slim', () => 
       })
       // `.default(N)` makes the input shape `number | undefined`, but
       // the callback's prev still narrows to the slim/non-nullable
-      // type — `+ 2` must compile without casts.
+      // type, `+ 2` must compile without casts.
       form.setValue('count', (prev) => {
         expectTypeOf(prev).toEqualTypeOf<number>()
         return prev + 2

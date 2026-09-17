@@ -6,9 +6,9 @@ import { zodAdapter as zodAdapterV3 } from '../../src/runtime/adapters/zod-v3'
 
 /**
  * Adapter-level contract for `isFixedObjectAtPath`. The surface proxies
- * query it to tell a FIXED object (closed declared keys — a schema field
+ * query it to tell a FIXED object (closed declared keys: a schema field
  * descends even before its data lands) from an OPEN / union container
- * (array / record / set / tuple / union / discriminated union — descent
+ * (array / record / set / tuple / union / discriminated union, descent
  * follows live keys, absence is `undefined`). Root is always fixed;
  * wrappers peel; an unknown path is not fixed.
  */

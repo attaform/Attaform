@@ -16,7 +16,7 @@ import type {
  * accidental drift. Two failure modes this guards against:
  *
  *   1. A property silently moves between `api`, `api.meta`, and
- *      `api.history` — types vs. runtime drift.
+ *      `api.history`, types vs. runtime drift.
  *   2. A method is introduced/removed/renamed without the surface
  *      contract being updated.
  *
@@ -43,7 +43,7 @@ import type {
  *
  * Absence checks use type-level assertions (`@ts-expect-error`) rather
  * than runtime `=== undefined`, because the FieldState proxy returns a
- * stub callable for unknown property reads (a separate bug — see
+ * stub callable for unknown property reads (a separate bug, see
  * round-2 chaos probe). The compile-time check is the canonical surface
  * contract; the runtime check is subordinate.
  */
@@ -77,7 +77,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
   it('undo/redo + flags live on `api.history` — both methods and reactive flags', () => {
     const { api } = mountForm()
 
-    // Runtime — methods are functions, flags are unwrapped primitives
+    // Runtime, methods are functions, flags are unwrapped primitives
     // (the `readonly(reactive({...}))` bundle auto-unwraps ComputedRef
     // fields on access).
     expect(typeof api.history.undo).toBe('function')
@@ -87,7 +87,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof api.history.canRedo).toBe('boolean')
     expect(typeof api.history.size).toBe('number')
 
-    // Type-level pin — same shape.
+    // Type-level pin, same shape.
     expectTypeOf(api.history.undo).toEqualTypeOf<() => boolean>()
     expectTypeOf(api.history.redo).toEqualTypeOf<() => boolean>()
     expectTypeOf(api.history.clear).toEqualTypeOf<() => void>()
@@ -147,7 +147,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     expect(typeof returned.then).toBe('function')
     await expect(returned).resolves.toBeUndefined()
     // An unresolvable path must still settle rather than throw. Uses
-    // the segment-array arm, which is deliberately loose — the
+    // the segment-array arm, which is deliberately loose: the
     // `FlatPath` arm rejects a bogus dotted path at compile time.
     await expect(api.interact(['not', 'a', 'real', 'path'])).resolves.toBeUndefined()
   })
@@ -155,7 +155,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
   it('form-level reactive flags live on `api.meta` (not `api`)', () => {
     const { api } = mountForm()
 
-    // Status flags — the canonical `meta` surface.
+    // Status flags: the canonical `meta` surface.
     expect(typeof api.meta.dirty).toBe('boolean')
     expect(typeof api.meta.valid).toBe('boolean')
     expect(typeof api.meta.submitting).toBe('boolean')
@@ -194,7 +194,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
   it('field accessors live directly on `api`', () => {
     const { api } = mountForm()
 
-    // The three surface ROOTS are callable proxies — `api.fields(path)`
+    // The three surface ROOTS are callable proxies, `api.fields(path)`
     // / `api.errors(path)` / `api.values(path)` is the aggregate API, so
     // `typeof` is 'function' at the root and only at the root.
     expect(typeof api.fields).toBe('function')
@@ -227,7 +227,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
 
     // Error accessors: subtree (errors / firstError) and exact-path
     // (ownErrors / firstOwnError). A leaf has no descendants, so its own
-    // bucket IS its subtree — the same array reference.
+    // bucket IS its subtree: the same array reference.
     expect(Array.isArray(emailField.errors)).toBe(true)
     expect(Array.isArray(emailField.ownErrors)).toBe(true)
     expect(['undefined', 'object']).toContain(typeof emailField.firstError)
@@ -262,7 +262,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
     const { api } = mountForm()
     const emailField = api.fields.email
 
-    // Type-level absence — future per-field history (e.g.
+    // Type-level absence, future per-field history (e.g.
     // `api.fields.email.history.{undo, redo, canUndo}`) is meant to
     // break the directives below intentionally.
     // @ts-expect-error per-field history is not part of the contract today
@@ -274,7 +274,7 @@ describe('API surface contract — actions on `api`, status on `api.meta`, histo
 
     // Note: runtime `emailField.undo` returns `[Function undefined]`
     // because the FieldState proxy stubs unknown property reads as
-    // callables (separate bug — see round-2 chaos probe). The
+    // callables (separate bug, see round-2 chaos probe). The
     // type-level absence above is the canonical contract; runtime
     // probing here would fail-positive.
   })

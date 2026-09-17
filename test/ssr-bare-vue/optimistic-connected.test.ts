@@ -18,7 +18,7 @@ import { fakeSchema } from '../utils/fake-schema'
  * registered, evaluates the resulting render function, mounts it
  * via createSSRApp, runs @vue/server-renderer over it, and asserts
  * that the FormStore's field record landed at `connected: true`
- * server-side — the same state that gets serialized into the
+ * server-side: the same state that gets serialized into the
  * hydration payload and read by `getFieldState()` on the client's
  * first paint.
  *
@@ -36,7 +36,7 @@ function compileTemplate(
   mode: TransformMode
 ): (this: unknown, ctx: unknown) => unknown {
   // baseCompile (compiler-core) is sufficient for our directive-only
-  // templates — we don't need the DOM-specific transforms (class/style
+  // templates: we don't need the DOM-specific transforms (class/style
   // normalisation, v-html, etc.) that @vue/compiler-dom layers on top.
   // mode: 'function' produces a `const { … } = Vue ... return function render(...)`
   // string we evaluate in a scope where Vue resolves to the runtime module.
@@ -95,7 +95,7 @@ describe('SSR connected via vRegisterHintTransform', () => {
     // This is the bug the transform fixes. If this test ever flips to
     // `true` without the transform, it means Vue started running
     // directive lifecycle in SSR and the transforms aren't load-bearing
-    // anymore — at which point we can rip them out.
+    // anymore, at which point we can rip them out.
     const app = makeAppWithTemplate(
       `<div><input v-register="form.register('email')" /></div>`,
       'none'
@@ -109,7 +109,7 @@ describe('SSR connected via vRegisterHintTransform', () => {
   it('paths register()ed in setup but not bound to v-register stay connected: false', async () => {
     // Negative case: a setup-only register() call (e.g. exploratory
     // code, devtools) doesn't render an element. The transform never
-    // sees that call and the optimistic mark never fires — the field
+    // sees that call and the optimistic mark never fires: the field
     // record correctly reports "not connected" because there's no
     // DOM element to back the claim.
     const App = defineComponent({
@@ -160,7 +160,7 @@ describe('SSR connected — read-before-input (preamble) via both transforms', (
    * The hint transform alone fires marks at v-register evaluation
    * time. If a template reads `getFieldState(path)` BEFORE the bound
    * input renders (single-pass top-to-bottom SSR), the read still
-   * captures `connected: false` — the user observes a `false → true`
+   * captures `connected: false`: the user observes a `false → true`
    * flicker on hydration when the post-render steady state corrects.
    *
    * The preamble transform hoists the marks to the root element's
@@ -174,7 +174,7 @@ describe('SSR connected — read-before-input (preamble) via both transforms', (
     // (the ref reads getFieldState at render time). With the preamble,
     // by the time the render expression evaluates, the mark has fired.
     // We capture what the SSR-rendered HTML serialises by reading the
-    // FormStore's record directly after renderToString — which is
+    // FormStore's record directly after renderToString: which is
     // exactly the state that gets serialised into the hydration
     // payload.
     const template = `<div>
@@ -213,8 +213,8 @@ describe('SSR connected — read-before-input (preamble) via both transforms', (
 
   it('the data-atta-pre-mark attribute is dropped from the output (undefined → no attr)', async () => {
     // The preamble's binding evaluates to undefined so Vue's SSR
-    // renderer omits the attribute. The user-visible HTML is unchanged
-    // — only the side effects of evaluating the binding (the marks)
+    // renderer omits the attribute. The user-visible HTML is unchanged,
+    // only the side effects of evaluating the binding (the marks)
     // remain.
     const template = `<div><input v-register="form.register('password')" /></div>`
     const app = makeAppWithTemplate(template, 'preamble+hint')
@@ -228,7 +228,7 @@ describe('SSR connected — fields the template never binds', () => {
     // The schema declares both `email` and `password`, but the
     // template only renders `<input v-register="form.register('email')">`.
     // The transforms (preamble + hint) have NO way to know about
-    // `password` — there's no binding to capture, no IIFE to evaluate.
+    // `password`: there's no binding to capture, no IIFE to evaluate.
     // Result: email is optimistically marked, password is correctly
     // left at its init-time `false`.
     //
@@ -255,8 +255,8 @@ describe('SSR connected — cross-component sync via shared form key', () => {
    * Two sibling components consume the same FormStore by key. One
    * binds a field via `v-register`; the other reads `getFieldState`
    * for that field. The optimistic mark fires on the SHARED store
-   * during the writer's render, and the reader's render — happening
-   * later in template-traversal order — sees the marked state.
+   * during the writer's render, and the reader's render, happening
+   * later in template-traversal order, sees the marked state.
    *
    * This is the proof that attaform's by-key sharing semantics actually
    * round-trip the optimistic mark correctly: the FormStore
@@ -268,7 +268,7 @@ describe('SSR connected — cross-component sync via shared form key', () => {
    * if the parent template rendered the reader BEFORE the writer,
    * the reader's read would happen against an unmarked store. That's
    * the same render-order limitation the preamble transform fixes
-   * within a SINGLE template — across components it's still up to
+   * within a SINGLE template, across components it's still up to
    * the parent to render the writer first. We use that order here
    * (writer → reader) because it's the natural composition.
    */
@@ -314,7 +314,7 @@ describe('SSR connected — cross-component sync via shared form key', () => {
       },
       // Render writer FIRST so its preamble has fired before the
       // reader's render evaluates getFieldState. Reverse order would
-      // surface a stale `false` — that's a render-order limitation
+      // surface a stale `false`: that's a render-order limitation
       // across components, not a sync problem.
       render: compileTemplate(`<div><Writer /><Reader /></div>`, 'preamble+hint'),
     })
@@ -333,13 +333,13 @@ describe('SSR connected — cross-component sync via shared form key', () => {
       readerBody.includes('"connected":true') || readerBody.includes('connected&quot;:true')
     expect(containsTrue).toBe(true)
 
-    // Both consumers point at the same FormStore — a single registry
+    // Both consumers point at the same FormStore: a single registry
     // entry under SHARED_KEY, with email marked.
     const registry = getRegistryFromApp(app)
     expect(registry.forms.size).toBe(1)
     const state = registry.forms.get(SHARED_KEY)
     expect(state?.getFieldRecord(['email'])?.connected).toBe(true)
-    // Password is in the schema but never bound — stays false (and
+    // Password is in the schema but never bound, stays false (and
     // both Writer and Reader observe the same false here, because
     // there's only one store).
     expect(state?.getFieldRecord(['password'])?.connected).toBe(false)
@@ -350,8 +350,8 @@ describe('SSR connected — cross-component sync via shared form key', () => {
    * (no template binding) AND another sibling has the v-register
    * binding. Sharing a form key means there's exactly one
    * FormStore; the binding sibling's preamble fires the mark on the
-   * shared store, and the setup-only sibling — even though IT
-   * never called the optimistic mark itself — observes
+   * shared store, and the setup-only sibling, even though IT
+   * never called the optimistic mark itself, observes
    * `connected: true`. This is the "implicit cross-component
    * acknowledgement" working as the user intuited: not because
    * setup-only register() has any opinion of its own, but because
@@ -364,7 +364,7 @@ describe('SSR connected — cross-component sync via shared form key', () => {
     const SHARED_KEY = 'case-a-shared'
 
     // Sibling 1: v-registers email in its template (the "real"
-    // binding — its preamble fires the mark on the shared store).
+    // binding, its preamble fires the mark on the shared store).
     const Binder = defineComponent({
       name: 'Binder',
       setup() {
@@ -432,7 +432,7 @@ describe('SSR connected — cross-component sync via shared form key', () => {
   /**
    * Case B: every SFC that touches the path uses setup-only
    * `register()`, and NOT ONE binds via v-register. There's no DOM
-   * element anywhere — `connected: true` would be a lie. Multiple
+   * element anywhere, `connected: true` would be a lie. Multiple
    * components agreeing in setup doesn't add up to a real DOM
    * presence; the flag has to stay `false`.
    *
@@ -467,7 +467,7 @@ describe('SSR connected — cross-component sync via shared form key', () => {
       render: compileTemplate(`<div class="b">B</div>`, 'preamble+hint'),
     })
 
-    // Reader reads the shared store's email field — should observe
+    // Reader reads the shared store's email field, should observe
     // `connected: false` because nobody v-registered it.
     const Reader = defineComponent({
       name: 'Reader',

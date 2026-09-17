@@ -14,16 +14,16 @@ import { waitUntil } from '../utils/form-harness'
  * The directive variant `vRegisterCheckbox` mirrors Vue's
  * `vModelCheckbox` and supports three shapes:
  *
- *   1. **Single boolean** — `z.boolean()`. Checked → `true`, unchecked
+ *   1. **Single boolean**, `z.boolean()`. Checked → `true`, unchecked
  *      → `false`. No `value=""` attribute needed.
- *   2. **Array group** — `z.array(<primitive>)`. Each checkbox shares
+ *   2. **Array group**, `z.array(<primitive>)`. Each checkbox shares
  *      the same register binding and has a unique `value="..."`. The
  *      directive adds/removes that value from the array on toggle.
- *   3. **Set group** — `z.set(<primitive>)`. Same as array but the
+ *   3. **Set group**, `z.set(<primitive>)`. Same as array but the
  *      state is a `Set`. The directive add/deletes via Set semantics.
  *
  * The `:true-value` / `:false-value` props let a single checkbox bind
- * to a non-boolean state (e.g. `'subscribe'` / `'unsubscribe'`) — Vue
+ * to a non-boolean state (e.g. `'subscribe'` / `'unsubscribe'`), Vue
  * sets `el._trueValue` / `el._falseValue` from those bindings, and
  * the directive's `getCheckboxValue` reads them through.
  */
@@ -310,7 +310,7 @@ describe('<input type="checkbox" v-register> — array group', () => {
     // attribute (el.value) rather than warn "missing value attribute".
     //
     // We simulate this by mounting the checkbox via h() (which DOES set
-    // _value) and then deleting `_value` before dispatching change —
+    // _value) and then deleting `_value` before dispatching change,
     // the post-hydration state in a real Nuxt app.
     const schema = z.object({ fruits: z.array(z.string()) })
     const captured: { api?: UseFormReturn<typeof schema> } = {}
@@ -389,7 +389,7 @@ describe('<input type="checkbox" v-register> — array group', () => {
       )
 
       if (captured.api === undefined) throw new Error('unreachable')
-      // No state change — directive bailed at the missing-value check.
+      // No state change, directive bailed at the missing-value check.
       expect(captured.api.values.fruits).toEqual([])
 
       const matched = warnSpy.mock.calls

@@ -61,7 +61,7 @@ function makeRegisterValue<T>(initial: T): {
     // Derive displayValue from innerRef so the mock matches the real
     // RegisterValue's contract (the directive's beforeUpdate reads
     // through displayValue). Doesn't model the blank/unset rule or
-    // lastTypedForm preference — tests that need those override
+    // lastTypedForm preference, tests that need those override
     // displayValue explicitly.
     displayValue: computed(() => {
       const v = innerRef.value
@@ -141,7 +141,7 @@ describe('vRegisterText — `.lazy`', () => {
     const { value, setValue } = makeRegisterValue('')
     hooks.created?.(input, makeBinding(value, { lazy: true }), makeVNode({}), null)
 
-    // Dispatching `input` MUST NOT write — listener gates on `change`.
+    // Dispatching `input` MUST NOT write, listener gates on `change`.
     input.value = 'typing'
     input.dispatchEvent(new Event('input'))
     expect(setValue).not.toHaveBeenCalled()
@@ -179,7 +179,7 @@ describe('vRegisterText — `.trim`', () => {
   })
 
   it('input event writes the RAW value (deferred trim — no per-keystroke strip)', () => {
-    // Per-keystroke trim fights Vue's :value patch — typing a
+    // Per-keystroke trim fights Vue's :value patch, typing a
     // trailing space would otherwise collapse before the user could
     // keep typing (regression #16b). The trim is committed on blur
     // by the change-normalization listener instead.
@@ -251,7 +251,7 @@ describe('vRegisterText — `.number`', () => {
 
     hooks.created?.(input, makeBinding(value, { number: true }), makeVNode({}), null)
 
-    // `'xyz'` is non-castable AND has no `e`/`E` — keeps this test on
+    // `'xyz'` is non-castable AND has no `e`/`E`, keeps this test on
     // the immediate markBlank path. Strings containing `e`
     // hit the scientific-notation deferral instead (covered separately).
     input.value = 'xyz'
@@ -334,7 +334,7 @@ describe('vRegisterText — combined modifiers', () => {
 
     hooks.created?.(input, makeBinding(value, { trim: true, number: true }), makeVNode({}), null)
 
-    // Input listener writes the cast value. Trim is deferred — but
+    // Input listener writes the cast value. Trim is deferred, but
     // `looseToNumber('  42  ')` calls `parseFloat`, which already
     // handles surrounding whitespace, so the model still lands on 42.
     input.value = '  42  '
@@ -645,7 +645,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
   })
 
   it('mounted: Set<string> model selects matching numeric options (reverse cross-type)', () => {
-    // The other direction — option values are still strings (DOM
+    // The other direction, option values are still strings (DOM
     // contract) but the Set's strings happen to look numeric. The
     // coercion compares both via `String(...)` so the match holds.
     const select = makeSelectWithOptions(['10', '20', '30'])
@@ -699,7 +699,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
     hooks.mounted?.(select, makeBinding(value, {}), makeVNode({}), null)
 
     expect(warnSpy).toHaveBeenCalled()
-    // No option should be selected — bail leaves DOM as-is.
+    // No option should be selected, bail leaves DOM as-is.
     expect(select.selectedIndex).toBe(0) // browser default; not driven by us
     warnSpy.mockRestore()
   })
@@ -720,11 +720,11 @@ describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
     const { value } = makeRegisterValue('original')
     value.innerRef = ref('mid-edit') as typeof value.innerRef
 
-    // User has typed 'half' — el.value represents in-progress input.
+    // User has typed 'half', el.value represents in-progress input.
     input.value = 'half'
 
     // beforeUpdate fires with `value === oldValue` (the consumer ref
-    // didn't change between renders) — under `.lazy` while focused,
+    // didn't change between renders), under `.lazy` while focused,
     // we should NOT clobber el.value.
     const binding = {
       value,
@@ -752,7 +752,7 @@ describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
     const binding = makeBinding(value, { trim: true })
     hooks.beforeUpdate?.(input, binding, makeVNode({}), null)
 
-    // el.value preserved — the trimmed form already matches the model.
+    // el.value preserved: the trimmed form already matches the model.
     expect(input.value).toBe('hello ')
   })
 })
@@ -800,7 +800,7 @@ describe('attaform interactions: `.lazy` × value-swap', () => {
     input.type = 'text'
     document.body.appendChild(input)
 
-    // Created with undefined under `.lazy` — listener still attaches
+    // Created with undefined under `.lazy`, listener still attaches
     // to `change` (modifier is read at created time, not at swap time).
     hooks.created?.(
       input,
@@ -938,7 +938,7 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
       input.dispatchEvent(new Event('input'))
     }
 
-    // After the full sequence the form holds the raw "hello w" —
+    // After the full sequence the form holds the raw "hello w",
     // deferred trim does not strip the trailing space until blur.
     expect(setValue).toHaveBeenLastCalledWith('hello w')
     expect(input.value).toBe('hello w')
@@ -963,13 +963,13 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenLastCalledWith(tenSpaces)
 
-    // First real character — model still receives the raw value.
+    // First real character, model still receives the raw value.
     input.value = `${tenSpaces}a`
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenLastCalledWith(`${tenSpaces}a`)
     expect(input.value).toBe(`${tenSpaces}a`)
 
-    // Blur commits the trim — DOM and model agree on "a".
+    // Blur commits the trim, DOM and model agree on "a".
     input.dispatchEvent(new Event('change'))
     expect(setValue).toHaveBeenLastCalledWith('a')
     expect(input.value).toBe('a')
@@ -999,7 +999,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
     document.body.appendChild(input)
     const { value, setValue } = makeRegisterValue(0 as unknown as never)
 
-    // No explicit `.number` modifier — vnode.props.type='number'
+    // No explicit `.number` modifier, vnode.props.type='number'
     // auto-applies the cast.
     hooks.created?.(input, makeBinding(value, {}), makeVNode({ type: 'number' }), null)
 
@@ -1041,7 +1041,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
     // input ('abc') as the empty case: the assigner doesn't fire,
     // and `markBlank` writes the slim default with the
     // blank meta. Submit-time validation raises "Required"
-    // for required schemas — the dev-warn-via-gate-rejection that
+    // for required schemas: the dev-warn-via-gate-rejection that
     // pre-commit-5 surfaced was a worse UX than this.
     const input = document.createElement('input')
     input.type = 'text'
@@ -1059,7 +1059,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
   })
 
   it('backspace-to-empty also routes through markBlank (commit 5)', () => {
-    // Pre-commit-5 the directive skipped the assigner silently — UI
+    // Pre-commit-5 the directive skipped the assigner silently, UI
     // showed empty but storage held the previous valid number, so
     // submit could ship a stale value. Post-commit-5 the empty case
     // marks blank: storage flips to the slim default and
@@ -1108,14 +1108,14 @@ describe('vRegisterCheckbox.setChecked — hydration with static value attribute
   it('mounts with el.checked=true when array model contains the static-attribute value (no vnode.props.value, no _value)', () => {
     const input = document.createElement('input')
     input.type = 'checkbox'
-    // Static attribute path — sets the attribute AND el.value, but
+    // Static attribute path, sets the attribute AND el.value, but
     // crucially does NOT set el._value (Vue's renderer would).
     input.setAttribute('value', 'banana')
     document.body.appendChild(input)
 
     const { value } = makeRegisterValue<string[]>(['banana'])
 
-    // Both vnode.props.value AND el._value are absent — the exact
+    // Both vnode.props.value AND el._value are absent: the exact
     // shape the directive sees on a hydrated static-attr checkbox.
     hooks.created?.(input, makeBinding(value), makeVNode({ type: 'checkbox' }), null)
     hooks.mounted?.(input, makeBinding(value), makeVNode({ type: 'checkbox' }), null)
@@ -1164,7 +1164,7 @@ describe('vRegisterRadio — hydration with static value attribute', () => {
     document.body.appendChild(input)
 
     const { value } = makeRegisterValue<string>('banana')
-    // Initial checked-state sync moved from `created` to `mounted` —
+    // Initial checked-state sync moved from `created` to `mounted`,
     // `created` fires BEFORE Vue patches type / value / _value onto
     // the element, so reading them at that point would always come
     // back undefined. Call both hooks here to mirror Vue's lifecycle.

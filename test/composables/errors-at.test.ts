@@ -10,8 +10,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * `form.errors(path)` (call-form) returns every error whose path IS
  * the given path OR descends from it. Aggregates schema + blank +
  * user errors in the same order as `meta.errors`. The three
- * surfaces — `form.errors(path)`, `form.fields(path).errors`, and
- * `form.meta.errors` — share one aggregation helper, so reads at
+ * surfaces, `form.errors(path)`, `form.fields(path).errors`, and
+ * `form.meta.errors`, share one aggregation helper, so reads at
  * any prefix never disagree.
  */
 

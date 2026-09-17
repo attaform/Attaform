@@ -58,8 +58,8 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     apps.push(app)
 
     // A non-email string triggers the schema's leaf rule. The
-    // field-validation scheduler — only active if the option
-    // reached useAbstractForm — populates fieldErrors within the
+    // field-validation scheduler, only active if the option
+    // reached useAbstractForm, populates fieldErrors within the
     // debounce window.
     api.setValue('email', 'nope')
     await waitUntil(() => (api.errors.email?.[0]?.message === 'bad email' ? true : null))

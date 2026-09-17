@@ -8,10 +8,10 @@
  *   - `Json` is exported and admits every JSON arm recursively (a
  *     bundler that collapsed it to `any` / `unknown` or dropped the
  *     recursion fails the structural assignment below).
- *   - `ValidationError.data` types as `Json | null | undefined` — the
+ *   - `ValidationError.data` types as `Json | null | undefined`: the
  *     opaque, optional payload slot.
  *   - `data` is reachable on the real read surface (`form.meta.errors`),
- *     not just on the standalone type — so an emit that drops the field
+ *     not just on the standalone type: so an emit that drops the field
  *     from the surfaced error shape fails here.
  */
 import { useForm } from 'attaform/zod'

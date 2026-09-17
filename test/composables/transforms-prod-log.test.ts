@@ -5,7 +5,7 @@
 // Lives in a SEPARATE file because `__DEV__` (in src/runtime/core/dev.ts) is
 // computed at module-load time from `process.env.NODE_ENV`. To exercise the
 // prod branch of the directive's transform error logging we need to mock the
-// dev module before the directive is imported — vi.mock is hoisted by vitest
+// dev module before the directive is imported, vi.mock is hoisted by vitest
 // to the top of the file, so the import order works out only if the mock and
 // the imports live in a fresh test file. In the main test file `__DEV__` is
 // already cached at `true`, so swapping it locally is a no-op.
@@ -82,7 +82,7 @@ describe('register({ transforms }) — prod log shape (information-leak guard)',
     // the /e/af14 page carries the "set NODE_ENV=development" guidance.
     expect(msg).toBe('[attaform] AF14 attaform.dev/e/af14')
 
-    // The leak surface — every one of these MUST be absent.
+    // The leak surface: every one of these MUST be absent.
     expect(msg).not.toContain('email') // path
     expect(msg).not.toContain('index 0') // transform index
     expect(msg).not.toContain('SECRET_VALUE') // error message
@@ -96,7 +96,7 @@ describe('register({ transforms }) — prod log shape (information-leak guard)',
   it('async transforms defer and commit in prod with no console output', async () => {
     // The inverse of the old "Promise returns abort + log" contract: a
     // thenable now defers and commits the resolved value. In prod that
-    // path stays silent — a resolving transform is the happy path, and a
+    // path stays silent: a resolving transform is the happy path, and a
     // rejecting one surfaces on `field.transformError`, never the console
     // (the information-leak guard this file exists to hold).
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)

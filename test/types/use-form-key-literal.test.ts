@@ -9,7 +9,7 @@ import type { FormKey } from '../../src'
 /**
  * Type-level test for `form.key` literal preservation through the
  * `useForm` overloads. Threading `K extends FormKey` lets the wizard
- * (and any other consumer) discriminate on the literal — `goTo('signup')`
+ * (and any other consumer) discriminate on the literal, `goTo('signup')`
  * autocompletes the known keys, `wizard.statuses.signup` resolves to
  * the matching form.
  *
@@ -20,7 +20,7 @@ import type { FormKey } from '../../src'
  *
  * Tests run at typecheck time. The `_neverInvoked` wrappers declare real
  * `useForm` calls so TypeScript exercises call-site inference, but the
- * functions are never called — no Vue app context is needed.
+ * functions are never called: no Vue app context is needed.
  * `expectTypeOf` chain methods are no-ops at runtime.
  */
 

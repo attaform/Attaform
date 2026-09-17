@@ -147,7 +147,7 @@ describe('getSlimPrimitiveTypesAtPath — literal-dot key disambiguation (V4-6)'
   })
 })
 
-// Branch coverage for the walker's long tail — the leaf, wrapper, and
+// Branch coverage for the walker's long tail: the leaf, wrapper, and
 // composite cases the suite above doesn't reach.
 describe('getSlimPrimitiveTypesAtPath — walker long tail', () => {
   it('z.nan() → {number}', () => {

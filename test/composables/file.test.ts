@@ -18,7 +18,7 @@ import { waitUntil } from '../utils/form-harness'
  * via `derivedBlankErrors`.
  *
  * Tests use `z.file().nullable()` (v4 native). The directive itself is
- * DOM-driven, not schema-driven — v3's `z.instanceof(File)` flows
+ * DOM-driven, not schema-driven, v3's `z.instanceof(File)` flows
  * through the same code paths.
  */
 
@@ -351,7 +351,7 @@ describe('<input type="file" v-register> — listener cleanup', () => {
 })
 
 // Restore the platform localStorage for the file-suite block that
-// touched it — sibling suites observing jsdom's default get a clean
+// touched it, sibling suites observing jsdom's default get a clean
 // slate.
 afterAll(() => {
   localStorage.clear()

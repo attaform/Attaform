@@ -85,7 +85,7 @@ describe('<input type="radio" v-register> — sibling re-render mid-click', () =
     expect(chocolate.checked).toBe(false)
     expect(strawberry.checked).toBe(false)
 
-    // Step 1: simulate the browser's native click handling — user
+    // Step 1: simulate the browser's native click handling, user
     // clicked strawberry. Browser flipped strawberry's `checked` IDL
     // state and (per radio-group exclusivity) cleared vanilla's.
     // Model is still 'vanilla' (change has NOT fired yet).

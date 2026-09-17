@@ -64,7 +64,7 @@ describe.each(ADAPTERS)('runtime getSSRProps form-state ($name)', ({ z, useForm 
     })
     // Vue's server renderer routes a `value` prop on a <textarea> to its
     // text content (the spec'd way to seed a textarea), not a `value=`
-    // attribute — so the seeded value rides along as content, no flash.
+    // attribute: so the seeded value rides along as content, no flash.
     expect(html).toContain('hello world</textarea>')
   })
 

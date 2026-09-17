@@ -22,7 +22,7 @@ import { fakeSchema } from '../utils/fake-schema'
  *      `injectForm<F>()`, which resolves through `provide`/
  *      `inject` and doesn't touch the registry's key space.
  *   3. SSR/hydration remains deterministic because `useId()` is
- *      positional — the server and client trees allocate matching
+ *      positional: the server and client trees allocate matching
  *      ids at the same tree location.
  */
 
@@ -77,7 +77,7 @@ describe('anonymous useForm — ambient injectForm access', () => {
 
     const Child = defineComponent({
       setup() {
-        // Ambient mode — no key passed, resolves via `inject(kFormContext)`.
+        // Ambient mode: no key passed, resolves via `inject(kFormContext)`.
         captured.consumer = injectForm<Form>()
         return () => h('span', 'child')
       },
@@ -107,13 +107,13 @@ describe('anonymous useForm — ambient injectForm access', () => {
 
 describe('anonymous useForm — ambient-overwrite dev warning', () => {
   // Two useForm calls in the same component overwrite each other's
-  // ambient provide (Vue's provide/inject semantics — last write
+  // ambient provide (Vue's provide/inject semantics, last write
   // wins). Under the optional-key contract the path of least resistance
   // (two anonymous forms in one parent) hits this footgun, so the
   // runtime emits a dev-mode warning.
   //
-  // The warning fires LAZILY from injectForm<F>() (no key) — not
-  // eagerly from useForm() — so components with multiple forms but no
+  // The warning fires LAZILY from injectForm<F>() (no key): not
+  // eagerly from useForm(): so components with multiple forms but no
   // keyless consumer stay quiet. The eager version spammed on dev /
   // spike pages that piled forms into one component intentionally.
   let warnSpy: ReturnType<typeof vi.spyOn>
@@ -173,7 +173,7 @@ describe('anonymous useForm — ambient-overwrite dev warning', () => {
   })
 
   it('lists source frames rather than synthetic atta:anon keys', () => {
-    // The synthetic `__atta:anon:<id>` keys carry no signal for authors —
+    // The synthetic `__atta:anon:<id>` keys carry no signal for authors,
     // they never typed them. The warning should show call sites (click-
     // through in DevTools) and stay silent about the anon-key space.
     const Child = defineComponent({
@@ -198,7 +198,7 @@ describe('anonymous useForm — ambient-overwrite dev warning', () => {
     expect(warnSpy).toHaveBeenCalledTimes(1)
     const message = String(warnSpy.mock.calls[0]?.[0] ?? '')
     expect(message.includes(ANONYMOUS_FORM_KEY_PREFIX)).toBe(false)
-    // Source frames are normalised to `<path>:<line>:<col>` — no
+    // Source frames are normalised to `<path>:<line>:<col>`: no
     // `at fn (URL:l:c)` wrapper, no `https://`/`http://` prefix, no
     // Vite/Nuxt `_nuxt/` dev-server segment. Click-through stays
     // available via console.warn's auto-rendered stack trace below
@@ -214,7 +214,7 @@ describe('anonymous useForm — ambient-overwrite dev warning', () => {
   })
 
   it('keyed siblings do NOT appear in the warning (they bypass the ambient slot)', () => {
-    // Keyed useForm() calls don't fill the ambient slot — they're
+    // Keyed useForm() calls don't fill the ambient slot: they're
     // addressable explicitly via injectForm('key'). They must not
     // appear in this warning, which is specifically about anonymous
     // ambient collisions.
@@ -241,7 +241,7 @@ describe('anonymous useForm — ambient-overwrite dev warning', () => {
     const message = String(warnSpy.mock.calls[0]?.[0] ?? '')
     expect(message).not.toContain('my-named-form')
     expect(message).not.toMatch(/\[key:/)
-    // Exactly two bullet lines — one per anonymous useForm. The keyed
+    // Exactly two bullet lines: one per anonymous useForm. The keyed
     // call is filtered out entirely.
     const bulletCount = (message.match(/^ {2}- /gm) ?? []).length
     expect(bulletCount).toBe(2)
@@ -382,12 +382,12 @@ describe('anonymous useForm — SSR determinism', () => {
         },
       })
 
-    // Server-side render — useId() draws from Vue's SSR id allocator.
+    // Server-side render, useId() draws from Vue's SSR id allocator.
     const serverApp = createSSRApp(App((api) => (serverApi = api)))
     serverApp.use(createAttaform())
     await renderToString(serverApp)
 
-    // Client-side mount of the same tree shape — useId() must match
+    // Client-side mount of the same tree shape, useId() must match
     // what the server produced so hydration can find the registry
     // entry. We simulate the client by creating a fresh app (new
     // registry, fresh id allocator) and confirming the same position
@@ -420,7 +420,7 @@ describe('reserved key namespace', () => {
       },
     })
     const app = createApp(App).use(createAttaform())
-    // The throw IS the test's signal — vitest captures it via
+    // The throw IS the test's signal, vitest captures it via
     // `.toThrow(...)`. Vue still emits a `[Vue warn]: Unhandled error
     // during execution of setup function` to stderr before re-throwing,
     // which makes CI output noisy and obscures real warnings in the

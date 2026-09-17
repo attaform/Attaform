@@ -42,11 +42,11 @@ describe('structuralSnapshot proto-less containers', () => {
 
     const snap = structuralSnapshot(source) as Record<string, unknown>
 
-    // Negative invariant — Object.prototype is unchanged.
+    // Negative invariant, Object.prototype is unchanged.
     const probe: Record<string, unknown> = {}
     expect(probe[SENTINEL]).toBeUndefined()
 
-    // Positive roundtrip — the snapshot carries the own-property
+    // Positive roundtrip: the snapshot carries the own-property
     // value through verbatim.
     const snapProtoSlot = snap['__proto__'] as Record<string, unknown>
     expect(snapProtoSlot).toBeDefined()

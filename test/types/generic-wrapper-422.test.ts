@@ -109,7 +109,7 @@ describe('#422 — generic form wrappers forwarding defaultValues', () => {
 
   it('preserves the intentional defaultValues widening (input shape, not parsed)', () => {
     function _neverInvoked() {
-      // z.email() input is `string`; an invalid-but-string default is accepted —
+      // z.email() input is `string`; an invalid-but-string default is accepted,
       // defaultValues reflects an in-progress form, sharp types land at submit.
       useFormV4({
         schema: z.object({ email: z.email() }),

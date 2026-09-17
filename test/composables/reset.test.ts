@@ -8,7 +8,7 @@ import type { UseFormReturn } from '../../src/zod'
 import { fakeSchema } from '../utils/fake-schema'
 
 /**
- * Runtime coverage for Phase 8.4 — reset() and resetField(path).
+ * Runtime coverage for Phase 8.4, reset() and resetField(path).
  *
  * Reset is the odd one out in the public API: it has to coordinate a
  * whole-form replacement, a rebuild of the originals baseline (so
@@ -108,7 +108,7 @@ describe('useForm — reset()', () => {
     // Reset with a new baseline.
     form.reset({ email: 'baseline@example.com' })
     expect(form.meta.dirty).toBe(false)
-    // Mutating back to the schema default is now a dirtying move — the
+    // Mutating back to the schema default is now a dirtying move: the
     // new baseline is the constrained value, not the original schema default.
     form.setValue('email', '')
     expect(form.meta.dirty).toBe(true)
@@ -203,7 +203,7 @@ describe('useForm — resetField(path)', () => {
     // here, since the schema declares no `''` field).
     form.resetField('')
 
-    // The global bucket and the named field are both untouched — `''`
+    // The global bucket and the named field are both untouched, `''`
     // is neither's home.
     expect(form.meta.ownErrors).toHaveLength(1)
     expect(form.values.email).toBe('kept@example.com')
@@ -261,7 +261,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     const mountedErrorCount = form.meta.errors.length
     expect(mountedErrorCount).toBeGreaterThan(0)
 
-    // User types something (still invalid — under min length / not
+    // User types something (still invalid, under min length / not
     // an email yet). The exact intermediate state doesn't matter;
     // what matters is what reset() produces below.
     form.setValue('name', 'x')
@@ -273,7 +273,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     expect(form.fields.name.valid).toBe(false)
     expect(form.fields.email.valid).toBe(false)
     expect(form.meta.valid).toBe(false)
-    // Error count after reset matches what mount produced — same
+    // Error count after reset matches what mount produced, same
     // defaults, same validation verdict.
     expect(form.meta.errors.length).toBe(mountedErrorCount)
   })
@@ -318,7 +318,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     expect(form.values.name).toBe('xx')
     expect(form.fields.name.valid).toBe(false)
 
-    // Arm (b): fully-valid payload — every required field satisfied.
+    // Arm (b): fully-valid payload: every required field satisfied.
     form.reset({ name: 'Alice', email: 'a@example.com' })
     expect(form.meta.errors).toEqual([])
     expect(form.meta.valid).toBe(true)
@@ -371,13 +371,13 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
 
     // Mount: pickup + delivery container fields are INVALID because
     // their descendant line1/city/region defaults are empty. Use the
-    // call-form (`form.fields('path')`) for container reads — the
+    // call-form (`form.fields('path')`) for container reads: the
     // property-access form descends to leaves only.
     expect(form.fields('pickup').valid).toBe(false)
     expect(form.fields('delivery').valid).toBe(false)
 
     // Snapshot the mount-time validity so we can assert post-reset
-    // matches exactly. Capture descendant values too — the
+    // matches exactly. Capture descendant values too: the
     // `aggregateErrorsAt` filter drops errors at paths that don't
     // exist in `form.value`, so any post-reset disappearance of the
     // descendant keys (line1 / city / region absent from
@@ -404,7 +404,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
       typeof form.values.pickup.region === 'string'
     expect(postResetDescendantsExist).toBe(true)
 
-    // Error count after reset must match mount exactly — same
+    // Error count after reset must match mount exactly, same
     // defaults, same validation verdict.
     expect(form.meta.errors.length).toBe(mountedErrorCount)
 
@@ -415,7 +415,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     expect(form.fields('delivery').valid).toBe(false)
 
     // CRITICAL no-flash property: errors must be populated
-    // SYNCHRONOUSLY by reset() — not on a deferred microtask. If
+    // SYNCHRONOUSLY by reset(): not on a deferred microtask. If
     // they only arrive async, the UI flashes "valid" between reset
     // and the async pass settling (the docs-site wizard turns
     // green for ~600ms before going back to red). Pin that the
@@ -473,10 +473,10 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     // dump):
     //
     //   BEFORE      : pickup.valid=false (5 errors from mount async pass)
-    //   AFTER sync  : pickup.valid=TRUE  (0 errors, flash window — BUG)
+    //   AFTER sync  : pickup.valid=TRUE  (0 errors, flash window, BUG)
     //   AFTER +1.5s : pickup.valid=false (5 errors, async pass landed)
     //
-    // The window is ~600ms–1.5s in real browsers — long enough for
+    // The window is ~600ms–1.5s in real browsers, long enough for
     // the user to read step titles flipping green and even click
     // Next.
     //
@@ -489,8 +489,8 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     //     calls `rootSchema.safeParse(data)` which THROWS when the
     //     schema contains an always-running async refine (the
     //     demo's `cargo.items.superRefine(async ...)`). The
-    //     adapter's catch falls through to async-only — returns
-    //     Promise — and the library's sync-validate skips.
+    //     adapter's catch falls through to async-only, returns
+    //     Promise, and the library's sync-validate skips.
     //
     // So `schemaErrors` stays empty between sync reset() return and
     // the re-queued async pass landing. The ONLY thing keeping
@@ -505,7 +505,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     const { z } = await import('zod')
 
     // Schema with an async refine whose precondition (sync .email
-    // check) is ALWAYS satisfied by the defaults — so the async
+    // check) is ALWAYS satisfied by the defaults: so the async
     // refine runs at mount, produces an error, and forces safeParse
     // to throw on every subsequent sync pass. Mirrors the property
     // pinned by `initial-validation-seed.test.ts` for the
@@ -533,7 +533,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     const form = captured
 
     // Mount's construction-time async pass populates the refine
-    // error and flips firstValidationDone to `true` — the
+    // error and flips firstValidationDone to `true`: the
     // precondition for the bug.
     await waitUntil(() => (form.meta.errors.length > 0 ? true : null))
     expect(form.fields.email.valid).toBe(false)
@@ -552,8 +552,8 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     // `.refine(async lookupPostalCode)` (async). At MOUNT the sync
     // pass populates `.min(3)` errors AND a queued async pass
     // populates `.refine` errors. Reset() must re-queue the async
-    // pass too — otherwise async-only verdicts vanish post-reset
-    // (the live-demo "step titles flip green" bug — sync errors
+    // pass too, otherwise async-only verdicts vanish post-reset
+    // (the live-demo "step titles flip green" bug, sync errors
     // didn't exist in the demo's defaults; the only thing making the
     // form invalid was the async refines that mount surfaced).
     //
@@ -592,7 +592,7 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
 
     form.reset()
     // Async re-queue lands on the next microtask. The error should
-    // come back without any user input — same property
+    // come back without any user input, same property
     // `initial-validation-seed.test.ts` pins at mount.
     const postResetErr = await waitUntil(() => form.errors.email?.[0]?.message ?? null)
     expect(postResetErr).toBe('That email is already registered.')

@@ -1,5 +1,5 @@
 /**
- * Bundled-types regression fixture for #422 — generic form wrapper, Zod v3
+ * Bundled-types regression fixture for #422, generic form wrapper, Zod v3
  * consumer (single-major install). Compiled with `zod` remapped to a v3
  * install via the sibling tsconfig's `paths`, recreating what a consumer who
  * installs only `zod@3` sees through the bundled `.d.mts` of both the unified
@@ -9,7 +9,7 @@
  * Guards full v3 parity for the generic-wrapper fix: a helper that takes a
  * schema `S` and forwards `z.input<S>` as `defaultValues` must compile under
  * the bundled `.d.ts` (no TS2769 / TS2589) AND keep field inference. The
- * in-repo type test can't represent this — the repo installs both majors — so
+ * in-repo type test can't represent this, the repo installs both majors, so
  * this single-major fixture is the real v3 guard.
  *
  * `_neverInvoked` shapes call-site inference without a Vue app context.
@@ -42,8 +42,8 @@ function _neverInvoked() {
   type _DEmail = Expect<Equal<typeof direct.values.email, string>>
   type _DAge = Expect<Equal<typeof direct.values.age, number>>
 
-  // Concrete rejection is asserted in `test/types/generic-wrapper-422.test.ts`
-  // — see the v4 fixture for why it is not re-checked here. This fixture stays
+  // Concrete rejection is asserted in `test/types/generic-wrapper-422.test.ts`,
+  // see the v4 fixture for why it is not re-checked here. This fixture stays
   // focused on proving the v3 generic wrappers compile against the bundled
   // `.d.ts` (the single-major guard the in-repo type test cannot represent).
 

@@ -9,9 +9,9 @@ import type { AbstractSchema } from '../../src/runtime/types/types-api'
  * publish it as a contract for consumers to implement.
  *
  * This is enumeration drift, the shape that has now bitten three times
- * in the docs (`DisplayCtx`, `FormStatus`, and this). Four methods
- * — `getEmptyValueAtPath`, `isPreprocessOrCoerceLeaf`,
- * `isFixedObjectAtPath`, `entryKeyKindAtPath` — were added to the type
+ * in the docs (`DisplayCtx`, `FormStatus`, and this). Four methods,
+ * `getEmptyValueAtPath`, `isPreprocessOrCoerceLeaf`,
+ * `isFixedObjectAtPath`, `entryKeyKindAtPath`, were added to the type
  * and to the pages' worked example, while the pages' CONTRACT BLOCK
  * and its "twelve required methods" count stayed where they were. A
  * consumer implementing from the block got a type error naming four

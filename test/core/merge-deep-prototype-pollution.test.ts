@@ -32,13 +32,13 @@ describe('mergeDeep proto-less default-value derivation', () => {
 
   it('keeps Object.prototype clean despite a __proto__ override own property', () => {
     const base = { name: 'base' }
-    // JSON.parse promotes `__proto__` to an own data property — the
+    // JSON.parse promotes `__proto__` to an own data property: the
     // shape an adapter-side default carries when the constraint
     // layer rounds through serialised form.
     const override = JSON.parse(`{"__proto__":{"${SENTINEL}":"polluted"},"name":"override"}`)
     const merged = mergeDeep(base, override) as Record<string, unknown>
 
-    // Negative invariant — Object.prototype is unchanged.
+    // Negative invariant, Object.prototype is unchanged.
     const probe: Record<string, unknown> = {}
     expect(probe[SENTINEL]).toBeUndefined()
 

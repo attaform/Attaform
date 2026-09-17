@@ -3,7 +3,7 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * Wrapper-handling regressions for the v3 adapter — bounded peel
+ * Wrapper-handling regressions for the v3 adapter, bounded peel
  * recursion, transparent peel for newer wrapper kinds, and
  * ZodCatch fallback preservation.
  *
@@ -161,7 +161,7 @@ describe('zod v3 adapter — ZodCatch fallback', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({ useDefaultSchemaValues: false })
     // Aligned with v4 (size-teardown P7): `useDefaultSchemaValues:
-    // false` means "show the leaf empty" — `.catch()` is a
+    // false` means "show the leaf empty", `.catch()` is a
     // default-like wrapper, so the inner leaf's bare empty wins.
     expect((result.data as { handle: string }).handle).toBe('')
   })
@@ -190,7 +190,7 @@ describe('zod v3 adapter — symbol-segment coercion in ValidationError.path', (
       handle: z.string().superRefine((value, ctx) => {
         if (value.length === 0) {
           ctx.addIssue({
-            // Using `as never` to pass the Symbol past the type check —
+            // Using `as never` to pass the Symbol past the type check,
             // this mimics what a misbehaving custom check would do.
             path: [symbolKey as never],
             code: z.ZodIssueCode.custom,

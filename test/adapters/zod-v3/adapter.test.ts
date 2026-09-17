@@ -124,7 +124,7 @@ describe('zod v3 adapter — getDefaultValues', () => {
   // instead.
 
   it('z.lazy(...) descends into the lazy target for the default', () => {
-    // Non-recursive lazy — the wrapper is transparent, so the default
+    // Non-recursive lazy: the wrapper is transparent, so the default
     // should match the inner schema's empty object. (Recursive z.lazy
     // patterns work too, but their generic typing on the inner shape
     // doesn't survive `z.ZodType<T>` without conditional unwrapping

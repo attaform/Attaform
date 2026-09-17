@@ -112,7 +112,7 @@ describe('whole-form setValue from inside a deep watch', () => {
         if (handlerFires > 50) {
           throw new Error('infinite loop detected — handler fired >50 times')
         }
-        // Path-form setValue at the sibling — does this loop?
+        // Path-form setValue at the sibling, does this loop?
         api.setValue('delivery', { ...api.values.pickup })
       },
       { deep: true }

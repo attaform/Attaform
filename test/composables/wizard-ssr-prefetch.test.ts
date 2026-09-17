@@ -12,7 +12,7 @@ import {
 } from '../../src/runtime/core/registry'
 
 /**
- * Wizard SSR prefetch — the v2 contract.
+ * Wizard SSR prefetch: the v2 contract.
  *
  * On the server, the wizard enqueues the initial step's form for
  * prefetch (so its async `defaultValues` resolves inside

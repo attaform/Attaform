@@ -9,17 +9,17 @@
  *   form-state  getSSRFormStateProps   value / checked / selected emission.
  *               Type-dispatches on the vnode, then reads displayValue (text)
  *               or innerRef (checkbox/radio). Runtime (h() / withDirectives)
- *               path ONLY — compiled templates inject the binding at compile
+ *               path ONLY, compiled templates inject the binding at compile
  *               time, so this is the runtime-path UPPER BOUND on value cost.
  *   aria        getSSRAriaProps        aria-invalid / -describedby emission.
  *               Gated on ariaEnabled (autoAria); when on, reads
- *               ariaDisplayState.value — ONE display-engine recompute per
- *               field — then a fixed MANAGED_ARIA_ATTRS loop. Shared by BOTH
+ *               ariaDisplayState.value: ONE display-engine recompute per
+ *               field, then a fixed MANAGED_ARIA_ATTRS loop. Shared by BOTH
  *               SSR paths (compiled + runtime), so this is the dominant
  *               Attaform-added per-field SSR cost regardless of authoring style.
  *
  * FOUR CELLS isolate each layer (init + Vue's own F-input render cancel in the
- * deltas — they are identical across modes):
+ * deltas: they are identical across modes):
  *
  *   noreg            F inputs, NO register() and NO directive.
  *                    Floor: useForm init + Vue's plain SSR render only.
@@ -38,7 +38,7 @@
  *   register-aria - noreg    = total Attaform per-field SSR cost (wire + emit).
  *
  * The display engine at SSR computes 'idle' for a fresh form (gate closed: no
- * submit, no blur), so it emits no aria-invalid — but it RUNS regardless, and
+ * submit, no blur), so it emits no aria-invalid, but it RUNS regardless, and
  * that run is the one reducible-looking slice. It is constrained: the server
  * aria must match the client's post-hydration output byte-for-byte, so skipping
  * the engine risks an SSR/hydration mismatch. See PERF-ANALYSIS.md "P5".

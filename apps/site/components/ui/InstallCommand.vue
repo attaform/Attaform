@@ -3,7 +3,7 @@
 
   // Self-contained install card: title + manager picker + copy-
   // able command + quick-start link. Used on the homepage hero,
-  // the /docs landing banner, and the bottom CTA — three consumers
+  // the /docs landing banner, and the bottom CTA, three consumers
   // that all want the same affordance, so it's a single component
   // rather than a primitive.
   //
@@ -47,7 +47,7 @@
       try {
         localStorage.setItem(STORAGE_KEY, m)
       } catch {
-        // ignore — same private-mode reasoning as above
+        // ignore, same private-mode reasoning as above
       }
     }
   }

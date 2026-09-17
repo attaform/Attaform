@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  // OG card template — Vue → Satori → 1200×630 PNG, generated at
+  // OG card template, Vue → Satori → 1200×630 PNG, generated at
   // build time by nuxt-og-image. Every prerendered route gets a
   // unique card with the page's title + description, dropped at
   // /__og-image__/<route>/og.png and threaded into <meta
@@ -9,7 +9,7 @@
   // float, no inline-block); every element with children must set
   // `display: flex`; no text-shadow / decoration / line-height
   // tricks beyond plain numerics. The styles below stay inside that
-  // envelope on purpose — anything fancier would render at build but
+  // envelope on purpose, anything fancier would render at build but
   // misalign or drop at parse time when Satori's parser hits a
   // declaration it doesn't recognize.
   //

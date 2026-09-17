@@ -74,7 +74,7 @@ describe('form.meta.errorCount', () => {
     apps.push(app)
     await waitUntil(() => api.meta.errorCount === 2)
 
-    // Drive validation by submitting — re-runs the whole schema and
+    // Drive validation by submitting, re-runs the whole schema and
     // re-sorts the aggregate. The invariant `errorCount === errors.length`
     // must hold at every reactive frame, regardless of WHICH path
     // triggers the recomputation.

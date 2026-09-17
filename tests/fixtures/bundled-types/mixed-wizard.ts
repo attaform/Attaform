@@ -15,15 +15,15 @@
  *     per-form), `currentKey`, `isFinal`.
  *   - Namespaced aggregation: `wizard.allValues`, `wizard.allErrors`,
  *     `wizard.forms.<key>`.
- *   - Navigation handles: `next` / `back` / `goTo` / `tryNext` / `reset`
- *     — including the `(key: string) => void` signature on `goTo` and the
+ *   - Navigation handles: `next` / `back` / `goTo` / `tryNext` / `reset`,
+ * including the `(key: string) => void` signature on `goTo` and the
  *     `() => Promise<boolean>` gated advance on `tryNext`.
  *   - Other v2 fields: `currentStep`, `activeForm`, `activeIndex`,
  *     `isFinalStep`, `steps`, `count`, `canAdvance`, `canGoBack`,
  *     `complete`, `submitting`, `submissionAttempts`, `visited`,
  *     `progress`.
  *
- * The fixture is never executed at runtime — `_neverInvoked` shapes the
+ * The fixture is never executed at runtime, `_neverInvoked` shapes the
  * call-site inference so the typechecker exercises each surface
  * end-to-end without needing a Vue app context.
  */
@@ -89,7 +89,7 @@ function _neverInvoked() {
       void [key, final, email, password, allByKey]
     },
     (errors) => {
-      // onError receives the aggregate list — same shape as
+      // onError receives the aggregate list, same shape as
       // `wizard.allErrors[key]`.
       const count: number = errors.length
       void count
@@ -110,7 +110,7 @@ function _neverInvoked() {
   const loginPasswordViaWizard: string = loginHandleViaWizard.values.password
   void [loginHandleViaWizard, loginEmailViaWizard, loginPasswordViaWizard]
 
-  // Affordance step slots (string slots) resolve to AnyForm — the noop
+  // Affordance step slots (string slots) resolve to AnyForm: the noop
   // form is opaque at the type level, so consumers don't get a fields
   // surface to drill, which matches the no-data-collection intent.
   const welcomeNoop = wizard.forms.welcome

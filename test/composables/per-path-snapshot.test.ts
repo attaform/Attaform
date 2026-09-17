@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 /**
- * PASS2-S3 — the form-wide `pathSnapshots` `let` was
+ * PASS2-S3: the form-wide `pathSnapshots` `let` was
  * overwritten by whichever field's run committed last and was
  * compared whole-form in the blur-dedup. Two real consequences:
  *   - a programmatic edit to sibling B (between A blurs) made
  *     the dedup see "form changed" and SPURIOUSLY re-ran A's
  *     validation even though A's value never moved;
  *   - once CORE-P1a's subtree scope lands, a commit at B no
- *     longer validates A — but the shared snapshot would still
+ *     longer validates A, but the shared snapshot would still
  *     advance, leaving A's dedup falsely skipping a real
  *     re-validation it needed.
  *
@@ -16,7 +16,7 @@
  * the closest ancestor entry and extracts the subtree-at-path
  * from it for comparison. Under whole-form scope (today) every
  * commit lands at the root key, so all blurs share a single
- * entry — equivalent to the old `let`. Per-path keeps the
+ * entry, equivalent to the old `let`. Per-path keeps the
  * design correct under both scopes.
  *
  * Red-green: programmatic `setValue('b', …)` between A blurs
@@ -122,7 +122,7 @@ describe.each(adapters)('per-path snapshot — $name', ({ useForm, build }) => {
     const runsAfterFirstBlur = runs()
     expect(runsAfterFirstBlur).toBeGreaterThan(0)
 
-    // Programmatic edit to sibling B — blur-mode forms don't schedule
+    // Programmatic edit to sibling B, blur-mode forms don't schedule
     // a validation on setValue, so no commit happens and the snapshot
     // is left wherever the first blur put it. Today's whole-form
     // diff would catch B's edit at root scope and revalidate A

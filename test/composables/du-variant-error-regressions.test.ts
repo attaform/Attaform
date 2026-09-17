@@ -44,7 +44,7 @@ const profileSchema = z.object({
   ]),
 })
 
-// Loose API type — these tests cross variants via setValue, which
+// Loose API type, these tests cross variants via setValue, which
 // the strict inferred type doesn't permit (variant-only keys aren't
 // in the WriteShape). The runtime accepts the calls; we widen the
 // surface here so each call site doesn't need a per-line cast.
@@ -75,7 +75,7 @@ function mount(
         // Disable debouncing so the test sees the schema's verdict on
         // the same tick as the write. Behaviour under test (error-
         // keying after reshape, blank-mark round-trip, recursion)
-        // doesn't depend on the debounce — it depends on what
+        // doesn't depend on the debounce: it depends on what
         // schema-validation does to the stores once it runs.
         validateOn: 'change',
         debounceMs: 0,
@@ -110,7 +110,7 @@ describe('DU variant switch — error materialisation regressions', () => {
     })
     apps.push(app)
 
-    // Switch to sms — number is empty, .min(7) fails. The reshape
+    // Switch to sms, number is empty, .min(7) fails. The reshape
     // triggers scheduleFieldValidation at the DU container path
     // ['notify']. Expectation: errors land keyed at the leaf path
     // ['notify','number'] so the materialised tree is
@@ -153,7 +153,7 @@ describe('DU variant switch — error materialisation regressions', () => {
       return drilled && drilled.length === 1 ? true : null
     })
 
-    // Dot-access path — same store lookup as the callable form.
+    // Dot-access path, same store lookup as the callable form.
     const drilled = (api.errors as unknown as { notify: { number?: ValidationError[] } }).notify
       .number
     expect(drilled).toHaveLength(1)
@@ -183,13 +183,13 @@ describe('DU variant switch — error materialisation regressions', () => {
     )
     expect(addressBefore?.[0]?.code).toMatch(/zod:/)
 
-    // Switch to sms — re-validation runs at `['notify']`. The stale
+    // Switch to sms, re-validation runs at `['notify']`. The stale
     // `notify.address` schemaErrors entry must clear (active-path
     // filter would also hide it from `form.errors`, but the store
     // entry itself should not survive the re-validation either, or
     // `form.meta.errors` will leak it).
     api.setValue('notify.channel', 'sms')
-    // Wait for the new variant's leaf error (notify.number) to land —
+    // Wait for the new variant's leaf error (notify.number) to land,
     // that's the positive signal the re-validation pass has completed.
     // A predicate on `errs === undefined` would never resolve because
     // the active-path filter returns `[]`, not undefined.
@@ -198,7 +198,7 @@ describe('DU variant switch — error materialisation regressions', () => {
       return errs?.[0]?.code?.startsWith('zod:') ? true : null
     })
 
-    // The stale leaf entry must NOT show up anywhere — not in the
+    // The stale leaf entry must NOT show up anywhere: not in the
     // active-path-filtered surface, not in the unfiltered aggregate.
     const addressAfter = (api.errors as unknown as (p: string) => ValidationError[])(
       'notify.address'
@@ -214,7 +214,7 @@ describe('DU variant switch — error materialisation regressions', () => {
   it('email→sms→email round-trip preserves the blank-mark on notify.address (unset at mount)', async () => {
     // Construction-time blank: notify.address is `unset`, surfacing a
     // derived "No value supplied" for the required string. The mark
-    // belongs to the consumer's intent — round-tripping through sms
+    // belongs to the consumer's intent, round-tripping through sms
     // and back to email must not silently clear it.
     const { app, api } = mount({
       name: 'Ada',
@@ -229,11 +229,11 @@ describe('DU variant switch — error materialisation regressions', () => {
     const initial = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
     expect(initial?.some((e) => e.code === 'atta:no-value-supplied')).toBe(true)
 
-    // Switch to sms — address is no longer in the active variant.
+    // Switch to sms, address is no longer in the active variant.
     api.setValue('notify.channel', 'sms')
     await waitUntil(() => (api.values.notify?.channel === 'sms' ? true : null))
 
-    // Switch back — variant memory should restore `address` AND the
+    // Switch back, variant memory should restore `address` AND the
     // construction-time `unset` intent (preserved as blankPaths
     // membership). The derived blank error must reappear.
     api.setValue('notify.channel', 'email')

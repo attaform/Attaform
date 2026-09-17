@@ -49,7 +49,7 @@ const SKILL_FILE = 'skills/attaform/SKILL.md'
  * Phrases that introduce the COMPLEMENT of the manifest: "everything
  * else stays an explicit import", and the names that follow. A positive
  * enumeration and its complement drift in opposite directions, and only
- * the positive one was pinned — so when `useRegister` joined the manifest
+ * the positive one was pinned: so when `useRegister` joined the manifest
  * in #573, `ssr-nuxt.md` gained it in the auto-import sentence and kept
  * it in the explicit-import sentence eight lines below, contradicting
  * itself on the same page. A manifest name on one of these lines is

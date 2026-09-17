@@ -13,7 +13,7 @@ import { getNestedZodSchemasAtPath } from '../../../src/runtime/adapters/zod-v4/
 import { slimPrimitivesOf } from '../../../src/runtime/adapters/zod-v4/slim-primitives'
 
 /**
- * `maxRecursionDepth` caps descent through `z.lazy()` only — the
+ * `maxRecursionDepth` caps descent through `z.lazy()` only: the
  * counter bumps when the walker crosses a lazy boundary and is
  * NOT incremented for plain structural recursion (object → object,
  * array element, wrapper stacks like `.optional().nullable()`,
@@ -26,13 +26,13 @@ import { slimPrimitivesOf } from '../../../src/runtime/adapters/zod-v4/slim-prim
  * (`DEFAULT_MAX_RECURSION_DEPTH`, 64), so a walker that bumped the
  * counter on non-lazy recursion (the original slim-primitives code
  * did) would gate writes and defaults on any schema nested deeper
- * than 64 — plain structural nesting, no recursion involved.
+ * than 64, plain structural nesting, no recursion involved.
  */
 describe('maxRecursionDepth — counter bumps on lazy only', () => {
   describe('slimPrimitivesOf', () => {
     it('a 6-deep wrapper stack resolves correctly at maxRecursionDepth=0', () => {
-      // `.optional().nullable().default('x').readonly().catch('y').optional()`
-      // — six nested wrappers, no lazy. Cap=0 must not bail.
+      // `.optional().nullable().default('x').readonly().catch('y').optional()`,
+      // six nested wrappers, no lazy. Cap=0 must not bail.
       const schema = z
         .string()
         .optional()
@@ -42,7 +42,7 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
         .catch('y' as never)
         .optional()
       const kinds = slimPrimitivesOf(schema, 0)
-      // The leaf type (string) must be in the set — bailing to PERMISSIVE
+      // The leaf type (string) must be in the set, bailing to PERMISSIVE
       // would also include 'string' but would also include 'object',
       // 'array', etc. Test by asserting the optional-wrapper marker too:
       // a correctly-walked wrapper stack accumulates 'undefined' and
@@ -68,11 +68,11 @@ describe('maxRecursionDepth — counter bumps on lazy only', () => {
 
     it('a single lazy crossing bails at maxRecursionDepth=0', () => {
       // Trivial non-recursive lazy. Cap=0 means "no lazy crossings
-      // allowed" — the walker bails immediately to PERMISSIVE.
+      // allowed": the walker bails immediately to PERMISSIVE.
       const inner = z.object({ name: z.string() })
       const lazy = z.lazy(() => inner)
       const kinds = slimPrimitivesOf(lazy, 0)
-      // Permissive fallback — includes the entire kind set.
+      // Permissive fallback, includes the entire kind set.
       expect(kinds.size).toBeGreaterThan(8)
     })
 

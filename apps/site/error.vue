@@ -3,7 +3,7 @@
   import type { NuxtError } from '#app'
 
   // Nuxt convention: this file handles every error the framework
-  // throws at the page level — 404s primarily, but also 500s if any
+  // throws at the page level, 404s primarily, but also 500s if any
   // SSR handler explodes. Distinguish the two so a missing page
   // reads as friendly ("wandered off") and a real failure doesn't
   // hide behind that copy. The error prop is provided by Nuxt and
@@ -22,7 +22,7 @@
 
   // The GitHub issue link prefills enough context that a maintainer
   // can chase down the broken inbound link without prying for details.
-  // It's only shown for genuine 404s — a 500 is our bug, not a docs
+  // It's only shown for genuine 404s: a 500 is our bug, not a docs
   // typo.
   const issueUrl = computed(() => {
     const title = encodeURIComponent('Broken docs link')

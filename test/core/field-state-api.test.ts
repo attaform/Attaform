@@ -23,7 +23,7 @@ function makeAccessor() {
   // `test/composables/display-state.test.ts` where a real form is
   // mounted with the production code path. The cast bypasses the
   // full `FormMetaBase` shape (would require duplicating every
-  // FieldState field) — fine for a test stub that's barely read.
+  // FieldState field), fine for a test stub that's barely read.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
   return {
@@ -37,7 +37,7 @@ function makeAccessor() {
   }
 }
 
-// Arm (or reuse) the store's DOM binding — the element registry the
+// Arm (or reuse) the store's DOM binding: the element registry the
 // field-state accessors read through.
 function armed(state: ReturnType<typeof makeAccessor>['state']) {
   return (state.domBinding.value ??= createDomBinding(state))
@@ -116,7 +116,7 @@ describe('buildFieldStateAccessor', () => {
 
   // Per-field `validating` is driven by the FormStore's
   // `fieldValidationCounts` reactive Map. These tests poke the map
-  // directly (the unit-of-work for the accessor) — see
+  // directly (the unit-of-work for the accessor), see
   // `test/composables/async-validation.test.ts` for the integration
   // path through `scheduleFieldValidation`.
   describe('validating', () => {
@@ -133,7 +133,7 @@ describe('buildFieldStateAccessor', () => {
       state.fieldValidationCounts.set(emailKey, 1)
       expect(s.value.validating).toBe(true)
       state.fieldValidationCounts.set(emailKey, 0)
-      // 0 is treated as "not validating" — and the production helpers
+      // 0 is treated as "not validating", and the production helpers
       // delete the key at zero, but reading via `.get(key) ?? 0`
       // covers either shape.
       expect(s.value.validating).toBe(false)
@@ -273,7 +273,7 @@ describe('buildFieldStateAccessor', () => {
 })
 
 // Per-path memoisation guarantees that consumers reading the same
-// path multiple times share the same `ComputedRef` — Vue's
+// path multiple times share the same `ComputedRef`, Vue's
 // dependency tracking then accumulates one subscription per path,
 // not one per read.
 describe('buildFieldStateAccessor — per-path memoisation', () => {
@@ -299,7 +299,7 @@ describe('buildFieldStateAccessor — per-path memoisation', () => {
   })
 })
 
-// Container aggregation — `getFieldState(containerPath)` returns
+// Container aggregation, `getFieldState(containerPath)` returns
 // disjunction-aggregated event-presence (focused / dirty / touched
 // / validating) and conjunction-aggregated absence/uniformity
 // (pristine / valid / blank). Errors concat. updatedAt is the max

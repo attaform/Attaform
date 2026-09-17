@@ -150,7 +150,7 @@ describe('createFormStore', () => {
     })
 
     it('newly-added paths (post-init) compare against undefined as their original', () => {
-      // Dynamic fields — e.g. an `append('posts', {...})` call introducing
+      // Dynamic fields, e.g. an `append('posts', {...})` call introducing
       // a new array index, or a `setValue` on a path the schema didn't
       // declare. The original is `undefined` (the path's pre-existence
       // state), not the just-set value, so the first appearance is

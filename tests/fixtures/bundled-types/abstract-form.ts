@@ -1,6 +1,6 @@
 /**
- * Bundled-types guard for the `attaform/abstract` entry — the
- * schema-agnostic escape hatch — through the published artifact the way
+ * Bundled-types guard for the `attaform/abstract` entry: the
+ * schema-agnostic escape hatch, through the published artifact the way
  * a custom-adapter consumer sees it.
  *
  * Pins against the bundled `dist/abstract.d.mts`:

@@ -5,8 +5,8 @@
  *
  * Yes, and that is why this file exists: the seeds surface through
  * `form.meta.valid` / `form.meta.errors` / `form.errors(path)` on the
- * very first render — a submit button bound to `meta.valid` renders
- * disabled on SSR first paint BECAUSE of the seed — even though the
+ * very first render: a submit button bound to `meta.valid` renders
+ * disabled on SSR first paint BECAUSE of the seed, even though the
  * per-field display gate keeps them out of the field UI
  * (`displayState` stays 'idle', `showErrors` false, until interaction).
  *
@@ -108,13 +108,13 @@ describe('construction-time sync-check seeds — first-paint visibility', () => 
     // But `meta.valid` is still false, and that is the part worth
     // knowing: a schema declaring async work is clamped invalid until
     // `firstValidationDone` whatever the seeds say. So the first-paint
-    // consequence the deletion was expected to have — a submit button
-    // bound to `meta.valid` rendering ENABLED on SSR and then disabling
-    // — does not happen. The async gate was already covering it, which
+    // consequence the deletion was expected to have: a submit button
+    // bound to `meta.valid` rendering ENABLED on SSR and then disabling,
+    // does not happen. The async gate was already covering it, which
     // means the strip walker's construction seed was buying a narrower
     // thing than it appeared to.
     expect(withAsync.meta.valid).toBe(false)
-    // Its async-free twin, same sync check, still seeds — so this is
+    // Its async-free twin, same sync check, still seeds: so this is
     // about the mixture, not about the check.
     const withoutAsync = mount(asyncFreeTwin(), 'seed-parity-sync')
     expect(withoutAsync.meta.valid).toBe(false)
@@ -137,7 +137,7 @@ describe('construction-time sync-check seeds — first-paint visibility', () => 
     const api = mount(asyncFreeTwin(), 'seed-gated')
     expect(api.fields('name')?.displayState).toBe('idle')
     expect(api.fields('name')?.showErrors).toBe(false)
-    // The same seed is simultaneously visible on the meta surface —
+    // The same seed is simultaneously visible on the meta surface,
     // that split is exactly why the seeds count as user-visible.
     expect(api.meta.valid).toBe(false)
   })

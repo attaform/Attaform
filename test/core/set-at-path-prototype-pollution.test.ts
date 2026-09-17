@@ -29,9 +29,9 @@
  * other key.
  *
  * Two invariants per case:
- *   1. No pollution — a fresh plain `{}` does NOT inherit any
+ *   1. No pollution: a fresh plain `{}` does NOT inherit any
  *      property the special-key write tried to plant.
- *   2. Positive roundtrip — `getAtPath` reads back the value at the
+ *   2. Positive roundtrip, `getAtPath` reads back the value at the
  *      declared path on the result.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -68,11 +68,11 @@ describe('setAtPath proto-less intermediates', () => {
   it("path ['__proto__', X] writes own property and leaves Object.prototype clean", () => {
     const root = setAtPath({}, ['__proto__', SENTINEL], 'attempted-pollution')
 
-    // Negative invariant — Object.prototype is unchanged.
+    // Negative invariant, Object.prototype is unchanged.
     const probe: Record<string, unknown> = {}
     expect(probe[SENTINEL]).toBeUndefined()
 
-    // Positive roundtrip — the value lands at the declared path. The
+    // Positive roundtrip: the value lands at the declared path. The
     // result's `__proto__` is an own property on a prototype-less
     // container, so reading walks the own property (NOT the inherited
     // accessor that would return Object.prototype).
@@ -127,7 +127,7 @@ describe('setAtPath proto-less intermediates', () => {
     expect(descriptor).toBeDefined()
     expect(descriptor?.value).toBeDefined()
     expect(descriptor?.enumerable).toBe(true)
-    // Container is a normal `Object.prototype`-backed record — the
+    // Container is a normal `Object.prototype`-backed record: the
     // own `__proto__` data property shadows the accessor for reads,
     // but `getPrototypeOf` reports the real chain.
     expect(Object.getPrototypeOf(root)).toBe(Object.prototype)
@@ -173,7 +173,7 @@ describe('setAtPath proto-less intermediates', () => {
  * The exposure is a key the target does not already own. A fixed object
  * schema that declares `__proto__` seeds the own data property at
  * construction, and from then on a plain `rec['__proto__'] = v` finds the
- * own slot and shadows the inherited accessor — which is why the defect
+ * own slot and shadows the inherited accessor: which is why the defect
  * survived a suite that only ever wrote to declared fields. `z.record`
  * is the case where the key is genuinely new on first write, and it
  * fails two different ways depending on the value's type:
@@ -225,7 +225,7 @@ describe('a __proto__ key round-trips through setValue', () => {
     expect(form.values('meta.__proto__')).toBe('written')
     // Asserted through the descriptor rather than a deep-equal against an
     // object literal, because `{ __proto__: 'written' }` in the EXPECTED
-    // literal sets the prototype instead of declaring a key — the same
+    // literal sets the prototype instead of declaring a key: the same
     // trap the code under test is about, one level up.
     const meta = (JSON.parse(JSON.stringify(form.values())) as Record<string, object>)['meta']
     expect(meta).toBeDefined()

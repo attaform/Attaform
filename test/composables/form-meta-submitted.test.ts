@@ -14,7 +14,7 @@ import { waitUntil } from '../utils/form-harness'
  * a failed submit (validation failure or callback rejection)
  * increments attempts but leaves `submitted` at `false`.
  *
- * `form.reset()` zeroes the submission surface — `submissionAttempts`,
+ * `form.reset()` zeroes the submission surface, `submissionAttempts`,
  * `submitted`, and `submitError` all return to their initial values.
  * Templates that want "the user has tried to submit" should read
  * `submissionAttempts > 0` directly.

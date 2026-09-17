@@ -4,7 +4,7 @@
 // if the seeded value is in the markup the browser parses BEFORE any
 // client JS runs (so there's no empty-then-fills-in flash) AND the
 // client hydrates that markup without a mismatch warning (a mismatch
-// forces Vue to re-render the subtree — its own kind of flash).
+// forces Vue to re-render the subtree, its own kind of flash).
 //
 // Both render paths carry the value, across both adapters:
 //   - runtime `h()` + `withDirectives`, through `getSSRProps`
@@ -108,7 +108,7 @@ describe.each(ADAPTERS)(
     async function assertNoFlashNoMismatch(Component: Vue.Component): Promise<void> {
       // SSR pass.
       const html = await renderToString(createSSRApp(Component).use(createAttaform()))
-      // The value is in the markup the browser parses — no empty first paint.
+      // The value is in the markup the browser parses: no empty first paint.
       expect(html).toContain('value="Acme PHA"')
 
       // Plant the SSR markup and confirm the parsed DOM carries the value
@@ -125,7 +125,7 @@ describe.each(ADAPTERS)(
       app.mount(root)
       await waitUntil(() => (root.querySelector('input')?.value === 'Acme PHA' ? true : null))
 
-      // No hydration-mismatch warning — the SSR markup and the client's
+      // No hydration-mismatch warning: the SSR markup and the client's
       // first render agree, so there's no corrective re-render flash.
       expect(hydrationMismatchWarnings()).toEqual([])
       // Value survives hydration.

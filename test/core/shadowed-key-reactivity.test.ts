@@ -13,7 +13,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * `test/core/shadowed-keys-safety.test.ts` proves value-FLOW: after a write,
  * a FRESH read of a shadowed leaf returns the new value. This suite proves
  * reactivity-FLOW: a reactive read PRIMED before the write must update AFTER
- * it (and a watcher must fire) — the property of a primed computed that the
+ * it (and a watcher must fire): the property of a primed computed that the
  * round-trip test cannot see (its reads are all first-access, so they compute
  * fresh regardless of whether any dependency fired).
  *
@@ -22,7 +22,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * and so establishes no per-property dependency. Pre-Bust-2 every write
  * re-referenced the root, so the coarse whole-`form`-ref dependency woke every
  * reader regardless of per-key tracking. Post-Bust-2 a leaf write mutates in
- * place and preserves root identity, so only fine-grained property deps fire —
+ * place and preserves root identity, so only fine-grained property deps fire,
  * which a shadowed leaf never registered.
  *
  * Both adapters: the write/read path is shared core, adapter-independent.
@@ -126,7 +126,7 @@ describe.each(ADAPTERS)('shadowed-key reactivity [$tag]', (a) => {
     const form = mount(a)
     const hop = form.toRef('hasOwnProperty')
     const stop = watch(hop, (next) => {
-      // Write-back on every shadowed-field change — the mirror pattern that
+      // Write-back on every shadowed-field change: the mirror pattern that
       // the coarse `triggerRef` must not turn into an infinite re-fire.
       form.setValue('email', `mirror:${String(next)}`)
     })
@@ -147,7 +147,7 @@ describe.each(ADAPTERS)('shadowed-key reactivity [$tag]', (a) => {
     form.setValue('hasOwnProperty', 'h1')
     await nextTick()
     // `triggerRef(form)` re-evaluates every field computed, but a computed
-    // that recomputes to the same value notifies no downstream watcher — the
+    // that recomputes to the same value notifies no downstream watcher: the
     // unrelated normal field must stay quiet.
     expect(emailFires).toBe(0)
     stop()

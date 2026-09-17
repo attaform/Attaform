@@ -5,7 +5,7 @@ import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-
 /**
  * Compile a template through @vue/compiler-core with the hint transform
  * registered, then assert against the generated render code string.
- * Source-level inspection — same posture as input-text-area.test.ts.
+ * Source-level inspection, same posture as input-text-area.test.ts.
  */
 function compileWithTransform(template: string): string {
   const result = baseCompile(template, {
@@ -41,7 +41,7 @@ describe('vRegisterHintTransform', () => {
     })
 
     it('wraps a dynamic-path register call (template literal)', () => {
-      // The transform doesn't inspect the path string — any expression
+      // The transform doesn't inspect the path string, any expression
       // returning a RegisterValue is wrapped uniformly.
       const code = compileWithTransform('<input v-register="form.register(`${prefix}.email`)" />')
       expect(code).toContain('markConnectedOptimistically')
@@ -55,7 +55,7 @@ describe('vRegisterHintTransform', () => {
     })
 
     it('does NOT match user props whose name contains "register" as a substring', () => {
-      // Exact directive-name match — `register-id` is a custom prop, not v-register.
+      // Exact directive-name match, `register-id` is a custom prop, not v-register.
       const code = compileWithTransform(`<input :data-register-id="'x'" />`)
       expect(code).not.toContain('markConnectedOptimistically')
     })
@@ -64,7 +64,7 @@ describe('vRegisterHintTransform', () => {
   describe('idempotency', () => {
     it('does not double-wrap when applied twice', () => {
       // Some bundler configurations register the same transform twice.
-      // The second pass must detect the marker and skip — otherwise
+      // The second pass must detect the marker and skip, otherwise
       // every render path would carry an arbitrarily deep IIFE chain.
       const result = baseCompile(`<input v-register="form.register('email')" />`, {
         nodeTransforms: [vRegisterHintTransform, vRegisterHintTransform],

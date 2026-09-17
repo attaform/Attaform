@@ -38,7 +38,7 @@ function attempt(action: () => void): void {
 // component-rendering pipeline and triggers two warnings:
 // "received a Component that was made a reactive object" and
 // "Component is missing template or render function". Stringifying
-// up front sidesteps both — toasts always render as text, with
+// up front sidesteps both, toasts always render as text, with
 // objects shown as pretty-printed JSON.
 //
 // JSON.stringify automatically invokes `toJSON` when present, so

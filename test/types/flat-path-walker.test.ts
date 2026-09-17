@@ -78,7 +78,7 @@ describe('RegisterFlatPath — leaf-only enumeration (no containers)', () => {
   it('skips container for nested object, emits only the leaf', () => {
     type Form = { user: { email: string } }
     type Paths = RegisterFlatPath<Form>
-    // The bare container path is NOT registrable — v-register binds onto
+    // The bare container path is NOT registrable, v-register binds onto
     // an `<input>` / `<select>` / `<textarea>` element backed by a leaf.
     expectTypeOf<Extract<Paths, 'user'>>().toEqualTypeOf<never>()
     expectTypeOf<Extract<Paths, 'user.email'>>().toEqualTypeOf<'user.email'>()
@@ -87,7 +87,7 @@ describe('RegisterFlatPath — leaf-only enumeration (no containers)', () => {
   it('emits root + indexed for primitive arrays (multi-select / multi-checkbox)', () => {
     type Form = { tags: string[] }
     type Paths = RegisterFlatPath<Form>
-    // Primitive arrays admit the array-root path — a `<select multiple>`
+    // Primitive arrays admit the array-root path: a `<select multiple>`
     // or grouped checkboxes register onto the array itself.
     expectTypeOf<Extract<Paths, 'tags'>>().toEqualTypeOf<'tags'>()
     expectTypeOf<Extract<Paths, `tags.${number}`>>().toEqualTypeOf<`tags.${number}`>()

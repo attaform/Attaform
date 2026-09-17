@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // DOM-flow integration tests for schema-driven coercion. Pairs with
-// the unit-level coverage in `test/core/schema-coerce.test.ts` —
+// the unit-level coverage in `test/core/schema-coerce.test.ts`,
 // these tests exercise the full path from user-driven DOM events
 // through the directive's assigner → transforms → coerce → write.
 //
@@ -84,7 +84,7 @@ describe('text input — numeric path', () => {
     input.value = ''
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (input.value === '' ? true : null))
-    // The path doesn't admit string — instead of letting the empty
+    // The path doesn't admit string, instead of letting the empty
     // string hit the assigner (where the gate would reject and the
     // post-write force-sync would snap the DOM back to '5'), the
     // directive routes through `markBlank`: storage lands on the slim
@@ -315,7 +315,7 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
   })
 
   // Bound `:true-value` (non-string) is exercised via templates +
-  // checkbox.test.ts directly — render-function `h()` doesn't reach
+  // checkbox.test.ts directly, render-function `h()` doesn't reach
   // Vue's `_trueValue` slot the same way the compiled template
   // path does. Verified end-to-end in spike.vue scenarios.
 
@@ -400,7 +400,7 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
     expect(api.values.accepted).toBe(false)
     expect(cb.checked).toBe(false)
 
-    // Toggle ON again — confirm the cycle is clean (no every-other-
+    // Toggle ON again, confirm the cycle is clean (no every-other-
     // click desync that the original report described).
     cb.checked = true
     cb.dispatchEvent(new Event('change', { bubbles: true }))
@@ -612,7 +612,7 @@ describe('el[assignKey] direct-install bypasses coerce', () => {
     // Pre-install the custom assigner BEFORE the directive's `created`
     // hook can install the default. We do this by supplying a hook on
     // the `Parent` component that inspects the rendered DOM and sets
-    // `el[assignKey]` on the input — Vue calls our directive's
+    // `el[assignKey]` on the input, Vue calls our directive's
     // `created` hook before our own `mounted`, but the assignKey
     // pre-install is observed by `setAssignFunction` via the
     // pre-install respect path.

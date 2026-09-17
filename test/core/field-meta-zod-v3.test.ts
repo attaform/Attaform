@@ -17,7 +17,7 @@ describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
   })
 
   it('returns a fresh schema clone (not the original) from withMeta', () => {
-    // withMeta clones first so each call gets distinct identity —
+    // withMeta clones first so each call gets distinct identity,
     // shields shared sub-schemas from the last-wins overwrite that
     // the schema-keyed registry would otherwise impose. The clone
     // round-trips its payload independently.
@@ -34,7 +34,7 @@ describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
 
   it('chained withMeta merges payloads through clones', () => {
     // Each withMeta returns a clone with the previous clone's
-    // payload merged in plus the new fields — chaining accumulates
+    // payload merged in plus the new fields, chaining accumulates
     // rather than replacing.
     const labeled = withMeta(z.string(), { label: 'Email' })
     const labeledAndDescribed = withMeta(labeled, { description: 'For login' })

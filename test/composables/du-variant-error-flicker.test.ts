@@ -10,7 +10,7 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * Visual flicker on DU variant switch: spike.vue shows the
  * materialised `form.errors` momentarily collapse to `{}` between
- * email-variant errors (E) and sms-variant errors (S) — i.e. the user
+ * email-variant errors (E) and sms-variant errors (S), i.e. the user
  * sees `E → {} → S` instead of `E → S`.
  *
  * Mechanics: reshape mutates `form.value` synchronously, which queues
@@ -19,7 +19,7 @@ import { waitUntil } from '../utils/form-harness'
  * runs). The first render reads the new `form.value` but stale
  * schemaErrors; the active-path filter hides the email-variant
  * entries (their leaf no longer exists in the new shape) and the
- * sms-variant entries haven't been written yet — so the materialiser
+ * sms-variant entries haven't been written yet: so the materialiser
  * emits `{}`. A second render fires once validation lands, finally
  * showing S.
  *
@@ -51,7 +51,7 @@ function mountWithSnapshotter(): { app: App; api: ProfileApi; snapshots: string[
         key: `flicker-${Math.random().toString(36).slice(2)}`,
         defaultValues: { notify: { channel: 'email', address: '' } },
         // debounceMs: 0 disables debouncing so validation runs
-        // synchronously inside the keystroke handler — minimising the
+        // synchronously inside the keystroke handler, minimising the
         // flicker window without going through `setTimeout`.
         validateOn: 'change',
         debounceMs: 0,
@@ -86,7 +86,7 @@ describe('DU variant switch — error materialisation flicker', () => {
     const initialIdx = snapshots.findIndex((s) => /notify.+address/.test(s))
     expect(initialIdx).toBeGreaterThanOrEqual(0)
 
-    // Switch to sms — number is empty, fails .min(7).
+    // Switch to sms, number is empty, fails .min(7).
     api.setValue('notify.channel', 'sms')
     await waitUntil(() =>
       /notify.+number/.test(snapshots[snapshots.length - 1] ?? '') ? true : null

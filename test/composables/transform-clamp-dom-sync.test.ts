@@ -79,7 +79,7 @@ describe('spike 18c — `<input type="number">` + clamp transform DOM/storage pa
 
     // Type past the cap. The clamp transform produces 100 (same as
     // current storage), so no reactive write fires, no re-render runs,
-    // and the DOM keeps the user's "1000" — diverged from storage.
+    // and the DOM keeps the user's "1000", diverged from storage.
     input.value = '1000'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() =>
@@ -88,7 +88,7 @@ describe('spike 18c — `<input type="number">` + clamp transform DOM/storage pa
     expect(handle.api?.values.bounded).toBe(100)
     expect(input.value).toBe('100')
 
-    // Type even further past the cap. Same divergence — the user can
+    // Type even further past the cap. Same divergence: the user can
     // keep typing characters into the DOM while storage stays at 100.
     input.value = '100000'
     input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -173,7 +173,7 @@ describe('spike 18c — `<input type="number">` + clamp transform DOM/storage pa
     input.focus()
 
     // First type a different value so storage diverges from 100. Then
-    // type "1e2" — `looseToNumber` produces 100, the clamp keeps 100,
+    // type "1e2", `looseToNumber` produces 100, the clamp keeps 100,
     // storage updates from 50 → 100. The post-cast domValue (100) ===
     // storage (100), so the typed form "1e2" is preserved in the DOM.
     input.value = '50'
@@ -188,7 +188,7 @@ describe('spike 18c — `<input type="number">` + clamp transform DOM/storage pa
       handle.api?.values.bounded === 100 && input.value === '1e2' ? true : null
     )
     expect(handle.api?.values.bounded).toBe(100)
-    // The typed form "1e2" stays in the DOM mid-typing — the typed-form
+    // The typed form "1e2" stays in the DOM mid-typing: the typed-form
     // preservation contract.
     expect(input.value).toBe('1e2')
   })

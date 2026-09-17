@@ -23,7 +23,7 @@ import {
 /*
  * Version-pin tests for the zod v4 internals layer. If zod v4 ever changes
  * its `def.type` strings or accessor shapes, this file fails first and
- * localizes the breakage to introspect.ts — every other adapter file
+ * localizes the breakage to introspect.ts: every other adapter file
  * speaks kindOf() + the stable-shape accessors.
  */
 
@@ -250,7 +250,7 @@ describe('containsAsyncRefine', () => {
   })
 
   it('clears a sync-only schema (v4 reads checks exactly)', () => {
-    // v4 is more precise than v3 — sync refines do NOT trip the flag
+    // v4 is more precise than v3, sync refines do NOT trip the flag
     // because `isAsyncCheck` reads the user fn's constructor.name.
     expect(containsAsyncRefine(z.string().refine(() => true))).toBe(false)
     expect(containsAsyncRefine(z.string())).toBe(false)

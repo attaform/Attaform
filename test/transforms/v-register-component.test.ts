@@ -48,7 +48,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         vRegisterHintTransform,
       ])
-      // Same wrapper as native input — the transform doesn't filter by tag.
+      // Same wrapper as native input: the transform doesn't filter by tag.
       expect(code).toContain('markConnectedOptimistically')
       expect(code).toMatch(/_ctx\.form\.register\(['"]email['"]\)/)
     })
@@ -108,10 +108,10 @@ describe('v-register on Vue components — AST behaviour', () => {
 
   describe('inputTextAreaNodeTransform — early-returns on components (works ✓)', () => {
     it('emits no synthetic :value binding when only this transform runs', () => {
-      // The transform's tag check is `node.tag === 'input' || 'textarea'`
-      // — component tags are NEITHER. Result: this transform contributes
+      // The transform's tag check is `node.tag === 'input' || 'textarea'`,
+      // component tags are NEITHER. Result: this transform contributes
       // nothing for a component. (componentBridgeTransform DOES fire on
-      // components — see the next describe block.)
+      // components, see the next describe block.)
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         inputTextAreaNodeTransform,
       ])
@@ -133,15 +133,15 @@ describe('v-register on Vue components — AST behaviour', () => {
   describe('componentBridgeTransform — fires on EVERY component with v-register (value channel: v-model for plain hosts, :value for select-like)', () => {
     it('injects the v-model pair (modelValue/hostModelValue + onUpdate:modelValue/setValueFromHost) + registerValue on a plain component host', () => {
       // The transform's branch `node.tagType === ElementTypes.COMPONENT`
-      // makes ANY component with v-register a transform target — even
+      // makes ANY component with v-register a transform target, even
       // ones whose name has nothing to do with selecting (`<MyInput>`,
       // `<MyTextField>`, `<MyDatePicker>`). A plain input host (no projected
       // <option>s) speaks the standard Vue v-model contract: the transform
-      // injects `modelValue` (reading hostModelValue — the typed model value,
+      // injects `modelValue` (reading hostModelValue: the typed model value,
       // undefined for a blank path) and `onUpdate:modelValue` (routing through
       // setValueFromHost, which writes the value and marks interacted), plus
       // the `registerValue` bridge a wrapper's useRegister reads. It does NOT
-      // inject the select-style `:value`/displayValue bind — that's reserved
+      // inject the select-style `:value`/displayValue bind: that's reserved
       // for select-like hosts (see the slotted-<option> test below).
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         componentBridgeTransform,
@@ -221,7 +221,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // predicate; either way the v-model pair + `:registerValue` props
       // injected here are the bridge `useRegister()` reads. Web
       // Components without a Vue component definition see them as DOM
-      // attributes — the documented assignKey escape hatch covers
+      // attributes: the documented assignKey escape hatch covers
       // that case.
       const code = compileWith(`<my-input v-register="reg" />`, [componentBridgeTransform])
       expect(code).toContain('hostModelValue')
@@ -298,14 +298,14 @@ describe('v-register on Vue components — AST behaviour', () => {
       expect(code).toMatch(/_ctx\.form\.register\(['"]email['"]\)/)
       expect(code).toMatch(/_ctx\.form\.register\(['"]name['"]\)/)
       // Component gets a registerValue prop; native input does NOT
-      // (only one `registerValue:` occurrence — the component's).
+      // (only one `registerValue:` occurrence: the component's).
       const regValueHits = code.match(/registerValue:/g)?.length ?? 0
       expect(regValueHits).toBe(1)
     })
 
     it('dynamic-path register call on a component (template-literal) compiles cleanly', () => {
       // The path expression references a setup-scoped `prefix`. The
-      // transform doesn't introspect the expression — it forwards as-is.
+      // transform doesn't introspect the expression: it forwards as-is.
       const code = compileFull('<MyInput v-register="form.register(`${prefix}.email`)" />')
       expect(code).toContain('markConnectedOptimistically')
       expect(code).toContain('hostModelValue')

@@ -4,7 +4,7 @@ import { z as z3 } from 'zod-v3'
 import { fieldMeta, withMeta } from '../../src/runtime/adapters/unified/field-meta'
 import { getFieldMetaForSchema } from '../../src/runtime/core/field-meta-store'
 
-// Both majors read through the same schema-keyed store — the aliases
+// Both majors read through the same schema-keyed store: the aliases
 // keep the per-major assertion sites legible.
 const getFieldMetaV4 = getFieldMetaForSchema
 const getFieldMetaV3 = getFieldMetaForSchema
@@ -48,7 +48,7 @@ describe('Unified fieldMeta store — cross-adapter storage', () => {
     fieldMeta.add(v4Schema, { description: 'Free-form notes' })
     expect(getFieldMetaV4(v4Schema)).toEqual({ description: 'Free-form notes' })
 
-    // The unified `fieldMeta` is typed as Zod 4's $ZodRegistry — the
+    // The unified `fieldMeta` is typed as Zod 4's $ZodRegistry: the
     // structurally-loose runtime accepts a Zod 3 schema fine, but the
     // type system needs an `as never`-style cast at this call site.
     const v3Schema = z3.string()

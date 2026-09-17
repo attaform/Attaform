@@ -8,7 +8,7 @@
   //   1. Reserve the editor's footprint at SSR time. The wrapper
   //      ships server-side at the consumer-supplied `height`, with
   //      an editor-shaped skeleton inside. The page lays out at the
-  //      final dimensions before any client JS runs — no shift on
+  //      final dimensions before any client JS runs: no shift on
   //      hydration, no shift when the heavy editor swaps in.
   //
   //   2. Defer-mount + route-leave-guard the actual `<DemoReplEditor>`
@@ -28,7 +28,7 @@
       height?: string
       // Overrides the editor's seed source. Forwarded to
       // `<DemoReplEditor>`. Undefined means "use the default shipment
-      // demo" — the original homepage + freeform-playground behaviour.
+      // demo": the original homepage + freeform-playground behaviour.
       initialSource?: string
       // Multi-file seed: `{ 'src/App.vue': '<source>', 'src/Foo.vue': ... }`.
       // Wins over `initialSource` when both are provided. The editor

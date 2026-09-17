@@ -23,16 +23,16 @@ import { waitUntil } from '../utils/form-harness'
  * compile output strings. This file closes the gap: it COMPILES
  * actual template strings through the production transform stack,
  * evaluates the result into a render function, and mounts the
- * components — proving the full pipeline (compile-time bridge prop
+ * components, proving the full pipeline (compile-time bridge prop
  * injection → runtime attrs strip → child useRegister → inner
  * v-register on a DOM input) works as one piece.
  *
  * The compiler stack mirrors `src/vite.ts`'s production order:
- *   1. componentBridgeTransform — injects :value + :registerValue on
+ *   1. componentBridgeTransform, injects :value + :registerValue on
  *      <Component v-register> nodes; parent-side bridge
- *   2. inputTextAreaNodeTransform — text-input compile-time hooks
- *   3. vRegisterPreambleTransform — preamble for v-register
- *   4. vRegisterHintTransform — hints / dev-warns
+ *   2. inputTextAreaNodeTransform, text-input compile-time hooks
+ *   3. vRegisterPreambleTransform, preamble for v-register
+ *   4. vRegisterHintTransform, hints / dev-warns
  *
  * The directive itself is registered globally by
  * `createAttaform()` (the app plugin), matching what consumer
@@ -59,7 +59,7 @@ function compileTemplateToRender(template: string): (...args: unknown[]) => unkn
       vRegisterHintTransform,
     ],
   })
-  // `Function` is intentional here — the compiler is trusted (vendored
+  // `Function` is intentional here: the compiler is trusted (vendored
   // Vue) and the only inputs are static template strings inside this
   // test file.
 
@@ -79,7 +79,7 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
     // Child SFC equivalent: <label><input v-register="register" /></label>.
     // After compilation, the `v-register` directive on the inner input
     // is resolved against the app-level `register` directive
-    // (installVRegister — the runtime-compiled-template delivery). The
+    // (installVRegister: the runtime-compiled-template delivery). The
     // render function reads `register` from setup return.
     const Child = defineComponent({
       name: 'Child',
@@ -120,7 +120,7 @@ describe('useRegister — template-compiled v-register reaches inner input', () 
     if (captured.api === undefined) throw new Error('unreachable')
 
     // The wrapper <label> is the rendered root of Child. Bridge attrs
-    // were stripped — verify the DOM is clean (the user's primary
+    // were stripped, verify the DOM is clean (the user's primary
     // architectural concern).
     const wrapper = root.querySelector('label.wrapper')
     expect(wrapper).not.toBeNull()

@@ -17,7 +17,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *     {{ form.errors('email')?.[0]?.message }}     ✅ callable form
  *     {{ form.errors['nested.path'] }}             ❌ NOT supported (single-bracket dotted)
  *     {{ form.errors.nested.path }}                ✅ chained access
- *     {{ form.errors.value.email }}                ❌ no `.value` — proxy unwraps automatically
+ *     {{ form.errors.value.email }}                ❌ no `.value`, proxy unwraps automatically
  *   </template>
  */
 
@@ -156,10 +156,10 @@ describe('form.errors — readonly contract', () => {
 
     // PASS2-4: writes through the readonly proxy warn-and-noop instead
     // of throwing `TypeError` under strict mode. The actual readonly
-    // guarantee is the absence of any mutation — pinned by the entry
+    // guarantee is the absence of any mutation, pinned by the entry
     // surviving below.
     expect(() => {
-      // @ts-expect-error — runtime proves the trap matches the type promise.
+      // @ts-expect-error, runtime proves the trap matches the type promise.
       api.errors.email = []
     }).not.toThrow()
 
@@ -174,7 +174,7 @@ describe('form.errors — readonly contract', () => {
     api.setErrors([{ path: ['email'], message: 'bad email', code: 'api:validation' }])
 
     expect(() => {
-      // @ts-expect-error — runtime proves the trap matches the type promise.
+      // @ts-expect-error, runtime proves the trap matches the type promise.
       delete api.errors.email
     }).not.toThrow()
 
@@ -223,7 +223,7 @@ describe('form.errors — reactivity in render scope', () => {
 
   // End-to-end coverage for the "Simulate API 400" flow: a server's
   // ValidationError[] handed straight to setErrors, then read back
-  // through form.errors.<path>. No adapter step — the lenient input
+  // through form.errors.<path>. No adapter step: the lenient input
   // shape accepts the server's entries directly.
   it('setErrors → form.errors renders the injected messages', () => {
     const { app, api } = mount()

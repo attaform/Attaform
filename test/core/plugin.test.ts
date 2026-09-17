@@ -80,7 +80,7 @@ describe('createAttaform', () => {
       // only catches identical plugin objects).
       app.use(createAttaform())
       const secondRegistry = getRegistryFromApp(app)
-      // Same registry — no overwrite.
+      // Same registry: no overwrite.
       expect(secondRegistry).toBe(firstRegistry)
       // Single dev warning fired.
       const matched = warnSpy.mock.calls.filter((c: unknown[]) =>

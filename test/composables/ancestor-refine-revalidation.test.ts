@@ -93,7 +93,7 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
       'Bio must mention your handle'
     )
 
-    // Descendant change that satisfies the refine — refine MUST clear.
+    // Descendant change that satisfies the refine, refine MUST clear.
     form.setValue('profile.bio', 'attaboy is great')
     await flushValidations(form)
 
@@ -124,13 +124,13 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
       })
     )
 
-    // Mount-time state PASSES the refine — no error.
+    // Mount-time state PASSES the refine: no error.
     await flushValidations(form)
     expect(
       (errorsAt(form)('profile') ?? []).filter((e) => e.message === 'Bio must mention your handle')
     ).toEqual([])
 
-    // Descendant change that breaks the refine — refine MUST surface.
+    // Descendant change that breaks the refine, refine MUST surface.
     form.setValue('profile.bio', 'no mention here')
     await flushValidations(form)
 
@@ -166,14 +166,14 @@ describe('Ancestor container refine — clears/re-fires on descendant change', (
     )()
     expect(errorsAt(form)([])?.map((e) => e.message)).toContain('Passwords must match')
 
-    // Match the descendant — root refine MUST clear.
+    // Match the descendant, root refine MUST clear.
     form.setValue('confirmPassword', 'one')
     await flushValidations(form)
     expect((errorsAt(form)([]) ?? []).filter((e) => e.message === 'Passwords must match')).toEqual(
       []
     )
 
-    // Mismatch again — root refine MUST come back.
+    // Mismatch again, root refine MUST come back.
     form.setValue('confirmPassword', 'three')
     await flushValidations(form)
     expect(errorsAt(form)([])?.map((e) => e.message)).toContain('Passwords must match')

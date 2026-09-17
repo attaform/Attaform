@@ -75,7 +75,7 @@ describe('useForm — runtime key resolution', () => {
  * the configuration (`useForm({ key: someRef.value, schema })`) gets
  * the snapshot at that moment and the form stays bound to it for
  * its lifetime. The TypeScript signature `key?: FormKey` (where
- * `FormKey = string`) reinforces this — `Ref<string>` and getters
+ * `FormKey = string`) reinforces this, `Ref<string>` and getters
  * are not accepted.
  *
  * The idiomatic Vue pattern for "swap which form is bound" is

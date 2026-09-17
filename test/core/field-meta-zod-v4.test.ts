@@ -18,7 +18,7 @@ describe('Zod 4 — fieldMeta registry + withMeta helper', () => {
   })
 
   it('returns a fresh schema clone (not the original) from withMeta', () => {
-    // withMeta clones first so each call gets distinct identity —
+    // withMeta clones first so each call gets distinct identity,
     // shields shared sub-schemas from the last-wins overwrite that
     // the schema-keyed registry would otherwise impose. The clone
     // round-trips its payload independently.
@@ -34,7 +34,7 @@ describe('Zod 4 — fieldMeta registry + withMeta helper', () => {
 
   it('chained withMeta merges payloads through clones', () => {
     // Each withMeta returns a clone with the previous clone's
-    // payload merged in plus the new fields — chaining accumulates
+    // payload merged in plus the new fields, chaining accumulates
     // rather than replacing.
     const labeled = withMeta(z.string(), { label: 'Email' })
     const labeledAndDescribed = withMeta(labeled, { description: 'For login' })
@@ -60,7 +60,7 @@ describe('Zod 4 — fieldMeta tracks every registration on a shared schema', () 
   // pointing at the same registry slot from the consumer's view.
   // fieldMeta keeps a list per schema reference (in registration
   // order) so the path-resolver can disambiguate by tree-walk
-  // occurrence — see the adapter's resolveFieldMetaAtPath.
+  // occurrence, see the adapter's resolveFieldMetaAtPath.
   it('exposes every registered payload via getFieldMetaList', () => {
     const shared = z.string()
     shared.register(fieldMeta, { label: 'First' })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
   // Nuxt Content emits the TOC tree under `page.body.toc.links`. Each
   // link is an h2 by default; nested h3s land under `children`. We
-  // render two depths (h2 + h3) and ignore h4+ — the latter are
+  // render two depths (h2 + h3) and ignore h4+: the latter are
   // usually internal anchors that don't deserve sidebar real estate.
   type TocLink = {
     id: string
@@ -13,7 +13,7 @@
   const props = defineProps<{ links?: TocLink[] }>()
 
   // The TOC's job is navigation, not signature documentation. Heading
-  // text on API pages reads as `useForm<Form>({ schema, key, ... })` —
+  // text on API pages reads as `useForm<Form>({ schema, key, ... })`,
   // useful as the page heading itself, but enough nested punctuation
   // to render the sidebar unscannable. Strip the parameter
   // parentheses (iteratively, so nested groups collapse cleanly) and
@@ -28,7 +28,7 @@
       prev = out
       out = out.replace(/\s*\([^()]*\)/g, '')
     } while (out !== prev)
-    // Strip generic-parameter brackets too — `injectForm<Form>` reads
+    // Strip generic-parameter brackets too, `injectForm<Form>` reads
     // as `injectForm` in the sidebar. Iterative for nested generics
     // like `Foo<Bar<Baz>>`. The page heading still carries the
     // generic for readers who landed via the link.
@@ -60,7 +60,7 @@
   const decoratedLinks = computed<DecoratedTocLink[]>(() => decorate(props.links))
 
   // Active anchor for scrollspy. IntersectionObserver fires when a
-  // heading enters the "active band" defined by rootMargin — top
+  // heading enters the "active band" defined by rootMargin, top
   // offset clears the sticky header (h-16 = 4rem) + a 1rem gutter,
   // bottom -70% means a heading reads as "active" only when it's in
   // the upper third of the viewport, not as it leaves the bottom.
@@ -113,7 +113,7 @@
 
   onMounted(setupObserver)
   onUnmounted(() => observer?.disconnect())
-  // Re-setup on links change — e.g., user navigates between docs
+  // Re-setup on links change, e.g., user navigates between docs
   // pages, the TOC instance is reused, props.links updates with the
   // new headings. nextTick lets the new article DOM mount before we
   // try to find heading IDs.

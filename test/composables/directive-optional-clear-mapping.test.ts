@@ -20,7 +20,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  *
  * Required leaves keep the current behavior (clear writes `''` for
  * strings, markBlank + slim-default for numbers). Nullable-only
- * leaves also keep current behavior — `null` is the consumer's
+ * leaves also keep current behavior, `null` is the consumer's
  * deliberate "explicit empty" signal, not what a DOM clear means.
  *
  * The contract:

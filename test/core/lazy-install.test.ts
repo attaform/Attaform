@@ -127,7 +127,7 @@ describe('useRegister — lazy install', () => {
 
     expect(app._attaform).toBeDefined()
     // The lazy install attaches the registry ONLY. v-register delivery
-    // is the compile-time binding (Vite/Nuxt) or installVRegister —
+    // is the compile-time binding (Vite/Nuxt) or installVRegister,
     // never an app-level registration from this path.
     const directives = (app._context as unknown as { directives: Record<string, unknown> })
       .directives

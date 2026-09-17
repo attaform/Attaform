@@ -113,7 +113,7 @@ describe.each(adapters)('truthful absence — $name', ({ mount }) => {
     const form = mountForm(mount)
     expect(form.fields.user.name.value).toBe('Ada')
     // nickname is declared (optional) but absent from the data: a real
-    // FieldState whose value is undefined — NOT an undefined node.
+    // FieldState whose value is undefined: NOT an undefined node.
     expect(form.fields.user.nickname).toBeDefined()
     expect(form.fields.user.nickname.value).toBeUndefined()
     // Real FieldState shape (not a bare undefined node).
@@ -176,9 +176,9 @@ describe.each(adapters)('truthful absence — $name', ({ mount }) => {
  *
  * The counterpart to "container's own rolled-up state reads through the
  * call-form" above, and the half that was never asserted. Three docs
- * surfaces taught the dotted spelling for a container-level `.refine()`
- * — `schemas/nested-objects.md` twice and the Agent Skill's
- * `references/errors.md` once — and each one renders nothing, because
+ * surfaces taught the dotted spelling for a container-level `.refine()`,
+ * `schemas/nested-objects.md` twice and the Agent Skill's
+ * `references/errors.md` once, and each one renders nothing, because
  * `form.fields.profile` is a navigation node with no error state of its
  * own. Nothing caught it, since `undefined` behind a `v-if` looks like
  * "no error" rather than like a wrong read.

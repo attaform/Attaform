@@ -7,7 +7,7 @@ import type { WriteShape } from '../../src/runtime/types/types-core'
  * `expectTypeOf` evaluates its argument at runtime even though it only
  * cares about the type. We can't call the real `useForm` here (no Vue
  * app context), so we fake a recursive Proxy that returns itself for
- * every get/apply — enough to keep vitest's runtime happy while the
+ * every get/apply, enough to keep vitest's runtime happy while the
  * checker sees the real types.
  */
 function makeFormProxy<T>(): T {
@@ -26,14 +26,14 @@ function makeFormProxy<T>(): T {
  *
  * `WriteShape` widens primitive-literal leaves to their primitive
  * supertype to match the runtime "slim-primitive write contract."
- * The TS layer becomes honest about what's storable — refinement-
+ * The TS layer becomes honest about what's storable, refinement-
  * invalid values that satisfy the slim primitive type pass through
  * everywhere (defaults, setValue, getValue) without TS errors.
  *
  * Read-side post-validation types (handleSubmit's `data` argument,
  * validate*() result payloads) intentionally stay STRICT.
  *
- * `WriteShape` itself stays STRICT — the consumer-facing write
+ * `WriteShape` itself stays STRICT: the consumer-facing write
  * value uses `DefaultValuesShape<T>` (admits `Unset`), composed via
  * `SetValuePayload`. `WriteShape` is the callback's prev-value
  * argument (always a real value) and the structural shape for
@@ -118,7 +118,7 @@ describe('WriteShape — applied to setValue', () => {
     // in the enum. Post-WriteShape: the slim type is `string`, so any
     // string is accepted at the type level. Runtime validates at the
     // refinement level via field validation. The test asserts that the
-    // call type-checks — if WriteShape ever stopped widening, this
+    // call type-checks, if WriteShape ever stopped widening, this
     // would be a hard TS error.
     form.setValue('color', 'magenta')
   })
@@ -147,7 +147,7 @@ describe('WriteShape — applied to defaultValues', () => {
     const _schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
     type Defaults = UseFormConfig<typeof _schema>['defaultValues']
 
-    // 'teal' is not in the enum, but it's a string — slim-correct.
+    // 'teal' is not in the enum, but it's a string, slim-correct.
     expectTypeOf<{ color: 'teal' }>().toMatchTypeOf<NonNullable<Defaults>>()
   })
 
@@ -155,7 +155,7 @@ describe('WriteShape — applied to defaultValues', () => {
     const _schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
     type Defaults = UseFormConfig<typeof _schema>['defaultValues']
 
-    // @ts-expect-error: number is not a string — slim-mismatch
+    // @ts-expect-error: number is not a string, slim-mismatch
     const _bad: Defaults = { color: 1 }
     void _bad
   })

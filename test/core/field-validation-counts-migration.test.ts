@@ -53,7 +53,7 @@ describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm,
     const Root = defineComponent({
       setup() {
         // Anonymous useForm (no `key`) so the FormStore is provided as
-        // `kFormContext` to descendants — see use-abstract-form.ts.
+        // `kFormContext` to descendants, see use-abstract-form.ts.
         // `useForm` is parameterised across adapters via `describe.each`;
         // TS sees the v3-or-v4 union and can't reconcile the signatures,
         // so a loose call cast is the right tool here.
@@ -111,7 +111,7 @@ describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm,
     form.remove('tags', 0)
 
     // Pre-op `tags.0` ('a', counter=1) is vacated and dropped. Pre-op
-    // `tags.1` ('b', no counter) shifts to index 0 — no counter to migrate.
+    // `tags.1` ('b', no counter) shifts to index 0: no counter to migrate.
     // Pre-op `tags.2` ('c', counter=2) shifts to index 1.
     expect(store.fieldValidationCounts.has(key(['tags', 0]))).toBe(false)
     expect(store.fieldValidationCounts.get(key(['tags', 1]))).toBe(2)

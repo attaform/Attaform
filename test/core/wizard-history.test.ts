@@ -5,7 +5,7 @@ import { createWizardHistory } from '../../src/runtime/core/wizard-history'
 /**
  * `createWizardHistory(param)` encapsulates `window.history` for the
  * wizard. The primitive is the only DOM-touching module in the wizard
- * surface — it abstracts pushState / popstate behind a small handle,
+ * surface: it abstracts pushState / popstate behind a small handle,
  * lets the wizard composable stay focused on navigation semantics, and
  * stays SSR-safe by returning a no-op handle when `window` is undefined.
  *
@@ -47,7 +47,7 @@ describe('createWizardHistory — primitive', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?step=review`)
     const handle = createWizardHistory('step')
     const pushSpy = vi.spyOn(window.history, 'pushState')
-    handle.push('review') // already on `review` — dedup must skip the push
+    handle.push('review') // already on `review`, dedup must skip the push
     expect(pushSpy).not.toHaveBeenCalled()
     expect(new URL(window.location.href).searchParams.get('step')).toBe('review')
     // A genuinely different key still pushes.
@@ -84,7 +84,7 @@ describe('createWizardHistory — primitive', () => {
     const seen: Array<string | undefined> = []
     handle.subscribe((key) => seen.push(key))
     // Two real pushState writes so `history.back()` has somewhere to go,
-    // then drive a real browser Back — popstate behaviour is
+    // then drive a real browser Back, popstate behaviour is
     // browser-driven and exercised through genuine navigation entries.
     window.history.pushState({}, '', `${ORIGINAL_URL}?step=a`)
     window.history.pushState({}, '', `${ORIGINAL_URL}?step=b`)

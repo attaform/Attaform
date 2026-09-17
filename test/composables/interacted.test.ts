@@ -8,7 +8,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { waitUntil } from '../utils/form-harness'
 
-// `name` is a required string defaulting to '' — clearing it back to empty
+// `name` is a required string defaulting to '', clearing it back to empty
 // returns to the pristine baseline, which is exactly the case that tells
 // `interacted` apart from `dirty`.
 const schema = z.object({ name: z.string().min(2) })

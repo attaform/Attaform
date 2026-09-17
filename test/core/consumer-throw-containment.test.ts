@@ -358,7 +358,7 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
     // each segment with `key in container` before reading it, deliberately
     // (on a reactive array that tracks one index instead of `.length`).
     // An existence check is no safer than a read, and this one runs under
-    // every FieldState rollup — that is, during the host's render.
+    // every FieldState rollup: that is, during the host's render.
     ['has', () => new Proxy({ a: 1 }, { has: BOOM })],
   ])('a Proxy whose %s trap throws', async (_label, makeProxy) => {
     // Enumeration is not a safe read. `Object.keys` invokes `ownKeys`
@@ -433,8 +433,8 @@ describe('an async .refine that throws', () => {
    * Split out from the table above because closing this one needed a
    * different mechanism, and because the reasoning is worth keeping.
    *
-   * Zod v3 cannot mark an async refinement statically — it wraps every
-   * predicate in a sync closure — so it discovers one by RUNNING it.
+   * Zod v3 cannot mark an async refinement statically: it wraps every
+   * predicate in a sync closure: so it discovers one by RUNNING it.
    * `executeRefinement` calls the predicate, sees a Promise come back,
    * throws "Async refinement encountered during synchronous parse", and
    * discards that promise on the way out. A predicate that REJECTS

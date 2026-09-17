@@ -13,7 +13,7 @@
   // would produce.
   //
   // For SPA navigations (no SSR pass for the new component instance),
-  // there's no DOM to match against — the first paint can show the
+  // there's no DOM to match against: the first paint can show the
   // real preference directly, so the icon doesn't flash Monitor →
   // real every time the user changes layouts (`default.vue` ↔
   // `docs.vue` both render `<AppHeader>`).
@@ -26,7 +26,7 @@
   //   - Gating only on `!isHydrating` ships a real label from SSR
   //     (where `isHydrating === false` because there's nothing to
   //     hydrate yet) but a placeholder during initial hydration on
-  //     the client (where `isHydrating === true`) — direct mismatch.
+  //     the client (where `isHydrating === true`), direct mismatch.
   //   - Gating only on `import.meta.client` would always render the
   //     placeholder on the client's first paint, including SPA nav
   //     mounts where there's no SSR markup at all, reintroducing

@@ -8,7 +8,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * `form.fields` — Pinia-style nested reactive proxy. Each path
+ * `form.fields`, Pinia-style nested reactive proxy. Each path
  * exposes the FieldState at that path AND descent into named
  * children. FieldState keys (`dirty`, `touched`, `errors`,
  * `blank`, `currentValue`, `focused`, `blurred`, `pristine`,

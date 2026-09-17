@@ -27,7 +27,7 @@ import { waitUntil } from '../utils/form-harness'
  *
  * Without authoring updates at each of these moments, the filter
  * would consult the stale construction-time set and incorrectly
- * suppress the verdict — same flicker pattern as the
+ * suppress the verdict, same flicker pattern as the
  * construction-time bug, just deferred.
  */
 
@@ -88,7 +88,7 @@ describe('authored-paths updates beyond construction', () => {
     await waitUntil(() => (api.errors.url.length > 0 ? true : null))
 
     // The factory landed `{ url: undefined }`. The path is now
-    // authored — distinct from "no consumer input." Validation runs
+    // authored, distinct from "no consumer input." Validation runs
     // through preprocess + refine and lands the verdict.
     expect(api.values.url).toBeUndefined()
     expect(api.errors.url.length).toBeGreaterThan(0)

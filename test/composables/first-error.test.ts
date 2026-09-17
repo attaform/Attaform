@@ -9,7 +9,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { ValidationError } from '../../src'
 
 /**
- * `field.firstError` — pure data primitive.
+ * `field.firstError`, pure data primitive.
  *
  * `firstError` returns the first error in the deterministic schema-
  * declaration order at the path (`errors[0]`). It is INDEPENDENT of
@@ -92,7 +92,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
     it('container firstError aggregates over descendants in schema-declaration order', () => {
       const form = makeForm()
       // Inject in REVERSE schema order (users first, then email-equivalent
-      // earlier path) — `firstError` should still surface schema-first.
+      // earlier path), `firstError` should still surface schema-first.
       form.setErrors([
         {
           path: ['users', 1, 'label'],

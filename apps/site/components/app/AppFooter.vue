@@ -5,8 +5,8 @@
   const { attaformVersion } = useRuntimeConfig().public
 
   // Three categorical link groups + the brand block. Each link
-  // declares either `to` (internal — NuxtLink, no target swap) or
-  // `href` (external — `<a>` with target/rel set automatically).
+  // declares either `to` (internal, NuxtLink, no target swap) or
+  // `href` (external, `<a>` with target/rel set automatically).
   // The split is the same convention Button uses; consumers below
   // don't have to think about it.
   type FooterLink = { label: string; to?: string; href?: string }

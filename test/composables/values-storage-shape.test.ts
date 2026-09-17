@@ -14,7 +14,7 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * concrete type that storage holds. `.default()` has fired,
  * preprocess has normalised, blank-path synthesis has filled the
  * skeleton. Reads NEVER produce `undefined` for a slot the schema
- * resolved to a concrete type — and the static type SHOULD agree.
+ * resolved to a concrete type, and the static type SHOULD agree.
  *
  * Type-level assertions pin the surface so a future regression to
  * `z.input<Schema>`-only typing (or any drift in `ReadShape<>`) trips
@@ -23,12 +23,12 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * cross-check that the static type and the runtime agree.
  *
  * Out-of-scope edges (kept here as guardrails, not bugs):
- *  - `ZodOptional<T>` without a default — genuinely optional; type
+ *  - `ZodOptional<T>` without a default, genuinely optional; type
  *    correctly carries `| undefined`.
- *  - `ZodNullable<T>` — type carries `| null`.
- *  - Array index access past `length` — tainted by
+ *  - `ZodNullable<T>`, type carries `| null`.
+ *  - Array index access past `length`, tainted by
  *    `noUncheckedIndexedAccess`, not by the storage invariant.
- *  - `.transform()` — storage holds pre-transform input; post-transform
+ *  - `.transform()`, storage holds pre-transform input; post-transform
  *    output is exposed via `handleSubmit` / `form.parse()`.
  */
 
@@ -67,7 +67,7 @@ function uniqueKey(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2)}`
 }
 
-// ZodDefault — type should peel `| undefined`; runtime resolves the default.
+// ZodDefault, type should peel `| undefined`; runtime resolves the default.
 
 const defaultsSchema = z.object({
   flag: z.boolean().default(true),
@@ -178,7 +178,7 @@ describe('ZodDefault — type peels `| undefined`, runtime resolves the default'
   })
 })
 
-// Bare-required fields — synthesis resolves to a falsy concrete value.
+// Bare-required fields, synthesis resolves to a falsy concrete value.
 
 const bareRequiredSchema = z.object({
   s: z.string(),
@@ -252,7 +252,7 @@ describe('Synthesis — bare-required fields resolve to a falsy concrete value',
   })
 })
 
-// Deep nested synthesis — invariant holds all the way down.
+// Deep nested synthesis, invariant holds all the way down.
 
 const deepSchema = z.object({
   user: z.object({
@@ -308,7 +308,7 @@ describe('Synthesis — deep nested objects resolve recursively', () => {
   })
 })
 
-// Discriminated union — stub state before the discriminator is chosen.
+// Discriminated union, stub state before the discriminator is chosen.
 
 const duSchema = z.object({
   tagged: z.discriminatedUnion('type', [
@@ -350,7 +350,7 @@ describe('Discriminated union — stub state before discriminator chosen', () =>
   })
 })
 
-// Genuinely uncertain — invariant does NOT promise to peel these.
+// Genuinely uncertain, invariant does NOT promise to peel these.
 
 const optionalSchema = z.object({ bio: z.string().optional() })
 const nullableSchema = z.object({ ref: z.string().nullable() })
@@ -415,7 +415,7 @@ describe('Genuinely uncertain — invariant does NOT promise to peel', () => {
   })
 })
 
-// preprocess / transform — write-boundary vs parse-time semantics.
+// preprocess / transform, write-boundary vs parse-time semantics.
 
 const preprocessSchema = z.object({
   trimmed: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string()),
@@ -447,7 +447,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
   })
 
   // Under the no-write-mutation contract, `z.preprocess` never runs at
-  // the write boundary — so a throwing preprocess fn can't blow up
+  // the write boundary: so a throwing preprocess fn can't blow up
   // `setValue`. The probe anchors that the consumer's raw write lands
   // intact regardless of the fn's behaviour at parse time.
   it('preprocess throws never reach the write boundary; storage retains raw input', () => {
@@ -474,7 +474,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
     type Form = UseFormReturn<typeof transformSchema>
     const formT = makeFormProxy<Form>()
     // Transforms run at parse, not at write. The storage view stays the
-    // input shape — string here, not number. This is the case the §1.1
+    // input shape, string here, not number. This is the case the §1.1
     // tightening DELIBERATELY leaves alone.
     expectTypeOf(formT.values.letterCount).toEqualTypeOf<string>()
   })
@@ -510,7 +510,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
   })
 
   // Preprocess wrapping a container collapses the whole subtree to
-  // `unknown` at the type level — the write boundary accepts the
+  // `unknown` at the type level: the write boundary accepts the
   // consumer's raw input, so the read view can't promise inner-key
   // peeling. This is the deliberate asymmetry with `.transform()`
   // (case above), where the input side stays typed.
@@ -530,7 +530,7 @@ describe('preprocess / transform — write-boundary vs parse-time semantics', ()
 })
 
 // Depth-pressure regression. Modelled on the cargo-shipment booking
-// demo (apps/site/repl-demos/shipment-demo.vue) — the schema-shape
+// demo (apps/site/repl-demos/shipment-demo.vue): the schema-shape
 // that previously made the language-service hover for `useForm`
 // surface TS2589 ("Type instantiation is excessively deep") even
 // though tsc accepted it. Two discriminated unions, an array of
@@ -640,7 +640,7 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
   it('discriminated unions read as the union of variant read-shapes', () => {
     // The discriminant variants resolve to a literal-string union on the
     // read side, then `WriteShape` widens primitive literals to their
-    // primitive supertype at the `form.values` surface — the slim
+    // primitive supertype at the `form.values` surface: the slim
     // write-time contract documented in `WriteShape`. The runtime still
     // reports the literal at parse time (handleSubmit / parse), so
     // narrowing happens at the validation boundary, not on direct reads.
@@ -680,7 +680,7 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
   })
 
   // The `fields` property is the second deep mapped type on the
-  // `UseFormReturnType` (`FieldStateMap<WriteShape<ReadForm>>`) — same
+  // `UseFormReturnType` (`FieldStateMap<WriteShape<ReadForm>>`), same
   // recursion-depth shape as ReadShape. These probes pin both the
   // callable surface and the proxy-descent surface against the
   // shipment-demo schema so a future regression to the single-pass
@@ -741,8 +741,8 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
   })
 
   // `setValue` types its `value` argument as `PathSetValuePayload<...>`,
-  // which composes `DefaultValuesShape` + `NonNullable<WriteShape<...>>`
-  // — both deep recursive types that we just split. The probe pins the
+  // which composes `DefaultValuesShape` + `NonNullable<WriteShape<...>>`,
+  // both deep recursive types that we just split. The probe pins the
   // call shape so a regression collapses the payload type at TS-check
   // time rather than at IDE-hover time.
   it('setValue accepts the resolved payload type at a known path', () => {
@@ -754,7 +754,7 @@ describe('Depth pressure — multi-step booking schema (shipment-demo shape)', (
     expectTypeOf(setNotes).toBeFunction()
   })
 
-  // `validate` / `parse` resolve to a `ValidationResponse<Form>` —
+  // `validate` / `parse` resolve to a `ValidationResponse<Form>`,
   // the success branch carries the full Form shape (via the read-side
   // `data`). Pinning the return-type wrapper here forces the chain to
   // stay within tsserver's hover budget on deep schemas.

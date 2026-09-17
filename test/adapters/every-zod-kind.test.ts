@@ -193,7 +193,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
   it('survives a discriminated-union variant round-trip', async () => {
     // The variant-memory cloner rebuilds a stored object key by key.
     // A Map's entries are not own enumerable properties, so a key-by-key
-    // rebuild returns `{}` — the same defect #605 fixed for File.
+    // rebuild returns `{}`: the same defect #605 fixed for File.
     const { api } = makeMounter(adapter.useForm, adapter.mapVariant(), {
       defaultValues: { src: { kind: 'lookup', index: new Map() } },
     })()
@@ -242,7 +242,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
     expect((await settle(api.validate())).success).toBe(true)
 
     // A wrong value type inside the Map is the schema's business, and
-    // it has to actually fire — otherwise the kind is only nominally
+    // it has to actually fire, otherwise the kind is only nominally
     // supported.
     api.setValue('index', new Map([['a', 'not-a-number']]) as unknown as Map<string, number>)
     expect((await settle(api.validate())).success).toBe(false)

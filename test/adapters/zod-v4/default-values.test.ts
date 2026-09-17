@@ -92,7 +92,7 @@ describe('getDefaultValuesFromZodSchema — discriminated unions', () => {
 
 describe('getDefaultValuesFromZodSchema — refinement-heavy schemas', () => {
   it('never evaluates refinements (the fix walk is structural, not enforcement)', () => {
-    // The helper's job is to produce usable starting data — refinement
+    // The helper's job is to produce usable starting data, refinement
     // enforcement lives at the adapter layer (see the next describe).
     // The structural fix walk checks slim-primitive kinds only, so a
     // refinement-violating '' passes through verbatim, no user fn ever
@@ -121,7 +121,7 @@ describe('zodAdapter.getDefaultValues — refinement enforcement', () => {
   })
 
   it('an async refine degrades gracefully (no construction-time errors)', () => {
-    // Async refines can't be surfaced synchronously — `safeParse` throws
+    // Async refines can't be surfaced synchronously, `safeParse` throws
     // on them. The adapter catches the throw and returns success so the
     // form still mounts. Async refines fire on first user mutation via
     // `validateAtPath` (which uses `safeParseAsync`), or via an explicit

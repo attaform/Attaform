@@ -7,12 +7,12 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
 /**
- * Runtime coverage for Phase 8.5 — typed array helpers.
+ * Runtime coverage for Phase 8.5, typed array helpers.
  *
  * Each helper is a thin wrapper over read-array + slice + splice +
  * setValueAtPath. The tests pin runtime semantics that consumers depend
  * on (append goes to end, swap preserves siblings, replace never grows,
- * etc.) — if a future refactor moves the logic, these guarantee the
+ * etc.), if a future refactor moves the logic, these guarantee the
  * observable behaviour stays the same.
  *
  * Type-level rejections (non-array path, mismatched element shape) live
@@ -215,10 +215,10 @@ describe('useForm — field array helpers', () => {
       const entries = Object.entries(form.fields.posts)
       expect(entries).toHaveLength(2)
       expect(entries.map(([k]) => k)).toEqual(['0', '1'])
-      // Each entry value is a descended surface proxy — a non-callable
+      // Each entry value is a descended surface proxy: a non-callable
       // object target (container nodes are non-callable below the root).
       // Identity matches dot-access to confirm the descriptor returns
-      // the same proxy `form.fields.posts[idx]` would yield — the
+      // the same proxy `form.fields.posts[idx]` would yield: the
       // load-bearing guarantee for v-for templates that read
       // `item.title.errors`, `item.sku.validating`, etc.
       const directAtZero = (form.fields.posts as unknown as Record<string, unknown>)['0']
@@ -293,7 +293,7 @@ describe('useForm — field array helpers', () => {
       const collected: unknown[] = []
       for (const item of form.fields.posts as unknown as Iterable<unknown>) collected.push(item)
       expect(collected).toHaveLength(2)
-      // Each yielded entry is a descended container proxy — identity
+      // Each yielded entry is a descended container proxy, identity
       // matches dot-access, the same guarantee Object.entries gives.
       const directAtZero = (form.fields.posts as unknown as Record<string, unknown>)['0']
       expect(spread[0]).toBe(directAtZero)

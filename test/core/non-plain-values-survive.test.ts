@@ -79,7 +79,7 @@ describe('the unset walker carries non-plain values through whole', () => {
     const read = (out.cleanedValues as { user: { name: string; age: number } }).user
     expect(read.name).toBe('ada')
     // `age` was unspecified, so the walker synthesised it from the
-    // schema and marked it blank — proof the descent still happens.
+    // schema and marked it blank, proof the descent still happens.
     expect(read.age).toBe(0)
     expect(out.paths).toContain(canonicalizePath(['user', 'age']).key)
   })

@@ -60,7 +60,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
             withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [
               [vRegister, rvNote],
             ]),
-            // Reactive readout — re-renders the parent on every mutation
+            // Reactive readout, re-renders the parent on every mutation
             // (including the `note` keystroke below). This is what
             // exercises the directive's `beforeUpdate` mid-click.
             h('pre', null, JSON.stringify(api.values.items)),
@@ -91,7 +91,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
     expect(banana.checked).toBe(false)
     expect(cherry.checked).toBe(false)
 
-    // Step 1: simulate the browser's native click handling — the user
+    // Step 1: simulate the browser's native click handling: the user
     // clicked cherry, browser flipped its `checked` IDL state. Model
     // is still ['apple'] (change has NOT fired yet).
     cherry.checked = true
@@ -102,7 +102,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
     // microtask flush runs `beforeUpdate` on every checkbox.
     //
     // EXPECTATION: the directive must NOT re-apply `setChecked` from
-    // a stale model — `cherry.checked` must remain `true` so the
+    // a stale model, `cherry.checked` must remain `true` so the
     // browser's subsequent `change` event sees a real toggle and
     // writes ['apple','cherry'] to the model.
     note.value = 'x'
@@ -205,7 +205,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
   })
 
   it('a real model change still drives the DOM (post-skip resync)', async () => {
-    // Counterpart to the skip test — confirm the identity guard
+    // Counterpart to the skip test, confirm the identity guard
     // doesn't get stuck. After a programmatic `setValue` moves the
     // model, the next render must re-apply.
     const handle: { api?: UseFormReturn<typeof schema> } = {}

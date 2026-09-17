@@ -75,8 +75,8 @@ function buildSchema(
     },
     arrayShapeAtPath(path: Path): number | null {
       // Tuple keys configured via `options.tupleAt` resolve to that
-      // position's count; anything else — including the `arr` key's
-      // unbounded array — is definitively "not a tuple" (`null`).
+      // position's count; anything else, including the `arr` key's
+      // unbounded array, is definitively "not a tuple" (`null`).
       if (path.length === 1 && typeof path[0] === 'string') {
         const key = path[0]
         if (options?.tupleAt?.[key] !== undefined) {
@@ -86,7 +86,7 @@ function buildSchema(
       return null
     },
     getSlimPrimitiveTypesAtPath(path: Path): ReadonlySet<string> {
-      // The stub models no `.optional()` leaves — an empty set keeps
+      // The stub models no `.optional()` leaves: an empty set keeps
       // `mergeStructural`'s undefined-consumer branch on the
       // fill-with-default arm for every path.
       void path
@@ -94,7 +94,7 @@ function buildSchema(
     },
     entryKeyKindAtPath(path: Path): 'string' | 'number' | undefined {
       // The stub models object and array shapes only, never a map, and
-      // `mergeStructural` consults this nowhere — it is the write
+      // `mergeStructural` consults this nowhere: it is the write
       // walkers that resolve a map's key spelling. Answer for the two
       // shapes the stub does model and leave the rest undefined.
       const at = this.getDefaultAtPath(path)

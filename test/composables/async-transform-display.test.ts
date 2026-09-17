@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 //
-// Commit 6 — plan item 11 (finding D): an async transform rides the gated
+// Commit 6, plan item 11 (finding D): an async transform rides the gated
 // display projection, never carving a hole in the reveal contract.
 //
 // `displayState` (and the `aria-busy` it drives) is the GATED view: it surfaces
-// `'pending'` only where a validation would — past the reveal gate, past the
+// `'pending'` only where a validation would, past the reveal gate, past the
 // show-delay. A transform on a fresh, un-revealed field must stay `'idle'` with
 // no `aria-busy`, exactly as an in-flight validation there would. The RAW
-// signals (`field.transforming` / `field.busy`) stay ungated — they report
+// signals (`field.transforming` / `field.busy`) stay ungated: they report
 // in-flight work honestly so a consumer can light a spinner on an un-revealed
 // field by binding them directly. On a revealed field the same transform drives
 // `displayState` → `'pending'` + `aria-busy` past the 120ms show-delay, holding
@@ -90,7 +90,7 @@ describe.each(adapters)('async transform — gated display ($name)', ({ useForm,
     const gate = makeGate()
     const { api, input } = mount(gate.transform)
 
-    // Type but never blur, never submit — the reveal gate stays closed.
+    // Type but never blur, never submit: the reveal gate stays closed.
     input.value = 'hello'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
@@ -129,7 +129,7 @@ describe.each(adapters)('async transform — gated display ($name)', ({ useForm,
     await nextTick()
     expect(api.fields('field').transforming).toBe(true)
 
-    // Inside the show-delay: the prior success is HELD — no spinner flash, no
+    // Inside the show-delay: the prior success is HELD: no spinner flash, no
     // drop to idle, and the earned success is not yet swapped for pending.
     expect(api.fields('field').displayState).toBe('success')
     expect(input.hasAttribute('aria-busy')).toBe(false)

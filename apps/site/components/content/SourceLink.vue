@@ -5,11 +5,11 @@
   //
   // Two access patterns mirror `<DocsMetaTable>`:
   //
-  //   1. Plain `<SourceLink />` inside markdown — auto-reads `source:`
+  //   1. Plain `<SourceLink />` inside markdown, auto-reads `source:`
   //      from the page frontmatter via the `docsPageSource` injection
   //      provided by `pages/docs/[...slug].vue`.
   //
-  //   2. `<SourceLink :href="..." />` — explicit override.
+  //   2. `<SourceLink :href="..." />`, explicit override.
   //
   // The frontmatter author picks a commit SHA (or `main`, or a tag)
   // and writes the GitHub URL directly. Pinning to a SHA keeps a doc

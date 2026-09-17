@@ -12,12 +12,12 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * `validateOn: 'change'` (default) + `debounceMs > 0` schedules
  * validation on every `setValueAtPath` write; `validateOn: 'blur'`
  * fires immediately on blur; `validateOn: 'submit'` is the explicit
- * opt-out — writes never schedule a field run, errors only update
+ * opt-out, writes never schedule a field run, errors only update
  * at submit time. With `debounceMs: 0` (the new default) writes
  * still validate per keystroke but go through the immediate (no
  * `setTimeout`) branch.
  *
- * Runs concurrently with handleSubmit — submit-entry aborts in-flight
+ * Runs concurrently with handleSubmit, submit-entry aborts in-flight
  * field runs so submit's full-form result is authoritative.
  */
 
@@ -75,7 +75,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     api.setValue('email', 'n')
     api.setValue('email', 'no')
     api.setValue('email', 'notanemail')
-    // Nothing written yet — debounce hasn't elapsed.
+    // Nothing written yet, debounce hasn't elapsed.
     expect(api.errors.email).toEqual([])
 
     // Advance past the debounce and flush microtasks to let the async
@@ -116,14 +116,14 @@ describe('validateOn: "change", debounceMs > 0', () => {
     // Submit fires before the debounce elapses.
     const handler = api.handleSubmit(async () => {})
     const pending = handler()
-    // Advance past the debounce — the field timer is already cleared
+    // Advance past the debounce: the field timer is already cleared
     // at submit entry, so no field run kicks off.
     await vi.advanceTimersByTimeAsync(600)
     await pending
     await drainMicrotasks()
 
     // Submit's full-form validation has populated errors for every
-    // failing field — including email ('bad email') and password
+    // failing field, including email ('bad email') and password
     // ('min 8 chars').
     expect(api.errors.email?.[0]?.message).toBe('bad email')
     expect(api.errors.password?.[0]?.message).toBe('min 8 chars')
@@ -134,7 +134,7 @@ describe('validateOn: "change", debounceMs > 0', () => {
     apps.push(app)
 
     api.setValue('email', 'not-an-email')
-    // No setTimeout to wait on — microtask flush is enough.
+    // No setTimeout to wait on, microtask flush is enough.
     await drainMicrotasks()
     expect(api.errors.email?.[0]?.message).toBe('bad email')
   })
@@ -184,7 +184,7 @@ describe('field validation: reset cancels pending runs', () => {
     api.reset()
     await vi.advanceTimersByTimeAsync(500)
     await drainMicrotasks()
-    // Reset cleared the timer — no field-run wrote anything to errors.
+    // Reset cleared the timer: no field-run wrote anything to errors.
     expect(api.errors.email).toEqual([])
   })
 })

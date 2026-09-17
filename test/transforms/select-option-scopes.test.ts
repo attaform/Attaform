@@ -23,7 +23,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  * `<optgroup>` that is itself looped. The expression the transform
  * injects has to resolve in whichever scope that option lands in, which
  * means it may only reference the option's own bindings and those of
- * the enclosing `<select>` — never another option's.
+ * the enclosing `<select>`, never another option's.
  *
  * The transform used to concatenate every preceding sibling's match
  * expression into each option's binding, as a "one of us already
@@ -129,7 +129,7 @@ describe("option expressions are resolved in the option's own scope", () => {
   // enclosing `<select>`, which is visited before any option's scope
   // exists. Reading an option's props from there returns raw source
   // text, and raw text spliced into a compound expression is opaque to
-  // the compiler's identifier pass — so whatever was read is what
+  // the compiler's identifier pass: so whatever was read is what
   // shipped. A `v-for` alias survived that by luck, because bare is
   // what an alias needs. Anything else did not.
   //

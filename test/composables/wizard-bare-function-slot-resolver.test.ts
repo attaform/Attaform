@@ -56,7 +56,7 @@ describe('useWizard — bare function slot resolver-call accounting (COMP-W1)', 
       return useWizard({
         steps: [
           entry,
-          // Bare function slot — no `lazy()` wrapper, no reactive
+          // Bare function slot: no `lazy()` wrapper, no reactive
           // reads inside the body. Should fire once on initial
           // compile and never again, regardless of how many times
           // the wizard navigates around it.

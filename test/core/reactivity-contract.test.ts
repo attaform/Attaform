@@ -14,7 +14,7 @@ import { applyChangedKeys, diffAndApply, type Patch } from '../../src/runtime/co
  *
  * The standing lock for the intended observable changes: a container's object
  * reference changes IFF the write targets that container or alters its
- * structure — with ONE carve-out for the typed array helpers (below). A write
+ * structure, with ONE carve-out for the typed array helpers (below). A write
  * to a descendant LEAF mutates the leaf's slot in place, preserving the
  * identity of every ancestor container.
  *
@@ -22,11 +22,11 @@ import { applyChangedKeys, diffAndApply, type Patch } from '../../src/runtime/co
  * on a container STOPS firing when only a descendant leaf changes. Deep
  * watches and leaf watches are unchanged. Everything else (values, errors,
  * dirty, list/key identity) is locked byte-identical by the behavior-lock
- * golden — this suite owns the reactivity surface the golden can't see.
+ * golden: this suite owns the reactivity surface the golden can't see.
  *
  * Array carve-out: the typed array helpers (append / insert / remove / swap /
  * move / replace) reconcile the array IN PLACE, so the array's reference stays
- * stable across the op — a reorder fires only the moved indices, not a
+ * stable across the op: a reorder fires only the moved indices, not a
  * whole-array re-render. The reconcile also keeps every plain-object container
  * on the path to the array stable, so appending to an object-nested array
  * (`address.contacts`) re-renders only that list, not its parent object's
@@ -140,7 +140,7 @@ describe.each(ADAPTERS)(
       await nextTick()
 
       // The intended change: editing a row FIELD leaves the array reference
-      // (and the row's own reference) untouched — a by-ref watcher stays quiet.
+      // (and the row's own reference) untouched: a by-ref watcher stays quiet.
       expect(rowsByRef).toBe(0)
       expect(form.values.rows).toBe(rowsBefore)
       expect(form.values.rows[1]).toBe(row1Before)
@@ -188,7 +188,7 @@ describe.each(ADAPTERS)(
       const stop = watch(
         () => form.values.a,
         (next) => {
-          // Mirror `a` into `address.city` — a write-back on every change.
+          // Mirror `a` into `address.city`: a write-back on every change.
           form.setValue('address.city', String(next))
         }
       )
@@ -244,7 +244,7 @@ describe.each(ADAPTERS)(
       await nextTick()
 
       // The array reference is preserved across the in-place reconcile, so the
-      // by-ref watch stays quiet — a reorder is NOT a whole-array re-render.
+      // by-ref watch stays quiet: a reorder is NOT a whole-array re-render.
       expect(rowsByRef).toBe(0)
       expect(form.values.rows).toBe(rowsBefore)
 
@@ -318,7 +318,7 @@ describe.each(ADAPTERS)(
       const rowsBefore = form.values.rows
 
       // A direct container-target write (no arrayOp hint) replaces the array
-      // reference like any other targeted write — the by-ref watch fires.
+      // reference like any other targeted write: the by-ref watch fires.
       form.setValue('rows', [{ name: 'only', qty: 9 }])
       await nextTick()
 
@@ -553,7 +553,7 @@ describe.each(ADAPTERS)(
       // swapped ELEMENT references relocate intact: sections[0] now IS the old
       // sections[1] object, and its inner questions array rode along by
       // reference rather than being content-copied. This is the load-bearing
-      // mutated-vs-ancestor distinction — treating the swapped array as an
+      // mutated-vs-ancestor distinction, treating the swapped array as an
       // ancestor would clone the elements and break identity.
       expect(sectionsByRef).toBe(0)
       expect(form.values.sections).toBe(sectionsBefore)

@@ -22,7 +22,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * disabled, so a record value already granted could not be revoked. Asserted
  * through the authoritative `setValue` (the checkbox assigner forwards to it),
  * with the `remove()` helper and the symmetric add as parity / regression
- * guards. Both adapters — same runtime contract.
+ * guards. Both adapters, same runtime contract.
  */
 
 type DirtyForm = {

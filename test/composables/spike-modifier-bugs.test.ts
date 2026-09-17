@@ -101,7 +101,7 @@ describe('regression: 16b — `<input v-register.trim>` spacebar after content',
     await waitUntil(() => (input.value === 'hello ' ? true : null))
     expect(input.value).toBe('hello ')
 
-    // Type the next character. The internal space survives —
+    // Type the next character. The internal space survives,
     // String.prototype.trim() only strips leading/trailing.
     input.value = 'hello w'
     input.dispatchEvent(new Event('input'))
@@ -141,8 +141,8 @@ describe('regression: 16b — `<input v-register.trim>` spacebar after content',
     await waitUntil(() => (input.value === ' ' ? true : null))
 
     // The user typed a space. With deferred trim the input listener
-    // writes the raw " " to the model — DOM and model agree, Vue's
-    // :value patch leaves el.value alone, the user's space stays
+    // writes the raw " " to the model, DOM and model agree, Vue's:
+    // value patch leaves el.value alone, the user's space stays
     // visible. The trim is committed later on blur (`change`).
     expect(input.value).toBe(' ')
   })

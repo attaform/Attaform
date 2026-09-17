@@ -8,14 +8,14 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Path-local validation contract — ancestor re-runs.
+ * Path-local validation contract, ancestor re-runs.
  *
  * Per-field validation only re-validates the touched path. Two
  * classes of constraint depend on state OUTSIDE that path and
  * therefore need ancestor re-runs after a mutation:
  *
  *   1. Array shape constraints (`.min`/`.max`/`.nonempty`/`.length`)
- *      depend on the array's length — which changes on every
+ *      depend on the array's length: which changes on every
  *      append/remove/insert/move/swap. After a structural mutation
  *      the array PATH must re-validate the array's own checks.
  *
@@ -29,7 +29,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *   - Bug 2: with `.refine()` on the parent object, clearing a
  *     leaf does not restore the leaf's `.min(1)` error.
  *
- * Scope: both adapters (v3 and v4). Same runtime contract —
+ * Scope: both adapters (v3 and v4). Same runtime contract,
  * `validateAtPath(value, path)` must surface every check that
  * applies AT `path`, including checks that live on the schema node
  * itself (array shape, object refines). If either adapter strips
@@ -60,7 +60,7 @@ function mountWithApp<T>(setup: () => T): T {
 }
 
 // `scheduleFieldValidation` runs through `Promise.resolve().then(...)` +
-// adapter `safeParseAsync`. The chain is several microtasks deep —
+// adapter `safeParseAsync`. The chain is several microtasks deep,
 // flush aggressively until the in-flight counter drops to zero so the
 // assertion sees the post-validation state.
 async function flushValidations(form: { meta: { validating: boolean } }): Promise<void> {
@@ -79,7 +79,7 @@ function errorsAt(form: { errors: unknown }): ErrorAtPath {
   return form.errors as unknown as ErrorAtPath
 }
 
-// Bug 1 — Array structural mutations re-validate parent array constraints
+// Bug 1, Array structural mutations re-validate parent array constraints
 
 describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
   it('v3: restores the array-level error when remove empties the array', async () => {
@@ -140,11 +140,11 @@ describe('Bug 1 — array .min(1) re-validates after append/remove', () => {
   })
 })
 
-// Bug 2 — .refine() on a parent object preserves per-field re-validation
+// Bug 2, .refine() on a parent object preserves per-field re-validation
 
 describe('Bug 2 — parent .refine does not break per-field revalidation', () => {
   it('v3: restores the leaf .min(1) error when the field is cleared', async () => {
-    // `.refine()` on a v3 ZodObject returns `ZodEffects<ZodObject>` —
+    // `.refine()` on a v3 ZodObject returns `ZodEffects<ZodObject>`,
     // the public `useForm` signature narrows to `ZodObject`, so cast
     // here to exercise the same wrapped shape consumers hit when they
     // attach a cross-field refinement to the form's root schema.
@@ -174,12 +174,12 @@ describe('Bug 2 — parent .refine does not break per-field revalidation', () =>
     )()
     expect(errorsAt(form)('fromCountry')?.[0]?.message).toBe('Required')
 
-    // Type a value — leaf .min(1) now passes → error must clear.
+    // Type a value, leaf .min(1) now passes → error must clear.
     form.setValue('fromCountry', 'a')
     await flushValidations(form)
     expect(errorsAt(form)('fromCountry')).toEqual([])
 
-    // Clear the value — leaf .min(1) fails again → error must return.
+    // Clear the value, leaf .min(1) fails again → error must return.
     form.setValue('fromCountry', '')
     await flushValidations(form)
     expect(errorsAt(form)('fromCountry')?.[0]?.message).toBe('Required')

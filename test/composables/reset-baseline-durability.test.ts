@@ -8,7 +8,7 @@ import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/regi
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
- * Regression coverage for #576 — `reset(next)` moved the dirty baseline
+ * Regression coverage for #576, `reset(next)` moved the dirty baseline
  * but not the reset baseline.
  *
  * The report is worth restating because it explains why the suite had no

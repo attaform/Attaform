@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Aria / directive display-state isolation lock — the directive-path companion
+ * Aria / directive display-state isolation lock: the directive-path companion
  * to render-isolation.lock.test.ts (PERF-ANALYSIS.md row P3 + its open
  * `ariaDisplayState` follow-up).
  *
@@ -12,7 +12,7 @@
  *   directive reads `RegisterValue.ariaDisplayState`,
  *   which is `computed(() => getDisplayStateAt(segments))` =
  *   `getRootFieldStateAt(segments).value.displayState` (register-api.ts,
- *   build-form-api.ts) — the SAME field-state accessor `form.fields` uses,
+ *   build-form-api.ts): the SAME field-state accessor `form.fields` uses,
  *   built over the same P3-lazy `getFormMetaBase`. So a register-only form with
  *   no component reading `form.fields` could still recompute the display engine
  *   O(F) times per keystroke. render-isolation.lock measures COMPONENT renders,
@@ -23,7 +23,7 @@
  *   `ariaDisplayState` returns a STRING. Vue 3.4+ short-circuits a computed whose
  *   recomputed value is equal, so a component render or a `watchEffect` reading
  *   `ariaDisplayState.value` would NOT re-run when a sibling's display engine
- *   recomputes to the same string — a render/effect counter reads 0 siblings
+ *   recomputes to the same string: a render/effect counter reads 0 siblings
  *   EVEN IF the engine ran (the exact wasted-recompute cost the follow-up flagged).
  *   `AbstractSchema.getFieldMetaAtPath`, by contrast, is called unconditionally
  *   by `buildLeafFieldStateBase` on every field-state rebuild, before any value
@@ -36,7 +36,7 @@
  * the wrapper reaches the store; plus one `watchEffect` per field reading
  * `ariaDisplayState.value` (the directive's reactive shape: read the verdict,
  * write `aria-*`). Edit one field; assert its engine recomputed (sanity) and the
- * siblings' did not. Both adapters — the accessor is shared core.
+ * siblings' did not. Both adapters: the accessor is shared core.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, expect, it } from 'vitest'
@@ -163,12 +163,12 @@ describe.each(ADAPTERS)(
       await settle()
       rebuilds.clear()
 
-      // A submit bumps `submissionAttempts` — a form-level scalar every field's
+      // A submit bumps `submissionAttempts`: a form-level scalar every field's
       // display engine tracks EAGERLY (the P3 bust kept scalars eager precisely so
       // form-level changes still reach every field). So every field's engine must
       // recompute. This proves the reducer counter registers broad recompute, so
       // the 0-siblings result on the leaf edit above is genuine isolation, not a
-      // dead harness — and it standing-locks the eager-scalar refinement.
+      // dead harness, and it standing-locks the eager-scalar refinement.
       await form.handleSubmit(() => undefined)()
       await settle()
 

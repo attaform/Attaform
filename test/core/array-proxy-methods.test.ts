@@ -139,7 +139,7 @@ describe.each(adapters)('Array.prototype on array-shaped proxies — $name', ({ 
       ;(api.fields.tags as { push: (x: unknown) => number }).push({})
     }).not.toThrow()
     warnSpy.mockRestore()
-    // Underlying form data unchanged — the readonly proxy didn't
+    // Underlying form data unchanged: the readonly proxy didn't
     // propagate the write.
     expect(api.values.tags).toEqual(['alpha', 'beta', 'gamma'])
     app.unmount()

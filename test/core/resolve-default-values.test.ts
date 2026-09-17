@@ -11,7 +11,7 @@ import { resolveTrichotomy } from '../../src/runtime/core/resolve-default-values
  *
  * The classifier is the shared seam for `useForm({ defaultValues })`
  * (PR 1) and `useWizard({ defaultStatuses })` (PR 3). It's
- * intentionally simple — just a `typeof` check — so the contract is
+ * intentionally simple, just a `typeof` check, so the contract is
  * easy to reason about and the seam stays at the boundary, not buried
  * downstream.
  */
@@ -65,7 +65,7 @@ describe('resolveTrichotomy', () => {
   })
 
   it('async-branch factory normalises sync and async returns via await', async () => {
-    // Consumers `await` the factory either way — sync function returns
+    // Consumers `await` the factory either way, sync function returns
     // resolve on the next microtask, identical to a Promise that
     // resolved synchronously. The classifier doesn't fork on this.
     const syncFactory = () => ({ count: 1 })

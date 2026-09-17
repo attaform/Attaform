@@ -85,7 +85,7 @@ describe('zod v4 adapter — refine / superRefine error paths', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = await adapter.validateAtPath({ password: 'abc' }, undefined)
     // zod short-circuits after the first failing refinement on a single
-    // value — we assert that at least one fires and the path is correct.
+    // value: we assert that at least one fires and the path is correct.
     expect(result.success).toBe(false)
     expect(result.errors?.[0]?.path).toEqual(['password'])
   })
@@ -150,7 +150,7 @@ describe('zod v4 adapter — discriminated union with per-branch refinement', ()
     const pathMatch = result.errors?.some((e) => {
       // Zod's discriminator-aware walker collapses `kind` and routes the
       // failing refinement through to `['event', 'x']` on the parent
-      // object — not `['event', 'click', 'x']`. That matches how v3's
+      // object: not `['event', 'click', 'x']`. That matches how v3's
       // adapter reports the same issue shape.
       return (
         e.path.length === 2 &&
@@ -166,7 +166,7 @@ describe('zod v4 adapter — discriminated union with per-branch refinement', ()
 describe('zod v4 adapter — validateAtPath forwards issue paths under a prefix', () => {
   it('path arg + schema-level refinement produces issues under that path', async () => {
     // When validating the subtree at a path, zod's issue paths are relative
-    // to the subtree root. The adapter emits them verbatim — consumers
+    // to the subtree root. The adapter emits them verbatim, consumers
     // resolve against the same subtree, so paths stay correct end-to-end.
     const schema = z.object({
       profile: z.object({

@@ -101,7 +101,7 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     // `history.length`: jsdom shares one `window.history` across the file,
     // and a prior test's `history.back()` can leave the cursor mid-stack,
     // where `pushState` truncates the forward entries and length does NOT
-    // grow — an order-dependent (seed-dependent) flake. The spy is
+    // grow: an order-dependent (seed-dependent) flake. The spy is
     // order-independent: it proves a real entry was pushed regardless of
     // where the shared cursor happens to sit.
     const pushSpy = vi.spyOn(window.history, 'pushState')
@@ -114,7 +114,7 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
     window.history.back()
     // `history.back()` fires `popstate` asynchronously; the restore
     // lambda then re-applies the step and the reactive update flushes.
-    // Poll for the landing rather than sleeping a fixed interval — a
+    // Poll for the landing rather than sleeping a fixed interval: a
     // fixed pump blows past its budget under full-suite CPU contention
     // (the popstate + flush hadn't run yet), an intermittent flake.
     await waitUntil(() => result.currentStep === 'hw-pop-a' || undefined)
@@ -158,7 +158,7 @@ describe('useWizard — default URL sync via ?step=<key>', () => {
 
   it('canonicalizes a cold URL to the first step in place (replace, not push)', () => {
     // A bare `/wizard` and `/wizard?step=<first>` are the same effective
-    // page — the wizard resolves an absent param to the first step. So
+    // page: the wizard resolves an absent param to the first step. So
     // the on-mount write must REPLACE (canonicalize in place), not push
     // a dead history entry that Back would land on showing the same
     // step. Real navigations still push (covered above).

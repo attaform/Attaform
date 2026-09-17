@@ -14,7 +14,7 @@ import { waitUntil } from '../utils/form-harness'
  *
  * Contract: writes must satisfy the **slim primitive type** at the
  * path. `z.enum(['red','green','blue'])`'s slim primitive is
- * `string`, so any string write is accepted — enum-membership is a
+ * `string`, so any string write is accepted, enum-membership is a
  * refinement-level concern, surfaced by field-level validation.
  *
  * The bug from attaform spike-15d is therefore a
@@ -55,7 +55,7 @@ describe('<select v-register> with out-of-enum option', () => {
               h('option', { value: 'green' }, 'Green'),
               h('option', { value: 'blue' }, 'Blue'),
               // Out-of-enum option, injected by a wrapper SFC. The
-              // primitive type is still `string` — the slim schema
+              // primitive type is still `string`: the slim schema
               // for `z.enum(['red','green','blue'])` is `string`,
               // so this write is accepted.
               h('option', { value: 'magenta' }, 'Magenta'),
@@ -123,7 +123,7 @@ describe('<select v-register> with out-of-enum option', () => {
     const before = captured.api.values.color
     expect(['red', 'green', 'blue']).toContain(before)
 
-    // `1` is a number — slim primitive at `color` is `string`. Cast
+    // `1` is a number, slim primitive at `color` is `string`. Cast
     // through unknown to simulate a runtime type-system bypass
     // (server payload, JSON, etc.).
     const ok = (captured.api.setValue as (path: 'color', value: unknown) => boolean)('color', 1)

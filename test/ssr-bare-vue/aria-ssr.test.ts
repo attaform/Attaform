@@ -96,7 +96,7 @@ describe('auto-aria SSR', () => {
   it('emits nothing for a binding carrying no ariaDisplayState', async () => {
     // A hand-rolled register factory has no field-state accessor to close
     // over, so `buildRegister` omits `ariaDisplayState`. That is the one
-    // remaining "aria off" path — there is no opt-out flag.
+    // remaining "aria off" path: there is no opt-out flag.
     const { html } = await renderField({ dropChannel: true })
     expect(html).not.toContain('aria-invalid')
     expect(html).not.toContain('aria-required')

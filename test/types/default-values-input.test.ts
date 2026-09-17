@@ -5,7 +5,7 @@ import { unset } from '../../src'
 import type { DefaultValuesInput, Unset } from '../../src'
 
 /**
- * Type-level tests for `DefaultValuesInput<F>` — the single-walker
+ * Type-level tests for `DefaultValuesInput<F>`: the single-walker
  * replacement for `DeepPartial<DefaultValuesShape<F>>`. Verifies
  * surface parity with the prior composition, plus the side fix on
  * opaque leaves (`Date`, `Map`, `Set`, `RegExp`, functions stay
@@ -54,7 +54,7 @@ describe('DefaultValuesInput — type-level parity tests', () => {
       function _neverInvoked() {
         useFormV4({
           schema: z.object({ email: z.string() }),
-          // @ts-expect-error — number not assignable to string | Unset | undefined
+          // @ts-expect-error, number not assignable to string | Unset | undefined
           defaultValues: { email: 42 },
         })
       }
@@ -109,7 +109,7 @@ describe('DefaultValuesInput — type-level parity tests', () => {
           schema: z.object({
             profile: z.object({ name: z.string() }),
           }),
-          // @ts-expect-error — boolean not assignable to string at profile.name
+          // @ts-expect-error, boolean not assignable to string at profile.name
           defaultValues: { profile: { name: true } },
         })
       }
@@ -137,7 +137,7 @@ describe('DefaultValuesInput — type-level parity tests', () => {
           schema: z.object({
             tup: z.tuple([z.string(), z.number()]),
           }),
-          // @ts-expect-error — swapped positions: number → string slot, string → number slot
+          // @ts-expect-error, swapped positions: number → string slot, string → number slot
           defaultValues: { tup: [42, 'hello'] },
         })
       }

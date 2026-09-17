@@ -3,7 +3,7 @@
 
   // Segments come from `useDocsBreadcrumb()` (auto-imported); each
   // entry has a label and optional `to`. Segments without `to` are
-  // rendered as plain spans — section headings and the current page
+  // rendered as plain spans, section headings and the current page
   // shouldn't be navigation targets.
   const segments = useDocsBreadcrumb()
 </script>

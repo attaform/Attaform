@@ -10,8 +10,8 @@
  *
  * Attaform's job is narrower and this file is about that job: keep
  * chugging along. Drive every referential kind through the whole
- * lifecycle — mount, read, write, validate, array churn, variant
- * switch, dirty tracking, reset, clear, submit — and assert only that
+ * lifecycle, mount, read, write, validate, array churn, variant
+ * switch, dirty tracking, reset, clear, submit, and assert only that
  * nothing throws, nothing hangs, and nothing silently swaps the value
  * for something else. It deliberately does NOT assert anything about
  * serialization.
@@ -29,7 +29,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { makeMounter } from '../utils/form-harness'
 
-/** A class whose methods read `#private` state — hostile to proxying. */
+/** A class whose methods read `#private` state, hostile to proxying. */
 class Session {
   #token: string
   label = 'session'

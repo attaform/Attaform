@@ -281,7 +281,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
 
     // An affordance gate is not auto-cleared: acknowledging it is the
     // clearance, so it seals downstream until the user advances. (Seed it via
-    // defaultStatuses to pre-clear a returning session — see below.)
+    // defaultStatuses to pre-clear a returning session, see below.)
     expect(wizard.currentStep).toBe('welcome')
     expect(wizard.statuses.shipping.locked).toBe(true)
 
@@ -293,7 +293,7 @@ describe.each(adapters)('useWizard gate() — $name', ({ useForm, z }) => {
 
   it('seed-clears an affordance gate via defaultStatuses (honored uniformly)', async () => {
     // An explicit seed is not accidental, so it clears any gate by key,
-    // affordance gates included — the old skip-noop carve-out is gone with
+    // affordance gates included: the old skip-noop carve-out is gone with
     // the inference it existed to tame.
     const { wizard } = mountWizard(
       ({ shipping, payment }) => [gate('welcome'), shipping, payment],

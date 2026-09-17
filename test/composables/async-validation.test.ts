@@ -15,7 +15,7 @@ import type { UseFormReturn } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Phase 5.6 — async validation end-to-end.
+ * Phase 5.6, async validation end-to-end.
  *
  * Covers the AbstractSchema contract change (Promise-returning
  * validateAtPath) at the public useForm surface: async zod refinements
@@ -410,7 +410,7 @@ describe('validate() reactive ref — pending + cancellation', () => {
     apps.push(app)
     const status = runScoped(scope, () => api.validate())
     expect(status.value.pending).toBe(true)
-    // Drain several microtask + Vue ticks — the async parse needs to
+    // Drain several microtask + Vue ticks: the async parse needs to
     // resolve and the watchEffect callback needs to re-enter.
     for (let i = 0; i < 8 && status.value.pending; i++) {
       await Promise.resolve()
@@ -422,7 +422,7 @@ describe('validate() reactive ref — pending + cancellation', () => {
   it('newer form mutations drop earlier in-flight validations', async () => {
     // If cancellation isn't wired, the older "taken@" result would
     // clobber the newer "alice@" result after it resolves. With the
-    // generation counter, only the newest run writes — the test
+    // generation counter, only the newest run writes: the test
     // confirms the settled status reflects the *latest* form value.
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))

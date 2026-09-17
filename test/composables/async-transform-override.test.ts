@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 //
-// Commit 6 — plan item 12 (finding E): an async transform composes with a
+// Commit 6, plan item 12 (finding E): an async transform composes with a
 // consumer `@update:registerValue` override.
 //
 // The override branch hands the value to the consumer's handler instead of
 // writing storage itself. For an async transform the deferred orchestrator must
 // therefore INVOKE the handler (not `setValueWithInternalPath`) with the
-// resolved, coerced value once the run lands, exactly once — and the busy
+// resolved, coerced value once the run lands, exactly once, and the busy
 // machinery still tracks the in-flight window even though the consumer owns the
 // write. Verified across both zod adapters.
 import { afterEach, describe, expect, it } from 'vitest'
@@ -85,13 +85,13 @@ describe.each(adapters)('async transform — consumer override ($name)', ({ useF
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await awaitSettle()
 
-    // In flight on the override path too — busy tracks the window even though
+    // In flight on the override path too, busy tracks the window even though
     // the consumer owns the write. The handler has NOT fired yet.
     expect(api.fields('age').transforming).toBe(true)
     expect(api.fields('age').busy).toBe(true)
     expect(captured).toEqual([])
 
-    // Resolve with a string — coerce (z.number()) runs AFTER the transform, so
+    // Resolve with a string, coerce (z.number()) runs AFTER the transform, so
     // the handler must receive the coerced number, exactly once.
     gate.resolve('42')
     await waitUntil(() => (captured.length === 1 ? true : null))

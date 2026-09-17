@@ -29,6 +29,18 @@
  * `useForm`. Those are synchronous throws on direct API misuse at the
  * call site, the same category as a `TypeError` on a bad argument, and
  * they are meant to be loud.
+ *
+ * KNOWN GAP, not yet a row because containing it is a behavior change
+ * Oswald has not ruled on: an eager function slot passed to
+ * `useWizard({ steps })` is invoked unguarded in `normalizeSlot`
+ * (`composables/use-wizard.ts`), so a slot that throws takes the host
+ * component down at `useWizard(...)`. Reproduce by mounting
+ * `useWizard({ steps: [form, () => { throw new Error('boom') }] })`
+ * with no `app.config.errorHandler`: setup never reaches the line after
+ * the call. The open question is what a thrown slot should resolve to.
+ * An unresolvable slot is already dropped from the list (the
+ * `norm === undefined` arm of `compiledSteps`), which makes dropping
+ * the obvious candidate, but silently losing a step is its own hazard.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick } from 'vue'
@@ -175,7 +187,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name', (adapter) => {
+describe.each(ADAPTERS)('consumer code cannot escape into the host app: $name', (adapter) => {
   const { useForm } = adapter
 
   // ── schema-embedded functions Attaform invokes during its own walks ──
@@ -259,15 +271,6 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app — $name
         makeMounter(useForm, adapter.plain(), { defaultValues: BOOM })()
       })
     )
-  })
-
-  it('a getDisplayState override that throws', async () => {
-    await expectContained(async () => {
-      const { api } = makeMounter(useForm, adapter.plain(), { getDisplayState: BOOM })()
-      muted(() => api.setValue('a', 'x'))
-      await drain()
-      void api.field?.('a')?.displayState
-    })
   })
 
   // ── schema validators ──

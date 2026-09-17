@@ -62,6 +62,17 @@ export interface AttaformRollupPlugin {
   ): Promise<{ id: string } | null> | null
 }
 
+/**
+ * Rollup plugin that resolves `attaform` and `attaform/zod` to the one
+ * adapter subpath matching the installed Zod major, so the build ships a
+ * single adapter instead of both.
+ *
+ * ```js
+ * import { attaform } from 'attaform/rollup'
+ *
+ * export default { plugins: [attaform()] }
+ * ```
+ */
 export function attaform(options: AttaformRollupPluginOptions = {}): AttaformRollupPlugin {
   const resolveZodAlias = options.resolveZodAlias !== false
   const root = options.root ?? process.cwd()

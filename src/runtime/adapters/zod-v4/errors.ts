@@ -35,10 +35,10 @@ export function zodIssuesToValidationErrors(
     }
     return {
       message: issue.message,
-      // Adapter-side paths stay schema-relative — the validation
-      // pipeline in `create-form-store.ts` prepends the parent path
-      // to absolutise, then routes form-level (absolute path length 0)
-      // entries to the empty-string bucket at storage time.
+      // Adapter-side paths stay schema-RELATIVE: the validation pipeline
+      // in `core/create-form-store.ts` prepends the parent path to
+      // absolutise, then routes form-level entries, those whose absolute
+      // path is empty, to the empty-string bucket at storage time.
       path: issue.path.map((seg) => (typeof seg === 'number' ? seg : String(seg))),
       code,
     }

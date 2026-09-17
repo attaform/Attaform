@@ -40,6 +40,7 @@ import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './default
 import { structuralSnapshot } from './diff-apply'
 import type { PathKey } from './paths'
 
+/** Options for `historyPlugin()`, passed as `useForm({ history })`. */
 export type HistoryPluginOptions = {
   /**
    * Cap on total reachable positions (the current one plus everything

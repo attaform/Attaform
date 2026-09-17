@@ -36,6 +36,17 @@ export type AttaformWebpackPluginOptions = WebpackFamilyPluginOptions
 /** The structural shape webpack requires of the plugin. */
 export type AttaformWebpackPlugin = WebpackFamilyPlugin
 
+/**
+ * webpack plugin that resolves `attaform/zod` to the one adapter subpath
+ * matching the installed Zod major, so the build ships a single adapter
+ * instead of both.
+ *
+ * ```js
+ * const { attaform } = require('attaform/webpack')
+ *
+ * module.exports = { plugins: [attaform()] }
+ * ```
+ */
 export function attaform(options: AttaformWebpackPluginOptions = {}): AttaformWebpackPlugin {
   return createWebpackFamilyPlugin('attaform/webpack', options)
 }

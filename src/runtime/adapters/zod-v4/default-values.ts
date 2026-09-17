@@ -10,17 +10,16 @@ import { V4_INTROSPECTOR } from './walker-introspector'
 /**
  * Derive a default value for any Zod v4 schema.
  *
- * Thin wrapper around the shared `deriveDefaultWalk` core walker —
- * v3 and v4 dispatch through the same body via their respective
- * `SchemaIntrospector` instance. See `core/walk-derive-default.ts`
- * for the per-kind dispatch rules, including the
+ * v3 and v4 dispatch through one `deriveDefaultWalk` body, each
+ * supplying its own `SchemaIntrospector`. `core/walk-derive-default.ts`
+ * holds the per-kind rules, including the
  * `peelEmbeddedDefault` chain-walk that closes the v3↔v4 parity gap
  * on `Optional(Default('x'))` / `Nullable(Default('x'))` / etc.
  *
- * When `useDefault` is false, `.default(x)` wrappers are skipped so
- * the walker produces the underlying leaf's empty value instead —
- * useful when the caller wants a "blank" initial state rather than
- * the schema's declared defaults.
+ * With `useDefault` false, `.default(x)` wrappers are skipped and the
+ * walker produces the underlying leaf's empty value, which is what a
+ * caller wanting a blank initial state rather than the schema's declared
+ * defaults asks for.
  *
  * `maxRecursionDepth` caps descent through `z.lazy()`: the counter
  * bumps only when the walker crosses a lazy boundary.
@@ -49,18 +48,18 @@ export type DefaultValuesResult<Form> = {
 }
 
 /**
- * getDefaultValuesFromZodSchema — produces a form's starting value.
+ * Produce a form's starting value.
  *
- * Walk the schema to derive blank defaults, merge constraints, then
- * run the shared DU-aware structural fix walk (sign-off 7,
+ * Walk the schema to derive blank defaults, merge constraints, then run
+ * the shared DU-aware structural fix walk (sign-off 7,
  * `core/walk-fix-structural.ts`) over the merged tree. No schema is
  * rebuilt and nothing parses, so user refinements and transforms
  * never fire during construction, constraint keys the schema doesn't
  * declare are preserved (except foreign-variant keys at DU values,
- * which the walk removes for the variant-memory machinery), and
- * async refines / transforms need no special casing — refinement
- * enforcement stays with the adapter's construction parse and the
- * post-mount async pass.
+ * which the walk removes for the variant-memory machinery), and async
+ * refines and transforms need no special casing: refinement enforcement
+ * stays with the adapter's construction parse and the post-mount async
+ * pass.
  */
 export function getDefaultValuesFromZodSchema<Form>(
   opts: GetDefaultValuesOptions

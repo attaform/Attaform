@@ -52,8 +52,8 @@ import {
  * `executeRefinement` calls the predicate, sees a Promise come back,
  * and throws "Async refinement encountered during synchronous parse".
  * It discards that promise on the way out. When the consumer's
- * predicate rejects — an `await` that fails, a thrown error — nothing
- * is holding the promise, and the host app gets an unhandled rejection
+ * predicate rejects, through a failed `await` or a thrown error, nothing
+ * is holding the promise and the host app gets an unhandled rejection
  * from a parse it never asked for.
  *
  * The wrapper changes nothing about the verdict. It calls the original
@@ -93,15 +93,10 @@ function walkEffects(schema: z.ZodTypeAny): z.ZodTypeAny {
       const inner = unwrapEffectsSource(s)
       if (inner === undefined) return s
       // Keep the wrapper, recurse the source, and make the refinement's
-      // returned promise observable. Transforms and preprocess steps are
-      // left exactly as they are — they do not return a promise Zod then
-      // discards.
-      //
-      // This walk used to serve a second policy that DROPPED each
-      // wrapper, so the construction parse could retry against a schema
-      // with the async refines removed. That recovery is gone, along
-      // with v4's equivalent, so the only reason to rebuild a tree here
-      // is the rejection handler below.
+      // returned promise observable. A transform or preprocess step is
+      // left exactly as it is, neither returning a promise Zod then
+      // discards. Making that promise observable is the ONLY reason this
+      // module rebuilds a tree at all.
       const effect = getEffect(s)
       const rebuiltInner = recurse(inner)
       const original = effect?.['refinement']
@@ -166,7 +161,7 @@ function walkEffects(schema: z.ZodTypeAny): z.ZodTypeAny {
       // runs after the original parse already threw, so leaving pipes
       // in place would re-throw on retry; recurse the input side
       // alone so the parse can proceed against the structural shape.
-      // Matches v4's conservative pipe handling in `stripAsyncChecks`
+      // Matches the v4 adapter's conservative pipe handling
       // (`strip.ts:304-313`).
       const inSide = unwrapPipeIn(s)
       return inSide === undefined ? s : recurse(inSide)

@@ -25,10 +25,10 @@ export type { ZodKind } from './introspect'
 export type { StorageLeaf, StorageShape } from './types-storage-shape'
 
 /**
- * Type of the value accepted at `Path` for `setValue` / `defaultValues`
- * — the schema's `z.input<Schema>` shape at that path. Matches what
- * `form.values.X` returns at runtime (the honest input view storage
- * holds before transforms run).
+ * What `setValue` and `defaultValues` accept at `Path`: the schema's
+ * `z.input<Schema>` shape there. It matches what `form.values.X` returns
+ * at runtime, storage holding the honest input view until transforms
+ * run.
  *
  * ```ts
  * const schema = z.object({
@@ -45,9 +45,9 @@ export type PathInput<Schema extends z.ZodType, Path extends string> =
     : never
 
 /**
- * Type produced at `Path` after the full parse pipeline — the schema's
- * `z.output<Schema>` shape at that path. Matches the `data` payload of
- * `form.parse()` and the value handed to `handleSubmit`'s callback.
+ * What `Path` holds after the full parse pipeline: the schema's
+ * `z.output<Schema>` shape there. It matches `form.parse()`'s `data` and
+ * the value `handleSubmit`'s callback receives.
  *
  * ```ts
  * const schema = z.object({
@@ -64,16 +64,14 @@ export type PathOutput<Schema extends z.ZodType, Path extends string> =
     : never
 
 /**
- * `FormOf` / `OutOf` / `ReadOf` factor the three identical-shape
- * conditionals out of `useForm`'s public signature. The bundled
- * `.d.ts` then carries one alias per shape rather than re-inlining
- * `z.input<Schema> extends GenericForm ? z.input<Schema> : never`
- * four times — which is what produces TS2589 ("Type instantiation
- * is excessively deep") on consumer call sites with complex schemas
- * (discriminated unions, transform pipes, deep `.register()` chains).
- * Each alias is computed once per `Schema` instantiation; downstream
- * generics ride on the alias rather than re-evaluating the
- * conditional from scratch.
+ * Factor the three identical-shape conditionals out of `useForm`'s public
+ * signature, so the bundled `.d.ts` carries one alias per shape instead
+ * of re-inlining `z.input<Schema> extends GenericForm ? z.input<Schema>
+ * : never` four times. That inlining is what produces TS2589 ("Type
+ * instantiation is excessively deep") at a consumer call site holding a
+ * discriminated union, a transform pipe, or a deep `.register()` chain.
+ * Each alias computes once per `Schema` instantiation, and downstream
+ * generics ride it rather than re-evaluating the conditional.
  */
 type FormOf<Schema extends SupportedRootSchema> =
   z.input<Schema> extends GenericForm ? z.input<Schema> : never
@@ -89,21 +87,18 @@ type ReadOf<Schema extends SupportedRootSchema> =
  * import { useForm } from 'attaform/zod'
  * import { z } from 'zod'
  *
- * const form = useForm({
- *   schema: z.object({
- *     email: z.email(),
- *     password: z.string().min(8),
- *   }),
- *   defaultValues: { email: '' },
+ * const schema = z.object({
+ *   email: z.email(),
+ *   password: z.string().min(8),
  * })
+ *
+ * const form = useForm({ schema, defaultValues: { email: '' } })
  * ```
  *
- * Returns a form API exposing `register`, `values`, `errors`,
- * `fields`, `setValue`, `handleSubmit`, `meta`, field-array
- * helpers, and more. See `UseFormReturnType` for the full
- * surface.
- *
- * For Zod v3, import from `attaform/zod-v3` instead.
+ * The returned form carries `register`, `values`, `errors`, `fields`,
+ * `setValue`, `handleSubmit`, `meta` and the field-array helpers; see
+ * `UseFormReturnType` for the whole surface. For Zod v3, import from
+ * `attaform/zod-v3`.
  */
 export function useForm<Schema extends SupportedRootSchema, K extends FormKey = FormKey>(
   configuration: Omit<
@@ -111,31 +106,31 @@ export function useForm<Schema extends SupportedRootSchema, K extends FormKey = 
       FormOf<Schema>,
       OutOf<Schema>,
       AbstractSchema<FormOf<Schema>, OutOf<Schema>>,
-      // `defaultValues` is Omitted below and re-supplied via the
-      // `AcceptableDefaults` intersection, so this `DefaultValues` slot is
-      // inert. `never` avoids re-instantiating the deep `DefaultValuesInput`
-      // cascade here (a TS2589 margin in the bundled `.d.ts`).
+      // Inert: `defaultValues` is Omitted below and re-supplied through
+      // the `AcceptableDefaults` intersection. `never` keeps the deep
+      // `DefaultValuesInput` cascade from re-instantiating here, which is
+      // TS2589 margin in the bundled `.d.ts`.
       never,
       K
     >,
     'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
   > & {
     schema: Schema
-    // #422: the `AcceptableDefaults` slot adds the schema's own input
-    // (`z.input<Schema>`, raw — NOT the `FormOf` conditional, which would no
-    // longer match a forwarded value under a generic) as a reflexive escape
-    // arm so a generic form wrapper forwarding `defaultValues` does not trip
-    // TS2589 / TS2769. Redundant at concrete call sites; see
+    // The slot adds the schema's RAW input, `z.input<Schema>`, as a
+    // reflexive escape arm, so a generic form wrapper forwarding
+    // `defaultValues` does not trip TS2589 or TS2769 (#422). Raw, not the
+    // `FormOf` conditional, which would stop matching a forwarded value
+    // under a generic. Redundant at a concrete call site; see
     // `AcceptableDefaults`.
     defaultValues?: AcceptableDefaults<FormOf<Schema>, z.input<Schema>>
   } & ValidateOnConfig
 ): UseFormReturnType<FormOf<Schema>, OutOf<Schema>, ReadOf<Schema>, K> {
-  // Foot-gun guard: catches `useForm(z.object({...}))` (raw schema as
-  // the first arg — its `.schema` field is undefined), `useForm()` (no
-  // args), and `useForm({ schema: undefined })` before they reach the
-  // adapter and crash deep with an opaque message. JS callers and
-  // `as any` callers can defy the static signature; the `unknown`
-  // cast forces the runtime checks to stay live under tsc.
+  // Catches `useForm(z.object({...}))` (a raw schema, so `.schema` is
+  // undefined), `useForm()` and `useForm({ schema: undefined })`, each
+  // before it reaches the adapter and crashes deep with an opaque
+  // message. A JS caller or an `as any` caller can defy the static
+  // signature, and the `unknown` cast is what keeps these runtime checks
+  // live under tsc.
   const candidate = configuration as unknown
   if (
     candidate === undefined ||
@@ -144,40 +139,38 @@ export function useForm<Schema extends SupportedRootSchema, K extends FormKey = 
   ) {
     throw new InvalidUseFormConfigError()
   }
-  // Three-slot generic split:
-  //  - `Form` (z.input) is the WRITE view — what setValue / register
-  //    / defaultValues accept. Loose for honest-input wrappers
-  //    (preprocess accepts `unknown` at the write boundary).
-  //  - `Out` (z.output) is the parsed-output view — what handleSubmit
-  //    and form.parse() yield. Refinements have fired, transforms
-  //    have run.
-  //  - `Read` (StorageShape) is the READ view — what form.values /
-  //    form.fields / register's read side / toRef expose. Per-key
-  //    z.output for write-boundary wrappers (default / preprocess /
-  //    etc.) so defaulted leaves type as `T` (not `T | undefined`),
-  //    z.input for transforms (storage holds pre-transform input).
+  // Three generic slots, three views:
+  //  - `Form` (z.input) is the WRITE view, what `setValue`, `register`
+  //    and `defaultValues` accept. Loose for honest-input wrappers,
+  //    since preprocess accepts `unknown` at the write boundary.
+  //  - `Out` (z.output) is the PARSED view, what `handleSubmit` and
+  //    `form.parse()` yield, refinements having fired and transforms
+  //    having run.
+  //  - `Read` (StorageShape) is the READ view, what `form.values`,
+  //    `form.fields`, register's read side and `toRef` expose. Per key
+  //    it is z.output for a write-boundary wrapper, so a defaulted leaf
+  //    types as `T` rather than `T | undefined`, and z.input for a
+  //    transform, storage holding the pre-transform input.
   type Form = z.input<Schema> extends GenericForm ? z.input<Schema> : never
   type Out = z.output<Schema> extends GenericForm ? z.output<Schema> : never
   type Read = StorageShape<Schema> extends GenericForm ? StorageShape<Schema> : never
-  // `zodV4Adapter` returns a factory
-  // `(formKey, options: SchemaFactoryOptions) => AbstractSchema`;
-  // `UseFormConfiguration.schema` accepts `Schema | ((key, options) => Schema)`,
-  // so the factory is a first-class input — previously the call site cast it
-  // through `unknown as AbstractSchema`, which converted a function to an
-  // object type and hid the mismatch. The narrower cast below preserves the
-  // factory shape at the boundary so per-form `maxRecursionDepth` threads
-  // through cleanly.
+  // `zodV4Adapter` returns a factory `(formKey, options) =>
+  // AbstractSchema`, and `UseFormConfiguration.schema` accepts `Schema |
+  // ((key, options) => Schema)`, so the factory is a first-class input.
+  // The cast below stays narrow deliberately: casting through `unknown as
+  // AbstractSchema` would convert a function to an object type and hide
+  // the mismatch, where preserving the factory shape at the boundary is
+  // what threads per-form `maxRecursionDepth` through.
   const adapter: (key: FormKey, options: SchemaFactoryOptions) => AbstractSchema<Form, Out> =
     zodV4Adapter(configuration.schema) as (
       key: FormKey,
       options: SchemaFactoryOptions
     ) => AbstractSchema<Form, Out>
-  // The discriminated `ValidateOnConfig` doesn't narrow cleanly through
-  // `Omit` + spread — TS picks the wrong variant after the structural
-  // rebuild. The runtime input is genuinely the right shape (the
-  // public `useForm` signature already enforced the discriminant on
-  // `configuration` before we got here), so cast to the parameter
-  // type to side-step the structural disagreement.
+  // The discriminated `ValidateOnConfig` does not narrow cleanly through
+  // `Omit` plus spread: TS picks the wrong variant after the structural
+  // rebuild. The runtime input IS the right shape, the public `useForm`
+  // signature having enforced the discriminant on `configuration`
+  // already, so the cast side-steps a purely structural disagreement.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   return useAbstractForm<Form, Out, Read, K>({
     ...configuration,

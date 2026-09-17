@@ -1,46 +1,31 @@
 /**
- * Field-metadata write/read API for the Zod v3 adapter.
+ * Field-metadata write and read API for the Zod v3 adapter.
  *
- * Storage lives in the shared `field-meta-store` core — every entry
- * (`attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`) writes to and
- * reads from the same `WeakMap`s, so a payload registered via any
- * entry surfaces at lookup regardless of which adapter actually runs.
+ * Storage lives in the shared `core/field-meta-store`, where every entry
+ * (`attaform/zod`, `attaform/zod-v3`, `attaform/zod-v4`) reads and
+ * writes the same `WeakMap`s, so a payload registered through any of
+ * them surfaces at lookup whichever adapter runs.
  *
- * Zod 3 has no `z.registry()` mechanism, so `fieldMeta` is the
- * shared registry-shaped object exposing `add` / `get` / `has` /
- * `remove`. The public `withMeta(schema, payload)` write API matches
- * `attaform/zod`'s so schema authoring reads identically across the
- * two adapters.
+ * **Registration order does not matter.** Register on the schema
+ * reference assigned into the parent's shape, or on the inner schema
+ * before wrapping:
  *
- * **Registration patterns:** both styles work — register on whatever
- * schema reference you assign into the parent's shape, OR on the
- * inner schema before wrapping. The adapter's resolver tries the
- * walker-returned schema first, then falls back to the peeled
- * inner so either ordering hits:
- *
- *     // both equivalent — registry hits at lookup time
+ *     // equivalent; both hit at lookup time
  *     withMeta(z.string(), { label: 'Email' }).optional()
  *     withMeta(z.string().optional(), { label: 'Email' })
  *
- * The path walker returns the wrapper at terminal positions and
- * peels at intermediate descent. The two-stage lookup covers both
- * leaf and container registrations symmetrically.
+ * The path walker returns the wrapper at a terminal position and peels
+ * at intermediate descent, and the resolver tries the walker's schema
+ * before the peeled inner, so the two-stage lookup covers leaf and
+ * container registrations symmetrically.
  */
 import type { z } from 'zod-v3'
 import type { FieldMetaPayload } from '../../core/field-meta'
 import { getFieldMetaForSchema } from '../../core/field-meta-store'
 import { installingFieldMetaStore } from '../../core/walk-field-meta'
 
-/**
- * The shared registry every Attaform-aware Zod 3 schema can register
- * field metadata against. Backed by the cross-adapter store — a
- * payload registered here is visible to the v4 adapter and the
- * unified `attaform/zod` entry, and vice versa. Every `add` also
- * installs the path-walking resolver into the shared store's builder
- * slot, so the walk's bytes ride this module's import instead of the
- * adapter — a consumer that never registers metadata never ships the
- * walk.
- */
+/** The `add` / `get` / `has` / `remove` shape of `fieldMeta`, matching
+ *  Zod 4's `$ZodRegistry` closely enough to read the same either way. */
 type FieldMetaRegistryV3 = {
   /**
    * Register `payload` against `schema`. Returns the registry to
@@ -61,40 +46,51 @@ type FieldMetaRegistryV3 = {
   remove(schema: z.ZodTypeAny): FieldMetaRegistryV3
 }
 
+/**
+ * The shared registry an Attaform-aware Zod 3 schema registers field
+ * metadata against.
+ *
+ * ```ts
+ * import { fieldMeta } from 'attaform/zod-v3'
+ *
+ * const email = z.string().email()
+ * fieldMeta.add(email, { label: 'Email address' })
+ * ```
+ *
+ * It is backed by the cross-adapter store, so a payload registered here
+ * is visible to the v4 adapter and to the unified `attaform/zod` entry,
+ * and the reverse. Every `add` also installs the path-walking resolver
+ * into the shared store's builder slot, which is what makes the walk's
+ * bytes ride this module's import rather than the adapter: a consumer
+ * who never registers metadata never ships the walk.
+ */
 export const fieldMeta = installingFieldMetaStore as unknown as FieldMetaRegistryV3
 
 /**
- * Attach `payload` to `schema` in the shared `fieldMeta` registry
- * and return a clone of `schema` (chainable, with the new metadata).
- * Cross-version with `attaform/zod`'s `withMeta()`.
+ * Attach `payload` to `schema` in the shared `fieldMeta` registry and
+ * return a chainable CLONE of `schema` carrying the new metadata. Zod 3
+ * has no `schema.register()`, so this is its only fluent write API, and
+ * it matches `attaform/zod`'s `withMeta()`.
  *
- * **Why clone, not mutate.** The shared store keys metadata on the
- * schema reference. Calling `withMeta` twice on the same instance
- * would overwrite (last-write-wins) — so a sub-schema reused at
- * multiple form paths (e.g. an address schema shared between pickup
- * and delivery) couldn't carry distinct metadata per path.
+ * It clones rather than mutates because the store keys metadata on the
+ * schema reference: calling `withMeta` twice on one instance would
+ * overwrite last-write-wins, and a sub-schema reused at several paths,
+ * an address shared between pickup and delivery say, could then carry
+ * only one payload. Zod 3 exposes no `.clone()`, so the reconstruction
+ * goes through `new schema.constructor(schema._def)`. Each call gets a
+ * fresh identity and a fresh registry slot, and existing metadata merges
+ * through, so chaining accumulates payload fields rather than replacing
+ * them.
  *
- * `withMeta` sidesteps the footgun by reconstructing `schema` via
- * its constructor + `_def` — Zod 3 schemas don't expose `.clone()`,
- * but `new schema.constructor(schema._def)` is the equivalent. Each
- * call gets a fresh identity and a fresh registry slot. Existing
- * metadata on the original is merged through, so chaining
- * `withMeta` accumulates payload fields rather than replacing.
- *
- * Inner field schemas (e.g. an object's `.shape.city`) are shared
- * across clones — the def is held by reference — so leaf metadata
- * registers once and surfaces at every path.
- *
- * `schema.register()` does NOT exist on Zod 3 — `withMeta` is the
- * only fluent write API. Register on the inner schema before
- * wrapping; see the "Registration rule" note in this file's header.
+ * An inner field schema, an object's `.shape.city` for instance, is
+ * shared across clones, the def being held by reference, so leaf
+ * metadata registers once and surfaces at every path. See this file's
+ * header for the two equivalent registration orderings.
  */
 export function withMeta<S extends z.ZodTypeAny>(schema: S, payload: FieldMetaPayload): S {
   const existing = getFieldMetaForSchema(schema as object) ?? {}
-  // Zod 3 lacks a public `.clone()`, so reconstruct via the
-  // constructor + _def. Each ZodSchema subclass's constructor takes
-  // a `_def` object and produces an instance — same shape, fresh
-  // identity.
+  // Every ZodSchema subclass's constructor takes a `_def` and produces
+  // an instance: same shape, fresh identity.
   const Ctor = schema.constructor as new (def: S['_def']) => S
   const cloned = new Ctor(schema._def)
   installingFieldMetaStore.add(cloned as object, { ...existing, ...payload })

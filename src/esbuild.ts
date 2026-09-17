@@ -83,6 +83,17 @@ export interface AttaformEsbuildPlugin {
   setup(build: EsbuildPluginBuild): void
 }
 
+/**
+ * esbuild plugin that resolves `attaform` and `attaform/zod` to the one
+ * adapter subpath matching the installed Zod major, so the build ships a
+ * single adapter instead of both.
+ *
+ * ```js
+ * import { attaform } from 'attaform/esbuild'
+ *
+ * await build({ entryPoints: ['src/main.ts'], bundle: true, plugins: [attaform()] })
+ * ```
+ */
 export function attaform(options: AttaformEsbuildPluginOptions = {}): AttaformEsbuildPlugin {
   const resolveZodAlias = options.resolveZodAlias !== false
   const warnState = { warned: false }

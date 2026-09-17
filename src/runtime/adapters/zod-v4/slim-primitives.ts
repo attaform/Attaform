@@ -1,7 +1,7 @@
 /**
  * Slim-primitive walker for the zod-v4 adapter. Returns the set of
- * `SlimPrimitiveKind`s a schema accepts at write time — wrappers are
- * peeled, refinement-level constraints (`.email()`, `.min(N)`, enum
+ * `SlimPrimitiveKind`s a schema accepts at write time. Wrappers are
+ * peeled, and refinement-level constraints (`.email()`, `.min(N)`, enum
  * membership, literal equality, regex) are ignored.
  *
  * Thin wrapper around the shared `slimPrimitivesWalk` core walker; v3

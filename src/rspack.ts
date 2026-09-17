@@ -39,6 +39,17 @@ export type AttaformRspackPluginOptions = WebpackFamilyPluginOptions
 /** The structural shape Rspack requires of the plugin. */
 export type AttaformRspackPlugin = WebpackFamilyPlugin
 
+/**
+ * Rspack plugin that resolves `attaform/zod` to the one adapter subpath
+ * matching the installed Zod major, so the build ships a single adapter
+ * instead of both.
+ *
+ * ```js
+ * import { attaform } from 'attaform/rspack'
+ *
+ * export default { plugins: [attaform()] }
+ * ```
+ */
 export function attaform(options: AttaformRspackPluginOptions = {}): AttaformRspackPlugin {
   return createWebpackFamilyPlugin('attaform/rspack', options)
 }

@@ -9,10 +9,11 @@ import {
 } from './introspect'
 
 /**
- * Peel optional/nullable/default/readonly/catch/pipe/intersection
- * wrappers off a schema, returning the innermost discriminated union —
- * or `undefined` if none is found. Used by the default-values walker
- * and the discriminator-aware reshape so that e.g.
+ * Peel optional, nullable, default, readonly, catch, pipe and
+ * intersection wrappers off a schema to reach the innermost
+ * discriminated union, or `undefined` when there is none. The
+ * default-values walker and the discriminator-aware reshape both read
+ * it, so that
  *
  *   z.discriminatedUnion('status', [...]).optional().default({...})
  *   z.discriminatedUnion('kind', [...]).catch({ kind: 'a', ... })
@@ -28,7 +29,7 @@ import {
  */
 export function unwrapToDiscriminatedUnion(schema: z.ZodType): z.ZodType | undefined {
   let current: z.ZodType = schema
-  // Bounded descent — any well-formed Zod schema tree terminates quickly.
+  // Bounded; a well-formed Zod schema tree terminates quickly.
   for (let i = 0; i < 64; i++) {
     const kind = kindOf(current)
     if (kind === 'discriminated-union') return current
@@ -63,7 +64,7 @@ export function unwrapToDiscriminatedUnion(schema: z.ZodType): z.ZodType | undef
 }
 
 /**
- * First option of a discriminated union — used as the default when no
+ * A discriminated union's first option, which is the default when no
  * discriminator value is known at default-values construction time.
  */
 export function getDiscriminatedUnionFirstOption(schema: z.ZodType): z.ZodObject | undefined {

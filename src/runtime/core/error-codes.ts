@@ -89,6 +89,7 @@ export const AttaformErrorCode = {
   GateNotCleared: 'atta:gate-not-cleared',
 } as const
 
+/** Every `atta:`-prefixed code Attaform itself can put on an error. */
 export type AttaformErrorCode = (typeof AttaformErrorCode)[keyof typeof AttaformErrorCode]
 
 /**

@@ -13,9 +13,9 @@ export interface ZodTypeWithInnerType extends z.ZodTypeAny {
 }
 
 /**
- * The "honest read shape" of a Zod v3 schema — fields under records,
- * arrays, and dynamic boundaries are tagged optional/undefined to
- * reflect the runtime reality that those slots may be missing.
+ * The honest read shape of a Zod v3 schema: a field under a record, an
+ * array or a dynamic boundary is tagged optional or undefined, matching
+ * the runtime reality that the slot may be missing.
  *
  * Used internally by the v3 adapter as the read-side type for
  * `getValue` / `getFieldState`. Not commonly needed in consumer code.

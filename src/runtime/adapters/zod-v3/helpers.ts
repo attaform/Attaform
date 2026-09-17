@@ -27,11 +27,11 @@ type ZodTypeMap = {
   ZodNumber: z.ZodNumber
   ZodBigInt: z.ZodBigInt
   ZodDate: z.ZodDate
-  // Newer wrappers (v3.23+ for Pipeline/Readonly; Branded/Catch
-  // pre-existed). Use proper class generics so the predicate's
-  // narrowing target is structurally distinct from the existing
-  // entries — falling back to `z.ZodTypeAny` collapses TS's flow
-  // analysis through later branches into `never`.
+  // Newer wrappers: Pipeline and Readonly arrived in v3.23, Branded and
+  // Catch predate it. Each needs its proper class generics so the
+  // predicate's narrowing target stays structurally distinct from the
+  // entries above; falling back to `z.ZodTypeAny` collapses TS's flow
+  // analysis through the later branches into `never`.
   ZodPipeline: z.ZodPipeline<z.ZodTypeAny, z.ZodTypeAny>
   ZodReadonly: z.ZodReadonly<z.ZodTypeAny>
   ZodBranded: z.ZodBranded<z.ZodTypeAny, string | number | symbol>
@@ -39,10 +39,9 @@ type ZodTypeMap = {
   ZodIntersection: z.ZodIntersection<z.ZodTypeAny, z.ZodTypeAny>
   ZodLazy: z.ZodLazy<z.ZodTypeAny>
   ZodNativeEnum: z.ZodNativeEnum<z.EnumLike>
-  // Leaf-only kinds carried for D5 / D6 / D9 — the adapter's
-  // `generateValue` and `isLeafRequiredV3` branch on these to fold
-  // them into their schema-valid empty value (`NaN` / `undefined`)
-  // rather than the warn-path's `null`.
+  // Leaf-only kinds, which `generateValue` and `isLeafRequiredV3` branch
+  // on to fold into their schema-valid empty value, `NaN` or `undefined`,
+  // rather than the warn path's `null`.
   ZodNaN: z.ZodNaN
   ZodVoid: z.ZodVoid
   ZodAny: z.ZodAny

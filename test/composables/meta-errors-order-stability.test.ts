@@ -104,6 +104,41 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     expect(afterTypePaths).toEqual(initialPaths)
   })
 
+  /**
+   * The same guarantee on the OTHER surface. `form.errors` materialises
+   * a tree, and its key order is observable through `JSON.stringify`.
+   * It used to be the error store's raw insertion order, so it agreed
+   * with `meta.errors` only until a path was cleared and re-broken:
+   * the store's delete-then-set moved that key to the end and the tree
+   * shuffled with it, the exact churn the ordinal sort above exists to
+   * absorb. The tree is placed by the same ordinal now, so the two
+   * surfaces agree and neither shuffles.
+   */
+  it('the materialised error tree holds schema-declaration order across a clear and re-break', async () => {
+    const { app, api } = mountForm(schema, { email: '', password: '' })
+    apps.push(app)
+
+    const handler = api.handleSubmit(
+      async () => {},
+      async () => {}
+    )
+    await handler()
+    const treeKeys = (): string[] => Object.keys(JSON.parse(JSON.stringify(api.errors)) as object)
+    await waitUntil(() => (treeKeys().join('|') === 'email|password' ? true : null))
+    expect(treeKeys()).toEqual(['email', 'password'])
+    expect(treeKeys()).toEqual(api.meta.errors.map((e) => e.path.join('.')))
+
+    // Clear the FIRST-declared field's error, then break it again. The
+    // store re-inserts `email` at the end; the tree must not follow.
+    api.setValue('email', 'ada@example.com')
+    await waitUntil(() => (treeKeys().join('|') === 'password' ? true : null))
+    api.setValue('email', '')
+    await waitUntil(() => (treeKeys().length === 2 ? true : null))
+
+    expect(treeKeys()).toEqual(['email', 'password'])
+    expect(treeKeys()).toEqual(api.meta.errors.map((e) => e.path.join('.')))
+  })
+
   it('multiple per-field re-validations on the same field do not shuffle siblings', async () => {
     const { app, api } = mountForm(schema, { email: '', password: '' })
     apps.push(app)

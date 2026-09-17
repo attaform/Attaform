@@ -63,7 +63,7 @@ const ADAPTERS = [
   { name: 'zod-v3', z: zV3 as any, useForm: useFormV3 as any },
 ] as const
 
-type SubStyle = 'fields-display' | 'fields-value' | 'register-value'
+type SubStyle = 'fields-display' | 'fields-value' | 'register-value' | 'errors-tree'
 
 type FieldSpec = {
   path: string
@@ -265,6 +265,10 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
         let read: unknown
         if (props.style === 'register-value') read = rv.displayValue.value
         else if (props.style === 'fields-value') read = (props.form as any).fields(props.path).value
+        else if (props.style === 'errors-tree')
+          // The materialised tree, a different reader from `fields(path)`:
+          // it walks the error stores rather than one path's field state.
+          read = JSON.stringify((props.form as any).errors[props.path] ?? null)
         else read = (props.form as any).fields(props.path).displayState
         return h('div', String(read ?? ''))
       }
@@ -356,6 +360,37 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
     form.setValue('profile.first', 'Grace H')
     await settle()
     form.setValue('profile.first', 'Grace Hopper')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+  })
+
+  /**
+   * The same mount-seeded shape through the OTHER error reader.
+   *
+   * `form.errors.<path>` materialises a tree rather than reading one
+   * path's field state, and it used to build that tree by scanning the
+   * whole error store and filtering by prefix, so it woke on every
+   * path's errors exactly as the aggregate did (measured 9 at n=10 and
+   * 49 at n=50 unrelated containers). Both readers now take their
+   * candidates from the same per-prefix window, so both hold 0.
+   */
+  it('a mount-seeded error costs an unrelated container nothing on the errors tree', async () => {
+    const seeded: LockScenario = {
+      ...NESTED_FIELDS_DISPLAY,
+      id: 'nested: errors-tree (mount-seeded)',
+      style: 'errors-tree',
+      defaultValues: { profile: { first: '', last: '' }, contact: { email: '', phone: '' } },
+    }
+    const form = mount(seeded)
+    await settle()
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace')
+    await settle()
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
+
+    renders.clear()
+    form.setValue('profile.first', 'Grace H')
     await settle()
     expect(renders.get('contact(container)') ?? 0).toBe(0)
   })

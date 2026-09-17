@@ -3,7 +3,7 @@ import type { ValidationError } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import type { DynamicPathSweep } from './dynamic-path-sweep'
-import { cellEntriesFor } from './errors'
+import { makeBlankRequiredError } from './error-codes'
 import { aggregateErrorsAt, type FieldState } from './field-state-api'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
@@ -14,7 +14,6 @@ import {
   canonicalizePath,
   isPathPrefix,
   keyForSegments,
-  segmentsForPathKey,
 } from './paths'
 import { isArrayPath, liveContainerHasKey, liveKeysAtPath } from './proxy-live-keys'
 import { makeReadonlyCoercion, warnReadOnly } from './proxy-readonly-helpers'
@@ -413,34 +412,24 @@ export function buildErrorsSurface<F extends GenericForm>(
     // live at the root `[]` and are reached via `meta.ownErrors`.
     const isContainerSelfAccess = path.length > 1 && path[path.length - 1] === ''
 
-    const collectAtKey = (key: PathKey, active: boolean, into: ValidationError[]): void => {
-      const cell = state.errorCells.get(key)
-      if (active) {
-        const b = state.derivedBlankErrors.value.get(key)
-        if (cell !== undefined) into.push(...cell.schema)
-        if (b !== undefined) into.push(...b)
-      }
-      // User errors are consumer data (server replies, manual marks) —
-      // never silently dropped, even at unreachable paths.
-      if (cell !== undefined) into.push(...cell.user)
-    }
-
     const merged: ValidationError[] = []
     if (isContainerSelfAccess) {
-      const containerPath = path.slice(0, -1) as ReadonlyArray<Segment>
-      const containerKey = canonicalizePath(containerPath as Path).key
-      const literalKey = canonicalizePath(path as Path).key
+      const containerPath = path.slice(0, -1)
+      const container = canonicalizePath(containerPath)
+      const literal = canonicalizePath(path)
       const active = hasAtPath(state.form.value, containerPath)
-      collectAtKey(containerKey, active, merged)
-      // Skip the literal lookup when canonical keys collide — the root
+      collectErrorsAt(state, container.key, container.segments, active, merged)
+      // Skip the literal lookup when canonical keys collide: the root
       // path resolves both to the same bucket and we'd double-count.
-      if (literalKey !== containerKey) collectAtKey(literalKey, active, merged)
+      if (literal.key !== container.key) {
+        collectErrorsAt(state, literal.key, literal.segments, active, merged)
+      }
       return merged
     }
 
-    const { key } = canonicalizePath(path as Path)
-    const active = hasAtPath(state.form.value, path as ReadonlyArray<Segment>)
-    collectAtKey(key, active, merged)
+    const { key, segments } = canonicalizePath(path)
+    const active = hasAtPath(state.form.value, path)
+    collectErrorsAt(state, key, segments, active, merged)
     return merged
   }
 
@@ -468,6 +457,43 @@ export function buildErrorsSurface<F extends GenericForm>(
 }
 
 /**
+ * Append the three error lists at one path, in store order, applying
+ * the active-path filter per class: library verdicts (schema, blank)
+ * stay hidden at an unreachable path, consumer-supplied user entries
+ * surface unconditionally.
+ *
+ * Blank is synthesized from this path's OWN `blankPaths` membership
+ * rather than read out of the whole-form `derivedBlankErrors` map, for
+ * the same reason `aggregateErrorsAt` does it: that map takes a fresh
+ * identity on ANY blank transition anywhere in the form, so reading it
+ * here would give every materialised tree node a dependency on every
+ * other path's blanks. Same builder and same `isRequiredAtPath` gate,
+ * so the entry is identical to the one the map would have held.
+ *
+ * One helper for all three `form.errors` readers (leaf resolution,
+ * container key enumeration, tree materialisation) so the per-class
+ * filter cannot drift between them.
+ */
+function collectErrorsAt<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  key: PathKey,
+  segments: Path,
+  active: boolean,
+  into: ValidationError[]
+): void {
+  const cell = state.errorCells.get(key)
+  if (active) {
+    if (cell !== undefined) into.push(...cell.schema)
+    if (state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)) {
+      into.push(makeBlankRequiredError(segments))
+    }
+  }
+  // User errors are consumer data (server replies, manual marks), never
+  // silently dropped, even at unreachable paths.
+  if (cell !== undefined) into.push(...cell.user)
+}
+
+/**
  * Container enumeration for `form.errors`: the union of live form-data
  * keys at the path and the first-child segments of every error-store
  * entry beneath it. Active-path filter mirrors leaf reads — library-
@@ -482,24 +508,33 @@ function errorAwareContainerKeys<F extends GenericForm>(
 ): readonly string[] {
   const keys = new Set<string>(liveKeysAtPath(state, segments))
   const formValue = state.form.value
-  const walk = (
-    store: Iterable<readonly [PathKey, readonly ValidationError[]]>,
-    applyActivePathFilter: boolean
-  ): void => {
-    for (const [pathKey, errors] of store) {
-      if (errors.length === 0) continue
-      const decoded = segmentsForPathKey(pathKey)
-      if (decoded === null) continue
-      if (decoded.length <= segments.length) continue
-      if (!isPathPrefix(segments, decoded)) continue
-      if (applyActivePathFilter && !hasAtPath(formValue, decoded)) continue
-      const nextSeg = decoded[segments.length] as Segment
-      keys.add(typeof nextSeg === 'number' ? String(nextSeg) : nextSeg)
-    }
+  // One scratch list reused across candidates: this only asks whether a
+  // path contributes anything, never what.
+  const errors: ValidationError[] = []
+  const found: { readonly childKey: string; readonly ordinal: number }[] = []
+  for (const { key, segments: decoded } of state.errorWindowAt(
+    segments,
+    keyForSegments(segments).key
+  )) {
+    // The window is a key-range superset, so membership is still decided
+    // here. An equal-length entry is the container's own bucket (root
+    // `[]` included) and contributes no child key.
+    if (decoded.length <= segments.length) continue
+    if (!isPathPrefix(segments, decoded)) continue
+    errors.length = 0
+    collectErrorsAt(state, key, decoded, hasAtPath(formValue, decoded), errors)
+    if (errors.length === 0) continue
+    const nextSeg = decoded[segments.length] as Segment
+    found.push({
+      childKey: typeof nextSeg === 'number' ? String(nextSeg) : nextSeg,
+      ordinal: state.ensurePathOrdinal(key),
+    })
   }
-  walk(cellEntriesFor(state.errorCells, 'schema'), true)
-  walk(state.derivedBlankErrors.value, true)
-  walk(cellEntriesFor(state.errorCells, 'user'), false)
+  // Error-only keys join in schema-declaration order, behind the live
+  // data keys. The window is sorted by PATH, which is a different order,
+  // so emitting straight from it would re-sort the enumeration.
+  found.sort((a, b) => a.ordinal - b.ordinal)
+  for (const { childKey } of found) keys.add(childKey)
   return [...keys]
 }
 
@@ -528,49 +563,60 @@ function materializeErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   containerSegments: readonly Segment[]
 ): Record<string, unknown> | unknown[] {
-  const liveContainer = getAtPath(state.form.value, containerSegments)
+  const formValue = state.form.value
+  const liveContainer = getAtPath(formValue, containerSegments)
   const tree: Record<string, unknown> | unknown[] = Array.isArray(liveContainer) ? [] : {}
 
-  const collect = (
-    store: Iterable<readonly [PathKey, readonly ValidationError[]]>,
-    applyActivePathFilter: boolean
-  ): void => {
-    entries: for (const [pathKey, errors] of store) {
-      if (errors.length === 0) continue
-      const fullPath = segmentsForPathKey(pathKey)
-      if (fullPath === null) continue
+  const placements: {
+    readonly placePath: readonly Segment[]
+    readonly errors: ValidationError[]
+    readonly ordinal: number
+  }[] = []
 
-      if (fullPath.length === 0) {
-        if (containerSegments.length === 0) placeAt(tree, [ROOT_PATH_KEY], errors)
-        continue
-      }
-
-      if (fullPath.length < containerSegments.length) continue
-      for (let i = 0; i < containerSegments.length; i++) {
-        if (fullPath[i] !== containerSegments[i]) continue entries
-      }
-
-      if (applyActivePathFilter && !hasAtPath(state.form.value, fullPath)) continue
-
-      const relativePath = fullPath.slice(containerSegments.length)
-      let placePath: readonly Segment[]
-      if (relativePath.length === 0) {
-        placePath = ['']
-      } else if (state.schema.isLeafAtPath(fullPath as Path)) {
-        placePath = relativePath
-      } else if (state.schema.getSlimPrimitiveTypesAtPath(fullPath as Path).size > 0) {
-        placePath = [...relativePath, '']
-      } else {
-        placePath = relativePath
-      }
-
-      placeAt(tree, placePath, errors)
+  for (const { key, segments: fullPath } of state.errorWindowAt(
+    containerSegments,
+    keyForSegments(containerSegments).key
+  )) {
+    // The root bucket (global / root `.refine()` errors, `setErrors`) is
+    // never variant-bound, so it is collected unfiltered, and only at the
+    // root materialisation. Everything else: the window is a key-range
+    // superset, so membership is decided here.
+    const isRoot = fullPath.length === 0
+    if (isRoot) {
+      if (containerSegments.length !== 0) continue
+    } else if (!isPathPrefix(containerSegments, fullPath)) {
+      continue
     }
+
+    const errors: ValidationError[] = []
+    collectErrorsAt(state, key, fullPath, isRoot || hasAtPath(formValue, fullPath), errors)
+    if (errors.length === 0) continue
+
+    const relativePath = fullPath.slice(containerSegments.length)
+    let placePath: readonly Segment[]
+    if (isRoot) {
+      placePath = [ROOT_PATH_KEY]
+    } else if (relativePath.length === 0) {
+      placePath = ['']
+    } else if (state.schema.isLeafAtPath(fullPath)) {
+      placePath = relativePath
+    } else if (state.schema.getSlimPrimitiveTypesAtPath(fullPath).size > 0) {
+      placePath = [...relativePath, '']
+    } else {
+      placePath = relativePath
+    }
+
+    placements.push({ placePath, errors, ordinal: state.ensurePathOrdinal(key) })
   }
 
-  collect(cellEntriesFor(state.errorCells, 'schema'), true)
-  collect(state.derivedBlankErrors.value, true)
-  collect(cellEntriesFor(state.errorCells, 'user'), false)
+  // Placed in schema-declaration order (`pathOrdinals`), which is the
+  // order `meta.errors` and `aggregateErrorsAt` already use, so every
+  // error surface agrees on key order. The window is sorted by PATH,
+  // a different order, so placing straight from it would re-sort the
+  // tree. Ordinals are also stable across an error clearing and coming
+  // back, which the store's own insertion order was not.
+  placements.sort((a, b) => a.ordinal - b.ordinal)
+  for (const { placePath, errors } of placements) placeAt(tree, placePath, errors)
   return tree
 }
 

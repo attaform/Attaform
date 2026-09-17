@@ -10,7 +10,7 @@
  * keeps working.
  */
 
-import type { ErrorCell, ErrorInput, ValidationError } from '../types/types-api'
+import type { ErrorInput, ValidationError } from '../types/types-api'
 import { __DEV__ } from './dev'
 import { canonicalizePath, type Path, type PathKey } from './paths'
 
@@ -142,22 +142,6 @@ export function normalizeErrorInputs(
 ): ValidationError[] {
   const items = Array.isArray(input) ? input : [input]
   return items.map((item) => normalizeErrorInput(item, scope, defaultCode))
-}
-
-/**
- * Iterate one side of the tagged error store: yields `[key, entries]`
- * for every cell whose `side` is non-empty, in the map's insertion
- * order. The uniform per-source view the enumeration walks, aggregate
- * collectors, and serialization all read through.
- */
-export function* cellEntriesFor(
-  cells: ReadonlyMap<PathKey, ErrorCell>,
-  side: 'schema' | 'user'
-): IterableIterator<readonly [PathKey, readonly ValidationError[]]> {
-  for (const [key, cell] of cells) {
-    const list = cell[side]
-    if (list.length > 0) yield [key, list] as const
-  }
 }
 
 /**

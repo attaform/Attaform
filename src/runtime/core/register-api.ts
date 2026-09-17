@@ -16,10 +16,10 @@ import { canonicalizePath, type Path, type PathKey } from './paths'
 import { buildCoerceFn, buildElementCoerceFn, resolveCoerceEnabled } from './schema-coerce'
 import { __DEV__ } from './dev'
 
-// Dev-only dedup for the multi-root host warning: a host value update flowing
-// in while nothing was ever wired for the path means Vue dropped the directive
-// on a multi-root component. Keyed by form-instance + path so it fires once per
-// affected binding, and never bleeds the warning across separate forms.
+// Dev-only dedup for the multi-root host warning: a host value update
+// arriving while nothing was ever wired for the path means Vue dropped the
+// directive on a multi-root component. Keyed by form-instance plus path, so
+// it fires once per affected binding and never bleeds across forms.
 const warnedMultiRootHosts = new Set<string>()
 
 /**
@@ -42,28 +42,24 @@ export type InstanceRegisterConfig = {
   readonly getDisplayStateAt?: (segments: Path) => DisplayState
 }
 
-// Module-level frozen empty array — re-used as the transforms default
-// across every register() call that doesn't opt in. Avoids a per-call
-// allocation on the 99% of fields that don't declare normalization,
-// while keeping the directive's `for (const t of rv.transforms)`
-// iteration uniform (no null-check needed).
+// The transforms default for every `register()` call that does not opt in,
+// shared so a field declaring no normalization costs no allocation and the
+// directive's `for (const t of rv.transforms)` stays uniform, no null check.
 const EMPTY_TRANSFORMS: ReadonlyArray<RegisterTransform> = Object.freeze([])
 
 /**
  * Register API factory. Given a FormStore, returns a `register(path)` that
  * produces a RegisterValue suitable for the v-register directive.
  *
- * Design points:
- *
- * - Element registration and focus/blur listeners live in the DOM
- *   binding (`dom-binding.ts`, part of the directive cluster's lazy
- *   graph). The RegisterValue's element members delegate through the
- *   store's `domBinding` slot, which the directive / `useRegister` arm
- *   via `ensureDomBinding` before any element call.
- * - `innerRef` reads `form.value` directly via `getValueAtPath`; there's
- *   no separate raw-vs-form tracking. The synchronous diff-apply writer
- *   keeps the two values in lock-step.
- * - Cross-form isolation is by construction: every call to `buildRegister`
+ * - Element registration and focus/blur listeners live in the DOM binding
+ *   (`dom-binding.ts`, inside the directive cluster's lazy graph). The
+ *   RegisterValue's element members delegate through the store's
+ *   `domBinding` slot, which the directive or `useRegister` arms via
+ *   `ensureDomBinding` before any element call.
+ * - `innerRef` reads `form.value` through `getValueAtPath`; there is no
+ *   separate raw-vs-form tracking, the synchronous diff-apply writer
+ *   keeping the two in lock-step.
+ * - Cross-form isolation is by construction: each `buildRegister` call
  *   closes over a FormStore<F> unique to one form.
  */
 export function buildRegister<F extends GenericForm>(
@@ -71,12 +67,10 @@ export function buildRegister<F extends GenericForm>(
   formInstanceId: string,
   instanceConfig?: InstanceRegisterConfig
 ) {
-  // Per-instance coerce resolution: when a `useForm()` callsite passes
-  // its own `coerce` config, this register factory honours it locally.
-  // Sibling instances sharing the FormStore (modal + main) keep their
-  // own input-side coerce semantics — one's `'1' → 1` doesn't infect
-  // the other's. Falls through to the store's captured switch when the
-  // per-call config is absent.
+  // Per-instance coerce resolution. Sibling instances sharing one
+  // FormStore (a modal and the main form) keep their own input-side
+  // semantics, so one call site's `'1' → 1` does not reach the other.
+  // Falls through to the store's captured switch when absent.
   const coerceEnabled =
     instanceConfig?.coerce !== undefined
       ? resolveCoerceEnabled(instanceConfig.coerce)
@@ -91,15 +85,14 @@ export function buildRegister<F extends GenericForm>(
     if (instanceMeta === undefined) return meta
     return meta === undefined ? { instance: instanceMeta } : { ...meta, instance: instanceMeta }
   }
-  // Path-keyed cache of typed-form refs. Lifted out of the per-call
-  // closure so multiple `register(path)` invocations for the same
-  // path — e.g. two `<input v-register>` bindings to `'numberText'`,
-  // or repeated calls inside a render function — share the same ref.
-  // Without sharing, the directive's keystroke listener writes to
-  // RegisterValue A's `lastTypedForm` while RegisterValue B's
-  // `displayValue` reads its own (always-null) ref, and Vue patches
-  // B's DOM to the canonical `String(storage)` mid-typing — yanking
-  // the user's caret on a sibling input.
+  // Path-keyed cache of typed-form refs, outside the per-call closure so
+  // every `register(path)` for one path shares a ref (two
+  // `<input v-register>` bindings to `'numberText'`, or repeated calls
+  // inside a render function). Unshared, the directive's keystroke
+  // listener writes RegisterValue A's `lastTypedForm` while B's
+  // `displayValue` reads its own always-null ref, and Vue patches B's DOM
+  // to the canonical `String(storage)` mid-typing, taking the user's
+  // caret off a sibling input.
   const lastTypedFormByPath = new Map<PathKey, Ref<string | null>>()
 
   return function register(
@@ -110,38 +103,32 @@ export function buildRegister<F extends GenericForm>(
 
     const innerRef = computed(() => state.getValueAtPath(segments)) as Readonly<Ref<unknown>>
 
-    // The user's currently-typed string form for numeric fields,
-    // populated by the directive on every keystroke and cleared on
-    // blur. Lets `displayValue` surface the typed form (e.g. `'1e2'`)
-    // mid-typing instead of the canonical `String(storage)` (`'100'`),
-    // which Vue would otherwise patch into the DOM and yank the
-    // cursor away from the user's caret. After blur the typed form
-    // is cleared so `displayValue` falls back to the honest canonical
-    // form — what the user sees matches what's in storage. Shared
-    // across all RegisterValues for the same path so paired inputs
-    // stay in sync mid-typing.
+    // The user's currently-typed string form for numeric fields, written
+    // by the directive on every keystroke and cleared on blur. It lets
+    // `displayValue` show `'1e2'` mid-typing rather than the canonical
+    // `String(storage)` of `'100'`, which Vue would patch into the DOM,
+    // taking the caret with it. After blur what the user sees is the
+    // canonical form again, matching storage.
     let lastTypedForm = lastTypedFormByPath.get(pathKey)
     if (lastTypedForm === undefined) {
       lastTypedForm = ref<string | null>(null)
       lastTypedFormByPath.set(pathKey, lastTypedForm)
     }
 
-    // String-form view of the path's storage value, with `''` returned
-    // for blank membership and for null/undefined storage.
-    // The blank branch is what lets a user clear a numeric
-    // field: even though storage holds 0, the `:value` binding reads
-    // displayValue and writes `''` to el.value, so Vue's next render
-    // doesn't undo the user's clear.
+    // String-form view of the path's storage value, `''` for blank
+    // membership and for null / undefined storage. The blank branch is
+    // what lets a user clear a numeric field: storage holds 0, but the
+    // `:value` binding reads displayValue and writes `''` to el.value, so
+    // Vue's next render does not undo the clear.
     //
-    // Typed-form preference (numeric only): when `lastTypedForm` is
-    // set AND `parseFloat(lastTypedForm)` equals the current numeric
-    // storage, return the typed form. Storage commits live (typing
-    // `1e2` writes 100 to storage immediately), but the DOM keeps
-    // showing `1e2` until blur — at which point the directive clears
-    // `lastTypedForm` and Vue patches the DOM to `String(100)` =
-    // `'100'`. The check naturally invalidates on programmatic
-    // setValue / hydration / reset (different storage value → fall
-    // back to `String(...)`).
+    // Typed-form preference, numeric only: when `lastTypedForm` is set
+    // AND `parseFloat(lastTypedForm)` equals the current numeric storage,
+    // return the typed form. Storage commits live (typing `1e2` writes
+    // 100 immediately) while the DOM keeps showing `1e2` until blur,
+    // where the directive clears `lastTypedForm` and Vue patches in
+    // `String(100)`. The equality check invalidates itself on a
+    // programmatic setValue, hydration or reset, a different storage
+    // value falling back to `String(...)`.
     const displayValue = computed(() => {
       if (state.blankPaths.has(pathKey)) return ''
       const raw = state.getValueAtPath(segments)
@@ -150,19 +137,15 @@ export function buildRegister<F extends GenericForm>(
       if (typed !== null && typeof raw === 'number' && parseFloat(typed) === raw) {
         return typed
       }
-      // Container-path misuse degrades gracefully: a consumer who
-      // bound v-register at an object/array path (e.g.
-      // `api.register('payment' as 'payment.last4', …)` to bypass the
-      // type system) gets the `[object Object]` placeholder
-      // `String({})` produces. Runtime values now carry
-      // `Object.prototype` so `String(raw)` succeeds for normal
-      // container shapes, but a consumer can still hand us a
-      // null-prototype value (e.g. a `defaultValues` literal made via
-      // `Object.create(null)`); for those, `String(raw)` throws
-      // "Cannot convert object to primitive value". The catch falls
-      // back to the canonical `Object.prototype.toString` output so
-      // the directive's mounted hook never propagates the throw into
-      // the consumer's render.
+      // Container-path misuse degrades gracefully. A consumer who cast
+      // past the type system to bind v-register at an object or array
+      // path gets the `[object Object]` that `String({})` produces.
+      // Runtime values carry `Object.prototype`, so `String(raw)` works
+      // for normal container shapes, but a null-prototype value (a
+      // `defaultValues` literal built with `Object.create(null)`) makes
+      // it throw "Cannot convert object to primitive value". The catch
+      // falls back to `Object.prototype.toString`, so the directive's
+      // mounted hook never propagates that throw into the render (#608).
       try {
         return String(raw)
       } catch {
@@ -174,49 +157,45 @@ export function buildRegister<F extends GenericForm>(
     // `:modelValue`. The native `:value` path reads `displayValue`, which
     // returns `''` for a blank path so a cleared numeric input renders
     // empty while storage still holds the slim `0`. A component's model is
-    // typed, so it can't carry that `''`; instead a blank path presents as
-    // `undefined` -- the typed-model analog of "displayed empty." A naive
+    // typed and cannot carry that `''`, so a blank path presents as
+    // `undefined`, the typed-model analog of "displayed empty". A naive
     // numeric component renders `undefined ?? '' === ''`, so a cleared
     // numeric field reads empty in a v-model-bound component exactly as it
-    // does in a native input. Filled paths present the raw typed storage.
+    // does in a native input. A filled path presents raw typed storage.
     const hostModelValue = computed(() =>
       state.blankPaths.has(pathKey) ? undefined : innerRef.value
     ) as Readonly<Ref<unknown>>
 
-    // Slim default precomputed at register-time. The schema is fixed
-    // for the form's lifetime, so this is safe to cache; downstream
-    // `markBlank` calls reuse it without re-walking the
-    // schema tree.
+    // Slim default precomputed at register-time. The schema is fixed for
+    // the form's lifetime, so `markBlank` reuses this instead of
+    // re-walking the schema tree per call.
     const slimDefault = state.schema.getDefaultAtPath(segments)
 
-    // `true` when the leaf's slim-primitive set includes `'undefined'`
-    // (i.e. the path was declared `.optional()`). The text-input
-    // listener consults this on DOM clear: when the user empties an
-    // optional field, the directive writes `undefined` rather than
-    // `''`, so the schema's `.optional()` semantic remains reachable
-    // from the DOM after any interaction. Number-typed leaves don't
-    // need a separate path — `slimDefault` for an optional number
-    // resolves to `undefined`, so `markBlank` writes the right thing
-    // already.
+    // `true` when the leaf's slim-primitive set includes `'undefined'`,
+    // meaning the path was declared `.optional()`. The text-input
+    // listener reads it on DOM clear and writes `undefined` rather than
+    // `''`, keeping the schema's `.optional()` semantic reachable from
+    // the DOM. A number-typed leaf needs no separate path: `slimDefault`
+    // for an optional number is already `undefined`.
     const slimTypes = state.schema.getSlimPrimitiveTypesAtPath(segments)
     const acceptsUndefined = slimTypes.has('undefined')
-    // `true` when the slim set admits `'string'`. The text-input
-    // listener uses the negation: when a DOM clear lands on a leaf
-    // that does NOT admit string (e.g. a required `z.number()`
-    // rendered as `<input type="text">` without the `.number`
-    // modifier), the assigner would reject the empty-string write and
-    // the post-write force-sync would snap the DOM back to the stored
-    // numeric. Routing through `markBlank` instead keeps the DOM
-    // empty and stages the blank meta for submit-time validation.
+    // `true` when the slim set admits `'string'`. The text-input listener
+    // uses the negation: on a DOM clear against a leaf that does NOT
+    // admit string (a required `z.number()` rendered as
+    // `<input type="text">` without the `.number` modifier), the assigner
+    // would reject the empty-string write and the post-write force-sync
+    // would snap the DOM back to the stored numeric. Routing through
+    // `markBlank` keeps the DOM empty and stages the blank meta for
+    // submit-time validation.
     const acceptsString = slimTypes.has('string')
 
     const transforms = options?.transforms ?? EMPTY_TRANSFORMS
 
-    // Schema-driven coerce closure. Captures the path's slim accept set
-    // so the per-event hot path is a single function call. Identity
-    // when the form has coercion disabled (`useForm({ coerce: false })`)
-    // or the path admits no coercion target. Cached on RegisterValue so
-    // the directive doesn't re-walk the schema per keystroke.
+    // Schema-driven coerce closure, capturing the path's slim accept set
+    // so the per-event hot path is one call. Identity when the form set
+    // `useForm({ coerce: false })` or the path admits no coercion target.
+    // Cached on the RegisterValue, so the directive never re-walks the
+    // schema per keystroke.
     const coerce = buildCoerceFn(
       state.schema as Parameters<typeof buildCoerceFn>[0],
       segments,
@@ -228,14 +207,13 @@ export function buildRegister<F extends GenericForm>(
       coerceEnabled
     )
 
-    // Aria wiring baked onto the RegisterValue so the (store-less)
-    // directive can drive `aria-*` without a field-state lookup. The
-    // ids match `FieldState.aria` exactly (same pure derivation).
+    // Aria wiring baked onto the RegisterValue so the store-less
+    // directive drives `aria-*` without a field-state lookup. The ids
+    // match `FieldState.aria` exactly, being the same pure derivation.
     // `ariaDisplayState` reuses the form's field-state accessor, so it
-    // carries the SAME gated verdict the visible
-    // `form.fields.<path>.displayState` shows; a hand-rolled register
-    // factory has no accessor to close over, and a binding with no
-    // `ariaDisplayState` gets no aria wiring at all.
+    // carries the SAME gated verdict `form.fields.<path>.displayState`
+    // shows. A hand-rolled register factory has no accessor to close
+    // over, and a binding without `ariaDisplayState` gets no aria wiring.
     const { aria } = computeFieldIdentity(formInstanceId, state.formKey, pathKey)
     const isRequired = state.schema.isRequiredAtPath(segments)
     const ariaDisplayState =
@@ -246,22 +224,21 @@ export function buildRegister<F extends GenericForm>(
     // Shared blank-marking op: write the schema's slim default and stage
     // the blank meta so submit-time validation surfaces "No value
     // supplied". The slim default keeps storage well-typed
-    // (getDefaultAtPath returns 0 for z.number(), '' for z.string(),
-    // false for z.boolean()). Hoisted out of the object literal so both
-    // the `markBlank` binding (the directive's numeric-clear listener)
-    // and `setValueFromHost` (the component-host analog) route through
-    // one place, and a cleared numeric leaf lands on the same state
-    // whether it came from a native `<input>` or a v-model component.
+    // (`getDefaultAtPath` gives 0 for `z.number()`, `''` for
+    // `z.string()`, `false` for `z.boolean()`). It sits outside the object
+    // literal so the `markBlank` binding (the directive's numeric-clear
+    // listener) and `setValueFromHost` (the component-host analog) share
+    // one path, and a cleared numeric leaf reaches the same state from a
+    // native `<input>` and a v-model component alike.
     const markBlank = (): boolean =>
       state.setValueAtPath(segments, slimDefault, withInstanceMeta({ blank: true }))
 
-    // `shallowReadonly` is what makes `rv.path`, `rv.formKey`, and the
-    // other top-level string fields feel like reactive state in
-    // wrapper components: property reads track in computeds /
-    // watchEffects, mutations are blocked at runtime + type level, and
-    // inner refs (`innerRef`, `displayValue`, `lastTypedForm`) keep
-    // their `Ref` shape so the directive's `.value` reads/writes
-    // continue to work unchanged.
+    // `shallowReadonly` is what makes `rv.path`, `rv.formKey` and the
+    // other top-level fields behave as reactive state inside a wrapper
+    // component: property reads track in computeds and watchEffects,
+    // mutation is blocked at runtime and in the types, and the inner refs
+    // (`innerRef`, `displayValue`, `lastTypedForm`) keep their `Ref`
+    // shape so the directive's `.value` reads and writes still work.
     const internalRv: InternalRegisterValue = {
       innerRef,
       displayValue,
@@ -281,11 +258,11 @@ export function buildRegister<F extends GenericForm>(
 
       ensureDomBinding: (factory: DomBindingFactory): void => {
         // Arm-once per store. The factory arrives from the directive
-        // cluster / `useRegister` (the modules that own the DOM
-        // machinery), so this eager module never imports it — the whole
-        // point of the slot. Passing the factory per call also keeps
-        // duplicate-package-copy apps coherent: whichever copy's cluster
-        // runs arms the store its RegisterValue is actually bound to.
+        // cluster or `useRegister`, the modules that own the DOM
+        // machinery, so this eager module never imports it: that is the
+        // whole point of the slot. Passing it per call also keeps
+        // duplicate-package-copy apps coherent, since whichever copy's
+        // cluster runs arms the store its RegisterValue is bound to.
         state.domBinding.value ??= factory(state)
       },
 
@@ -294,9 +271,9 @@ export function buildRegister<F extends GenericForm>(
         if (dom === null) {
           // Reachable only from a custom integration calling
           // `rv.registerElement` directly with neither the directive
-          // cluster nor `useRegister` loaded anywhere in the app — the
-          // machinery that registration feeds (field.element, focus
-          // walk, blur listeners) is absent in that world too.
+          // cluster nor `useRegister` loaded anywhere in the app, where
+          // the machinery registration feeds (field.element, the focus
+          // walk, blur listeners) is absent too.
           if (__DEV__) {
             warn(
               `[attaform] registerElement('${pathKey}'): no DOM binding is armed for this form. ` +
@@ -315,26 +292,25 @@ export function buildRegister<F extends GenericForm>(
       },
 
       setValueWithInternalPath: (value: unknown, meta?: WriteMeta): boolean => {
-        // The write path for custom assigners: a consumer-installed
-        // assigner calls `rv.setValueWithInternalPath(value)` and the
-        // write routes through the same funnel (and instance meta) as
-        // the directive's default assigner. Caller-supplied `meta`
-        // passes through unchanged.
+        // The write path for custom assigners. A consumer-installed
+        // assigner calls `rv.setValueWithInternalPath(value)` and lands in
+        // the same funnel, with the same instance meta, as the directive's
+        // default assigner. Caller-supplied `meta` passes through.
         return state.setValueAtPath(segments, value, withInstanceMeta(meta))
       },
 
       setValueFromHost: (value: unknown): boolean => {
         // The write path for a third-party component bound by v-register's
         // compile-time v-model desugar. The host emits its typed model value
-        // through `onUpdate:modelValue`; unlike a native control there is no
-        // DOM input listener, so this bundles the value write with
-        // markInteracted -- exactly as the native input listener pairs the
-        // assigner write with noteInteraction. Without the markInteracted,
-        // blur-validation and the reward-early display state would never arm
-        // for a v-model-bound component. A real value is authoritative (the
-        // component's resolved model type), so it routes through the same
+        // through `onUpdate:modelValue`, and unlike a native control there
+        // is no DOM input listener, so this bundles the value write with
+        // markInteracted the way the native input listener pairs the
+        // assigner write with noteInteraction. Without it, blur-validation
+        // and the reward-early display state would never arm for a
+        // v-model-bound component. A real value is authoritative, being the
+        // component's resolved model type, so it takes the same
         // no-coercion funnel as setValueWithInternalPath. Mark interacted
-        // before the write so any validation the write triggers sees the bit.
+        // before the write, so validation the write triggers sees the bit.
         state.markInteracted(segments)
         // Empty-signal normalization, mirroring the native input listener's
         // DOM-clear handling (directive.ts). A component clearing a
@@ -342,7 +318,7 @@ export function buildRegister<F extends GenericForm>(
         // that the slim-primitive gate would reject, freezing form state at
         // the old value while the component's DOM shows empty. When the
         // emitted value is one of those signals AND the leaf's slim set does
-        // not admit it, route to markBlank -- storage lands on the slim
+        // not admit it, route to markBlank: storage lands on the slim
         // default with the blank flag, the same state a native
         // `<input v-register>` reaches on clear. The slim-set gate keeps a
         // `.nullable()` / `.optional()` (or `z.file()`) leaf accepting null /
@@ -358,7 +334,7 @@ export function buildRegister<F extends GenericForm>(
         // wired for this path (no registered element, connected never set). The
         // transform's v-model props ride a component's props / emits, which Vue
         // keeps even when it drops a runtime directive on a multi-root
-        // (fragment) component -- so the value channel works while
+        // (fragment) component, so the value channel works while
         // activateComponentHost never ran and the rich FieldState (connected /
         // focus / aria / scroll-to-error) is silently missing. Re-check on the
         // next tick so a component that emits during its own mount, before the
@@ -399,10 +375,10 @@ export function buildRegister<F extends GenericForm>(
       },
 
       markHostConnected: (connected: boolean, hostEl: HTMLElement): void => {
-        // Directive-only caller (component-host mount/unmount), so the
-        // binding is always armed by the time this runs — the `?.` is
-        // for a hand-dispatched call in a binding-less world, where the
-        // anchor it would record has no reader either.
+        // Directive-only caller (component-host mount / unmount), so the
+        // binding is armed by the time this runs. The `?.` covers a
+        // hand-dispatched call in a binding-less world, where the anchor
+        // it would record has no reader either.
         state.domBinding.value?.markHostConnected(segments, connected, hostEl, formInstanceId)
       },
 
@@ -434,12 +410,12 @@ export function buildRegister<F extends GenericForm>(
         return false
       },
 
-      // --- Async transform lifecycle (internal; the directive's
-      // deferred orchestrator is the only legitimate consumer). Thin
-      // path-bound delegates to the store's per-path token / counter
-      // machinery — same pattern as `markBlank` / `setValueWithInternalPath`,
-      // so the directive (which holds only this RegisterValue, never the
-      // store) can drive the busy/discard/error bookkeeping. ---
+      // --- Async transform lifecycle (internal; the directive's deferred
+      // orchestrator is the only legitimate consumer). Thin path-bound
+      // delegates to the store's per-path token and counter machinery,
+      // the same pattern as `markBlank` and `setValueWithInternalPath`, so
+      // the directive (which holds this RegisterValue and never the store)
+      // can drive the busy / discard / error bookkeeping. ---
       beginTransform: (holder: TransformAbortHolder): number =>
         state.beginTransform(pathKey, holder),
       isCurrentTransform: (token: number): boolean => state.isCurrentTransform(pathKey, token),
@@ -454,10 +430,10 @@ export function buildRegister<F extends GenericForm>(
       },
 
       path: pathKey,
-      // Frozen so a wrapper component can pass `rv.segments` directly
-      // to `form.fields(...)` without defensive copying — and so test
-      // fixtures or downstream code can't mutate the canonical
-      // segment list out from under the directive.
+      // Frozen so a wrapper component can pass `rv.segments` straight to
+      // `form.fields(...)` with no defensive copy, and so neither a test
+      // fixture nor downstream code can mutate the canonical segment list
+      // out from under the directive.
       segments: Object.freeze(segments.slice()),
       formKey: state.formKey,
       formInstanceId,

@@ -1,10 +1,8 @@
 /**
- * Library-level default constants. All consumer-facing fallbacks for
- * the bundled options (`debounceMs`, `persist.debounceMs`,
- * `history.max`, etc.) resolve to one of these — extracting them here
- * keeps the JSDoc on the public option type and the runtime fallback
- * in lockstep, and gives reviewers a single file to scan when tuning
- * timing/policy defaults.
+ * Library-level default constants. Every consumer-facing fallback
+ * (`debounceMs`, `history.max`) resolves to one of these, so the JSDoc on
+ * a public option type and the runtime fallback behind it stay in
+ * lockstep and there is one file to scan when tuning a default.
  *
  * Per-form `useForm({ ... })` options always win over these.
  */
@@ -12,130 +10,104 @@
 import { __DEV__ } from './dev'
 
 /**
- * Validation debounce (`useForm({ debounceMs })`) — ms to wait after
- * the LAST input event before running validation. Default `0`
- * (debounce disabled): every committed write fires a validation pass
- * synchronously, no `setTimeout`. Matches the obvious mental model
- * and avoids the "why is my error 125 ms behind my keystroke?"
- * footgun for new consumers.
+ * Validation debounce (`useForm({ debounceMs })`): ms to wait after the
+ * LAST input event before running validation. Default `0`, debounce
+ * disabled, so every committed write fires a validation pass
+ * synchronously with no `setTimeout`. That matches the obvious mental
+ * model and avoids the "why is my error 125 ms behind my keystroke?"
+ * footgun. Opt into coalescing with `debounceMs: 200` when an adapter is
+ * genuinely expensive.
  *
- * NOTE: this is purely the VALIDATION debounce. Form storage
- * (`form.values`) commits on every write the directive forwards;
- * `setValueWithInternalPath` writes immediately and triggers a
- * validation schedule. WHEN the directive actually forwards a write
- * is a separate concern controlled by input modifiers — `<input
- * v-register>` commits on every keystroke (`input` event), but
- * `<input v-register.lazy>` defers to the `change` event so storage
- * only commits on blur. The validation debounce is independent of
- * either path: it always counts ms since the last committed write.
- *
- * Devs who need validation coalescing — slow async adapters,
- * validation that runs heavy work — opt in with `debounceMs: 200`
- * (or any positive number). The off-by-default posture trades CPU
- * cycles for UX latency wins, and the cycles only matter for
- * adapters that are actually expensive.
+ * This is purely the VALIDATION debounce. Storage (`form.values`) commits
+ * on every write the directive forwards, and `setValueWithInternalPath`
+ * writes immediately and schedules validation. WHEN the directive
+ * forwards a write is a separate concern owned by the input modifiers:
+ * `<input v-register>` commits on every keystroke (`input`), while
+ * `<input v-register.lazy>` defers to `change` and so commits on blur.
+ * The debounce counts ms since the last committed write either way.
  */
 export const DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS = 0
 
 /**
- * Undo/redo stack ceiling (`history.max`). 128 covers an extended
- * editing session — long-form text inputs, multi-page wizard flows,
- * heavy iteration on a complex form — without unbounded memory
- * growth from long-lived forms. History is stored as one base
- * snapshot plus per-mutation forward deltas; each delta typically
- * carries only the leaves that changed, so the per-mutation cost
- * is `O(changed-leaf-count)` rather than `O(form-leaf-count)`.
- * The cap exists more for predictability than memory pressure.
+ * Undo/redo stack ceiling (`history.max`). 128 covers an extended editing
+ * session (long-form text, a multi-page wizard, heavy iteration on a
+ * complex form) without unbounded growth on a long-lived form. History is
+ * one base snapshot plus per-mutation forward deltas, and a delta
+ * normally carries only the leaves that changed, so the per-mutation cost
+ * is `O(changed-leaf-count)` rather than `O(form-leaf-count)`. The cap is
+ * there for predictability more than for memory pressure.
  */
 export const DEFAULT_HISTORY_MAX_SNAPSHOTS = 128
 
 /**
- * Reserved namespace for the library's internal synthetic keys
- * (anonymous forms today, plus any future internal-key uses).
- * `useAbstractForm` rejects any consumer-supplied key starting with
- * this prefix at construction time, throwing `ReservedFormKeyError` —
- * so collisions with the synthetic-key namespace are impossible by
- * construction. The double-underscore convention reads as "internal"
- * universally, lowering the chance a consumer would naturally pick
- * a key from this space anyway.
+ * Reserved namespace for Attaform's internal synthetic keys. At
+ * construction `useAbstractForm` throws `ReservedFormKeyError` on any
+ * consumer key carrying this prefix, so a collision with the synthetic
+ * namespace is impossible. The double-underscore convention reads as
+ * "internal" everywhere, so a consumer is unlikely to reach for it.
  */
 export const RESERVED_KEY_PREFIX = '__atta:'
 
 /**
- * Synthetic-key prefix for `useForm()` calls without an explicit
- * `key`. Lives inside the reserved `__atta:` namespace so the entry-
- * level reject in `resolveFormKey` covers it automatically — see
- * `RESERVED_KEY_PREFIX` for the enforcement story.
+ * Synthetic-key prefix for `useForm()` calls without an explicit `key`.
+ * Inside the reserved `__atta:` namespace, so `resolveFormKey`'s
+ * entry-level reject covers it; see `RESERVED_KEY_PREFIX`.
  */
 export const ANONYMOUS_FORM_KEY_PREFIX = `${RESERVED_KEY_PREFIX}anon:`
 
 /**
- * Synthetic-key prefix for `useWizard()` calls without an explicit
- * `key`. Separate namespace from `ANONYMOUS_FORM_KEY_PREFIX` so
- * `wizard.forms[key]` lookups never collide with synthetic wizard
- * keys even if a consumer iterates both spaces. Lives inside the
- * reserved `__atta:` namespace for the same enforcement story.
+ * Synthetic-key prefix for `useWizard()` calls without an explicit `key`.
+ * Kept separate from `ANONYMOUS_FORM_KEY_PREFIX` so a `wizard.forms[key]`
+ * lookup cannot collide with a synthetic wizard key even when a consumer
+ * iterates both spaces. Same `__atta:` namespace, same enforcement.
  */
 export const ANONYMOUS_WIZARD_KEY_PREFIX = `${RESERVED_KEY_PREFIX}anon-wizard:`
 
 /**
- * Recursion ceiling for schema walks that descend through recursive
- * schemas (Zod's `z.lazy(...)` today, equivalent constructs in any
- * future adapter). Adapter walks that follow a recursive boundary —
- * default derivation, slim-primitive type gates, path resolution,
- * refinement stripping — track their descent depth and bail with a
- * permissive fallback once `depth > maxRecursionDepth`.
+ * Recursion ceiling for schema walks that descend a recursive schema
+ * (Zod's `z.lazy(...)`, and whatever a future adapter's equivalent is).
+ * Every adapter walk that crosses a recursive boundary (default
+ * derivation, slim-primitive type gates, path resolution, refinement
+ * stripping) tracks its descent depth and bails with a permissive
+ * fallback once `depth > maxRecursionDepth`.
  *
- * Fixed at `64`: deep enough that no realistic recursive form reaches
- * it, shallow enough that a schema with no structural terminator hits
- * the cap instead of the JS call stack.
+ * Fixed at `64`, and not a consumer option: deep enough that no realistic
+ * recursive form reaches it, shallow enough that a schema with no
+ * structural terminator hits the cap instead of the JS call stack.
  *
- * "Permissive fallback" means the gate stops type-checking past the
- * cap (storage accepts the consumer's value; runtime validation
- * still runs against the real schema). Practical effect: forms with
- * trees deeper than the cap still work, but writes at deeper nodes
- * skip the slim-primitive type-gate. Raise the cap if you regularly
- * edit beyond it.
+ * "Permissive fallback" means the gate stops type-checking past the cap.
+ * Storage accepts the consumer's value and runtime validation still runs
+ * against the real schema, so a tree deeper than the cap still works; its
+ * deeper writes just skip the slim-primitive type gate.
  */
 export const DEFAULT_MAX_RECURSION_DEPTH = 64
 
 /**
- * Normalise a consumer-supplied numeric option before threading it
- * into runtime logic. Library options typed as `number` (recursion
- * caps, debounce intervals, history ceiling, parse-error caps) all
- * share the same input-sanitisation problem: invalid values reach
- * the runtime and produce silent footguns.
+ * Normalise a consumer-supplied numeric option (`debounceMs` and
+ * `history.max`) before it reaches runtime logic. An unsanitised value
+ * fails silently rather than loudly:
  *
- * Categories the runtime mishandles without sanitisation:
+ *   - `NaN`: comparison gates (`>=`, `>`) are `false` against it, so a
+ *     cap never trips and a pathological input runs unbounded, and
+ *     `setTimeout(fn, NaN)` fires synchronously, defeating the debounce.
+ *   - Negative: comparison gates trip too eagerly, and the visible value
+ *     does not match what the consumer meant.
+ *   - Non-integer: `>=` against `5.7` works but is imprecise.
+ *   - Non-number (a JS caller defying TS): undefined behaviour at every
+ *     comparison and arithmetic site.
  *
- *   - `NaN` — comparison-based gates (`>=`, `>`) yield `false` against
- *     `NaN`, so caps never trip and pathological inputs run unbounded.
- *     `setTimeout(fn, NaN)` fires synchronously, defeating debounce.
- *   - Negative numbers — comparison gates trip too eagerly; the
- *     visible value doesn't match consumer intent.
- *   - Non-integers — `>=` against `5.7` works but is imprecise and
- *     surprising at the call site.
- *   - Non-numbers (JS callers defying TS) — undefined behaviour at
- *     every comparison and arithmetic site.
- *
- * Sanitisation:
- *
- *   - `Infinity`, `NaN`, `-Infinity`, non-numbers → fall back to `defaultValue`
- *     with a dev-warn naming the source.
- *   - Negative finite numbers → clamped to `min`.
- *   - Non-integer positives → floored.
- *
- * The fallback path never throws — a bad option shouldn't be fatal
- * at construction. The dev-warn surfaces the misuse without
- * breaking production.
+ * So `Infinity` / `NaN` / `-Infinity` / non-numbers fall back to
+ * `defaultValue` with a dev-warn naming the source, negative finite
+ * numbers clamp to `min`, and non-integer positives floor. The fallback
+ * never throws: a bad option is not worth a fatal construction, and the
+ * dev-warn surfaces the misuse without breaking production.
  */
 export interface NormalizeNumericOptionConfig {
   /** The consumer-supplied value to validate. */
   value: number
   /**
-   * Human-readable identifier for the dev warning. Format like
-   * `useForm.debounceMs` so the warning
-   * tells the consumer which option carried the bad value.
+   * Identifier for the dev warning, formatted like `useForm.debounceMs`
+   * so the warning names the option that carried the bad value.
    */
   source: string
   /** Lower bound applied via `Math.max(min, ...)` after `Math.floor`. */
@@ -162,11 +134,10 @@ export function normalizeNumericOption(config: NormalizeNumericOptionConfig): nu
 }
 
 /**
- * Copy of `bag` with every `undefined`-valued key dropped. The
- * config-assembly archetype under `exactOptionalPropertyTypes`: an
- * omitted optional property and an explicit `undefined` differ, so
- * option bags are assembled by resolving each candidate value and
- * keeping only the defined ones.
+ * Copy of `bag` with every `undefined`-valued key dropped. Under
+ * `exactOptionalPropertyTypes` an omitted optional property and an
+ * explicit `undefined` are different types, so an option bag is assembled
+ * by resolving each candidate and keeping only the defined ones.
  */
 export function pickDefined<T extends Record<string, unknown>>(
   bag: T

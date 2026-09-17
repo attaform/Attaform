@@ -13,13 +13,13 @@ Attaform is pre-1.0. The most recent `0.x` minor on the `latest` dist-tag receiv
 
 ## Reporting a vulnerability
 
-**Preferred channel — GitHub Private Vulnerability Reporting:**
+**Preferred channel, GitHub Private Vulnerability Reporting:**
 
 [https://github.com/attaform/Attaform/security/advisories/new](https://github.com/attaform/Attaform/security/advisories/new)
 
 This routes the report directly to the maintainer through GitHub's encrypted advisory workflow. The thread stays private until a fix ships and an advisory is published.
 
-**Backup channel — email:**
+**Backup channel, email:**
 
 `oswald.kay.chisala@gmail.com` with the subject prefix `[security][attaform]`. Use this only if GitHub Private Vulnerability Reporting is unavailable.
 

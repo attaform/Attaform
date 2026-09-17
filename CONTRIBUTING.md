@@ -1,6 +1,6 @@
 # Contributing to `attaform`
 
-Short-form guide. The canonical source of truth is the codebase —
+Short-form guide. The canonical source of truth is the codebase:
 everything below leads you to the file that actually does the thing.
 
 ## Dev setup
@@ -31,11 +31,11 @@ green in CI.
 
 Tight inner loops:
 
-- `pnpm test -- path/to/file.test.ts` — single test file, watch off.
-- `pnpm test:watch` — all tests, watch on.
-- `pnpm bench` — benchmarks (reports ops/sec; regression floor in
+- `pnpm test -- path/to/file.test.ts`: single test file, watch off.
+- `pnpm test:watch`: all tests, watch on.
+- `pnpm bench`: benchmarks (reports ops/sec; regression floor in
   `scripts/check-bench.mjs`).
-- `pnpm check:size` — bundle-size budget (`size-limit` entries in
+- `pnpm check:size`: bundle-size budget (`size-limit` entries in
   `package.json`).
 
 ## Adding a new Zod v4 kind to the adapter
@@ -47,7 +47,7 @@ zod kind:
 1. Extend the `ZodKind` union in `introspect.ts` with the new kind.
 2. Add a case to `kindOf(schema)` mapping zod's internal `def.type`
    string to your new kind. (The internal type strings can change
-   between zod minors — treat them as unstable.)
+   between zod minors, so treat them as unstable.)
 3. Add accessor helpers for any fields you need to read off the
    schema (`unwrapLazy`, `getIntersectionLeft`, etc.).
 4. Extend the four switch statements that enumerate `ZodKind`:
@@ -56,16 +56,16 @@ zod kind:
    exhaustive-switch check will flag each one for you once the union
    grows.
 5. If the kind can't be meaningfully represented as a form value, add
-   it to `UNSUPPORTED` in `assert-supported.ts` instead — adapter
+   it to `UNSUPPORTED` in `assert-supported.ts` instead; adapter
    construction will throw `UnsupportedSchemaError` with a path.
 6. Add a test in `test/adapters/zod-v4/` mirroring the existing file
    naming. `test/adapters/zod-v3/adapter.test.ts` is the v3 parity
-   case — add the same happy-path scenario there if v3 already
+   case. Add the same happy-path scenario there if v3 already
    supports the kind, so the two adapters stay aligned.
 
 ## Releasing (maintainers only)
 
-Two paths. They produce the same commit shape — `pnpm version` runs
+Two paths. They produce the same commit shape, since `pnpm version` runs
 the `version` script hook in both cases, promoting the `## Unreleased`
 block in `CHANGELOG.md` to the tagged version.
 
@@ -103,7 +103,7 @@ version-bump step:
 2. Fetches PR-sourced release notes for the range
    `(previous tag, HEAD)` from GitHub's `generate-notes` API and
    prepends the result to `RELEASES.md`
-   (`scripts/generate-release-notes.mjs`). Requires `GH_TOKEN` —
+   (`scripts/generate-release-notes.mjs`). Requires `GH_TOKEN`:
    provided by the workflow's `GITHUB_TOKEN`. Outside CI the script
    skips, so local `pnpm version` doesn't need a PAT.
 
@@ -139,7 +139,7 @@ hand-maintained and promoted to the tagged version on `pnpm version`.
 Keep subject lines short; put reasoning in the body.
 
 Where a commit lands a phase from a plan doc, reference it in the
-subject: `feat: phase 9.1 — ...`. Not mandatory, just helps the log
+subject: `feat: phase 9.1 ...`. Not mandatory, just helps the log
 tell a story.
 
 ## What NOT to change
@@ -150,5 +150,5 @@ tell a story.
 - `pnpm-lock.yaml` ad-hoc. Let `pnpm install` regenerate it after
   `package.json` changes; CI installs with `--frozen-lockfile`.
 - The `src/runtime/lib/core/transforms/` directory without a matching
-  test. The AST transforms ship shape into every consumer's bundle —
+  test. The AST transforms ship shape into every consumer's bundle;
   regressions here are the scariest class of bugs we have.

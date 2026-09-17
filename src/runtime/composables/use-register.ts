@@ -1,79 +1,3 @@
-/**
- * Re-bind a parent's `v-register` onto an inner native element. Use
- * inside a component that wraps a single form field whose root is
- * NOT the input itself (e.g. a labelled-row that renders `<label>`
- * around the input).
- *
- * ```vue
- * <!-- Parent -->
- * <MyInput v-register="form.register('email')" />
- *
- * <!-- MyInput.vue -->
- * <script setup lang="ts">
- *   import { useRegister } from 'attaform'
- *   const rv = useRegister()
- *   // rv.path / rv.segments / rv.formKey / rv.formInstanceId / rv.innerRef
- *   // are all reachable directly — no `.value` unwrap.
- * </script>
- *
- * <template>
- *   <label class="field">
- *     <span>Email</span>
- *     <input v-register="rv" />
- *   </label>
- * </template>
- * ```
- *
- * Returns a hybrid Proxy: it answers `__v_isRef` / `.value` like a
- * Vue `Ref<RegisterValue | undefined>` (so templates auto-unwrap
- * correctly and `v-register="rv"` feeds the underlying RV to the
- * directive — preserving the directive's path-migration diff across
- * renders), AND every other property read pierces to the captured
- * RV's field (so `rv.path` works directly in script setup). Reads
- * inside reactive scopes (`computed` / `watchEffect`) track the
- * underlying `shallowRef`, so `rv.path` re-runs when the parent
- * rebinds to a different path.
- *
- * Unbound state: when the parent didn't pass `v-register`, every
- * piercing read returns `undefined` at runtime, and the return type
- * surfaces this honestly as `UseRegisterReturn<V> | undefined`.
- * Consumers defend with optional chaining (`rv?.formKey`,
- * `rv?.segments`); the directive accepts `undefined` peacefully (its
- * binding value type is already `RegisterValue<V> | undefined`), so
- * `v-register="rv"` works whether or not a parent has bound. The
- * composable's `onMounted` warn fires once per instance to surface
- * the misuse case at runtime.
- *
- * A wrapper meant to work both ways says so with
- * `useRegister({ optional: true })`, which silences the unbound
- * diagnostic and changes nothing else. Without it the diagnostic still
- * earns its keep: a single-mode wrapper whose parent forgot
- * `v-register` renders a field that looks fine and stores nothing.
- *
- * `rv?.isBound` is the test for "did a parent bind me", and it is the
- * one to reach for: script-setup code holds the Proxy, which is an
- * object and so always truthy, while a template holds the unwrapped
- * ref, which is `undefined` when unbound. Those two disagree, and
- * `isBound` reads the same on both. A dual-mode wrapper (one used
- * both `v-register`-bound and plain `v-model`-bound) branches on it,
- * and does not need to duplicate its element to do so: the
- * compile-time value injection keeps an author-written `:value` /
- * `:checked` as its unbound leg, so one element serves both (#620).
- *
- * Diagnostic: in dev mode, a single `console.warn` fires per instance
- * at `onMounted` if the captured value is still `undefined` — by then
- * the parent has had its full mount lifecycle to bind, so a missing
- * binding is conclusive misuse. The warn does NOT fire on every read
- * of the proxy, and is intentionally silent under SSR
- * (`renderToString` skips `onMounted`); the CSR hydration pass
- * surfaces the same diagnostic without double-counting through Nuxt's
- * `dev:ssr-logs` channel.
- *
- * When the wrapper's root IS the input itself, Vue's attribute
- * fallthrough handles the binding and `useRegister` is unnecessary.
- * For wrappers that bind multiple fields (compound forms), use
- * `injectForm<Form>(key?)` and call `ctx.register(...)` directly.
- */
 import {
   getCurrentInstance,
   onBeforeMount,
@@ -129,33 +53,22 @@ const warnedNoParentRV: WeakSet<object> | null = __DEV__ ? new WeakSet<object>()
 let warnedOutsideSetup = false
 
 /**
- * Build the hybrid Proxy. The `__v_isRef` field makes Vue's `unref`
- * / template auto-unwrap treat the proxy as a `Ref<RegisterValue |
- * undefined>` and surface `value` (the captured RV) to consumers
- * that go through that path — including `v-register="rv"` in a
- * template, which is what feeds the directive its `binding.value`.
+ * Build the hybrid Proxy. `__v_isRef` makes Vue's `unref` and template
+ * auto-unwrap treat it as a `Ref<RegisterValue | undefined>` and read
+ * `value`, which is the path `v-register="rv"` takes to reach the
+ * directive's `binding.value`. Every other read pierces to
+ * `capturedRegisterValue.value`, so `rv.path` works in script setup.
  *
- * Every other property read pierces to `capturedRegisterValue.value`,
- * so `rv.path` / `rv.segments` / `rv.formKey` work in script setup.
+ * Methods need no `this` rebinding: every `RegisterValue` method is an
+ * arrow closure built in `core/register-api.ts` over `state` and
+ * `segments`. The `has` and `ownKeys` traps keep `'innerRef' in rv`,
+ * `Object.keys(rv)` and the directive's `isRegisterValue` guard
+ * working.
  *
- * Methods don't need `this` rebinding: every method on a real
- * `RegisterValue` is an arrow-function closure built in
- * `register-api.ts`, capturing `state` / `segments` lexically. So
- * `rv.registerElement(el)` works through the proxy without a
- * `bind` pass. The `has` / `ownKeys` traps cooperate with
- * `'innerRef' in rv` / `Object.keys(rv)` — including the
- * `isRegisterValue` type guard the directive uses.
- *
- * Perf trade-off (DIR-F11): every read traverses the `get` trap, so
- * a tight hot loop reading `rv.innerRef.value` pays a per-read trap
- * cost. The hybrid Proxy is what lets `useRegister` return a single
- * value that's BOTH a `Ref<RegisterValue|undefined>` (for `v-register
- * ="rv"`) AND a `RegisterValue`-shaped object (for script-setup
- * `rv.path`). Replacing the proxy with an object built per
- * `useRegister` would either lose the lazy `ref`-unwrap behaviour or
- * recreate the union shape with per-property getters anyway — net
- * trap cost would stay. The audit flagged this as minor; the DX win
- * is the justification for keeping it.
+ * Every read pays the `get` trap, which is the price of returning one
+ * value that is both a ref (for `v-register="rv"`) and a
+ * `RegisterValue`-shaped object (for `rv.path`). Per-property getters
+ * would cost the same.
  */
 function makeRegisterValueProxy<V>(
   capturedRegisterValue: Ref<RegisterValue<V> | undefined>
@@ -222,6 +135,46 @@ export type UseRegisterOptions = {
   readonly optional?: boolean
 }
 
+/**
+ * Re-bind a parent's `v-register` onto an inner native element. Use it
+ * inside a component that wraps a single form field whose root is NOT
+ * the input itself, such as a labelled row that renders `<label>`
+ * around the input.
+ *
+ * ```vue
+ * <!-- Parent -->
+ * <MyInput v-register="form.register('email')" />
+ *
+ * <!-- MyInput.vue -->
+ * <script setup lang="ts">
+ *   import { useRegister } from 'attaform'
+ *   const rv = useRegister()
+ * </script>
+ *
+ * <template>
+ *   <label class="field">
+ *     <span>Email</span>
+ *     <input v-register="rv" />
+ *   </label>
+ * </template>
+ * ```
+ *
+ * The return is a hybrid: `v-register="rv"` hands the directive the
+ * parent's own `RegisterValue`, and `rv.path` / `rv.segments` /
+ * `rv.formKey` / `rv.innerRef` read directly in script setup with no
+ * `.value` unwrap. Reads inside a `computed` or `watchEffect` re-run
+ * when the parent rebinds to a different path.
+ *
+ * When no parent bound, every field reads `undefined`, so reach for
+ * `rv?.path`. `v-register="rv"` is still safe. A wrapper that is meant
+ * to render both with and without a form declares it with
+ * `useRegister({ optional: true })` and branches on `rv?.isBound`.
+ *
+ * When the wrapper's root IS the input, Vue's attribute fallthrough
+ * already binds it and `useRegister` is unnecessary. For a wrapper
+ * that binds several fields, use `injectForm<Form>(key?)` and call
+ * `ctx.register(...)` directly.
+ */
 export function useRegister<V = unknown>(
   options?: UseRegisterOptions
 ): UseRegisterReturn<V> | undefined {
@@ -231,77 +184,46 @@ export function useRegister<V = unknown>(
     return makeRegisterValueProxy<V>(shallowRef<RegisterValue<V> | undefined>(undefined))
   }
 
-  // Lazy-install the registry: `useRegister` is a public setup-context
-  // entry point, and a wrapper component used in isolation (no `useForm`
-  // ancestor, no `createAttaform()`) should still find an attached
-  // registry. Idempotent — explicit installs win when they ran first.
-  // The `v-register` in the wrapper's own template is delivered
-  // separately: the Vite / Nuxt plugin binds it at compile time, and
-  // no-build setups call `installVRegister(app)` once.
+  // Lazy-install the registry, because a wrapper used in isolation (no
+  // `useForm` ancestor, no `createAttaform()`) should still find one
+  // attached. Idempotent, and an explicit install that ran first wins.
+  // The `v-register` inside the wrapper's own template is delivered
+  // separately: the Vite / Nuxt plugin binds it at compile time, and a
+  // no-build setup calls `installVRegister(app)` once.
   ensureAttaformInstalled(instance.appContext.app)
 
-  // Capture the bridge `registerValue` from instance.attrs into a
-  // local ref, then STRIP the bridge keys (`registerValue` + `value`)
-  // from the attrs object. This prevents fallthrough to the rendered
-  // root: without the strip, Vue would merge attrs onto the root's
-  // vnode and the wrapper would render with stringified DOM attrs
-  // (`<label registerValue="[object Object]">`). Class/style/aria/data
-  // fallthrough is unaffected — only the bridge keys are removed, so
-  // the consumer doesn't have to set `defineOptions({ inheritAttrs:
-  // false })` and lose those legitimate fallthroughs.
+  // Holds the bridge `registerValue` captured out of `instance.attrs`,
+  // which `refreshAndStripBridgeAttrs` below then deletes from attrs so
+  // it cannot fall through to the rendered root as
+  // `<label registerValue="[object Object]">`. Only the bridge keys are
+  // stripped, so class / style / aria / data still fall through and the
+  // consumer keeps the default `inheritAttrs`.
   //
-  // Vue's `setFullProps` repopulates attrs on every parent re-render
-  // (it iterates rawProps and re-assigns each key into attrs). So the
-  // capture+strip has to run on every update, not just at setup. The
-  // `onBeforeUpdate` hook fires after `updateComponentPreRender`
-  // (which calls setFullProps) and before `renderComponentRoot`
-  // (which reads attrs for fallthrough), giving us a clean window.
-  //
-  // We don't read from `useAttrs()` proxy because the proxy reads
-  // off the same target we're mutating — after the strip, the proxy
-  // returns undefined for the bridge keys. The captured ref is the
-  // source of truth instead, refreshed in lockstep with attrs.
-  //
-  // `shallowRef` (not `ref`) — `ref` calls `reactive()` on object
-  // values, which would wrap the parent's RV in a reactive proxy and
-  // break referential equality. The directive hooks downstream rely
-  // on the rv being the same reference the parent holds, so we keep
-  // it raw.
+  // `shallowRef`, never `ref`: `ref` would call `reactive()` on the RV
+  // and break the referential equality the directive hooks depend on.
   const capturedRegisterValue = shallowRef<RegisterValue<V> | undefined>(undefined)
 
   const refreshAndStripBridgeAttrs = (): void => {
     const rawAttrs = instance.attrs as Record<string, unknown>
-    // Primary path: the compile-time `componentBridgeTransform` injected a
-    // `:registerValue` bridge prop on the host component, which Vue's
-    // `initProps` lands in `instance.attrs.registerValue`. Capture
-    // only when the key is present; the strip below removes it from
-    // attrs, so a second invocation of this function (e.g.
-    // `onBeforeMount` after the synchronous setup call) would
-    // otherwise overwrite the captured rv with `undefined`. Vue's
-    // `setFullProps` re-populates attrs on every parent render, so
-    // the `onBeforeUpdate` invocation correctly sees the key again
-    // and re-captures.
+    // Primary path: `componentBridgeTransform` injected a
+    // `:registerValue` bridge prop, which `initProps` lands in
+    // `instance.attrs`. Capture only when the key is PRESENT. The strip
+    // below removes it, so a second run of this function would
+    // otherwise overwrite the captured rv with `undefined`.
     if ('registerValue' in rawAttrs) {
       capturedRegisterValue.value = rawAttrs['registerValue'] as RegisterValue<V> | undefined
       delete rawAttrs['registerValue']
-      // Arm the store's DOM binding as soon as an RV lands: the wrapper
-      // author may call `rv.registerElement(el)` through the proxy
-      // (manual integration, no inner v-register), and that delegate
-      // needs the binding live. Optional-member call, no-op for a
-      // hand-rolled RV.
+      // The wrapper author may call `rv.registerElement(el)` through the
+      // proxy instead of using an inner v-register, and that delegate
+      // needs the binding already live. No-op for a hand-rolled RV.
       if (capturedRegisterValue.value !== undefined) armDomBinding(capturedRegisterValue.value)
     } else {
-      // Fallback path: no compile-time transform ran, so the bridge
-      // attr never appeared. Read the directive binding directly off
-      // the host vnode's `dirs` array. Vue populates `vnode.dirs`
-      // when the parent's render encounters `v-register` on this
-      // component, regardless of whether the consumer's bundler
-      // wired `attaform/vite`. Match by the `V_REGISTER_MARKER`
-      // symbol on the directive object so we don't false-match
-      // unrelated user directives that happen to share a structural
-      // shape — and so cross-bundle (`attaform` + `attaform/zod`
-      // loaded as separate copies) keeps working, since the marker
-      // is `Symbol.for(...)`.
+      // Fallback path: no compile-time transform ran, so the bridge attr
+      // never appeared. Vue fills `vnode.dirs` whenever the parent's
+      // render meets `v-register` on this component, plugin or no
+      // plugin. Match on `V_REGISTER_MARKER` rather than on shape, so
+      // an unrelated user directive cannot false-match and so two
+      // copies of Attaform still recognise each other.
       const dirs = instance.vnode.dirs
       if (dirs !== null && dirs !== undefined) {
         for (const dir of dirs) {
@@ -319,48 +241,36 @@ export function useRegister<V = unknown>(
       }
     }
     if ('value' in rawAttrs) delete rawAttrs['value']
-    // The v-model desugar (componentBridgeTransform) injects `modelValue` +
-    // `onUpdate:modelValue` onto a plain component host. For a useRegister
-    // wrapper the inner control already owns value via its own v-register, so
-    // these bridge attrs are inert here -- strip them off the fallthrough bag
-    // so `modelValue` doesn't leak onto the inner DOM as a junk attribute and
-    // `onUpdate:modelValue` doesn't bind a dead listener.
+    // `componentBridgeTransform`'s v-model desugar puts `modelValue` and
+    // `onUpdate:modelValue` on a plain component host. Here the inner
+    // control already owns the value through its own v-register, so both
+    // are inert: strip them or `modelValue` lands on the inner DOM as a
+    // junk attribute and `onUpdate:modelValue` binds a dead listener.
     if ('modelValue' in rawAttrs) delete rawAttrs['modelValue']
     if ('onUpdate:modelValue' in rawAttrs) delete rawAttrs['onUpdate:modelValue']
   }
-  // Capture+strip three times: synchronously in setup, then on
-  // beforeMount, then on every beforeUpdate. The synchronous call is
-  // load-bearing for SSR — Vue skips lifecycle hooks during
-  // `renderToString`, so an `onBeforeMount`-only capture leaves
-  // `capturedRegisterValue` at `undefined` and the directive's first
-  // server-side template read would otherwise misrender. Vue's
-  // `setupComponent` runs `initProps` (which populates
-  // `instance.attrs.registerValue` from the parent's `:registerValue`
-  // binding injected by `componentBridgeTransform`) before `setup()` runs,
-  // so the sync read sees the correct value on both server and client.
-  // The `onBeforeMount` hook stays as defence in depth against any
-  // re-population that could happen after setup (e.g. from a parent's
-  // directive re-running) — idempotent, safe to duplicate. The
-  // `onBeforeUpdate` hook handles parent re-renders, where Vue's
-  // `setFullProps` runs again and re-puts the bridge keys.
+  // Three times, and all three earn it. The synchronous call is the SSR
+  // one: `renderToString` skips lifecycle hooks, so without it the
+  // capture stays `undefined` and the first server-side read
+  // misrenders. `setupComponent` runs `initProps` before `setup()`, so
+  // the sync read already sees the bridge key. `onBeforeMount` is
+  // defence in depth against a re-population after setup, and
+  // `onBeforeUpdate` catches parent re-renders, where `setFullProps`
+  // puts the bridge keys back. All three are idempotent.
   refreshAndStripBridgeAttrs()
   onBeforeMount(refreshAndStripBridgeAttrs)
   onBeforeUpdate(refreshAndStripBridgeAttrs)
 
-  // Single post-mount hook does two jobs: (1) marks the rendered root
-  // DOM element with `REGISTER_OWNER_MARKER` so the parent directive's
-  // deferred warn check skips the "is a no-op" warn for components that
-  // handle binding via an inner v-register, and (2) emits the
-  // no-parent-RV diagnostic exactly once per instance if the captured
-  // value is still `undefined` by mount time — by then the parent has
-  // had its full lifecycle to bind, so still-undefined is conclusive
-  // misuse. The proxy stays pure: reads don't trigger diagnostics, so
-  // a consumer that conditionally consumes the value (or reads it many
-  // times) gets exactly the right behaviour. SSR is intentionally
-  // silent — `onMounted` doesn't fire on the server, and the CSR
-  // hydration pass surfaces the diagnostic on the only surface a
-  // developer can act on without double-counting through the Nuxt
-  // `dev:ssr-logs` channel.
+  // Two jobs in one hook. It marks the rendered root with
+  // `REGISTER_OWNER_MARKER`, which is how the parent directive's
+  // deferred check knows to skip its "is a no-op" warn for a component
+  // that binds through an inner v-register. And it emits the
+  // no-parent-RV diagnostic once per instance, at mount because by then
+  // the parent has had a full lifecycle to bind, so a still-undefined
+  // capture is conclusive. Keeping it here also keeps the proxy pure:
+  // reading a field never warns. SSR is silent by construction, since
+  // `onMounted` does not run there, and the CSR hydration pass raises
+  // the same diagnostic on the surface a developer can act on.
   onMounted(() => {
     const el = instance.vnode.el
     if (el !== null && el !== undefined && typeof el === 'object') {

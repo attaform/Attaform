@@ -42,7 +42,12 @@ import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
-import { buildErrorPathIndex, type ErrorPathEntry } from './error-path-index'
+import {
+  buildErrorPathIndex,
+  isSameWindow,
+  windowUnder,
+  type ErrorPathEntry,
+} from './error-path-index'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
   consumerKeys,
@@ -217,13 +222,21 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   readonly derivedBlankErrors: ComputedRef<ReadonlyMap<PathKey, ValidationError[]>>
   /**
-   * Every path carrying an error, sorted by key, rebuilt when any of
-   * the three error stores changes. `aggregateErrorsAt` binary-searches
-   * this for its prefix window instead of re-scanning all three stores
-   * per call, which is what turns a table of N rows from O(N x errors)
-   * back into O(errors). See `error-path-index.ts`.
+   * Every path carrying an error at or under `prefix`, sorted by key.
+   * `aggregateErrorsAt` takes its candidates from here instead of
+   * re-scanning all three error stores per call, which is what turns a
+   * table of N rows from O(N x errors) back into O(errors). See
+   * `error-path-index.ts`.
+   *
+   * Reading this rather than the form-global index is also what keeps
+   * containers isolated from each other. The index is one value for the
+   * whole form, so any path gaining or losing an error gives it a new
+   * identity; a container reading it directly woke on every other
+   * container's errors. Each prefix gets its own memoised `computed`
+   * that holds its previous array when its own window is unchanged, so
+   * the global change stops there. See `errorWindowAt` in the store.
    */
-  readonly errorPathIndex: ComputedRef<readonly ErrorPathEntry[]>
+  readonly errorWindowAt: (prefix: Path, prefixKey: PathKey) => readonly ErrorPathEntry[]
   readonly originals: Map<PathKey, OriginalsRecord>
   /**
    * Reactive set of paths whose displayed state should be EMPTY even
@@ -4036,6 +4049,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // path joins or leaves. Vue's collection tracking makes that exact:
   // a keystroke that rewrites one path's errors invalidates this once,
   // not once per reader.
+  //
+  // Store-local on purpose. Every reader goes through `errorWindowAt`
+  // below, which is what keeps one path's error off every other
+  // container's dependency list; handing the index itself to a reader
+  // would put the form-global dep straight back.
   const errorPathIndex = computed<readonly ErrorPathEntry[]>(() =>
     buildErrorPathIndex(errorCells, derivedBlankErrors.value)
   )
@@ -4182,6 +4200,28 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // vacated indices. Owns no state of its own — every dep is a
   // reference into the surrounding store, so the bookkeeping's
   // lifecycle exactly matches the host.
+  // One `computed` per prefix anyone aggregates errors at, holding that
+  // prefix's slice of the index.
+  //
+  // The index is one value for the whole form and is rebuilt whole on
+  // every error change, so it has a fresh identity every time. A
+  // container that read it directly therefore woke whenever ANY path in
+  // the form gained or lost an error, not just one of its own
+  // descendants: a form mounting with errors paid one render per
+  // unrelated container on its first write, linear in container count.
+  //
+  // The window `computed` is the barrier. It re-evaluates on every
+  // index change (a binary search and a key compare over its own
+  // slice), but hands back the array it returned last time when its own
+  // window is unchanged, and Vue stops propagating a `computed` whose
+  // value is identical. So an unrelated path's error reaches this far
+  // and no further. Contents are deliberately NOT part of the
+  // comparison: `aggregateErrorsAt` reads each path's errors through the
+  // per-key `errorCells` / `blankPaths` tracking, which is already
+  // precise, and folding contents in here would only re-add the
+  // form-global dep this exists to remove.
+  const errorWindows = new Map<PathKey, ComputedRef<readonly ErrorPathEntry[]>>()
+
   // The form's single liveness sweep, built here so the store's own
   // per-path maps are swept alongside the read surfaces'. They were the
   // omission: the sweep landed with the caches that read a path and
@@ -4207,7 +4247,24 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // path appears, and it re-seeds identically on re-appearance, so
     // dropping it costs nothing and is the half that grows without bound.
     if (originals.get(key)?.value === undefined) originals.delete(key)
+    // Bounded here like every other per-path cache (#617): a prefix the
+    // form no longer has loses its window on the next write.
+    errorWindows.delete(key)
   })
+
+  const errorWindowAt = (prefix: Path, prefixKey: PathKey): readonly ErrorPathEntry[] => {
+    let cached = errorWindows.get(prefixKey)
+    if (cached === undefined) {
+      const frozen = [...prefix]
+      cached = computed<readonly ErrorPathEntry[]>((prev) => {
+        const next = windowUnder(errorPathIndex.value, frozen)
+        return prev !== undefined && isSameWindow(prev, next) ? prev : next
+      })
+      errorWindows.set(prefixKey, cached)
+      pathSweep.track(frozen, prefixKey)
+    }
+    return cached.value
+  }
 
   const arrayBookkeeping: ArrayBookkeeping = createArrayBookkeeping({
     form,
@@ -4242,7 +4299,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     fields,
     errorCells,
     derivedBlankErrors,
-    errorPathIndex,
+    errorWindowAt,
     originals,
     pathSweep,
     schema,

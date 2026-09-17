@@ -15,7 +15,6 @@ import { __DEV__ } from './dev'
 import { defaultDisplayState } from './display-state'
 import { makeBlankRequiredError } from './error-codes'
 import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
-import { windowUnder } from './error-path-index'
 import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
@@ -185,9 +184,9 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   // field's computed (P3 vector 2). `blankPaths.has(key)` tracks only this
   // key's membership (Vue 3.5 reactive Set), so a sibling's blank change no
   // longer invalidates this field. Byte-identical to the aggregated entry: the
-  // shared builder, gated on the same `isRequiredAtPath`. The container /
-  // form-level rollup (`aggregateErrorsAt`) still reads `derivedBlankErrors` —
-  // a container legitimately depends on every descendant.
+  // shared builder, gated on the same `isRequiredAtPath`. `aggregateErrorsAt`
+  // now synthesizes the same way for the same reason, so no reader of a blank
+  // error carries the whole-form map as a dep.
   const blankForKey =
     state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
       ? [makeBlankRequiredError(segments)]
@@ -526,7 +525,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // applied via the same `hasAtPath` gate the descendant walk used.
   // `valid` derives from this single source so the two fields can
   // never disagree.
-  const errors = aggregateErrorsAt(state, segments)
+  const errors = aggregateErrorsAt(state, segments, key)
   // Descendant display rollup: does any error UNDER this container have its
   // owning field's reveal gate open? Iterates the aggregated errors (not just
   // the leaf walk) so a cross-field error pinned at an intermediate object is
@@ -758,13 +757,13 @@ function decorateWithDerivedProps<F extends GenericForm>(
  */
 export function aggregateErrorsAt<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
-  prefix: Path
+  prefix: Path,
+  prefixKey: PathKey
 ): ValidationError[] {
-  const candidates = windowUnder(state.errorPathIndex.value, prefix)
+  const candidates = state.errorWindowAt(prefix, prefixKey)
   if (candidates.length === 0) return []
   const formValue = state.form.value
   const cells = state.errorCells
-  const blank = state.derivedBlankErrors.value
   const buckets = new Map<number, ValidationError[]>()
   for (const { key, segments } of candidates) {
     // The index window is a superset (it is a key-range, not a prefix
@@ -783,7 +782,17 @@ export function aggregateErrorsAt<F extends GenericForm>(
     // injective over paths, so gathering a path's three lists together
     // here is the same order the three separate store passes produced.
     const cell = cells.get(key)
-    const blankList = blank.get(key)
+    // Synthesized per path from its OWN blank membership, for the same
+    // reason the leaf base does it (see `buildLeafFieldStateBase`): the
+    // whole-form `derivedBlankErrors` map returns a fresh identity on
+    // ANY blank transition in the form, so reading it here would give
+    // every container a dep on every other container's blanks. Same
+    // builder, same `isRequiredAtPath` gate, so the entry is identical
+    // to the one that map would have held.
+    const blankList =
+      state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
+        ? [makeBlankRequiredError(segments)]
+        : undefined
     const schemaList = cell?.schema
     const userList = cell?.user
     const total = (schemaList?.length ?? 0) + (blankList?.length ?? 0) + (userList?.length ?? 0)

@@ -745,7 +745,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // three surfaces never drift, and inactive-variant errors stay
   // hidden everywhere by default.
   const metaErrors = computed<readonly ValidationError[]>(() =>
-    aggregateErrorsAt(state, [] as Path)
+    aggregateErrorsAt(state, [] as Path, ROOT_PATH_KEY)
   )
 
   // --- Form-level meta bundle ---

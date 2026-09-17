@@ -322,19 +322,23 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
   }
 
   /**
-   * The first write after mount rebuilds the aggregated-errors array of
-   * every container, including ones whose contents did not change, so a
-   * form that mounted holding schema errors pays ONE extra render per
-   * unrelated container. Construction validates unconditionally, so this
-   * is the common shape: most real forms mount with required-but-empty
-   * fields.
+   * The mount-seeded case, which used to be the hole in the lock above.
    *
-   * Bounded and one-shot — the aggregate stabilises immediately after,
-   * and writes 2..n hold the isolation the scenarios above lock. This
-   * pins the bound: if the rebuild ever becomes per-keystroke, the
-   * second-write half of this test fails.
+   * Construction validates unconditionally, so most real forms mount
+   * holding errors: required-but-empty fields. Clearing the first of
+   * them rebuilt the form-global error index, and every container read
+   * that index directly, so the first write after mount cost ONE render
+   * per unrelated container, linear in container count (measured n-1 at
+   * n = 2, 10, 50 and 200). The scenarios above start from defaults that
+   * parse and so never saw it.
+   *
+   * Containers now read their own memoised window of that index, which
+   * holds its previous array when the set of error paths under it is
+   * unchanged, so an unrelated path's error stops there. Both writes
+   * assert 0: the first for the fan-out itself, the second because the
+   * steady state it settles into is the same one the scenarios lock.
    */
-  it('a mount-seeded error costs the sibling container one render, on the first write only', async () => {
+  it('a mount-seeded error costs an unrelated container nothing, on any write', async () => {
     const seeded: LockScenario = {
       ...NESTED_FIELDS_DISPLAY,
       id: 'nested: fields-display (mount-seeded)',
@@ -346,7 +350,7 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
     renders.clear()
     form.setValue('profile.first', 'Grace')
     await settle()
-    expect(renders.get('contact(container)') ?? 0).toBe(1)
+    expect(renders.get('contact(container)') ?? 0).toBe(0)
 
     renders.clear()
     form.setValue('profile.first', 'Grace H')

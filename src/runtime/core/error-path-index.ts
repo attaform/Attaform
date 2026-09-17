@@ -110,6 +110,29 @@ export function windowUnder(
   return start === 0 && end === index.length ? index : index.slice(start, end)
 }
 
+/**
+ * Do two windows cover the same set of paths?
+ *
+ * Both are slices of the same key-sorted index, so a positional key
+ * comparison is exact. Keys are compared rather than whole entries
+ * because an entry's `segments` are decoded FROM its key: two entries
+ * agreeing on the key agree on everything.
+ *
+ * This is what lets a per-prefix window hold its previous array when
+ * an unrelated path's error changes. The index is rebuilt in full on
+ * every error change and so always has a fresh identity; a window that
+ * compares equal hands back the identity it already had, and a
+ * `computed` wrapping it stops the change there instead of passing it
+ * on to every container in the form.
+ */
+export function isSameWindow(a: readonly ErrorPathEntry[], b: readonly ErrorPathEntry[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]?.key !== b[i]?.key) return false
+  }
+  return true
+}
+
 /** First position whose key is not less than `target`. */
 function lowerBound(index: readonly ErrorPathEntry[], target: string): number {
   let lo = 0

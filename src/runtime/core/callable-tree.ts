@@ -461,7 +461,7 @@ export function buildErrorsSurface<F extends GenericForm>(
     // `errors()` / `errors([])` / `errors(path)` are all the subtree
     // aggregate — the same helper `meta.errors` reads, so the surfaces
     // never drift.
-    call: (path) => aggregateErrorsAt(state, path),
+    call: (path) => aggregateErrorsAt(state, path, keyForSegments(path).key),
     surface: 'form.errors',
     sweep,
   })

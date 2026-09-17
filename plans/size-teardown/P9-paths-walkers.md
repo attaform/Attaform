@@ -15,7 +15,7 @@ measure each arm BEFORE its rewrite; refuse any arm that prices under
    fix-structural, slim-primitives, field-meta), write-funnel arrays
    suite, hydration round-trip, wizard URL restore.
 2. Bench baseline captured (keystroke flat/deep, array append/swap,
-   cold init F=5/50/500) — the trie and the per-store SchemaNode cache
+   cold init F=5/50/500), the trie and the per-store SchemaNode cache
    sit ON the P5-banked write funnel; those wins must hold within
    noise, and construction must not regress the P7 recovery.
 3. Rep sketches measured for the three arms, in isolation, against
@@ -23,10 +23,10 @@ measure each arm BEFORE its rewrite; refuse any arm that prices under
    a. trie rep: interned pathOf() + ByKey twin deletion estimate;
    b. node() rep: the normalized-node introspector over the surviving
    switches (P7 already data-drove v4 walkSchemaTree and deleted
-   the slim rebuild — re-count the arms that actually remain);
+   the slim rebuild, re-count the arms that actually remain);
    c. reconcile rep: line inventory of mergeStructural /
    setAtPathWithSchemaFill / unset-walker / merge-hydration /
-   merge-deep / walk-fix-structural overlap — the fix walk landed
+   merge-deep / walk-fix-structural overlap, the fix walk landed
    AFTER the stub was written and may already own part of this
    ground; price the fold on what remains.
 

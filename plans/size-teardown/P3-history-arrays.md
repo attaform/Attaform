@@ -3,7 +3,7 @@
 Status: DONE 2026-08-23. Measured eager 37,210 -> 35,776 B gz (-1,434:
 ~1,240 history un-weld exactly as verify-p3.mjs predicted at src level +
 ~195 arrays engine). Budget 37_700 -> 36_250. New `attaform/history`
-entry capped at 1.5 KB (measured 1.02 — the ring buffer runs under half
+entry capped at 1.5 KB (measured 1.02, the ring buffer runs under half
 the old delta-chain runtime). Execution findings below.
 
 Delivers ~-1,650 B gz. Scope: (a) `attaform/history` entry exporting
@@ -27,23 +27,22 @@ moves; the diff/apply writer stays eager); array-identity 493; array-state-migra
 credit is history minus the namespace stubs plus the movable diff-apply half; the
 (b) half's credit is consolidation savings across the five array/variant modules,
 NOT their removal (the mutation half stays eager per the do-not-do list). Expected
-landing ~35,550 on the ledger's mid-realization estimate — treat the ratchet as the
+landing ~35,550 on the ledger's mid-realization estimate, treat the ratchet as the
 only authority, and re-measure a per-module before/after with a verify script in
 reference/scripts (pattern: verify-unweld.mjs, strip-aligned) before crediting.
 
 P2 hand-off notes for (a): useForm's history option threading and the form.history
-namespace live in build-form-api.ts (2,708 gz eager, the second-largest file) —
-the P8 surface program claims build-form-api reductions, so per the byte-accounting
+namespace live in build-form-api.ts (2,708 gz eager, the second-largest file), the P8 surface program claims build-form-api reductions, so per the byte-accounting
 guards any history-namespace savings count HERE only if P8's plan is adjusted at
 its boundary; record the split explicitly when detailing the PR. For (b): P2
 already deleted array-bookkeeping's dead `elements` dep, so the consolidation
 starts from a clean deps surface; the DomBinding seam means the arrays engine
 never touches element records (they key by path in the lazily-armed binding and
-re-register through the directive on identity changes — nothing to migrate).
+re-register through the directive on identity changes, nothing to migrate).
 
 ## Execution findings (2026-08-23)
 
-### (a) historyPlugin — what landed
+### (a) historyPlugin, what landed
 
 - Spike first: `reference/scripts/verify-p3.mjs` (verify-unweld methodology)
   stubbed only the use-abstract-form weld and predicted -1,243 B at the
@@ -56,7 +55,7 @@ re-register through the directive on identity changes — nothing to migrate).
   `HistoryModule` (the attach result, moved to types-api so
   build-form-api / use-form-context type-import it without touching the
   module), and public `HistoryPlugin = { /** @internal */ attach }`.
-  FormStore is structurally assignable — zero casts. `HistoryConfig`
+  FormStore is structurally assignable, zero casts. `HistoryConfig`
   (`true | { max }`) is DELETED everywhere (no-back-compat).
 - `historyPlugin(options?)` normalizes `max` ONCE at plugin creation
   (dev-warn source string is now 'historyPlugin({ max })'); `attach`
@@ -87,10 +86,10 @@ re-register through the directive on identity changes — nothing to migrate).
   RUNTIME_ENTRIES walk, dev-dce S4 UNWELDED_MODULES += history.ts (12
   modules now). The dist-flavor e2e fixture opts into
   `historyPlugin()` through the committed node_modules symlink and asserts
-  the SSR-rendered chain size — the ./history export is probed through the
+  the SSR-rendered chain size, the ./history export is probed through the
   REAL exports map end to end.
 - REPL: shipment-demo uses history, so `attaform/history` joined the REPL
-  bundle set properly (bundle-repl-deps context external:['vue'] — the
+  bundle set properly (bundle-repl-deps context external:['vue'], the
   entry pulls only pure helpers, no shared mutable state, so inlining is
   safe), import-map entry, dts bundle, meta.json listing, runtime stub,
   sidecar d.ts, and the branded-type unifier generalized to
@@ -99,13 +98,13 @@ re-register through the directive on identity changes — nothing to migrate).
   `import type { PathKey } from './index'`.
 - Docs: undo-redo page reframed around the plugin (entry metaRow, import
   in every snippet, ring-buffer memory paragraph replacing the delta
-  explanation, `history: false` disable snippet dropped — omission is the
+  explanation, `history: false` disable snippet dropped, omission is the
   off state); app-defaults page's AttaformDefaults block + a new history
   paragraph; multistep patterns per-step undo; entry-points 15 -> 16 with
   an `attaform/history` section + job-table row; types.md row; Agent
   Skill imports section gains the history bullet.
 
-### (b) arrays engine — what landed
+### (b) arrays engine, what landed
 
 - One module `array-engine.ts` (five files deleted): permutation core
   (remapForOp / changedIndices / permuteList), shared key walk
@@ -143,13 +142,13 @@ re-register through the directive on identity changes — nothing to migrate).
 ### Measured results
 
 - Eager 35,776 B gz (predicted (a) 1,243 + (b) ~195; the plan's ~35,550
-  assumed a fatter (b) mid-realization — the ratchet is authority).
+  assumed a fatter (b) mid-realization, the ratchet is authority).
   Budget 37_700 -> 36_250 (474 B headroom, P2-convention).
 - size-limit: 10 caps tightened (index/zod 57.5 -> 55.5 @54.95; zod-v4
   51.5 -> 49.5 @48.81; zod-v3 52.5 -> 50.75 @50.09; abstract 41.5 -> 39.75
   @39.24; zod{useForm} + index{useForm} 45 -> 43 @42.3; zod-v4{useForm}
   39 -> 37 @36.18; zod-v3{useForm} 40.5 -> 38.25 @37.62; zod{injectForm}
-  16.5 -> 15.75 @15.15 — that graph never carried history, use-form-context
+  16.5 -> 15.75 @15.15, that graph never carried history, use-form-context
   only type-imported; abstract{useAbstractForm} 29.5 -> 27.5 @26.91).
   NEW dist/history.mjs cap 1.5 KB @1.02. Held: directive 8 @7.32 (grew
   ~0.15 from unbuild shared-chunk rebalancing after the module-graph
@@ -160,7 +159,7 @@ re-register through the directive on identity changes — nothing to migrate).
 
 ### Deviations from the plan
 
-- applyPatchesForward/Inverse did not MOVE into the history chunk — the
+- applyPatchesForward/Inverse did not MOVE into the history chunk, the
   ring buffer needs no patch machinery, so they were DELETED along with
   path-walker's deleteAtPath. Strictly better than planned.
 - The (b) credit realized ~195 gz vs the fatter share of the ~1,650

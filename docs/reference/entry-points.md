@@ -104,7 +104,7 @@ import { historyPlugin } from 'attaform/history'
 const form = useForm({ schema, history: historyPlugin({ max: 200 }) })
 ```
 
-Ships `historyPlugin` and its types (`HistoryPlugin`, `HistoryPluginOptions`). One plugin instance is a reusable configuration — pass it to several forms and every one keeps its own independent chain. The [Undo & redo](/docs/cross-cutting-state/undo-redo) page covers the `form.history` namespace it unlocks.
+Ships `historyPlugin` and its types (`HistoryPlugin`, `HistoryPluginOptions`). One plugin instance is a reusable configuration: pass it to several forms and every one keeps its own independent chain. The [Undo & redo](/docs/cross-cutting-state/undo-redo) page covers the `form.history` namespace it unlocks.
 
 ## The framework-agnostic toolkit
 

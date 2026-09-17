@@ -4,7 +4,7 @@ Status: DONE 2026-08-23. Measured: eager 43,741 -> 37,210 B gz (-6,531: 5,702
 from the un-weld flip exactly as verify-unweld predicted, plus 829 from the
 store DOM-slice extraction, beating the plan's ~5,900). Budget 44_250 ->
 37_700; 12 size-limit caps tightened (createAttaform's treeshaken import
-collapsed 8 KB cap -> 1.5 KB, measured 0.79 KB — that import WAS the weld) +
+collapsed 8 KB cap -> 1.5 KB, measured 0.79 KB, that import WAS the weld) +
 a new `attaform/directive` entry cap (8 KB, measured 7.17). Tarball 380.1 kB
 / 83 files under the unchanged 450k budget. Full suite green both majors;
 `pnpm check` chain green end to end. Execution findings at the bottom.
@@ -25,7 +25,7 @@ pre-strip 6,255 claim carried ~550 of dev-flavor bytes P1a already banked.
 Removed set confirmed: directive, directive-{aria,file,listeners,lifecycle,
 value-sync}, register-protocol, assigner-pipeline, vue-shared-shim; store and
 register-api stay eager. P1b's further ~950 is independent and still pending
-its docs pages, so P2 may run first — the dedup guards in 00-program.md
+its docs pages, so P2 may run first, the dedup guards in 00-program.md
 already keep the two claims separate.
 
 ## Accepted end state (sign-off 1)
@@ -45,7 +45,7 @@ already keep the two claims separate.
 
 ## Spike results (2026-08-23)
 
-- Spike A, RESOLVED — mechanism (2) wins, and it is one stable pattern.
+- Spike A, RESOLVED, mechanism (2) wins, and it is one stable pattern.
   Compiled every authoring style (script setup, options API, template-only)
   x dev/prod x client/SSR through @vue/compiler-sfc exactly as
   @vitejs/plugin-vue drives it: every non-local-binding case emits the
@@ -69,7 +69,7 @@ already keep the two claims separate.
   Known semantic narrowing, documented: in vite/nuxt builds a template's
   v-register binds statically to attaform's directive; a component-local
   `directives: { register: ... }` shadow no longer intercepts it.
-- Spike B, RESOLVED — parity is structural. Both SSR paths receive the SAME
+- Spike B, RESOLVED: parity is structural. Both SSR paths receive the SAME
   directive object: the compiled path via the rewritten import (synchronous
   getSSRProps, no app registration involved), the runtime vnode path via the
   directive object placed in withDirectives. The #378 matrix harness keeps
@@ -77,7 +77,7 @@ already keep the two claims separate.
   to `installVRegister` (the honest runtime-compiled-template story). The
   rewrite itself is covered by unit tests against real compiler-sfc module
   output plus the live vite pipeline (nuxt e2e fixture + apps/site).
-- Spike C, RESOLVED — seam is a lazily-armed DOM binding, public surface
+- Spike C, RESOLVED, seam is a lazily-armed DOM binding, public surface
   unchanged. `rv.registerElement` STAYS on RegisterValue (the register
   protocol's polymorphic member; hand-rolled RVs and the duck-check depend on
   it). The store's DOM slice (elements / hostTargets / elementToFormInstance
@@ -91,14 +91,14 @@ already keep the two claims separate.
   `domBinding: ShallowRef<DomBinding | null>` slot. Arming is explicit
   dependency injection: the directive / useRegister (both in or adjacent to
   the lazy cluster) pass `createDomBinding` into an @internal
-  `rv.ensureDomBinding(factory)` before element calls — package.json has
+  `rv.ensureDomBinding(factory)` before element calls, package.json has
   `"sideEffects": false`, so import-time slot arming would be tree-shaken;
   DI also survives duplicate-package-copy apps. Eager readers go through the
   slot: field-state's `element`/`elements`, process-form + form
   focusFirstError/scrollToFirstError (`domBinding.value?.getFirstErrorElement
 ?? null`). Confirmed degradation for "register() bindings but no directive
   and no useRegister anywhere": the slot stays null, element registration and
-  invalid-submit focus no-op without a crash — truthful absence, since
+  invalid-submit focus no-op without a crash, truthful absence, since
   nothing could have registered elements in that world anyway; a dev-flavor
   warn names the fix. Consumer inventory verified: no devtools / serialize
   readers of store.elements; the only eager readers are the four above.
@@ -108,7 +108,7 @@ already keep the two claims separate.
   registration in test/setup.ts + installVRegister in form-harness and the
   ssr-cross-path harness; per-file mounts fixed as surfaced. The in-browser
   REPL (runtime-compiled, no vite plugin) must call installVRegister in its
-  bootstrap — DemoReplEditor.client.vue.
+  bootstrap, DemoReplEditor.client.vue.
 
 ## Spikes (original brief, kept for the record)
 
@@ -155,7 +155,7 @@ already keep the two claims separate.
 - Delivery landed as designed: `attaform()` returns `[main, delivery]`
   (`Plugin[]`; Vite flattens, `@nuxt/kit`'s addVitePlugin spreads arrays).
   The delivery post-plugin applies `rewriteDirectiveDelivery` from
-  `runtime/lib/core/transforms/directive-delivery-transform.ts` — kept
+  `runtime/lib/core/transforms/directive-delivery-transform.ts`, kept
   INTERNAL, not exported from `attaform/transforms`, to avoid widening
   the tooling surface before someone actually needs it outside Vite.
 - The DI arming (Spike C) held: `rv.ensureDomBinding(factory)` is an
@@ -164,7 +164,7 @@ already keep the two claims separate.
   useRegister's two capture paths. dev-dce gained S4: the eleven
   un-welded modules (directive + 5 satellites, register-protocol,
   assigner-pipeline, vue-shared-shim, dom-binding, interactive-tags)
-  asserted OFF the minimal eager inputs — the structural re-weld guard
+  asserted OFF the minimal eager inputs, the structural re-weld guard
   the byte ratchet alone can't give.
 - Kernel additions: `noteDomConnected` / `noteDomDisconnected` (the
   field-record transitions; markConnectedOptimistically now routes its
@@ -176,12 +176,12 @@ already keep the two claims separate.
 - Vitest now runs the PRODUCTION delivery: both vitest configs register
   the same post-plugin `attaform/vite` ships, so the ~65 docs-demo SFCs
   exercise the rewrite on every suite run. Template-STRING harnesses
-  (runtime-compiled) use `installVRegister` — the honest no-build story.
+  (runtime-compiled) use `installVRegister`, which is the honest no-build story.
 - Silent-degradation trap found and closed: the #378 cross-path harness
   spies console.warn, so its compiled path kept passing while rendering
   with NO directive (the nodeTransforms carry value/checked/selected).
   The harness now installs the directive AND asserts zero
-  `Failed to resolve directive` warnings — a delivery guard that fails
+  `Failed to resolve directive` warnings, a delivery guard that fails
   loudly instead of degrading the matrix silently.
 - Public-surface outcome, for the record: NOTHING was removed.
   RegisterValue keeps registerElement/deregisterElement (the register
@@ -198,14 +198,14 @@ already keep the two claims separate.
   `register` directive is never captured. A component library that
   wants Attaform's directive without depending on the host app's
   plugin binds it locally (`import { vRegister } from
-'attaform/directive'` in `<script setup>` — the compiler then emits
+'attaform/directive'` in `<script setup>`, the compiler then emits
   no resolveDirective at all). Known narrowing, documented in the
   transform docblock: inside the Vite pipeline v-register binds
   statically, so a component-local `directives: { register }` shadow
   no longer intercepts it.
 - The REPL (in-browser compiler, no bundler plugin) registers the
   directive via `app.directive('register', vRegister)` off the BARREL
-  import — installVRegister lives only on `attaform/directive`, which
+  import, installVRegister lives only on `attaform/directive`, which
   is not in the REPL's import-map bundle set, and vRegister already
   rides the barrel. Invisible plumbing; docs teach installVRegister.
 - Plan step 5's fixtures landed as equivalents: the no-plugin
@@ -215,7 +215,7 @@ already keep the two claims separate.
   dist-flavor e2e fixture gained a v-register probe that proves the
   injected `attaform/directive` import resolves through the REAL
   exports map (dev flavor via the development condition) with SSR
-  value emission — a missing export would 500 the fetch.
+  value emission, a missing export would 500 the fetch.
 - Docs: installation restructured (Nuxt module / Vite plugin sections
   now carry the delivery; new "No build plugin?" one-liner section),
   v-register page's "Auto-installed" became "Delivered at compile
@@ -229,5 +229,5 @@ already keep the two claims separate.
   covered every SFC-based suite, and the harnesses that register
   elements manually (focus-scroll, wizard-handle-submit,
   v-register-component-host, register-api) arm explicitly via
-  `armDomBinding` — which doubles as in-repo documentation of the
+  `armDomBinding`, which doubles as in-repo documentation of the
   arming contract.

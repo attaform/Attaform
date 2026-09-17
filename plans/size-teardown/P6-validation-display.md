@@ -1,4 +1,4 @@
-# P6: validation shell fold — DONE 2026-08-23
+# P6: validation shell fold, DONE 2026-08-23
 
 **OUTCOME: measured 35,621 B gz, -147 against the -250..-500 band.** All
 three slices shipped behavior-verbatim plus the one approved API change
@@ -9,8 +9,7 @@ tolerated mismatches, perf spot-check PASSED. Commits: 8d1c059c (pin),
 
 ## Findings
 
-- **Delta -147 vs the -250..-500 band — and the reason is a standing
-  lesson**: gzip already compresses near-identical code to almost
+- **Delta -147 vs the -250..-500 band, and the reason is a standing lesson:** gzip already compresses near-identical code to almost
   nothing, so folding TEXTUAL twins (the three counter/throw shells were
   each other's best compression context) buys far less than source-line
   counting suggests. Only deleting structurally redundant logic moves
@@ -28,7 +27,7 @@ tolerated mismatches, perf spot-check PASSED. Commits: 8d1c059c (pin),
   fresh dist exposed: the set-errors fixture still exercised P5's
   deleted per-entry formKey (fixed), and the doc-snippet gate had been
   typing docs against a STALE dist (the P5 stale-dist trap, third
-  sighting — both gates type against dist/, rebuild before trusting
+  sighting, both gates type against dist/, rebuild before trusting
   either). A new generic-wrapper fixture arm now locks the parse
   overloads under a free generic form (the autosave shape).
 - Perf spot-check vs reference/p5-bench-after.json: flat +1..+8%, deep
@@ -60,7 +59,7 @@ sweep three micro-duplications.
 ## Refuted items (recorded; do NOT implement)
 
 - **Invalid-submit focus-policy lazy chunk**: `applyInvalidSubmitPolicy`
-  (process-form.ts) is ~25 lines — far below the ~880 B cross-chunk glue P5
+  (process-form.ts) is ~25 lines, far below the ~880 B cross-chunk glue P5
   measured for a new async chunk. Stays eager. Counted-once guard in
   00-program.md is moot.
 - **display-state + display-engine file merge**: both dist and the eager
@@ -76,7 +75,7 @@ surface. P6's gate adds the validateAsync-behavior contract that must
 survive verbatim into `parse(path, { commit: true })`:
 
 - commits the refinement verdict to the schema-error store at the validated
-  scope (stale entries drop, slot order preserved — applySchemaErrorsForSubtree)
+  scope (stale entries drop, slot order preserved, applySchemaErrorsForSubtree)
 - cancels in-flight per-field validation (a late SFV write cannot clobber it)
 - composes derived-blank errors into the response, scoped to the path
 - adapter-throw -> `{ success: false, errors: [{ code: AdapterThrew }] }`,
@@ -97,11 +96,11 @@ validate suites. Full `pnpm test` + `pnpm typecheck` at the phase end.
 
 process-form.ts holds THREE copies of the counter/throw shell:
 
-1. `validate()`'s `kickoff` — increment, pending-write, refinement,
+1. `validate()`'s `kickoff`, increment, pending-write, refinement,
    adapter-throw translation, compose, finally-decrement.
-2. `runImperativeValidation` — increment, optional cancel, refinement,
+2. `runImperativeValidation`, increment, optional cancel, refinement,
    optional commit, adapter-throw translation, finally-decrement.
-3. `handleSubmit`'s inline pass — increment, refinement, manual decrement +
+3. `handleSubmit`'s inline pass, increment, refinement, manual decrement +
    `validationSettled` flag replayed in the outer finally.
 
 Fold: a `withActiveValidation(state, fn)` wrapper owning increment /
@@ -110,7 +109,7 @@ finally-clamped-decrement, and route ALL THREE through it. handleSubmit's
 `kickoff` keeps its pending-write + generation guard locally (they are
 reactive-shell concerns, not validation concerns) and consumes the shared
 core for the rest: its catch-arm result is exactly
-`settled(adapterThrowResponse(err))` — same shape, one construction site.
+`settled(adapterThrowResponse(err))`, same shape, one construction site.
 Ordering stays verbatim: increment BEFORE the pending-write inside the
 guarded region (a sync watcher throw on either still decrements).
 
@@ -123,7 +122,7 @@ Pre-1.0, no back-compat: `validateAsync` is DELETED, not aliased.
   a lone plain-object first arg is the options bag), so whole-form commit is
   `parse({ commit: true })`, not `parse(undefined, {...})`.
 - `commit: true` = the old validateAsync flags (cancelInFlight +
-  commitToSchemaErrors) with data RETAINED — return type stays
+  commitToSchemaErrors) with data RETAINED, return type stays
   `Promise<ValidationResponse<GetValueFormType>>` in both modes.
 - Delete: public `validateAsync` (types-api UseFormReturnType member, the
   build-form-api skin + gated() wrap, the process-form builder export),
@@ -148,11 +147,11 @@ Pre-1.0, no back-compat: `validateAsync` is DELETED, not aliased.
 - `groupErrorsByKey` (kernel-internal, create-form-store.ts) duplicates the
   submit-throw `byPath` grouping (process-form.ts): move the pure helper to
   errors.ts, both import it. Submit path re-derives segments per bucket via
-  `segmentsForPathKey(key)` (canonical keys just produced — never null; keep
+  `segmentsForPathKey(key)` (canonical keys just produced, never null; keep
   the null-skip guard anyway per no-uncaught-exceptions).
 - DEV-gate the display-engine introspection hooks: `size()` / `has()` /
   `hasTimer()` become optional members assigned only under `__DEV__` (tests
-  run the dev flavor; runtime uses only resolve/clear/dispose — verified by
+  run the dev flavor; runtime uses only resolve/clear/dispose, verified by
   grep).
 
 ## Exit criteria

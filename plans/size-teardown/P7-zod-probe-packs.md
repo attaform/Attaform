@@ -1,4 +1,4 @@
-# P7: zod-core + probe packs — DONE 2026-08-24
+# P7: zod-core + probe packs, DONE 2026-08-24
 
 **OUTCOME: measured 33,999 B gz, -531 against the plan's -400..-600
 realized band; the barrel prize overshot: plugin-less `zod: { useForm }`
@@ -21,7 +21,7 @@ unification + catch alignment), + the boundary gates commit.
   schema is ever rebuilt at construction and nothing parses, so user
   refinements and transforms can never fire during
   `getDefaultValues` (the perf-lock p1 suites pin exactly that via a
-  sync refine returning a Promise — the pin that killed the naive
+  sync refine returning a Promise, the pin that killed the naive
   parse-against-original rewire mid-slice).
 - **The DU foreign-key strip was load-bearing.** The old slim parse
   silently dropped keys foreign to a DU value's selected variant
@@ -36,16 +36,15 @@ unification + catch alignment), + the boundary gates commit.
   class weighs what the shared factory weighs on the barrel. The
   factory stays; `node()` moves to P9.
 - **Construction perf came back with the deletion**: v4 cold init
-  +26% / +42% / +81% (flat F=5/50/500) vs the P5 reference — the P8
+  +26% / +42% / +81% (flat F=5/50/500) vs the P5 reference, the P8
   -2..-5% residual repaid with interest. Keystroke arms noise-to-
   positive; the flagged array N=1000 batch collapse re-ran +1.8%
   solo (the known positional-GC artifact class).
 - **v3 catch-under-useDefault:false aligned to v4** (recurse-inner);
-  the `catchOnUseDefaultFalse` knob deleted from the core walker —
-  with one behavior there is nothing to configure.
+  the `catchOnUseDefaultFalse` knob deleted from the core walker, with one behavior there is nothing to configure.
 - **stripAsyncChecks revisit trigger ANSWERED (keep)**: seeds are
   user-visible on first paint via meta.valid / meta.errors /
-  errors(path) while the field UI stays gated — pinned in
+  errors(path) while the field UI stays gated, pinned in
   `test/composables/construction-seed-visibility.test.ts`.
 - **En-route docs traps fixed** (gate was green; these were the
   tolerated eyeball list): two success-arm snippets predating P5's
@@ -55,7 +54,7 @@ unification + catch alignment), + the boundary gates commit.
   elided-entry TS2345 and app-defaults.md's generic-wrapper TS2589
   cluster (the known #443-space TS limitation). RECOMMENDATION for
   Oswald: widen `hydrateAttaformState(app, payload)` to
-  `payload: unknown` — the body already runtime-validates the
+  `payload: unknown`, since the body already runtime-validates the
   envelope and its own docblock example doesn't compile against the
   declared signature; reverted here pending a ruling (public API).
 - Gates moved: BUDGET_GZ 34_950 -> 34_400; caps tightened
@@ -64,7 +63,7 @@ unification + catch alignment), + the boundary gates commit.
   5,410 -> 4,051 gz; strip.ts and default-values.ts are thin
   bindings now.
 
-## 7a findings (2026-08-24) — re-baseline done, claim re-anchored
+## 7a findings (2026-08-24), re-baseline done, claim re-anchored
 
 Battery green first: 58 files / 972 tests (test/adapters/\*\* both majors
 
@@ -98,7 +97,7 @@ the lean class port measured +17. The factory stays. Sign-off 6's
 also ~0 (a shared class weighs what the shared factory weighs).
 
 Re-anchored expectation: armD lean -834 x0.6 realization (P8 addendum
-discount) = **~-500 realized central, band -400..-650** — inside the
+discount) = **~-500 realized central, band -400..-650**, inside the
 plan's -400..-600. Anchor 34,530 -> ~34,030 expected.
 
 Re-sliced execution: 7b = strip diet + fix-pass rewire + introspect
@@ -110,8 +109,7 @@ lives, NOT the factory).
 
 7b design notes carried from the sketch (the claws the x0.6 prices):
 
-- First-parse success now returns `merged`, not `firstParse.data` —
-  unknown constraint keys PRESERVED (the sign-off 7 documented change;
+- First-parse success now returns `merged`, not `firstParse.data`, unknown constraint keys PRESERVED (the sign-off 7 documented change;
   Zod's default object parse strips undeclared keys, the slim rebuild
   also lost `.catchall()`/`.strict()`).
 - Lax mode now runs the full original parse -> sync `.transform` fns
@@ -124,20 +122,20 @@ lives, NOT the factory).
 
 Anchor 34,530 B gz (P8 final). Expected band **-300..-900 B gz** on the
 ratchet metric (minimal-v4), central ~-600 BEFORE the P8 addendum's
-~0.6 rep-realization discount — plan against **~-400..-600 realized**.
+~0.6 rep-realization discount, plan against **~-400..-600 realized**.
 The phase's second prize is separate from the ratchet: the plugin-less
 BARREL penalty shrinks from +5.4 kB to ~+2.5-3 kB, and the both-majors
 stack from ~12.3 kB to ~6.5-7.5 kB, because the shared zod-core stops
 duplicating the walk machinery per major. Both numbers are measured by
 the size-limit entries (`zod: { useForm } only` 41,075 B vs `zod-v4:
-{ useForm } only` 34,971 B today — the gap IS the penalty).
+{ useForm } only` 34,971 B today, the gap IS the penalty).
 
 Fresh attribution for the addressable cluster (attribution-v4.txt,
 2026-08-24): zod-v4 adapter dir 5,410 gz (introspect 1,534, strip
 1,505, adapter 1,061, assert-supported 446, default-values 348,
 walker-introspector 232, discriminator 125, small files ~160) +
 abstract-schema-factory 1,294 + schema-coerce 541 = ~7,245 gz
-addressable. The v3 twin never enters minimal-v4 eager — its wins land
+addressable. The v3 twin never enters minimal-v4 eager, its wins land
 in the barrel/both-majors metrics only.
 
 ## Scope
@@ -181,8 +179,7 @@ in the barrel/both-majors metrics only.
   form.meta consumers)?" If provably invisible in all default
   configurations, the ~500 B deletion may be re-proposed WITH that
   evidence; until then it stays.
-- **TRIGGER ANSWERED 2026-08-24 (7c): the seeds ARE user-visible —
-  the walker stays, now with pinned evidence.**
+- **TRIGGER ANSWERED 2026-08-24 (7c): the seeds ARE user-visible, the walker stays, now with pinned evidence.**
   `test/composables/construction-seed-visibility.test.ts` proves the
   strict-mode seed reads through `meta.valid === false`,
   `meta.errors` / `errorCount`, and `form.errors('name')` on first
@@ -208,7 +205,7 @@ in the barrel/both-majors metrics only.
   preserved) in the phase findings and migrate affected tests
   deliberately, never by loosening assertions.
 - Perf gate: init + keystroke vs reference/p5-bench-after.json (the
-  adapter sits on the construction path; watch the init arms — P8
+  adapter sits on the construction path; watch the init arms, P8
   already carries a recorded -2..-5% cold-init residual, so measure
   against the P8 boundary numbers in P8-surfaces.md findings, not just
   the P5 JSON).

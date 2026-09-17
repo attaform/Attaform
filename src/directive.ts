@@ -1,27 +1,26 @@
 /**
- * `attaform/directive` — the `v-register` directive and its app-level
- * installer, as a standalone entry so the form core doesn't carry the
- * directive's DOM machinery for apps that never render it.
+ * `attaform/directive`, the `v-register` directive and its app-level
+ * installer, kept a standalone entry so the form core does not carry
+ * the directive's DOM machinery for apps that never render it.
  *
- * Most consumers never import this entry:
+ * Most consumers never import it. Vite and Nuxt apps get `v-register`
+ * bound at compile time by the `attaform/vite` plugin or the
+ * `attaform/nuxt` module. Everyone else, meaning webpack-family
+ * bundlers, no-build and CDN pages, and runtime-compiled templates,
+ * installs it once per app:
  *
- * - Vite and Nuxt apps get `v-register` bound at compile time by the
- *   `attaform/vite` plugin / `attaform/nuxt` module.
- * - Everyone else — webpack-family bundlers, no-build / CDN pages,
- *   runtime-compiled templates — installs it once per app:
+ * ```ts
+ * import { installVRegister } from 'attaform/directive'
+ * installVRegister(app)
+ * ```
  *
- *   ```ts
- *   import { installVRegister } from 'attaform/directive'
- *   installVRegister(app)
- *   ```
+ * The directive objects themselves, `vRegister` and the file-input
+ * variant `vRegisterFile` it dispatches to, are exported for advanced
+ * integrations: a `<script setup>` local binding, a manual
+ * `withDirectives` render function, or registration under a different
+ * name.
  *
- * The directive objects themselves (`vRegister`, and the file-input
- * variant `vRegisterFile` it dispatches to) are exported for advanced
- * integrations: a `<script setup>` local binding, manual
- * `withDirectives` render functions, or a hand-rolled registration
- * under a different name.
- *
- * The miss signal when no delivery ran is Vue's own dev warning,
+ * When no delivery ran, the miss shows up as Vue's own dev warning,
  * `Failed to resolve directive: register`.
  */
 

@@ -1,37 +1,32 @@
 /**
- * `attaform/zod-v3` — explicit Zod v3 adapter subpath.
+ * `attaform/zod-v3`, the explicit Zod v3 adapter subpath.
  *
- * Use this when you want to pin the v3 adapter regardless of what
- * other tooling resolves. Bundles ship a single adapter (no runtime
- * dispatch) — handy for non-Vite bundlers (webpack, esbuild standalone,
- * Rollup) where you'd otherwise pay for both adapters via the unified
- * `attaform/zod` entry's runtime fallback.
+ * Pin this when you want the v3 adapter regardless of what other
+ * tooling resolves. The bundle ships one adapter with no runtime
+ * dispatch, which matters on non-Vite bundlers, where the unified
+ * `attaform/zod` entry's runtime fallback would ship both.
  *
- * Most Vite consumers should import from `attaform/zod` instead — the
+ * Most Vite consumers should import `attaform/zod` instead: the
  * `attaform/vite` plugin rewrites that import to this subpath at build
- * time when zod@^3 is detected, so the same lean bundle ships with
- * less ceremony.
+ * time when zod@^3 is detected, for the same lean bundle with less
+ * ceremony.
  *
- * Prerequisites: install `zod@^3`. The adapter's behavior assumes v3
- * internals (`_def.typeName`, `.unwrap()`, `.innerType()`); importing this
- * subpath against zod@4 will fail fast with a version-mismatch error.
- *
- * Usage:
+ * Requires `zod@^3`. The adapter assumes v3 internals (`_def.typeName`,
+ * `.unwrap()`, `.innerType()`), so importing it against zod@4 fails
+ * fast with a version-mismatch error.
  *
  *   import { useForm } from 'attaform/zod-v3'
  *   import { z } from 'zod'
  *
- *   const { register, handleSubmit } = useForm({
+ *   const form = useForm({
  *     schema: z.object({ email: z.string().email() }),
  *     key: 'signup',
  *   })
  */
 
 export { useForm } from './runtime/composables/use-form'
-// Shared wizard / register / error-code / unset surface — common to
-// every entry, single source under `runtime/_shared-exports.ts`.
-// `injectForm` ships from here too for discoverability alongside
-// `useForm` (the helper itself is schema-agnostic).
+// `injectForm` ships from here too, for discoverability alongside
+// `useForm`; the helper itself is schema-agnostic.
 export * from './runtime/_shared-exports'
 export { zodAdapter } from './runtime/adapters/zod-v3'
 export { isZodSchemaType } from './runtime/adapters/zod-v3/helpers'

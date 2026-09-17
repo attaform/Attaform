@@ -68,29 +68,21 @@ export type AttaformRuntimeConfig = {
 }
 
 /**
- * Whether `specifier` is resolvable using ESM resolution from either the
- * consumer's project root or attaform's own module location. Returning
- * true matches what Vite's resolver would do for `optimizeDeps.include`,
- * so a true here means Vite will pre-bundle the dep without warning.
+ * Whether `specifier` resolves from either the consumer's project root
+ * or Attaform's own module location. True here means Vite will
+ * pre-bundle the dep for `optimizeDeps.include` without warning.
  *
- * Why two probe locations:
- *   - Consumer-rootDir probe finds direct deps + their declared peers
- *     (the standard pnpm strict-isolation visibility).
- *   - attaform-module probe finds peers attaform itself declares —
- *     specifically the optional `@vue/devtools-api`, which lands in
- *     attaform's own node_modules tree (or pnpm virtual store) when
- *     installed, even if the consumer never references it directly.
+ * Two probe locations, because they see different things: the consumer
+ * root finds direct deps and their declared peers, while the Attaform
+ * module location finds peers Attaform itself declares, notably the
+ * optional `@vue/devtools-api`, which lands in Attaform's own tree even
+ * when the consumer never references it.
  *
- * Why ESM resolution (`import.meta.resolve`) rather than CJS
- * (`createRequire(...).resolve`):
- *   - attaform's exports map declares only `import` conditions for
- *     non-`/nuxt` entries. CJS resolve hits ERR_PACKAGE_PATH_NOT_EXPORTED
- *     for `attaform` and its sub-entries.
- *   - pnpm strict isolation hides hoisted transitives behind the
- *     virtual store. CJS resolve walks the bare node_modules chain and
- *     misses them; ESM resolve follows pnpm's symlinks correctly.
- *   - `import.meta.resolve(spec, parentURL)` is sync and stable in
- *     Node 20.6+, which attaform already requires (engines.node).
+ * It must stay ESM resolution rather than `createRequire(...).resolve`.
+ * Attaform's exports map declares only `import` conditions outside
+ * `/nuxt`, so CJS resolve hits ERR_PACKAGE_PATH_NOT_EXPORTED; and pnpm
+ * strict isolation hides hoisted transitives behind the virtual store,
+ * which CJS resolve walks past and ESM resolve follows correctly.
  */
 function isResolvableForVite(specifier: string, consumerRootDir: string): boolean {
   const consumerURL = pathToFileURL(join(consumerRootDir, 'package.json')).href
@@ -118,15 +110,8 @@ export default defineNuxtModule<AttaformModuleOptions>({
   },
   defaults: {},
   setup(_options, nuxt) {
-    // Register `attaform/vite` so the same plugin handles every Vite-
-    // surface concern: pushing the compile-time node transforms into
-    // `@vitejs/plugin-vue`'s `api.options.template.compilerOptions.
-    // nodeTransforms`, AND rewriting `attaform/zod` imports at build
-    // time to either `/zod-v3` or `/zod-v4` based on the consumer's
-    // installed Zod major. Consolidating both behaviors in one Vite
-    // plugin instance keeps the Nuxt-side wiring minimal and ensures
-    // the consumer's Nuxt build sees the exact same DX as a bare-Vite
-    // consumer.
+    // One Vite plugin instance handles every Vite-surface concern, so a
+    // Nuxt build gets exactly the DX a bare-Vite build does.
     addVitePlugin(attaformVitePlugin({ resolveZodAlias: _options.resolveZodAlias !== false }))
 
     // Publish the module's version to public runtime config so the
@@ -136,28 +121,19 @@ export default defineNuxtModule<AttaformModuleOptions>({
       version: pkgVersion,
     } satisfies AttaformRuntimeConfig
 
-    // Force-include attaform's own peers that Vite's startup crawl
-    // tends to miss for Nuxt projects. Vite scans `index.html` + the
-    // statically-known entry points but doesn't deeply follow into
-    // pages that get loaded via Nuxt's dynamic router; deps imported
-    // exclusively from page chunks are discovered when the page first
-    // requests, the optimizer rebundles, and Vite silently broadcasts
-    // `{"type":"full-reload","path":"*"}` over the HMR WebSocket — what
-    // consumers see as "the page loads, then reloads itself a second
-    // later." Vite's own "discovered new dependencies at runtime"
-    // warning recommends exactly this remediation.
+    // Force-include Attaform's own peers, which Vite's startup crawl
+    // misses on Nuxt projects: it scans index.html and the statically
+    // known entries but does not follow into dynamically routed pages,
+    // so a dep imported only from a page chunk is discovered on first
+    // request, the optimizer rebundles, and Vite broadcasts a silent
+    // full-reload. Consumers experience that as "the page loads, then
+    // reloads itself a second later". Vite's own "discovered new
+    // dependencies at runtime" warning recommends this remediation.
     //
-    // We declare here only deps attaform itself owns the relationship
-    // with — `@vue/devtools-api` (attaform's DevTools integration
-    // peer) and `zod` (the adapter peer for `/zod`, `/zod-v3`, and
-    // `/zod-v4`). Consumer-
-    // side deps (vue-query, immer, etc.) are the consumer's
-    // responsibility — they declare them in their own
-    // `vite.optimizeDeps.include`. Each push is gated on the spec
-    // being resolvable from the consumer's project (or attaform's
-    // own module context for attaform's optional peers like
-    // devtools-api), so consumers without the optional peer don't see
-    // a "failed to resolve" warning at boot.
+    // Only deps Attaform owns the relationship with belong here:
+    // `@vue/devtools-api` and `zod`. A consumer's own deps are theirs
+    // to declare. Each push is gated on the spec resolving, so a
+    // consumer without an optional peer sees no boot warning.
     nuxt.options.vite.optimizeDeps ??= {}
     nuxt.options.vite.optimizeDeps.include ??= []
     const include = nuxt.options.vite.optimizeDeps.include
@@ -168,65 +144,49 @@ export default defineNuxtModule<AttaformModuleOptions>({
 
     const resolver = createResolver(import.meta.url)
 
-    // Auto-import the Zod-default form composables so a component can
-    // reach for `useForm` / `useWizard` / `injectForm` / `injectWizard` /
-    // `fieldMeta` / `withMeta` / `lazy` / `gate` / `useRegister` with no
-    // import line. The manifest in `./runtime/auto-imports` is the single
-    // source of truth, shared with the `attaform/vite` preset re-export.
+    // The manifest in `./runtime/auto-imports` is the single source of
+    // truth, shared with the `attaform/vite` preset re-export.
     //
-    // Each entry resolves from `attaform/zod`, not the bare `attaform`
-    // barrel: the Vite/bundler plugin rewrites the exact `attaform/zod`
-    // specifier to the one installed Zod major at build time, so a Nuxt
-    // consumer's bundle ships a single adapter instead of the runtime
-    // dispatcher. After the schema-entry re-partition the two surfaces
-    // are byte-identical (`attaform` re-exports exactly what
-    // `attaform/zod` does), so pointing at `/zod` costs nothing and buys
-    // the lean bundle for free. Resolving a public subpath rather than a
-    // relative `./runtime/…` path also keeps the published package honest
-    // — `attaform/zod` maps to a real `dist/zod.mjs`, so Nuxt's
-    // auto-import step never chases a source path with no built artifact.
+    // Every entry must keep resolving from `attaform/zod` rather than
+    // the bare barrel: the bundler plugin rewrites that exact specifier
+    // to the one installed Zod major, so the bundle ships a single
+    // adapter instead of the runtime dispatcher. The two surfaces are
+    // identical, so this costs nothing. It must also stay a public
+    // subpath rather than a relative `./runtime/...` path, since
+    // `attaform/zod` maps to a real built artifact and a source path
+    // would not.
     //
-    // A Nuxt auto-import always loses to an explicit or local binding, so
-    // registering these never shadows a consumer's own `useForm`. The
-    // `autoImports: false` option suppresses the whole set for consumers
-    // who prefer explicit imports everywhere.
+    // A Nuxt auto-import always loses to an explicit or local binding,
+    // so these never shadow a consumer's own `useForm`.
     if (_options.autoImports !== false) {
       addImports(attaformAutoImports)
     }
 
-    // Plugin that installs `createAttaform()` on the Vue app and
-    // wires the payload serialize/hydrate bridge. Uses a physical
-    // `src/runtime/plugins/attaform.ts` file (shipped to
-    // `dist/runtime/plugins/attaform.mjs` via an explicit entry in
-    // build.config.ts) rather than an inline plugin template, because a
-    // template's `import { createAttaform } from 'attaform'`
-    // resolves through the `attaform` package entry — which in
-    // local dev (`unbuild --stub`) is a jiti runtime transpiler whose
-    // `node:module`/`createRequire` imports Nitro's Rollup build cannot
-    // bundle. A physical file lets Nitro follow its imports directly
-    // (TS source in dev, ESM in the published package), avoiding the
-    // jiti indirection entirely. Unbuild's shared-chunk splitter keeps
-    // `core/plugin` + `core/serialize` deduplicated with `src/zod` /
-    // `src/index`, so there's still only one `registry` module at runtime.
+    // Installs `createAttaform()` on the Vue app and wires the payload
+    // serialize/hydrate bridge.
     //
-    // `addPlugin` defaults to PREPEND so the plugin runs before any
-    // user plugin / page; `enforce: 'pre'` inside the plugin body makes
-    // that ordering explicit at the Nuxt-plugin layer too. Together
-    // they guarantee the registry is installed (and SSR payload staged
-    // into `pendingHydration`) before any `useForm` call runs.
+    // It must stay a PHYSICAL file rather than an inline plugin
+    // template. A template's `import { createAttaform } from 'attaform'`
+    // resolves through the package entry, which under local dev
+    // (`unbuild --stub`) is a jiti runtime transpiler whose
+    // `node:module` imports Nitro's Rollup build cannot bundle. A
+    // physical file lets Nitro follow imports directly.
     //
-    // Flavor selection: the published package ships the runtime twice
-    // (dist prod flavor + dist/dev dev flavor behind the `development`
-    // export condition), and this plugin is registered by LITERAL path,
-    // outside the exports map. In dev the app's own `attaform/*` imports
-    // resolve the dev flavor, so the plugin must point at the dev copy
-    // too — a prod plugin path plus dev app imports would load two
-    // module graphs with two registries, and `useForm` would throw
-    // `Registry not found`. The existence probe keeps source and
-    // stub contexts (this module running from `src/`, or a repo dev
-    // setup with `unbuild --stub` plus source aliases) on today's
-    // single-path behavior: no `dev/` twin exists there, and the
-    // un-flavored source reads `__DEV__` from NODE_ENV as before.
+    // `addPlugin` prepends, and `enforce: 'pre'` in the plugin body
+    // says so again at the Nuxt layer, which together guarantee the
+    // registry is installed and the SSR payload staged before any
+    // `useForm` call runs.
+    //
+    // Flavor selection matters because this plugin is registered by
+    // LITERAL path, outside the exports map, while the published
+    // package ships the runtime twice (prod, plus a dev flavor behind
+    // the `development` condition). In dev the app's own `attaform/*`
+    // imports resolve the dev flavor, so the plugin must point at the
+    // dev copy too: a prod plugin path beside dev app imports loads two
+    // module graphs with two registries, and `useForm` throws
+    // `Registry not found`. The existence probe keeps source and stub
+    // contexts on the single-path behavior, since no `dev/` twin exists
+    // there.
     const prodPluginSrc = resolver.resolve('./runtime/plugins/attaform')
     const devPluginSrc = resolver.resolve('./dev/runtime/plugins/attaform')
     const devPluginExists = ['.mjs', '.ts'].some((ext) => existsSync(devPluginSrc + ext))
@@ -234,20 +194,16 @@ export default defineNuxtModule<AttaformModuleOptions>({
       src: nuxt.options.dev && devPluginExists ? devPluginSrc : prodPluginSrc,
     })
 
-    // Dev-only: register a Nuxt DevTools overlay tab pointing at an
-    // iframe that mounts the Attaform inspector. The iframe URL
-    // (`/_attaform_devtools`) is served by a Vite-layer middleware
-    // wired up in `attaform/vite` — by intercepting at the Vite layer
-    // rather than via `extendPages`, the route stays invisible to
-    // vue-router and works regardless of whether the consumer uses
-    // a `pages/` directory or `app.vue`-only mode.
+    // Dev-only Nuxt DevTools overlay tab, pointing at an iframe that
+    // mounts the Attaform inspector. `attaform/vite` serves that URL
+    // from a Vite-layer middleware rather than `extendPages`, so the
+    // route stays invisible to vue-router and works whether the
+    // consumer uses a `pages/` directory or app.vue only.
     //
     // `@nuxt/devtools-kit` is NOT a transitive peer of `@nuxt/kit`; it
-    // ships alongside `@nuxt/devtools`. Consumers who don't install
-    // Nuxt DevTools (rare in real Nuxt projects, common in test
-    // fixtures) get a silent no-op instead of an "unresolved import"
-    // error. Mirrors the same try/import pattern used for
-    // `@vue/devtools-api` in the runtime devtools wire-up.
+    // ships alongside `@nuxt/devtools`. The try/import gives a consumer
+    // without Nuxt DevTools a silent no-op rather than an unresolved
+    // import, matching the `@vue/devtools-api` wire-up.
     if (nuxt.options.dev) {
       nuxt.hook('ready', async () => {
         try {
@@ -255,12 +211,9 @@ export default defineNuxtModule<AttaformModuleOptions>({
           addCustomTab({
             name: 'attaform',
             title: 'Attaform',
-            // Brand mark — purple square with a white "A" silhouette,
-            // matching `apps/site/public/favicon.svg`. Served by the
-            // `attaform/vite` middleware at the same `/_attaform_devtools`
-            // route family (sibling to the panel HTML). A real URL
-            // renders reliably across Nuxt DevTools versions where
-            // `data:` URIs don't.
+            // Served by the `attaform/vite` middleware, sibling to the
+            // panel HTML. A real URL renders reliably across Nuxt
+            // DevTools versions where `data:` URIs do not.
             icon: '/_attaform_devtools/icon.svg',
             view: {
               type: 'iframe',
@@ -269,8 +222,7 @@ export default defineNuxtModule<AttaformModuleOptions>({
             },
           })
         } catch {
-          // Nuxt DevTools (and thus @nuxt/devtools-kit) isn't installed
-          // in this consumer — silently skip. The library still works;
+          // Nuxt DevTools is not installed here. Attaform still works;
           // only the overlay tab is missing.
         }
       })

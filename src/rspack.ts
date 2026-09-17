@@ -18,16 +18,12 @@
  * so this shares its body with `attaform/webpack` via
  * `createWebpackFamilyPlugin`; only the diagnostic tag differs.
  *
- * This plugin only does the adapter rewrite. The Vue SFC `v-register`
- * transforms that `attaform/vite` wires (load-bearing for SSR initial
- * render) are `@vitejs/plugin-vue`-specific and do not transfer; a
- * non-Vite consumer that needs them wires `attaform/transforms` into
- * their Vue compiler separately. The `v-register` directive itself is
- * also delivered by the Vite plugin's compile-time binding, so outside
- * that pipeline register it once per app:
- *
- *   import { installVRegister } from 'attaform/directive'
- *   installVRegister(app)
+ * The adapter rewrite is all this plugin does. Two things
+ * `attaform/vite` also provides do NOT transfer, because both are
+ * `@vitejs/plugin-vue`-specific: wire `attaform/transforms` into your
+ * Vue compiler for the SSR-critical template transforms, and register
+ * the directive once per app with `installVRegister(app)` from
+ * `attaform/directive`.
  *
  * Zero-dep: the plugin imports nothing from `@rspack/core` (it taps the
  * resolve hook the compiler injects at the consumer's build).

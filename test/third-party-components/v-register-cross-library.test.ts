@@ -443,11 +443,11 @@ describe('cross-library matrix: invalid-submit focus (#538)', () => {
   })
 
   it('RadioGroup (ARIA composite, zero native controls): invalid submit focuses the first role=radio', async () => {
-    // The exact reported shape: a v-register host that renders <button
-    // role=radio> options, not a native <input>. It takes the no-latch path,
-    // so before the fix it registered no element and focus-first-error had no
-    // target. Now the host root is the field's anchor and resolves to the
-    // first radio.
+    // The exact reported shape: a v-register host rendering
+    // <button role=radio> options rather than a native <input>. It takes
+    // the no-latch path, so the host root is the field's anchor and
+    // resolves to the first radio; registering no element at all would
+    // leave focus-first-error without a target.
     const m = await mountHost(z.object({ field: z.string().min(1) }), (_rv, vm) =>
       h(RadioGroupRoot, { ...vm }, () => [
         h(RadioGroupItem, { value: 'a' }, () => 'A'),

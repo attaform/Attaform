@@ -442,13 +442,13 @@ describe('an async .refine that throws', () => {
    * a parse the consumer never asked for, at mount, on `reset()`, and
    * on every discriminated-union variant switch.
    *
-   * There was nothing for Attaform to catch, because the promise never
-   * reached Attaform. The fix is to make it reachable: before any sync
-   * parse, `wrapAsyncSafeRefinements` rebuilds each `ZodEffects` with a
-   * refinement that calls the original, attaches a no-op `catch` if the
-   * result is thenable, and returns that same result. Zod still sees a
-   * Promise, still throws its sync-detect error, and the strip recovery
-   * still runs; the promise just is not unowned any more.
+   * There is nothing for Attaform to catch, because the promise never
+   * reaches Attaform. `wrapAsyncSafeRefinements` makes it reachable:
+   * before any sync parse it rebuilds each `ZodEffects` with a
+   * refinement that calls the original, attaches a no-op `catch` when
+   * the result is thenable, and returns that same result. Zod still
+   * sees a Promise, still throws its sync-detect error, and the strip
+   * recovery still runs; the promise is simply no longer unowned.
    *
    * The alternative considered and rejected was pre-stripping every
    * schema containing any `.refine()`, since v3's `containsAsyncRefine`

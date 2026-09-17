@@ -13,9 +13,8 @@
  * they were deleted along with `AbstractSchema.fingerprint()`, so the
  * enumeration bug they carried went with them.)
  *
- * The fix in each case is the same shape: test whether the value is a
- * plain record, rather than asking whether it is one of the things we
- * thought of.
+ * Each walker asks whether the value is a plain record, rather than
+ * whether it is one of the things someone thought of.
  */
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'

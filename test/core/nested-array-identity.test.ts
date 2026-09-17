@@ -1,26 +1,23 @@
 // @vitest-environment jsdom
 /**
- * PASS2-7 — nested-array identity follows its element across outer-array
- * mutations. Pre-fix the `tokens` / `baselines` maps inside `arrayIdentity`
- * were keyed by absolute path (e.g. `items.1` for the inner array under
- * outer index 1) but `migrateArrayElementState` only migrated the path-
- * keyed maps it knew about (`fields`, `userErrors`, `originals`, blank
- * marks) — the identity tracker's internal maps were left untouched.
+ * PASS2-7: nested-array identity follows its element across outer-array
+ * mutations. `ArrayIdentity` exposes `applyRemap(arrayPath, remap)` and
+ * `migrateArrayElementState` calls it alongside the existing Map and Set
+ * migrations, so the identity tracker stays in lockstep with the rest of
+ * the per-element bookkeeping.
  *
- * Consequences:
+ * `arrayIdentity`'s `tokens` and `baselines` maps are keyed by absolute
+ * path (`items.1` for the inner array under outer index 1), so migrating
+ * only the maps `migrateArrayElementState` knows by name (`fields`,
+ * `userErrors`, `originals`, blank marks) strands them twice over:
  *
- *   - After `form.remove('items', 0)`, the inner array's tokens at
- *     `items.1` stayed at `items.1`. Reading `form.fields('items.0.0').key`
- *     allocated a NEW token (no entry at the relocated key), and the inner
- *     `v-for :key` reset for every nested row — Vue tore down + recreated
+ *   - After `form.remove('items', 0)` the inner array's tokens stay at
+ *     `items.1`. Reading `form.fields('items.0.0').key` finds no entry at
+ *     the relocated key and allocates a NEW token, so the inner `v-for
+ *     :key` resets for every nested row and Vue tears down and recreates
  *     every nested input.
- *   - The orphaned entry at `items.1.*` leaked indefinitely (an unbounded
- *     token Map leak proportional to outer-array churn).
- *
- * The fix exposes `applyRemap(arrayPath, remap)` on the `ArrayIdentity`
- * interface; `migrateArrayElementState` invokes it alongside the existing
- * Map / Set migrations so the identity tracker's internal state stays in
- * lockstep with the rest of the per-element bookkeeping.
+ *   - The orphaned entry at `items.1.*` leaks indefinitely, an unbounded
+ *     token Map growing with outer-array churn.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { z as zV4 } from 'zod'

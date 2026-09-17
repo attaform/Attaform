@@ -8,9 +8,9 @@
  * canonical key already, so the loop can destructure the key off the
  * iteration tuple.
  *
- * Pre-fix this test fails because the loop calls `canonicalizePath`
- * per leaf; post-fix it passes (constant calls regardless of N). Phase
- * 3 of the audit-remediation plan owns this regression boundary.
+ * The assertion is a constant call count regardless of N; calling
+ * `canonicalizePath` per leaf makes it grow. Phase 3 of the
+ * audit-remediation plan owns this regression boundary.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'

@@ -131,8 +131,8 @@ describe.each(adapters)('per-path snapshot — $name', ({ useForm, build }) => {
     api.setValue('b', 'changed')
     await drainMicrotasks()
 
-    // Refocus A and blur with no edit on A. With the fix the dedup
-    // skips; without it the diff sees B's change and re-runs A's refine.
+    // Refocus A and blur with no edit on A: the dedup skips. A diff that
+    // saw B's change would re-run A's refine.
     aInput.dispatchEvent(new FocusEvent('focus'))
     aInput.dispatchEvent(new FocusEvent('blur'))
     await drainMicrotasks()

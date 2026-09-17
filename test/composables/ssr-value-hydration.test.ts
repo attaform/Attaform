@@ -6,10 +6,10 @@
 // client hydrates that markup without a mismatch warning (a mismatch
 // forces Vue to re-render the subtree — its own kind of flash).
 //
-// Covers both render paths that drop the value pre-fix:
-//   - runtime `h()` + `withDirectives` (getSSRProps — Fix B)
-//   - compiled template with a dynamic `:type` (nodeTransform — Fix A)
-// across both zod adapters (first-class v3/v4 parity).
+// Both render paths carry the value, across both adapters:
+//   - runtime `h()` + `withDirectives`, through `getSSRProps`
+//   - a compiled template with a dynamic `:type`, through the
+//     nodeTransform
 import { baseCompile } from '@vue/compiler-core'
 import { renderToString } from '@vue/server-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

@@ -17,18 +17,17 @@
  *      null-prototype object has no inherited `hasOwnProperty` method,
  *      so the reducer's call throws and the SSR pipeline aborts.
  *
- * The fix is to keep `Object.prototype` on every container that reaches
- * a consumer-observable surface, while keeping the prototype-pollution
- * defense by switching to `safeAssign` (defineProperty for `__proto__`)
- * paired with spread (which uses `CreateDataProperty`, bypassing the
- * `__proto__` accessor on a regular target).
+ * So every container reaching a consumer-observable surface keeps
+ * `Object.prototype`, and the prototype-pollution defense moves to
+ * `safeAssign` (defineProperty for `__proto__`) paired with spread,
+ * which uses `CreateDataProperty` and bypasses the `__proto__` accessor
+ * on a regular target.
  *
  * These tests are the standing diagnostic: walk every plain-object node
- * of the SSR snapshot and call `hasOwnProperty` on it. Pre-fix at least
- * one node throws. Post-fix every node responds cleanly. The devalue
- * test exercises the same call path Nuxt's payload serializer uses, so
- * a future regression that reintroduces null-proto on the snapshot
- * surface gets caught at the same boundary the dogfooder hit.
+ * of the SSR snapshot and call `hasOwnProperty` on it, and every node
+ * responds. The devalue test drives the same call path Nuxt's payload
+ * serializer uses, so a regression is caught at the boundary the
+ * dogfooder hit.
  */
 import { stringify as devalueStringify } from 'devalue'
 import { describe, expect, it } from 'vitest'

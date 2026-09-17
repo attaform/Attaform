@@ -221,17 +221,13 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
   })
 
   it('reset() to invalid defaults re-populates schemaErrors (not silent-clear)', async () => {
-    // Bug surfaced via the docs-site wizard demo: open the form
-    // (gray step titles because defaults are invalid), press reset,
-    // step titles flip green. Reset clears schemaErrors but never
-    // re-runs validation — the form is sitting on the same INVALID
-    // defaults it mounted with, but the error store is empty.
-    // `field.valid` falls through to `true` because errors aggregate
-    // over an empty schemaErrors map.
-    //
-    // Pre-fix: errors empty after reset → `valid: true` on every leaf.
-    // Post-fix: validation re-derives against post-reset defaults →
-    // errors match construction-time output.
+    // `reset()` re-runs validation rather than only clearing
+    // schemaErrors, so errors after a reset match the construction-time
+    // output. Clearing alone leaves the form sitting on the same
+    // INVALID defaults it mounted with but an empty error store, and
+    // `field.valid` falls through to true because the aggregate walks
+    // an empty map. The docs-site wizard demo showed it: gray step
+    // titles on mount, green ones after pressing reset.
     const { useForm } = await import('../../src/zod')
     const { createAttaform } = await import('../../src/runtime/core/plugin')
     const { z } = await import('zod')
@@ -283,14 +279,13 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
   })
 
   it('reset(payload) re-derives schemaErrors against the payload, not construction defaults', async () => {
-    // The fix routes through `schema.getDefaultValues({ constraints })`,
-    // and `constraints` is `nextDefaultValues ?? defaultValues` — so
-    // a reset payload IS what gets validated. Two arms:
-    //   (a) invalid payload over invalid defaults → errors re-derived
-    //       against THE PAYLOAD (not silently empty, not stale from
-    //       mount).
-    //   (b) valid payload → errors clear (no spurious errors clinging
-    //       from the pre-reset state).
+    // Validation routes through
+    // `schema.getDefaultValues({ constraints })` with `constraints` as
+    // `nextDefaultValues ?? defaultValues`, so a reset payload is what
+    // gets validated. Two arms: an invalid payload over invalid
+    // defaults re-derives errors against THE PAYLOAD, neither silently
+    // empty nor stale from mount; a valid payload clears them, with
+    // nothing clinging from the pre-reset state.
     const { useForm } = await import('../../src/zod')
     const { createAttaform } = await import('../../src/runtime/core/plugin')
     const { z } = await import('zod')
@@ -413,10 +408,9 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     // defaults, same validation verdict.
     expect(form.meta.errors.length).toBe(mountedErrorCount)
 
-    // Container fields must STILL be invalid — descendants are still
-    // empty. This is the bug surface: pre-fix, container `.valid`
-    // came up `true` because aggregateErrorsAt walked an empty
-    // schemaErrors map.
+    // Container fields stay invalid, because their descendants are
+    // still empty. A container reading `valid: true` here means
+    // `aggregateErrorsAt` walked an empty schemaErrors map.
     expect(form.fields('pickup').valid).toBe(false)
     expect(form.fields('delivery').valid).toBe(false)
 
@@ -545,11 +539,10 @@ describe('useForm — reset() re-derives schema errors against the post-reset st
     expect(form.fields.email.valid).toBe(false)
 
     form.reset()
-    // SYNCHRONOUS read. With the gate restored on reset (the fix),
-    // `email.valid` reads `false` because the gate covers it.
-    // Without the fix, `firstValidationDone` stays `true` and the
-    // gate is lifted; errors are empty (sync re-derive can't
-    // surface async-only verdicts); leaf reads `valid: true`.
+    // A SYNCHRONOUS read. `reset()` restores the gate, so `email.valid`
+    // reads false while it is covered. With `firstValidationDone` left
+    // at true the gate lifts, the sync re-derive cannot surface an
+    // async-only verdict, and the leaf reads `valid: true`.
     expect(form.fields.email.valid).toBe(false)
     expect(form.meta.valid).toBe(false)
   })

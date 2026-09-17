@@ -1,27 +1,20 @@
 // @vitest-environment jsdom
 //
-// Spike section 18C reproduction: a `transforms: [clamp0to100]`
-// pipeline on a `<input type="number" v-register>` against a
-// `z.number()` schema clamps user input to [0, 100]. Once the
-// user has typed something at the cap (e.g. "100") and continues
-// typing more digits ("1000", "10000", "100000"), the post-clamp
-// value is identical to the previously-stored value (100). The
-// reactive write produces NO patches, NO re-render fires, and
-// `beforeUpdate`'s imperative `el.value = String(newValue)` sync
-// never runs — so the DOM accepts unbounded typing while storage
-// stays pinned at the clamp cap.
+// Spike section 18C. The directive's input listener compares the
+// post-cast typed value against the resulting storage after the assigner
+// write, and force-syncs `el.value` when they diverge because a
+// transform clamped or otherwise mutated the value. The "1e2" to 100
+// case still keeps the typed form, since its post-cast `domValue`
+// already equals storage and nothing force-syncs.
 //
-// User-visible symptom: "type 100000... it just lets us, the UI
-// is completely divorced from reality. however, the form stores
-// 100, that's it."
-//
-// The fix lives in the directive's input listener: after the
-// assigner write, compare the post-cast typed value against the
-// resulting storage. If they diverge (i.e. a transform clamped
-// or otherwise mutated the value), force-sync `el.value` to
-// match storage. Preserves the typed-form preservation for the
-// "1e2" → 100 case (where post-cast `domValue` already equals
-// storage, so no force-sync triggers).
+// Without that compare, a `transforms: [clamp0to100]` pipeline on a
+// `<input type="number" v-register>` over `z.number()` lets the DOM run
+// away. Once the user is at the cap and keeps typing ("1000", "10000",
+// "100000"), the post-clamp value equals what is already stored, the
+// reactive write produces no patches, no re-render fires, and
+// `beforeUpdate`'s `el.value = String(newValue)` never runs. Reported
+// as: "type 100000... it just lets us, the UI is completely divorced
+// from reality. however, the form stores 100, that's it."
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'

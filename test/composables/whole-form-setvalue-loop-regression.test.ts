@@ -15,16 +15,16 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * (deep) and calls `form.setValue((v) => ({ ...v, delivery: v.pickup }))`
  * inside the handler.
  *
- * Pre-fix bug: `walkUnsetSentinels` (in the setValue pipeline) deep-cloned
- * every nested object/array unconditionally, even when no unset substitution
- * happened. So the new whole-form value always had a fresh `pickup`
- * reference; Vue's deep watch saw pickup as changed; the handler re-fired;
- * the handler called setValue again; ∞. Browser tab freeze.
+ * `walkUnsetSentinels` in the setValue pipeline returns the original
+ * input reference when no descendant changed, matching the
+ * reference-stable contract `mergeStructural` already holds, so the
+ * watch sees `pickup` as reference-equal across the setValue and stops
+ * firing.
  *
- * Fix: walkUnsetSentinels now returns the original input reference when no
- * descendant changed (matching the reference-stable contract that
- * `mergeStructural` already provided). The watch sees pickup as
- * reference-equal across the setValue and stops firing.
+ * Deep-cloning every nested object and array unconditionally, even with
+ * no unset substitution, gives the new whole-form value a fresh `pickup`
+ * reference every time: the deep watch sees it as changed, the handler
+ * re-fires, calls setValue again, and the tab freezes.
  */
 
 const schema = z.object({

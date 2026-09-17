@@ -76,9 +76,9 @@ describe('attaform/vite — plugin registration', () => {
     await expect(resolveWith([attaform()])).rejects.toThrow(/@vitejs\/plugin-vue is not installed/)
   })
 
-  // E2 — second registration of attaform() must NOT double-push
-  // transforms. Pre-fix, two registrations stacked the transforms array
-  // twice, double-injecting every binding the AST emits.
+  // E2: a second registration of attaform() does not double-push
+  // transforms. Stacking the array twice double-injects every binding
+  // the AST emits.
   it('is idempotent on duplicate registration', async () => {
     const config = await resolveWith([vue(), attaform(), attaform()])
     const api = getVueApi(config)

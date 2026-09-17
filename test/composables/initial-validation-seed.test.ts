@@ -140,14 +140,13 @@ describe('initial validation seed — async-refine schema', () => {
   }
 
   it('async refines fire on the next microtask (no user input required)', async () => {
-    // Schema combines a sync constraint (`z.email()`) with an async
-    // refine that rejects "taken@example.com". Default value is
-    // `taken@example.com` — passes sync, fails refine. Pre-fix the
-    // construction-time seed silently dropped the safeParse throw and
-    // returned success, so the form looked valid until the user typed.
-    // With `needsAsyncValidation()` detection, the runtime queues a
-    // full async pass that lands the refine error on the next
-    // microtask.
+    // The schema pairs a sync constraint (`z.email()`) with an async
+    // refine that rejects "taken@example.com", and the default value is
+    // exactly that: it passes sync and fails the refine.
+    // `needsAsyncValidation()` detection queues a full async pass that
+    // lands the refine error on the next microtask. A construction-time
+    // seed that swallowed the safeParse throw and returned success would
+    // leave the form looking valid until the user typed.
     const asyncSchema = z.object({
       email: z
         .email()
@@ -181,16 +180,15 @@ describe('initial validation seed — async-refine schema', () => {
   })
 
   it('SSR pass does not schedule the async seed (validating stays false through microtasks)', async () => {
-    // Hydration mismatch regression: pre-fix the construction-time async
-    // seed fired synchronously on every createFormStore call, including
-    // SSR. SSR's `renderToString` doesn't await microtasks, so the async
-    // chain never completed server-side, but the synchronous
-    // `activeValidations += 1` inside `scheduleFieldValidation` was
-    // captured in the SSR HTML — `meta.validating` rendered as `true`,
-    // emitting whatever indicator the template gated on it. The client
-    // then took the hydration branch (which doesn't schedule the seed)
-    // and rendered `false` on first render — Vue logged a hydration
-    // mismatch on the indicator element.
+    // Hydration mismatch. Firing the construction-time async seed on
+    // every `createFormStore` call would include SSR, where
+    // `renderToString` never awaits microtasks: the async chain does not
+    // complete server-side, but `scheduleFieldValidation`'s synchronous
+    // `activeValidations += 1` is captured in the HTML, so
+    // `meta.validating` renders `true` and emits whatever indicator the
+    // template gates on it. The client takes the hydration branch, which
+    // schedules no seed, renders `false`, and Vue logs a mismatch on the
+    // indicator element.
     const asyncSchema = z.object({
       email: z.email().refine(async (v) => v !== 'taken@example.com', 'taken'),
     })

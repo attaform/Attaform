@@ -835,18 +835,16 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
 })
 
 describe('directive — `<input type="number">` mid-typing badInput is not a clear', () => {
-  // 16e regression: typing `1e` into `<input type="number">` blanked
-  // the visible field. The browser exposes `el.value === ''` for
-  // malformed mid-edit input (because `1e` isn't a complete scientific
-  // notation literal) even though `1e` is still visible in the DOM.
-  // Pre-fix the directive's input listener saw the empty value and
-  // fired `markBlank`, which made `displayValue` recompute
-  // to `''`; Vue's `:value` patch then yanked the user's typed `1e`
-  // away. The fix uses `validity.badInput` to distinguish a real
-  // user-clear (`badInput === false`) from a transient mid-edit
-  // (`badInput === true`). The check is benign for `.number` text
-  // inputs (which use a `beforeinput` regex filter upstream — `el.value`
-  // never blanks unexpectedly there, so `badInput` stays `false`).
+  // 16e: `validity.badInput` tells a real user-clear
+  // (`badInput === false`) from a transient mid-edit
+  // (`badInput === true`). A browser reports `el.value === ''` for
+  // malformed mid-edit input, since `1e` is not a complete scientific
+  // notation literal, even while `1e` is visible in the DOM. Treating
+  // that as empty fires `markBlank`, `displayValue` recomputes to `''`,
+  // and Vue's `:value` patch yanks the typed `1e` away. The check is
+  // benign for `.number` text inputs, whose upstream `beforeinput` regex
+  // filter means `el.value` never blanks unexpectedly and `badInput`
+  // stays false.
   beforeEach(() => {
     document.body.innerHTML = ''
   })

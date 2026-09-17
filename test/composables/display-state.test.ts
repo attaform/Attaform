@@ -604,15 +604,15 @@ describe('anti-flash spinner timing (integration)', () => {
   })
 
   it('re-validating a success field never flashes idle (validatingSince brackets the count)', async () => {
-    // Live report: a valid (success) field, edited to another valid value,
-    // flashed `idle` before the spinner. Root cause was a one-frame signal
-    // disagreement at the START of a run — `field.validating` flips true (the
-    // count increments) before `validatingSince` is stamped, so a synchronous
-    // reader catches (validating: true, validatingSince: null). Told it was
-    // "settled", the reducer returned the idle verdict (`valid` is clamped
-    // false mid-run, no error, no earned success), which then poisoned the
-    // held verdict for the rest of the window. The fix stamps `validatingSince`
-    // BEFORE the count, so the two signals never disagree.
+    // `validatingSince` is stamped BEFORE the count increments, so the
+    // two signals never disagree. In the other order there is a one-frame
+    // window at the start of a run where `field.validating` is already
+    // true and `validatingSince` is still null; a synchronous reader
+    // catching that pair reads the run as settled, and the reducer
+    // returns idle (`valid` is clamped false mid-run, no error, no earned
+    // success), which poisons the held verdict for the rest of the
+    // window. Reported as a valid field flashing `idle` before the
+    // spinner when edited to another valid value.
     const { form, resolve } = mountGatedRefine()
 
     // Reach success: open the gate, edit to a valid value, resolve inside the

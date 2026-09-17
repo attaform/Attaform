@@ -20,14 +20,13 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  * DYNAMIC `:type` binding — the wrapper-component shape (e.g. a
  * `UiTextField` re-binding its inner `<input v-register :type="type">`).
  *
- * Pre-fix, `inputTextAreaNodeTransform` bailed on any non-provably-
- * static `type` (couldn't prove it wasn't `file`), so the value binding
- * was never injected and the field painted empty for one frame, then
- * filled in on client mount — a visible first-paint flash on every
- * SSR'd wrapper field. Static `type="text"` already worked; this pins
- * the dynamic-type parity AND the file-input safety (a runtime
- * `type="file"` must NEVER receive a `value` binding — browsers reject
- * it).
+ * `inputTextAreaNodeTransform` injects the value binding for a dynamic
+ * `type` too. Bailing on anything it cannot prove static, because it
+ * cannot prove the type is not `file`, leaves the field painting empty
+ * for a frame and filling in on client mount: a first-paint flash on
+ * every SSR'd wrapper field. This pins both halves, the dynamic-type
+ * parity and the file-input safety, since a runtime `type="file"` must
+ * never receive a `value` binding at all.
  *
  * Both zod adapters per first-class v3/v4 parity.
  */

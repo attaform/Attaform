@@ -13,30 +13,21 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Regression coverage for the two spike-reported bugs in section 16
- * (v-register modifiers):
+ * Two v-register modifier hazards from spike section 16, each mounted
+ * through the production transform stack in `src/vite.ts` order and
+ * driven with the exact keystroke sequence reported:
  *
- *   16b. `<input v-register.trim>` — typing a leading or trailing
- *        space made the spacebar appear unusable. The transient
- *        whitespace was clobbered by Vue's `:value` patch on the
- *        next render. Trace: input listener trims → setValue('')
- *        → form.value identity replaced (even with no semantic
- *        change) → Vue re-renders the input → :value binding's
- *        patchDOMProp compares against the live DOM `el.value`
- *        (which has the user's space) and writes the trimmed
- *        value back, wiping the space.
+ *   16b. `<input v-register.trim>` and the spacebar. Trimming on every
+ *        input event replaces the `form.value` identity even with no
+ *        semantic change, Vue re-renders the input, and the `:value`
+ *        binding's patchDOMProp compares against the live `el.value`
+ *        carrying the user's space and writes the trimmed value back
+ *        over it.
  *
- *   16e. `<input type="number">` — backspacing from "1" to empty
- *        triggered a noisy slim-primitive-gate dev warning. The
- *        directive's auto-cast for `type="number"` ran
- *        `looseToNumber('')` which returned the input string
- *        unchanged, then setValue('') was rejected by the gate
- *        (string heading to a numeric slot).
- *
- * Both tests mount real components through the production
- * transform stack (mirroring `src/vite.ts` order) and simulate the
- * exact keystroke sequence the user reported. Pre-fix, both tests
- * fail; post-fix, both pass.
+ *   16e. `<input type="number">` backspaced from "1" to empty. The
+ *        auto-cast runs `looseToNumber('')`, which hands the string
+ *        straight back, and the slim-primitive gate rejects a string
+ *        heading for a numeric slot with a dev warning.
  */
 
 function compileTemplateToRender(template: string): (...args: unknown[]) => unknown {
@@ -206,10 +197,9 @@ describe('regression: 16e — `<input type="number">` backspace-to-empty', () =>
     input.dispatchEvent(new Event('input'))
     await waitUntil(() => (input.value === '1' ? true : null))
 
-    // Backspace to empty. Pre-fix the directive called setValue('')
-    // which the slim-primitive gate rejected with a dev warning.
-    // Post-fix the directive treats empty + castToNumber as a
-    // transient mid-edit state and skips the assigner entirely.
+    // Backspace to empty. The directive reads empty plus castToNumber
+    // as a transient mid-edit state and skips the assigner, rather than
+    // calling `setValue('')` for the gate to reject with a dev warning.
     input.value = ''
     input.dispatchEvent(new Event('input'))
     await waitUntil(() => (input.value === '' ? true : null))

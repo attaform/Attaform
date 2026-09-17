@@ -20,9 +20,8 @@ import {
  * the zod v3 adapter. The generator and harness are shared; this file
  * differs only in its imports (`zod-v3`, the v3 useForm/zodAdapter).
  *
- * The v3 adapter shipped the same unknown-path bug as v4 (returning
- * `PERMISSIVE` instead of an empty set) and got the same fix; this
- * test confirms the fix holds at the v3 boundary too.
+ * Both adapters answer an unknown path with an EMPTY set rather than
+ * `PERMISSIVE`, and this pins that at the v3 boundary.
  */
 
 const arbSchema = buildSchemaWithManifest(z, 3)

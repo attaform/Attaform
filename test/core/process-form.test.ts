@@ -559,9 +559,10 @@ describe('buildProcessForm', () => {
       expect(state.submissionAttempts.value).toBe(1)
     })
 
-    // C2 — generation guard on schema-error writes during validation.
-    // Pre-fix, the validation completion AFTER reset wrote the stale
-    // schema errors back, undoing the consumer's "fresh start" intent.
+    // C2: the generation guard on schema-error writes during
+    // validation. Without it, a validation completing AFTER a reset
+    // writes its stale schema errors back and undoes the consumer's
+    // fresh start.
     it('reset() during async validation drops the late schemaErrors write', async () => {
       // Build a schema whose validate is controllable from outside.
       let releaseValidate!: (resp: ValidationResponse<Signup>) => void
@@ -579,7 +580,7 @@ describe('buildProcessForm', () => {
       state.reset()
       expect(state.submissionGeneration.value).toBe(1)
 
-      // Validation finishes with a failure that — pre-fix — would
+      // Validation finishes with a failure that would otherwise
       // overwrite reset's empty schemaErrors.
       releaseValidate({
         data: undefined,
@@ -613,8 +614,8 @@ describe('buildProcessForm', () => {
       state.setAllSchemaErrors([
         { message: 'Server-rejected', path: ['email'], code: 'api:validation' },
       ])
-      // Validation now resolves SUCCESS; pre-fix the success path would
-      // call clearSchemaErrors and erase the entry above.
+      // Validation now resolves SUCCESS, where an unguarded success
+      // path would call clearSchemaErrors and erase the entry above.
       const successData: Signup = { email: '', password: '' }
       releaseValidate({
         data: successData,

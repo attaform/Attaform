@@ -3,15 +3,13 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * v3 default-value parity tests for the kinds where the pre-fix v3
- * generateValue either warned + returned `null` (ZodNaN / ZodVoid /
- * ZodAny / ZodUnknown / ZodNever) or synthesised a slim concrete that
- * misrepresented an input-normalizer slot (ZodEffects of effect
- * `'preprocess'`, coerce-flagged primitives like `z.coerce.string()`).
- * v4 already produces the contractually-correct default for every case
- * here at the time of writing; the dual-green at the end of the cluster
- * is the parity proof. Mirrored by `default-values-parity.test.ts`
- * under `test/adapters/zod-v4/`.
+ * v3 default-value parity across the kinds most likely to diverge: the
+ * valueless ones (ZodNaN, ZodVoid, ZodAny, ZodUnknown, ZodNever), where
+ * warning and returning `null` would be wrong, and the input-normalizer
+ * slots (a `'preprocess'` ZodEffects, coerce-flagged primitives such as
+ * `z.coerce.string()`), where a synthesised slim concrete misrepresents
+ * what the slot accepts. The v4 half is `default-values-parity.test.ts`
+ * under `test/adapters/zod-v4/`, and dual-green is the parity proof.
  */
 describe('zod v3: default-value parity for NaN / void / any / unknown / never / preprocess / coerce', () => {
   describe('ZodNaN (D5)', () => {

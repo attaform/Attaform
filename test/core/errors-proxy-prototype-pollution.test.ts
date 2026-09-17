@@ -8,9 +8,9 @@
  * write and pollutes `Object.prototype` for the whole process (CodeQL
  * alerts #12 and #13, rule `js/prototype-polluting-assignment`).
  *
- * The fix sanitises the storage shape, not the input. The error-tree
- * containers are allocated via `Object.create(null)` so a `__proto__`
- * segment is just another own-property key with no path to
+ * The storage shape is what is sanitised, not the input: the error-tree
+ * containers are allocated with `Object.create(null)`, so a `__proto__`
+ * segment is just another own-property key with no route to
  * `Object.prototype`. Legitimate fields named `prototype` (an
  * architecture firm tracking building prototypes, a JS-tooling form
  * mentioning `__proto__` literally) land their errors at the declared

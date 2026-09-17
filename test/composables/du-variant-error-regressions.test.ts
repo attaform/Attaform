@@ -9,34 +9,27 @@ import type { UseFormReturnType, ValidationError } from '../../src/runtime/types
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Regression coverage for failure modes observed in spike.vue
- * (`profileSchema`) when the user toggles the discriminated-union
- * channel back and forth (email → sms → email):
+ * Toggling a discriminated-union channel back and forth (email, sms,
+ * email) is where schemaErrors keying shows. `scheduleFieldValidation`
+ * keys each write by the error's own leaf path and clears the scheduled
+ * path's whole descendant subtree first, through
+ * `applySchemaErrorsForSubtree` in create-form-store.ts. Three failure
+ * modes ride on that, all observed in spike.vue's `profileSchema`:
  *
- * 1. Errors at the new variant's required leaf land at the WRONG key
- *    in the schemaErrors store. Pre-fix, the field-validation pipeline
- *    wrote ALL DU child errors under the SCHEDULED path key
- *    (`['notify']`) rather than each error's own leaf path — so the
- *    materialised tree showed `notify: [errors]` instead of
- *    `notify: { number: [errors] }`, and per-leaf reads
- *    (`form.errors('notify.number')`) missed because the canonical
- *    key lookup expected `["notify","number"]`.
+ * 1. Writing every DU child error under the SCHEDULED key (`['notify']`)
+ *    puts them at the wrong key: the materialised tree shows
+ *    `notify: [errors]` instead of `notify: { number: [errors] }`, and
+ *    `form.errors('notify.number')` misses, because the canonical lookup
+ *    expects `["notify","number"]`.
  *
- * 2. Stale leaf errors from a previous variant survived re-validation:
- *    after email→sms, a `notify.address` entry written by the
- *    email-variant pass kept living in `schemaErrors` because the
- *    container-key clear (`schemaErrors.delete(["notify"])`) didn't
- *    touch descendants. `form.meta.errors` leaked the ghost.
+ * 2. A container-key clear that does not touch descendants leaves the
+ *    `notify.address` entry from the email pass alive in `schemaErrors`
+ *    after the switch to sms, and `form.meta.errors` leaks the ghost.
  *
- * 3. `notify.address`'s blank-mark (set via `unset` at mount) didn't
- *    survive a round-trip — both the keying bug and the ghost-entry
- *    bug compounded, hiding the "No value supplied" derived error
- *    from the materialised tree on the way back to email.
- *
- * Fixed by leaf-keying schemaErrors writes in `scheduleFieldValidation`
- * + clearing the entire descendant subtree of the scheduled path
- * before each write. See `applySchemaErrorsForSubtree` in
- * create-form-store.ts.
+ * 3. `notify.address`'s blank-mark, set through `unset` at mount, has to
+ *    survive the round trip; the keying and ghost-entry failures compound
+ *    to hide its "No value supplied" derived error from the materialised
+ *    tree on the way back to email.
  *
  * Mirrors the spike schema: `notify.address` is `z.email()` (so an
  * empty string fails format), `notify.number` is `z.string().min(7)`,

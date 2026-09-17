@@ -7,15 +7,13 @@
  * default; the override carries the consumer's authored layer. Both
  * can flow through to the form's initial values.
  *
- * Before the proto-less swap, `mergeDeep` allocated the result as
- * `{ ...base }` — a plain `{}` carrying `__proto__`'s inherited
- * `[[Set]]` accessor. A `result['__proto__'] = …` write would
- * reassign the result's prototype chain instead of landing as an
- * own property, silently dropping the consumer's value.
- *
- * The fix matches the rest of the sweep: allocate the result via
- * `Object.assign(Object.create(null), base)` so the bracket-assign
- * below is a plain own-property write at every step.
+ * `mergeDeep` allocates its result with
+ * `Object.assign(Object.create(null), base)`, so every bracket-assign
+ * below is a plain own-property write. A `{ ...base }` result is a plain
+ * `{}` carrying `__proto__`'s inherited `[[Set]]` accessor, and a
+ * `result['__proto__'] = ...` write reassigns the result's prototype
+ * chain instead of landing as an own property, silently dropping the
+ * consumer's value.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mergeDeep } from '../../src/runtime/core/merge-deep'

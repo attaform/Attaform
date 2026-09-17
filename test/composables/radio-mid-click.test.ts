@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 //
 // Mirrors `multi-select-cmd-click.test.ts` for `<input type="radio">`.
-// Pre-fix `vRegisterRadio.beforeUpdate` gated on
-// `value.innerRef.value !== oldValue`, comparing a primitive scalar
-// against the wrapper RegisterValue object — always !==, so the
-// guard was a silent no-op and `el.checked = …` re-applied on
-// every parent re-render. A sibling's reactive write between the
-// user's click and the browser's `change` decision triggers
-// `beforeUpdate` and writes back the prior model state, clobbering
-// the in-flight selection.
+// `vRegisterRadio.beforeUpdate`'s guard has to compare like with like:
+// gating on `value.innerRef.value !== oldValue` weighs a primitive
+// scalar against the wrapper RegisterValue object, which is always
+// unequal, so the guard is a silent no-op and `el.checked = ...`
+// re-applies on every parent re-render. A sibling's reactive write
+// between the user's click and the browser's `change` decision then
+// triggers `beforeUpdate`, writes back the prior model state and
+// clobbers the in-flight selection.
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'

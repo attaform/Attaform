@@ -306,14 +306,14 @@ describe('form.fields — JSON.stringify behaviour', () => {
 })
 
 describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
-  // Regression: pre-fix, `String(form.errors)` and `{{ form.errors }}` in
-  // a Vue template threw "Cannot convert object to primitive value." The
-  // function-target Proxy is `typeof === 'function'`, so Vue's
-  // `toDisplayString` falls to `String(val)`; OrdinaryToPrimitive then
-  // looked up `toString` / `valueOf` through the schema-aware get trap,
-  // which returned sub-proxies (still callable, still non-primitive),
-  // and the coercion ran out of options. The fix intercepts
-  // `Symbol.toPrimitive` and returns a sensible primitive.
+  // The surface intercepts `Symbol.toPrimitive` and returns a sensible
+  // primitive, so `String(form.errors)` and `{{ form.errors }}` in a
+  // template work. Without it they throw "Cannot convert object to
+  // primitive value": the function-target Proxy is `typeof ===
+  // 'function'`, so Vue's `toDisplayString` falls to `String(val)`, and
+  // OrdinaryToPrimitive looks `toString` / `valueOf` up through the
+  // schema-aware get trap, which hands back sub-proxies that are still
+  // callable and still non-primitive.
   const schema = z.object({
     email: z.string(),
     address: z.object({ city: z.string() }),
@@ -408,9 +408,9 @@ describe('surface proxies — primitive coercion (Symbol.toPrimitive)', () => {
   })
 
   it('direct proxy.toString() returns the materialised error tree (container)', () => {
-    // Pre-fix this routed through schema descent and returned a callable
-    // sub-proxy. Now it returns a primitive string consistent with the
-    // `Symbol.toPrimitive` output AND consistent with the underlying model.
+    // A primitive string, consistent with the `Symbol.toPrimitive`
+    // output and with the underlying model. Routing through schema
+    // descent would hand back a callable sub-proxy instead.
     const form = mount(schema, { email: '', address: { city: '' } })
     form.setErrors([{ path: ['email'], message: 'Required', code: 'api:validation' }])
     const out = (form.errors as unknown as { toString(): string }).toString()
@@ -648,10 +648,10 @@ describe('form.fields — discriminated unions (DU)', () => {
 })
 
 describe('form.errors — container materialisation (toJSON / String / `{{ }}`)', () => {
-  // Pre-fix, JSON.stringify(form.errors) returned {} unconditionally —
-  // hiding every error under the proxy's container shell. The
-  // materialiser walks the live error stores and produces a sparse
-  // nested tree at every container depth, including the root.
+  // The materialiser walks the live error stores and produces a sparse
+  // nested tree at every container depth, root included. Without it
+  // `JSON.stringify(form.errors)` returns `{}` unconditionally, hiding
+  // every error behind the proxy's container shell.
 
   it('errors should not be {} when a required field has a leaf error (the headline case)', () => {
     const schema = z.object({ name: z.string(), age: z.number() })

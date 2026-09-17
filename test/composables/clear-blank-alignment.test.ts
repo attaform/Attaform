@@ -1,18 +1,15 @@
 // @vitest-environment jsdom
 /**
- * PASS2-S1 — `form.clear(path)` aligns with `form.setValue(path, unset)`.
- * Pre-fix `clear` wrote the slim primitive (`''` / `0` / `false`) but
- * did NOT mark the path blank, so:
+ * PASS2-S1: `form.clear(path)` delegates to the same path as
+ * `form.setValue(path, unset)`, so the two verbs settle on identical
+ * observable state, with the same storage, blank-mark and
+ * required-validation verdict.
  *
- *   - `displayValue` rendered the slim default (`'0'` for numbers) even
- *     though the consumer had asked for the field to be cleared.
- *   - The synthesised "No value supplied" error never fired on submit;
- *     a required `z.string()` cleared via `form.clear` silently passed
- *     validation with `''`.
- *
- * The fix delegates `clear` to the same path as `setValue(unset)` so
- * the two verbs settle on identical observable state: same storage,
- * same blank-mark, same required-validation verdict.
+ * Writing the slim primitive (`''` / `0` / `false`) without marking the
+ * path blank breaks both halves: `displayValue` renders the slim default
+ * ('0' for numbers) on a field the consumer asked to clear, and the
+ * synthesised "No value supplied" error never fires, so a required
+ * `z.string()` cleared through `form.clear` passes validation on `''`.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z as zV4 } from 'zod'

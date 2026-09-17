@@ -189,19 +189,19 @@ describe('DOM clear → schema-aware empty mapping', () => {
   })
 
   /**
-   * The actual DX bug — and why this whole change exists.
+   * Why the schema-aware empty mapping exists: it is what makes the
+   * optional path reachable from the DOM after any user interaction.
    *
-   * Without the schema-aware empty mapping, a user who types invalid
-   * data into an optional field and then clears it is stuck with a
-   * permanent validation error. The cleared input shows nothing, but
-   * the error UI still says "Enter a valid email" / "Must be ≥ 10",
-   * because storage holds the literal DOM output ('' or 0) which is
-   * neither undefined (the optional escape) nor a valid inner value.
+   * Without it, a user who types invalid data into an optional field and
+   * then clears it is stuck with a permanent validation error. The input
+   * shows nothing while the error UI still says "Enter a valid email" or
+   * "Must be >= 10", because storage holds the literal DOM output ('' or
+   * 0), which is neither `undefined` (the optional escape) nor a valid
+   * inner value.
    *
-   * The fix is what makes the optional path reachable from the DOM
-   * after any user interaction. Required fields keep their current
-   * contract: '' / 0 stays in storage, validation continues to fail,
-   * the user has to type a valid value to clear the error.
+   * Required fields keep their own contract: '' / 0 stays in storage,
+   * validation keeps failing, and the user types a valid value to clear
+   * the error.
    */
   describe('validation cycle after clear', () => {
     it('z.email().optional() — typing invalid then clearing returns to valid', async () => {

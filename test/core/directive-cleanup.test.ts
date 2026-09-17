@@ -146,12 +146,11 @@ describe('v-register directive — listener teardown on unmount', () => {
     const spy = installListenerSpies(input)
 
     hooks.created?.(input, binding, vnode, null)
-    // Text input registers four listeners in `created`: input/change
-    // (the model write), change (for `.lazy` blur-trim normalisation),
-    // beforeinput (for `.number` keystroke filtering), and a single
-    // composition pair counted as one entry under jsdom. Pre-fix the
-    // assertion was `> 0`; tightening to the exact number locks the
-    // listener inventory so any added/removed listener is visible.
+    // A text input registers four listeners in `created`: input/change
+    // for the model write, change for `.lazy` blur-trim normalisation,
+    // beforeinput for `.number` keystroke filtering, and a composition
+    // pair that jsdom counts as one entry. The exact count is the point:
+    // `> 0` would hide any listener added or removed.
     expect(spy.added).toBe(4)
 
     const addedCount = spy.added

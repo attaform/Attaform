@@ -9,16 +9,14 @@ import type { UseFormReturnType, ValidationError } from '../../src/runtime/types
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Edge cases adjacent to the schemaErrors-keying fix in
- * scheduleFieldValidation (commit 9f0d4ce). The fix grouped errors by
- * each issue's own absolute path and cleared the scheduled path's
- * descendant subtree before writing — so several other failure modes
- * become tractable to pin down here:
+ * `scheduleFieldValidation` keys schemaErrors by each issue's own
+ * absolute path and clears the scheduled path's descendant subtree
+ * before writing. Four failure modes ride on that:
  *
  *   1. Cross-field refines whose error path equals a container path.
- *   2. Validation flipping failing → passing for a previously-failing leaf.
- *   3. Field-array shrink leaving stale errors at a no-longer-existing index.
- *   4. Parent + leaf scheduled validations racing on overlapping paths.
+ *   2. A previously-failing leaf flipping to passing.
+ *   3. A field-array shrink leaving stale errors at a vanished index.
+ *   4. Parent and leaf validations racing on overlapping paths.
  */
 
 type LooseApi<Schema extends z.ZodObject> = Omit<
@@ -121,12 +119,11 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   })
 
   it('container-keyed refine error survives a leaf-keyed re-validation', async () => {
-    // After fixing the leaf and re-validating, the leaf's error clears
-    // BUT the container-keyed refine (a separate canonical key) must
-    // not be wiped by the leaf's own subtree clear. The fix's
-    // `applySchemaErrorsForSubtree(path, …)` only deletes entries whose
-    // key descends from `path` — a container's own entry is not a
-    // descendant of its leaf children, so it stays.
+    // Fixing the leaf and re-validating clears the leaf's error but
+    // leaves the container-keyed refine, which holds a separate
+    // canonical key. `applySchemaErrorsForSubtree(path, ...)` deletes
+    // only entries whose key descends from `path`, and a container's
+    // own entry does not descend from its leaf children.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     const submit = api.handleSubmit(
@@ -207,12 +204,11 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
 })
 
 describe('schemaErrors edge cases — failing → passing transition', () => {
-  // Pre-fix, sticky errors were possible because the only clear path
-  // was `setSchemaErrorsForPath(parent, [])` which deleted ONE key.
-  // After the fix, `applySchemaErrorsForSubtree` clears the whole
-  // subtree before writing, and the empty-`entries` path falls
-  // through the `if (entries.length === 0) return` AFTER the clear —
-  // so a leaf transitioning from failing to passing reliably wipes.
+  // `applySchemaErrorsForSubtree` clears the whole subtree before
+  // writing, and the empty-`entries` case falls through
+  // `if (entries.length === 0) return` AFTER that clear, so a leaf going
+  // from failing to passing reliably wipes. A clear that deleted one key
+  // at a time would leave errors stuck.
   const schema = z.object({ email: z.email() })
 
   const apps: App[] = []

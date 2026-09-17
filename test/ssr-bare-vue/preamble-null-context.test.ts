@@ -73,9 +73,9 @@ describe('SSR preamble null-safety', () => {
     const app = createSSRApp(App)
     app.use(createAttaform({ ssr: true }))
 
-    // The catchable failure mode pre-fix was an unhandled rejection
-    // bubbling out of `_sfc_ssrRender`. If that ever returns, this
-    // resolves to a thrown Error and the test fails noisily.
+    // The catchable failure mode is an unhandled rejection bubbling out
+    // of `_sfc_ssrRender`. If one ever does, this resolves to a thrown
+    // Error and the test fails noisily.
     const html = await renderToString(app)
     expect(html).toContain('before')
     expect(html).toContain('after')

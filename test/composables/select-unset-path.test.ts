@@ -4,23 +4,23 @@
  * hold (#569).
  *
  * The house rule for a field with no value is that it displays as its
- * empty value. `displayValue` is where that lives: it folds a blank
- * mark and a null / absent model to `''`. `vRegisterText` paints it
- * into `el.value`, and the compile-time `:value` injection on a
- * `<select>` reads the same ref. `setSelected` and the per-option
- * `:selected` expression were the two readers that went to `innerRef`
- * raw, so an unseeded path compared `undefined` against every option,
- * matched none, and left `selectedIndex` at `-1` — an empty box, a
- * state no user can reach by interacting, and one the server disagreed
- * with (it marks no option, so the browser parses the first as
- * selected, and hydration erased it).
+ * empty value. `displayValue` is where that lives: it folds a blank mark
+ * and a null or absent model to `''`. `vRegisterText` paints it into
+ * `el.value`, the compile-time `:value` injection on a `<select>` reads
+ * the same ref, and so do `setSelected` and the per-option `:selected`
+ * expression. A reader that goes to `innerRef` raw compares `undefined`
+ * against every option on an unseeded path, matches none and leaves
+ * `selectedIndex` at `-1`: an empty box, a state no user can reach by
+ * interacting, and one the server disagrees with, since it marks no
+ * option, the browser parses the first as selected, and hydration
+ * erases it.
  *
  * The report came from a record whose key set is a function of another
  * field, so a key legitimately appears at render time. Seeding the
  * whole key space up front is the workaround, and it is exactly what
  * choosing a record was meant to avoid.
  *
- * The fix is a display change and only that: nothing is written, so a
+ * This is a display change and only that: nothing is written, so a
  * select that renders never invents a record key, never fabricates a
  * choice the user did not make, and never spends the `blank` signal.
  * A model that HOLDS a value no option carries still shows nothing,

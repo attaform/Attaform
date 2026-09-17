@@ -344,22 +344,20 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
   })
 
   it('checkbox visual stays in sync with model across multiple toggles (case-mismatched true-value)', async () => {
-    // Regression for the desync where setChecked compared the
-    // post-coerce boolean model against the RAW `_trueValue` string
-    // ("True", capital T) via `looseEqual`. Vue's looseEqual does
-    // case-sensitive `String()` comparison — `looseEqual(true,
-    // "True")` is false — so setChecked decided the box should be
-    // unchecked and overwrote the user's click. Fix: setChecked
-    // coerces the raw _trueValue through the same registry before
-    // comparing.
+    // `setChecked` coerces the raw `_trueValue` through the same
+    // registry before comparing. Comparing the post-coerce boolean
+    // model against the raw string instead desyncs: Vue's `looseEqual`
+    // compares case-sensitively through `String()`, so
+    // `looseEqual(true, "True")` is false, `setChecked` decides the box
+    // should be unchecked, and the user's click is overwritten.
     //
-    // We set `_trueValue` / `_falseValue` imperatively via a ref
-    // callback because render-function `h()` can't reach Vue's
+    // `_trueValue` / `_falseValue` are set imperatively through a ref
+    // callback because a render-function `h()` cannot reach Vue's
     // template-only `:true-value` slot. The `<pre>` reading
-    // `api.values.accepted` matters: it's the reactive dep that
-    // schedules the re-render which fires `beforeUpdate` →
-    // `setChecked`. Without it, the bug stays latent (no rerender,
-    // no faulty re-comparison) and the test would pass pre-fix.
+    // `api.values.accepted` is load-bearing: it is the reactive dep
+    // that schedules the re-render firing `beforeUpdate` and
+    // `setChecked`. Without it nothing re-compares and the test passes
+    // either way.
     const schema = z.object({ accepted: z.boolean() })
     const { api, root } = mount(schema, { accepted: false }, (api) => {
       const rv = api.register('accepted')
@@ -682,14 +680,13 @@ describe('reference-equality preservation', () => {
   })
 })
 
-// Read-side normalizer-symmetry sweep — the same shape of bug
-// (post-coerce model vs raw DOM-side comparison) lurks in every
-// directive site that compares model state against an option /
-// checkbox / radio attribute. Each test below uses a reactive
-// read on the value (the `<pre>` JSON.stringify) to schedule the
-// re-render that fires `beforeUpdate` / `setChecked` / `setSelected`
-// — without it, the bugs stay latent. Pre-fix these tests fail at
-// the visual-state assertion after the second toggle.
+// The read-side normalizer-symmetry sweep. Comparing a post-coerce
+// model against a raw DOM-side value is a hazard at every directive
+// site that weighs model state against an option, checkbox or radio
+// attribute. Each test reads the value reactively (the `<pre>`
+// JSON.stringify) to schedule the re-render that fires `beforeUpdate`,
+// `setChecked` or `setSelected`; without that read nothing re-compares
+// and an asymmetry stays latent.
 
 describe('read-side coerce symmetry — array checkbox with case-mismatched boolean values', () => {
   it('checkbox array stays in sync across toggles when option value is "True"/"False"', async () => {
@@ -739,8 +736,8 @@ describe('read-side coerce symmetry — Set checkbox with numeric values', () =>
     cb.dispatchEvent(new Event('change', { bubbles: true }))
     await waitUntil(() => ((api.values.tags as Set<number>).has(1) ? true : null))
     expect(api.values.tags).toEqual(new Set([1]))
-    // Pre-fix Set.has(model, "1") against Set<number>{1} returned
-    // false (strict ===) → setChecked wrote el.checked = false.
+    // `Set.has` is strict, so `has("1")` against `Set<number>{1}` is
+    // false and `setChecked` would write `el.checked = false`.
     expect(cb.checked).toBe(true)
   })
 })
@@ -774,10 +771,10 @@ describe('read-side coerce symmetry — multi-select with case-mismatched boolea
     )
     expect(api.values.flags).toEqual([true, false])
 
-    // Force another re-render via a sibling write — this exercises
-    // setSelected with the post-coerce model, where pre-fix
-    // `String(true)` ("true") wouldn't match `String(option.value)`
-    // ("True") and both options would silently get deselected.
+    // A sibling write forces another re-render, exercising
+    // `setSelected` against the post-coerce model. Comparing raw,
+    // `String(true)` is "true" and never matches `String(option.value)`
+    // "True", silently deselecting both options.
     const note = root.querySelector('[data-field="note"]') as HTMLInputElement
     note.value = 'x'
     note.dispatchEvent(new Event('input', { bubbles: true }))
@@ -810,8 +807,8 @@ describe('read-side coerce symmetry — single-select with case-mismatched boole
     sel.dispatchEvent(new Event('change', { bubbles: true }))
     await waitUntil(() => (api.values.active === true ? true : null))
     expect(api.values.active).toBe(true)
-    // Pre-fix selectedIndex would land at -1 — looseEqual(true, "True")
-    // returned false, so no option matched.
+    // Compared raw, `looseEqual(true, "True")` is false, no option
+    // matches, and selectedIndex lands at -1.
     expect(sel.selectedIndex).toBe(1)
   })
 })
@@ -840,8 +837,8 @@ describe('read-side coerce symmetry — radio with case-mismatched boolean value
     t.dispatchEvent(new Event('change', { bubbles: true }))
     await waitUntil(() => (api.values.active === true ? true : null))
     expect(api.values.active).toBe(true)
-    // Pre-fix the beforeUpdate hook ran `looseEqual(true, "True")`
-    // → false → `el.checked = false`, immediately undoing the click.
+    // Compared raw, `beforeUpdate` runs `looseEqual(true, "True")`,
+    // gets false, writes `el.checked = false` and undoes the click.
     expect(t.checked).toBe(true)
     expect(f.checked).toBe(false)
 
@@ -870,8 +867,9 @@ describe('text input on numeric path without `.number` modifier', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (api.values.age === 25 ? true : null))
     expect(api.values.age).toBe(25)
-    // Pre-fix the beforeUpdate hook fell through to
-    // `el.value = typeof 25 === 'string' ? 25 : ''` → input cleared.
+    // Without the coercion, `beforeUpdate` falls through to
+    // `el.value = typeof 25 === 'string' ? 25 : ''` and clears the
+    // input.
     expect(input.value).toBe('25')
   })
 })

@@ -261,10 +261,9 @@ describe('vRegisterText — `.number`', () => {
   })
 
   it('change event normalizes the visible DOM after Vue 3.5.33 parity fix', () => {
-    // The (a) divergence: Vue casts el.value on blur whenever
-    // EITHER trim OR castToNumber is true. Pre-fix, our port skipped
-    // this for `.number`. ` 12 ` would stay ` 12 ` after blur instead
-    // of becoming `12`.
+    // Vue casts `el.value` on blur whenever EITHER trim or
+    // castToNumber is set, and the port matches it. Skipping the cast
+    // for `.number` would leave ` 12 ` as ` 12 ` after blur.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -432,11 +431,10 @@ describe('vRegisterSelect — `.number`', () => {
   })
 
   it('mounted: selects the option matching a numeric model (16f regression)', () => {
-    // Bug report: `<select v-register.number>` with model `1` left
-    // `selectedIndex = -1` (no option highlighted) even though the
-    // first option's value attribute was `"1"`. The pre-fix
-    // `getBaseValue` returned a Set of DOM-currently-selected
-    // values, which never compared equal to the model number.
+    // `<select v-register.number>` with model `1` selects the option
+    // whose value attribute is `"1"`. Driving the comparison off the
+    // DOM's currently-selected values instead never compares equal to
+    // a model number, and selectedIndex stays at -1.
     const select = makeSelectWithOptions(['1', '2', '3'])
     document.body.appendChild(select)
     const { value } = makeRegisterValue(1 as unknown as never)
@@ -448,11 +446,11 @@ describe('vRegisterSelect — `.number`', () => {
   })
 
   it('mounted: selects the option matching a string model', () => {
-    // Same path, string-valued model. Pre-fix `getBaseValue` read
-    // `el.options[el.selectedIndex].value` — effectively a no-op
-    // that left whatever the browser had selected by default. With
-    // the model-driven sync, the right option is selected even when
-    // the default selectedIndex doesn't match.
+    // The same path with a string-valued model. The sync is
+    // model-driven, so the right option is selected even when the
+    // browser's default selectedIndex does not match; reading
+    // `el.options[el.selectedIndex].value` would be a no-op that leaves
+    // whatever the browser picked.
     const select = makeSelectWithOptions(['a', 'b', 'c'])
     document.body.appendChild(select)
     const { value } = makeRegisterValue('c' as unknown as never)
@@ -892,13 +890,12 @@ beforeEach(() => {
 // Regression: spike-discovered bugs
 
 /**
- * Spike `16b` reported "can't use the spacebar at all" on a
- * `.trim`-modified text input. Pre-fix the directive trimmed the
- * value on every input event; that wrote the trimmed string to the
- * model, Vue's `:value` patch then pulled the DOM back to match
- * the (shorter) model on the next render and the user's
- * just-typed space disappeared. Fix: defer the trim to `change`
- * (blur) and let mid-typing writes keep their whitespace.
+ * `.trim` commits on `change` (blur), not on every input event, so
+ * mid-typing writes keep their whitespace. Trimming per keystroke
+ * writes the shorter string to the model, Vue's `:value` patch pulls
+ * the DOM back to match on the next render, and the space the user just
+ * typed disappears: spike `16b` reported it as "can't use the spacebar
+ * at all".
  */
 describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
   beforeEach(() => {
@@ -948,13 +945,12 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
   })
 
   it('many leading spaces survive until a real character is typed AND blur is committed', () => {
-    // Pre-fix scenario: user mashes the spacebar (form="" each
-    // keystroke under per-keystroke trim). DOM accumulates spaces.
-    // First non-space keystroke triggers per-keystroke trim → form
-    // becomes "a", patchDOMProp pulls DOM back from "          a"
-    // to "a", wiping the user's spaces. With deferred trim, every
-    // intermediate write is the raw el.value; no pull-back happens.
-    // The trim is committed only on blur.
+    // The user mashes the spacebar, so the DOM accumulates spaces
+    // while the form stays "". Under a per-keystroke trim the first
+    // non-space keystroke makes the form "a" and patchDOMProp pulls the
+    // DOM back from "          a" to "a", wiping them. Deferred, every
+    // intermediate write is the raw `el.value` and the trim commits
+    // only on blur.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -981,18 +977,16 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
 })
 
 /**
- * Spike `16e` reported a noisy dev warning when backspacing a
- * `<input type="number">` bound to `z.number()` from "1" to empty.
- * The directive auto-casts via looseToNumber; an empty string isn't
- * parseable, so looseToNumber returns the input unchanged and the
- * slim-primitive gate sees a string heading to a numeric slot →
- * rejection + dev-warn.
+ * The directive skips the assigner call when an input is empty AND a
+ * number cast is requested, so form state holds its previous valid
+ * value, the user keeps the empty DOM mid-edit, and no dev-warn fires.
  *
- * Clearing a numeric input is a normal UI affordance; the dev-warn
- * makes that look like a programmer error. The fix: the directive
- * skips the assigner call when the input is empty AND a number cast
- * is requested. Form state stays at the previous valid value, the
- * user retains the empty DOM (mid-edit), and no dev-warn fires.
+ * Without that skip, backspacing a `<input type="number">` bound to
+ * `z.number()` from "1" to empty warns: `looseToNumber` cannot parse
+ * `''` so it returns the input unchanged, and the slim-primitive gate
+ * sees a string heading for a numeric slot and rejects it. Clearing a
+ * numeric input is a normal affordance, and a dev-warn makes it look
+ * like a programmer error (spike `16e`).
  */
 describe('regression: vRegisterText × type="number" × backspace-to-empty', () => {
   beforeEach(() => {
@@ -1095,18 +1089,16 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
 // `<input type="checkbox">` setChecked: hydration-with-static-attribute case
 
 /**
- * Repro for the playground bug where SSR rendered `<input type="checkbox"
- * value="banana">` with a static `value` attribute. On client hydration
- * Vue's static-attr fast path skips `patchProp`, so `el._value` is
- * never set AND `vnode.props['value']` is undefined for hoisted attrs.
- * The directive's `setChecked` was reading `vnode.props?.['value']`
- * exclusively — got undefined — and unchecked the box even though state
- * contained 'banana' and the DOM attribute was set.
+ * `setChecked` looks its option value up through the same `getValue(el)`
+ * helper the change handler uses, which falls back to the DOM `value`
+ * property when neither `_value` nor a vnode prop is present.
  *
- * The fix routes setChecked's option-value lookup through the same
- * `getValue(el)` helper the change handler uses (post the prior
- * static-attr fix), which falls back to the DOM `value` property
- * when neither `_value` nor a vnode prop is present.
+ * It has to. SSR renders `<input type="checkbox" value="banana">` with a
+ * static `value` attribute, and on hydration Vue's static-attr fast path
+ * skips `patchProp`, so `el._value` is never set and a hoisted attr
+ * leaves `vnode.props['value']` undefined. Reading only the vnode prop
+ * gets undefined and unchecks the box, even with 'banana' in state and
+ * the DOM attribute set.
  */
 describe('vRegisterCheckbox.setChecked — hydration with static value attribute', () => {
   beforeEach(() => {

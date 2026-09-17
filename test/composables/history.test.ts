@@ -228,10 +228,10 @@ describe('history — blankPaths preservation', () => {
     // 4. Undo, the snapshot we land on captured storage = 0 with blankPaths = {count}.
     expect(api.history.undo()).toBe(true)
     expect(api.values.count).toBe(0)
-    // The bug: blankPaths was reset along the redo path (step 3 above)
-    // and applyFormReplacement does not touch the set, so the restored
-    // state shows a misleading '0' on the wire. The fix re-seeds the
-    // set from the snapshot before the form replacement lands.
+    // The redo path at step 3 resets blankPaths, and
+    // `applyFormReplacement` does not touch the set, so the set is
+    // re-seeded from the snapshot before the replacement lands.
+    // Otherwise the restored state shows a misleading '0' on the wire.
     expect(api.blankPaths.value.has(countKey)).toBe(true)
   })
 

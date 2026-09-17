@@ -198,8 +198,8 @@ describe('DevTools plugin — inspector + timeline wiring', () => {
     await Promise.resolve()
 
     const submitEvents = currentMock.api!._events.filter((e) => e.event.title === 'submit.success')
-    // Single handleSubmit() invocation ⇒ exactly one submit.success
-    // event. Pre-fix `> 0` would mask a duplicate-emit regression.
+    // One handleSubmit() invocation, exactly one submit.success event.
+    // `> 0` would mask a duplicate emit.
     expect(submitEvents).toHaveLength(1)
     expect(submitEvents[0]?.event.subtitle).toBe('dev-timeline')
   })

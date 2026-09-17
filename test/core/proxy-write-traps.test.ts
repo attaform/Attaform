@@ -2,21 +2,18 @@
 /**
  * Strict-mode write-trap consistency gate for PASS2-4.
  *
- * `form.fields` (container + leaf-view) and the `form.fields(path)`
- * call-terminal each had `set/delete: () => false`, which throws
- * `TypeError` under strict mode (every ESM module and `<script setup>`
- * block). The library documents "writes warn and noop" — the contract
- * `form.values` / `wizard.statuses` already honored. This gate pins the
- * three drifted proxies onto the same contract:
+ * Attaform documents "writes warn and noop", the contract `form.values`
+ * and `wizard.statuses` hold. This gate pins `form.fields` (container
+ * and leaf-view) and the `form.fields(path)` call-terminal onto it too:
  *
- *   - **no throw** from `form.fields.X = …`, `delete form.fields.X`,
- *     `form.fields.email.value = …`, `form.fields('email').value = …`,
- *     `form.errors.tags[0] = …`, on either adapter.
+ *   - **no throw** from `form.fields.X = ...`, `delete form.fields.X`,
+ *     `form.fields.email.value = ...`, `form.fields('email').value = ...`
+ *     or `form.errors.tags[0] = ...`, on either adapter.
  *   - **dev warn** fires once per call.
  *
- * Pre-fix the strict-mode `TypeError` rejects the `not.toThrow`
- * assertions and the warn never lands because the throw escapes first.
- * Post-fix both succeed.
+ * A trap of `set/delete: () => false` throws `TypeError` under strict
+ * mode, which every ESM module and `<script setup>` block is: the throw
+ * escapes before the warn can land.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z as zV4 } from 'zod'

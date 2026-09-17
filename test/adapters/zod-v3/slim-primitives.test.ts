@@ -8,9 +8,9 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * behaviour for the slim-primitive write contract: wrappers peel,
  * refinements ignored, unions union, intersections intersect.
  *
- * Closes V4-8 by locking v3 to the same 25-case unit suite v4 has
- * carried since shipping; pre-fix v3 was tested only transitively
- * through the path-walker suites.
+ * Closes V4-8 by locking v3 to the same 25-case unit suite v4 carries,
+ * rather than testing it only transitively through the path-walker
+ * suites.
  */
 function probe(rootSchema: z.ZodSchema, path: (string | number)[]): ReadonlySet<string> {
   const adapter = zodAdapter(rootSchema)('f', { maxRecursionDepth: 64 })

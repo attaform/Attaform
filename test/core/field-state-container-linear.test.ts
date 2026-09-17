@@ -1,21 +1,21 @@
 /**
  * Regression suite for the O(N^2) -> O(N) container field-state fix.
  *
- * `buildContainerFieldStateBase` used to aggregate a container's rolled-up
- * state by scanning the ENTIRE `originals` map (every leaf in the whole
- * form) and filtering to its own descendants. One container therefore cost
- * O(total form leaves); `form.list` over N rows built N element containers,
- * so array ops and every post-op re-render were O(N^2). The fix walks each
- * container's OWN subtree value instead (`visitActiveLeafPaths`), re-gated
- * on `originals.has`, dropping per-container work to O(subtree) and the
- * list / array path to O(N).
+ * `buildContainerFieldStateBase` aggregates a container's rolled-up
+ * state by walking that container's OWN subtree value through
+ * `visitActiveLeafPaths`, re-gated on `originals.has`, which keeps
+ * per-container work at O(subtree) and the list / array path at O(N).
+ * Scanning the ENTIRE `originals` map and filtering to descendants costs
+ * O(total form leaves) per container, so `form.list` over N rows builds
+ * N element containers and every array op and post-op re-render is
+ * O(N^2).
  *
  * These tests pin the structural property (per-container work decoupled
  * from total form size), the finer reactive dependency (a sibling subtree
  * no longer invalidates this container), and the equivalence edges the
- * value-walk has to preserve byte-for-byte against the old scan — most
- * notably a present-but-`undefined` leaf that an optional field was cycled
- * through, which the old `hasAtPath` (key-existence) gate still rolled up.
+ * value-walk has to preserve byte for byte, most notably a
+ * present-but-`undefined` leaf left by cycling an optional field, which a
+ * key-existence `hasAtPath` gate still rolls up.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'

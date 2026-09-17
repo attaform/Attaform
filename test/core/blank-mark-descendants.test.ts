@@ -1,21 +1,21 @@
 // @vitest-environment jsdom
 /**
- * PASS2-1 — `setValueAtPath` clears descendant blank-marks on a non-blank
- * write. The pre-fix gate hook only consulted `blankPaths.has(pathKey)`
- * for the EXACT key being written; a write to a container path (`addr`)
- * left every descendant blank-mark (`addr.zip`) intact, even though the
- * consumer just wrote a real value at that leaf. Effects rippled into:
+ * PASS2-1: `setValueAtPath` clears DESCENDANT blank-marks on a non-blank
+ * write, through the same `isPathKeyUnder` sweep the DU-reshape path in
+ * `create-form-store.ts` uses. Consulting `blankPaths.has(pathKey)` for
+ * the exact key alone leaves `addr.zip` marked blank after a write to
+ * `addr`, even though the consumer just put a real value at that leaf,
+ * and three things break:
  *
- *   1. `handleSubmit` false-rejects with a synthesised "No value supplied"
- *      error at the descendant — the form is populated but submit fails.
- *   2. `displayValue` at the descendant reads as empty — the input
- *      visually clears even though storage holds the consumer's value.
+ *   1. `handleSubmit` false-rejects with a synthesised "No value
+ *      supplied" at the descendant, so a populated form fails submit.
+ *   2. `displayValue` at the descendant reads empty, so the input
+ *      visually clears while storage holds the consumer's value.
  *   3. `form.meta.errors` carries the stale required-blank entry.
  *
- * The fix mirrors the already-correct DU-reshape path at
- * `create-form-store.ts` (`isPathKeyUnder` sweep). Pinned across
- * v3 + v4 and across the two consumer-facing entry shapes (path-form
- * `setValue('addr', …)` and root-form `setValue({ addr: … })`).
+ * Pinned across v3 and v4 and across both consumer-facing entry shapes,
+ * path-form `setValue('addr', ...)` and root-form
+ * `setValue({ addr: ... })`.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z as zV4 } from 'zod'

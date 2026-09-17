@@ -307,10 +307,10 @@ describe('focusFirstError — DOM-order semantics', () => {
   })
 
   it('focuses the visually-first errored field, not schema-declaration first', async () => {
-    // Schema declares email/password/nickname; template renders them
-    // in REVERSE order. Errors on email + nickname. Pre-fix the focus
-    // landed on `email` (schema-declaration first). Post-fix it lands
-    // on `nickname` (rendered first in DOM order).
+    // The schema declares email, password, nickname; the template
+    // renders them in REVERSE order, with errors on email and nickname.
+    // Focus follows DOM order, so it lands on `nickname`, not on the
+    // schema-declaration-first `email`.
     const { api, app } = mountWith({
       errorsFor: ['email', 'nickname'],
       renderOrder: ['nickname', 'password', 'email'],
@@ -957,9 +957,9 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
   })
 
   it('a blank field preceding a schema-errored field wins by DOM order', async () => {
-    // `age` (blank-required, derived) renders first; `name` (schema
-    // refinement `.min(1)` on '') second. Pre-fix the picker skipped the
-    // blank `age` and mistakenly focused `name`; post-fix DOM order wins.
+    // `age` (blank-required, derived) renders first and `name` (a
+    // `.min(1)` refinement on '') second. DOM order wins, so a picker
+    // that skipped the blank `age` for `name` would be wrong.
     const schema = z.object({ age: z.number(), name: z.string().min(1, 'required') })
     const handle: { api?: UseFormReturn<typeof schema> } = {}
     const App = defineComponent({
@@ -985,8 +985,8 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
   })
 
   it('generalizes past numerics: an explicit `unset` string field is a target', async () => {
-    // Proves the fix is not tied to numeric auto-mark: any blank + required
-    // leaf qualifies. A string opts into blank via `unset`.
+    // Nothing here is tied to numeric auto-mark: any blank and required
+    // leaf qualifies, and a string opts into blank through `unset`.
     const schema = z.object({ note: z.string() })
     const handle: { api?: UseFormReturn<typeof schema> } = {}
     const App = defineComponent({

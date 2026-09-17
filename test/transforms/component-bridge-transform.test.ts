@@ -6,9 +6,8 @@ import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/
  * Compile a template through @vue/compiler-core with the select
  * transform registered and inspect the generated render code.
  *
- * D3 — `<option>` without an explicit `value=` attribute should fall
- * back to the option's static text content. Pre-fix the transform
- * silently dropped these, leaving them unselectable through
+ * D3: an `<option>` with no explicit `value=` falls back to its static
+ * text content. Dropped instead, it is unselectable through
  * `register('fruit')`.
  */
 
@@ -159,9 +158,9 @@ describe('componentBridgeTransform — E1 source-location fidelity', () => {
     expect(select).toBeDefined()
     const valueProp = select?.props.find((p) => p.name === 'bind')
     if (valueProp === undefined) throw new Error('select :value binding missing')
-    // Pre-fix the loc was {line: 0, column: 0}; now it matches the
-    // select element's location (line 2 in this template after the
-    // leading <div> + newline + indent).
+    // The loc matches the select element's own location, the second
+    // line of this template after the leading <div>, newline and
+    // indent, rather than {line: 0, column: 0}.
     expect(valueProp.loc.start.line).toBeGreaterThan(0)
   })
 })

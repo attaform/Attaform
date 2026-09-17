@@ -120,11 +120,11 @@ describe.each(adapters)('reset clears snapshot map — $name', ({ useForm, build
     const runsAfterFirstBlur = runs()
     expect(runsAfterFirstBlur).toBeGreaterThan(0)
 
-    // Reset to a value matching the post-blur state. The reset
-    // clears errors and zeroes the field's `interacted` flag, so
-    // the next blur is NOT a firstInteractiveBlur — it lands in
-    // the dedup branch. Without the fix the survivor snapshot
-    // matches the live form, and dedup skips.
+    // Reset to a value matching the post-blur state. The reset clears
+    // errors and zeroes the field's `interacted` flag, so the next blur
+    // is not a firstInteractiveBlur and lands in the dedup branch. A
+    // surviving snapshot would match the live form and the dedup would
+    // skip.
     api.reset({ a: 'bad' })
     await drainMicrotasks()
 

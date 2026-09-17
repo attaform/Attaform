@@ -313,10 +313,10 @@ describe.each(ADAPTERS)('option `:selected` binding scopes — SSR ($name)', (ad
     expect(html).toContain('<option value="b1" selected>B1</option>')
   })
 
-  // Two of eight stories passed pre-fix, and these were exactly the ones
-  // whose second loop rendered nothing: an empty array never runs the
-  // callback holding the out-of-scope reference. Same template, opposite
-  // outcome, which is what made it read as a data problem.
+  // Two of these eight stories are the ones whose second loop renders
+  // nothing, and an empty array never runs the callback holding the
+  // out-of-scope reference. Same template, opposite outcome, which is
+  // what made the original report read as a data problem.
   it('renders with an empty second loop (the case that used to pass)', async () => {
     const html = await ssr(TWO_LOOPS, () => adapter.choiceForm('a1'), {
       alpha: ALPHA,

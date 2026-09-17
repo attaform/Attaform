@@ -414,21 +414,20 @@ describe('zod v3 adapter — discriminated union routing', () => {
   })
 })
 
-// stripRefinements descended into objects, arrays, and effects pre-fix
-// but skipped Set / Tuple / Record / Union / DiscriminatedUnion /
-// Intersection / Lazy. Refinements nested inside those containers
-// survived into the slim schema, so defaults that passed primitive
-// shape (e.g. `''` for an email-refined tuple element) still failed
-// the slim parse and got fixed up downstream — which "worked" but
-// produced a different second-parse path than v4. The fix gives v3 the
-// same correctness floor as v4.
+// stripRefinements descends every container, Set / Tuple / Record /
+// Union / DiscriminatedUnion / Intersection / Lazy as well as objects,
+// arrays and effects. A refinement surviving into the slim schema means
+// a default that passes primitive shape (`''` for an email-refined
+// tuple element) still fails the slim parse and gets fixed up
+// downstream, which reaches the right answer down a different
+// second-parse path than v4 takes.
 //
-// What each case asserts is the SHAPE the walk produced. Several of
-// these derived defaults cannot satisfy the leaf refinement they sit
-// under (`''` is not an email, `0` is not `>= 10`), and construction
-// parses the real schema, so the verdict is an honest failure at that
-// leaf. The walk descending and the refinement failing are the two
-// separate facts; both are pinned.
+// Each case asserts the SHAPE the walk produced. Several of these
+// derived defaults cannot satisfy the leaf refinement they sit under
+// (`''` is not an email, `0` is not `>= 10`), and construction parses
+// the real schema, so the verdict is an honest failure at that leaf.
+// The walk descending and the refinement failing are separate facts,
+// and both are pinned.
 describe('zod v3 adapter — stripRefinements', () => {
   it('descends into z.tuple element refinements', () => {
     const schema = z.object({

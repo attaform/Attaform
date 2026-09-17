@@ -92,9 +92,9 @@ describe('DIR-F4 compile-time emitter ladders', () => {
  * `1`, and assert SSR emits the `selected` attribute (matching what
  * `setSelected` would do at CSR time).
  *
- * The symmetric radio case proves the post-fix parity: same shape
- * (`z.number()` + `value="2"` + model `2`) and SSR now emits `checked`.
- * Pre-fix this rendered unchecked and flipped to checked on hydration.
+ * The symmetric radio case proves the parity: the same shape
+ * (`z.number()`, `value="2"`, model `2`) and SSR emits `checked`, rather
+ * than rendering unchecked and flipping on hydration.
  */
 function makeTemplateModule(template: string, nodeTransforms: NodeTransform[]): Vue.Component {
   const result = baseCompile(template, {

@@ -6,19 +6,18 @@ import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/regi
 import { fakeSchema } from '../utils/fake-schema'
 
 /**
- * Regression coverage for Phase 8.1 — registry cleanup on scope dispose.
+ * Registry cleanup on scope dispose. `useForm` pairs
+ * `registry.trackConsumer(key)` with an `onScopeDispose` release, and
+ * the registry evicts the FormStore once the last consumer disposes.
+ * Two invariants:
+ *   1. The sole consumer unmounts and the entry is gone.
+ *   2. Consumers sharing a key clear it only on the last unmount.
  *
- * The pre-fix runtime stored every form in `registry.forms` on mount but
- * never removed it. A long-lived SPA that mounts and unmounts form-heavy
- * pages would accumulate detached FormStore instances (each holding a
- * reactive `form` ref, an `originals` Map, an `errors` Map, and field
- * records) for the lifetime of the app.
- *
- * Fix: `useForm` now pairs `registry.trackConsumer(key)` with an
- * `onScopeDispose` release. The registry evicts the FormStore once the
- * last consumer disposes. These tests assert the two invariants:
- *   1. Sole consumer unmounts → entry is gone.
- *   2. Multiple consumers share a key → only the last unmount clears it.
+ * Storing every form in `registry.forms` on mount without removing it
+ * leaks: a long-lived SPA mounting and unmounting form-heavy pages
+ * accumulates detached FormStore instances, each holding a reactive
+ * `form` ref, an `originals` Map, an `errors` Map and field records, for
+ * the lifetime of the app.
  */
 
 type Form = { name: string }

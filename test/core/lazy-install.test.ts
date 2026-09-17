@@ -82,10 +82,10 @@ describe('injectForm — lazy install', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     let resolved: unknown = 'not-set'
     const { app } = mountWithSetup(() => {
-      // No useForm ancestor anywhere, no createAttaform() — pre-fix
-      // this would throw RegistryNotInstalledError. Post-fix: lazy
-      // install attaches the registry, the lookup misses, the warn
-      // path fires, and injectForm returns null.
+      // No useForm ancestor anywhere and no createAttaform(): the lazy
+      // install attaches the registry, the lookup misses, the warn path
+      // fires, and injectForm returns null rather than throwing
+      // RegistryNotInstalledError.
       resolved = injectForm('nonexistent')
     })
 

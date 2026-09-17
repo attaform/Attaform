@@ -130,13 +130,13 @@ describe('inputTextAreaNodeTransform', () => {
    * static `value` attribute alongside it is conflict-free.
    */
   describe('preserves static value attribute on checkbox / radio', () => {
-    // The assertions look for the literal in the form `value: "apple"`
-    // — that's how Vue's compiler emits an object-property entry for a
-    // static attribute. The literal `"apple"` ALSO appears inside the
-    // synthesized equality expression (`...?.includes("apple")`), so
-    // `toContain('"apple"')` would false-pass even pre-fix; the
-    // key-value-pair regex is what specifically catches "did the
-    // static attribute survive as an own prop on the props object".
+    // The assertions look for the literal as `value: "apple"`, which is
+    // how Vue's compiler emits an object-property entry for a static
+    // attribute. `"apple"` also appears inside the synthesized equality
+    // expression (`...?.includes("apple")`), so `toContain('"apple"')`
+    // would pass whether or not the attribute survived. The
+    // key-value-pair regex is what actually asks whether the static
+    // attribute is still an own prop on the props object.
     it('keeps value="apple" on a static-type checkbox', () => {
       const code = compileWithTransform(
         `<input type="checkbox" value="apple" v-register="fruits" />`
@@ -188,29 +188,23 @@ describe('inputTextAreaNodeTransform', () => {
   })
 
   /**
-   * Repro for the playground newsletter bug: the checkbox flashed
-   * checked → unchecked → checked on every refresh.
+   * The synthesized `:checked` equality picks its element-side value per
+   * branch. Array.includes and Set.has compare against the static
+   * `value=` attr, which is the option value for a group. The scalar
+   * branch uses the `:true-value`, or the literal `true` for a boolean,
+   * matching the runtime's `getCheckboxValue(el, true)` fallback.
    *
-   * Pre-fix the synthesized `:checked` equality compared the model
-   * against a SINGLE element-side value (the static `value=` attr,
-   * defaulting to `''` when missing) for ALL three branches —
-   * Array.includes, Set.has, AND scalar `===`. That works for the
-   * array / Set group case (where `value="apple"` is the option-value)
-   * but is wrong for two scalar shapes:
+   * Using the `value=` attr for all three breaks both scalar shapes,
+   * because it defaults to `''` when missing:
    *
-   *   1. Single boolean (`z.boolean()` with no value attr): the
-   *      equality is `model === ''` — always false, even when the
-   *      box should be checked. SSR renders unchecked, the directive's
-   *      setChecked corrects after mount → visible flash.
-   *   2. Single string mapped via `:true-value` (e.g. `z.enum([...])`
-   *      with `:true-value="'subscribe'"`): the equality is
-   *      `model === ''` instead of `model === 'subscribe'`. Same
-   *      flash.
+   *   1. A `z.boolean()` with no value attr compares `model === ''`,
+   *      always false. SSR renders unchecked and the directive's
+   *      setChecked corrects it after mount.
+   *   2. A `z.enum([...])` with `:true-value="'subscribe'"` compares
+   *      `model === ''` rather than `model === 'subscribe'`.
    *
-   * Post-fix the scalar branch uses the `:true-value` (or, for the
-   * boolean case, the literal `true`) — matching the runtime's
-   * `getCheckboxValue(el, true)` fallback. SSR renders checked when
-   * it should be, and there's no flash on hydration.
+   * Either way the playground newsletter checkbox flashes checked,
+   * unchecked, checked on every refresh.
    */
   describe('checkbox scalar equality target', () => {
     it('uses :true-value as the scalar equality target', () => {

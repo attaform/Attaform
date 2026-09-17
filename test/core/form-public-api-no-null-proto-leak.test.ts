@@ -5,11 +5,11 @@
  * `form.errors`) also need to carry `Object.prototype` so any
  * third-party code that calls `.hasOwnProperty()` against them works.
  *
- * Vue's reactivity instruments `hasOwnProperty` on its proxies via
- * `toRaw(this).hasOwnProperty(key)`. With a null-prototype raw target
- * that call throws the same way `@pinia/nuxt` throws on the SSR
- * payload. The fix is the same: stop emitting null-prototype objects on
- * any consumer-observable surface.
+ * Vue's reactivity instruments `hasOwnProperty` on its proxies through
+ * `toRaw(this).hasOwnProperty(key)`, and a null-prototype raw target
+ * makes that call throw the same way `@pinia/nuxt` throws on the SSR
+ * payload. So no consumer-observable surface emits a null-prototype
+ * object.
  *
  * Each adapter (zod v3 + v4) gets the same coverage per
  * `feedback_zod_v3_v4_parity` — both are first-class peers.

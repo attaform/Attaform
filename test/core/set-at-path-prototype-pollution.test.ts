@@ -10,25 +10,23 @@
  * plain `{}` intermediate and the inherited `[[Set]]` accessor reassigns
  * the prototype chain. `setAtPath` is a thin call over the same spine.
  *
- * THAT SHAPE IS WHY THIS FILE EXISTS IN ITS CURRENT FORM. The hardening
- * originally landed on `setAtPath`, and this suite tested `setAtPath` —
- * but the write path had already moved to the schema-aware walker, which
- * was still writing through a raw `rec[head]`. Both facts were true and
- * the suite was green: it guarded a walker nothing called. The two
- * walkers are now one, and the end-to-end block at the bottom asserts
- * through `form.setValue`, so a future divergence cannot hide the same
- * way.
+ * WHY THE END-TO-END BLOCK AT THE BOTTOM EXISTS: the hardening once
+ * landed on `setAtPath` and this suite tested `setAtPath`, while the
+ * write path had already moved to the schema-aware walker, still writing
+ * through a raw `rec[head]`. Both facts were true and the suite was
+ * green, guarding a walker nothing called. The two walkers are one now,
+ * and asserting through `form.setValue` means a future divergence cannot
+ * hide the same way.
  *
- * The fix routes every untrusted-key write through `safeAssign`,
- * which lands the `__proto__` key via `Object.defineProperty`
- * (own data property, no chain mutation). Intermediate containers
- * carry `Object.prototype` so the resulting tree responds to
- * `.hasOwnProperty(...)`, `in`, and devalue / pinia-style payload
- * walkers; the spread (`{ ...root }`) at each copy-on-write step
- * uses `CreateDataProperty` per the spec, which bypasses the
- * inherited `__proto__` setter. Legitimate fields literally named
- * `prototype` / `constructor` / `__proto__` round-trip the same way
- * every other key does.
+ * Every untrusted-key write routes through `safeAssign`, which lands the
+ * `__proto__` key with `Object.defineProperty` as an own data property
+ * and no chain mutation. Intermediate containers carry
+ * `Object.prototype`, so the resulting tree answers `.hasOwnProperty()`,
+ * `in`, and devalue or pinia-style payload walkers, and the `{ ...root }`
+ * spread at each copy-on-write step uses `CreateDataProperty`, which the
+ * spec routes past the inherited `__proto__` setter. A field literally
+ * named `prototype`, `constructor` or `__proto__` round-trips like any
+ * other key.
  *
  * Two invariants per case:
  *   1. No pollution — a fresh plain `{}` does NOT inherit any

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+@@KEEP@@
 ### Fixed
 
 - **Every function you hand `useWizard` is contained.** A step slot
@@ -30,7 +33,62 @@
   is the standing audit.
 
 ## v0.30.0
-_No unreleased changes yet._
+### Breaking
+
+- **`useForm` goes from 15 options to 10.** Gone: `createAttaform({
+  defaults })`, `AttaformDefaults`, and the Nuxt `attaform: { defaults }`
+  key with its runtime-config slot, replaced by a three-line consumer
+  wrapper, `const useAppForm = (cfg) => useForm({ ...defaults, ...cfg })`;
+  `strict`, which was already the default and is now the only path;
+  `getDisplayState`; `maxRecursionDepth`; `autoAria`, with the aria wiring
+  staying on; `defineCoercion` and `coerce`'s custom-registry arm, with
+  `coerce` staying a boolean; `onInvalidSubmit`'s four-value enum, replaced
+  by `focusOnInvalidSubmit?: boolean` defaulting to `true`, with
+  `form.applyInvalidSubmitPolicy()` now zero-arg; the adapter fingerprint
+  SPI; and the orphaned `consumerEntries`, `PERSISTENCE_KEY_PREFIX` and
+  `DEFAULT_PERSISTENCE_DEBOUNCE_MS` exports. Kept: `schema`, `key`,
+  `defaultValues`, `validateOn`, `debounceMs`, `history`, `disabled`,
+  `rememberVariants`, `coerce`, `focusOnInvalidSubmit`. (#643)
+
+### Changed
+
+- **A minimal form ships 1,305 fewer gzipped bytes, and the last async
+  chunk is gone.** Eager cost went 34,509 to 33,204 B gz (-3.78%) and the
+  async column reached 0 from 1,377 B, the latter because the adapter
+  fingerprint SPI took the last chunk boundary a production build had with
+  it. Every figure is produced by a script in this repo rather than
+  estimated, and every phase has a dated entry in
+  `scripts/EAGER-BUDGET-LEDGER.md`, including the levers the program
+  measured and then declined. (#643)
+- **Nothing got slower, and six things got faster.** Across 23 scenarios at
+  seven interleaved rounds: field-array rotation on a 500-item array
+  +90.5%, `reset()` +54.1%, the untracked raw `getAtPath` walk +18.5% at
+  depth 4 and +11.5% at depth 1, the tracked token+raw walk +11.5% and
+  +5.2%. (#643)
+- **A form holds about a fifth less heap.** A signup form measured 59,043
+  to 45,976 B untouched and 113,419 to 89,061 B once every surface has been
+  read, and a 100-leaf form 1,039 to 663 kB. On a 400-row table carrying
+  800 errors, answering "every error at or under this path" was O(rows ×
+  errors) and is now O(errors): the first `form.list()` read 332 ms to
+  18.7 ms, and the same read per keystroke 278 ms to 7.4 ms. (#643)
+
+### Fixed
+
+- **Six defects, four of them losing data.** A `__proto__` key was silently
+  discarded on write and the form then reported `dirty: false`; a
+  discriminated union dropped every consumer default on zod v3 before
+  3.20.0; `nonoptional` and `success` resolved to an opaque kind, so type
+  checking went off for the fields using them; v3 skipped the
+  structural-completeness walk in strict mode, which is the default;
+  container bookkeeping was never released on shrink; and `descendStep`
+  could throw a consumer exception into render. (#643)
+- **A form that mounts holding errors no longer costs every unrelated
+  container a render on its first write.** Measured n-1 renders at n = 2,
+  10, 50 and 200 sibling containers, now 0 at every n, on both the
+  aggregate call form and the materialised `form.errors` tree. Chasing the
+  resulting iteration order found a shuffle that was already shipping, so
+  both readers now place by schema-declaration ordinal and the tree holds
+  its order under churn. (#643)
 
 ## v0.29.0
 ### Added
@@ -2530,7 +2588,18 @@ _No unreleased changes yet._
   now `shallowReadonly(shallowReactive(...))`.
 
 ## v0.14.0
-_No unreleased changes yet._
+### Added
+
+- **The docs site launched at attaform.dev.** Phase 1 of the site, which
+  also replaced the `playground/` package with `apps/site` as the dev
+  sandbox and moved the repo to a pnpm workspace. The `docs/migration/`
+  guides were removed in the same change; the entries below that cite them
+  now link to their last committed state. (#168, #169)
+- **Attaform is capitalised as a proper noun in narrative prose.** (#167)
+
+The breaking 0.14 rewrite (drillable surfaces, DU variant memory, schema
+coercion, v3/v4 parity) shipped in `v0.14.0-rc.0` below, not in this
+release, and is documented there.
 
 ## v0.14.0-rc.0
 - **Breaking: `useForm` validation config flattens.** The nested
@@ -2545,7 +2614,7 @@ _No unreleased changes yet._
   runtime drop. Type renames: `FieldValidationConfig`,
   `FieldValidationMode` are deleted; new types are `ValidateOn`,
   `ValidateOnConfig`. Migration in
-  [migration guide](./docs/migration/0.13-to-0.14.md).
+  [migration guide](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.13-to-0.14.md).
 
 - **Breaking: `validationMode: 'strict' | 'lax'` → `strict: boolean`.**
   String-literal config flattens to a boolean. Default is `true`
@@ -2566,7 +2635,7 @@ _No unreleased changes yet._
   single-bracket dotted access is intentionally NOT supported).
   `useFormContext` → `injectForm`. `FormState` → `FormMeta`.
   `FormFieldErrors` → `FormErrorsSurface`. Full migration in
-  [migration guide](./docs/migration/0.13-to-0.14.md).
+  [migration guide](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.13-to-0.14.md).
 
 - **New: schema-driven coercion** (`useForm({ coerce })`).
   User-typed DOM values get coerced to the schema's slim type at
@@ -2716,7 +2785,34 @@ detection skips the async pass so `meta.isValidating` doesn't
   up. The `WithIndexedUndefined<T>` type export is removed.
 
 ## v0.13.0
-_No unreleased changes yet._
+### Breaking
+
+- **Reading a form became Pinia-style property access.** `fieldErrors`
+  becomes `errors`, a `getValue(path)` call becomes `form.values.<path>`
+  (or `form.toRef(path)` for a ref), and `getFieldState(path).<prop>`
+  becomes `form.fieldState.<path>.<prop>`. Drilling replaces the accessor
+  methods across the whole read surface. (#156)
+- **Two persistence contradictions throw at construction instead of
+  warning late.** `useForm({ persist })` without an explicit `key:`, since
+  anonymous synthetic keys drift across mounts and can collide between
+  unrelated forms; and `register(_, { persist: true })` on a form whose
+  `useForm()` options have no `persist:`, where the opt-in is recorded but
+  nothing would ever reach storage. Both throw `AnonPersistError`, with
+  `cause` discriminating the two and `schemaFields` plus `callSite` on the
+  body, because a stack trace collapses misleadingly under `<script
+  setup>`. The "no fields opted in" microtask warning is gone with them.
+  Persistence itself was removed in v0.23.0. (#156)
+- **`transientEmpty` and `pendingEmpty` are both `blank`.** One word for
+  one concept, including `transientEmptyPaths` to `blankPaths`. (#157)
+
+### Fixed
+
+- **SSR fixes that shipped alongside the read-API change.** (#156)
+
+### Changed
+
+- **Docs moved onto the proxy API throughout**, in prose and in type-file
+  JSDoc, with a 0.12 to 0.13 migration guide. (#158)
 
 ## v0.12.1
 _No unreleased changes yet._
@@ -2727,7 +2823,7 @@ injected user errors`.** The data layer (errors as state) is now fully
 separable from the rendering layer (when to show them). Schema-driven
 errors and consumer-injected errors live in distinct internal stores;
 each has its own lifecycle, and the merged read view stays unchanged
-for consumers. See the [migration guide](./docs/migration/0.11-to-0.12.md)
+for consumers. See the [migration guide](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.11-to-0.12.md)
 for the full set of changes.
 
 - **Breaking: live validation by default.** `fieldValidation.on`
@@ -2829,7 +2925,7 @@ no user mutation or `validateAsync` call required. Lax remains
   v-register elements gains an optional `meta` parameter (clean
   break for the rare consumer who supplied a custom assigner via
   `onUpdate:registerValue`). See the
-  [migration guide](./docs/migration/0.11-to-0.12.md#breaking-persistence-opt-in-moved-to-per-field)
+  [migration guide](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.11-to-0.12.md#breaking-persistence-opt-in-moved-to-per-field)
   + [persistence recipe](./docs/recipes/persistence.md) for the full
   rewrite.
 - **New: shorthand `persist:` config.** `useForm({ persist: 'local' })`
@@ -2872,7 +2968,7 @@ auto-invalidates across deploys with no manual `version` bump, and
 the read-type for `getValue` / `register` now reports `T | undefined`
 once the path crosses an array index (out-of-bounds is an honest
 runtime case, not a type-system lie). See the
-[migration guide](./docs/migration/0.11-to-0.12.md) for the full set
+[migration guide](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.11-to-0.12.md) for the full set
 of related changes.
 
 - **Breaking: `AbstractSchema.getDefaultAtPath(path)` is now
@@ -3062,7 +3158,7 @@ unwrap, and our API was making consumers pay for it.
   types). The `runtime/adapters/zod-v4/initial-state` module file
   is now `default-values`.
 
-See [`docs/migration/0.10-to-0.11.md`](docs/migration/0.10-to-0.11.md)
+See [`https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.10-to-0.11.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.10-to-0.11.md)
 for a full migration snippet with `sed` one-liners covering all four
 breakages.
 
@@ -3122,11 +3218,11 @@ Two consumer-facing breakages since 0.6:
 
 - `useForm` requires `key`. Compile error without it; runtime error
   if passed `undefined` / `null` / `''`. See
-  [`docs/migration/0.7-to-0.8.md`](docs/migration/0.7-to-0.8.md).
+  [`https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.7-to-0.8.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.7-to-0.8.md).
 - `handleSubmit(cb)` returns a handler function instead of running
   immediately. Bind it directly to `@submit.prevent` or call it
   imperatively. See
-  [`docs/migration/0.6-to-0.7.md`](docs/migration/0.6-to-0.7.md).
+  [`https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.6-to-0.7.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.6-to-0.7.md).
 
 **Out of scope for this release (future candidates)**
 

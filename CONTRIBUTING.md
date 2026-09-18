@@ -99,7 +99,12 @@ The `version` script hook does two things during the workflow's
 version-bump step:
 
 1. Promotes `CHANGELOG.md`'s `## Unreleased` block to `## v<version>`
-   (`scripts/promote-changelog.mjs`).
+   (`scripts/promote-changelog.mjs`). **It fails the release if that block
+   is still the placeholder**, because promoting the placeholder is silent
+   and looks like success: 17 released versions carry
+   `_No unreleased changes yet._` as their entire entry that way. A release
+   with genuinely nothing to say writes `_No consumer-facing changes._`
+   itself rather than inheriting the placeholder.
 2. Fetches PR-sourced release notes for the range
    `(previous tag, HEAD)` from GitHub's `generate-notes` API and
    prepends the result to `RELEASES.md`

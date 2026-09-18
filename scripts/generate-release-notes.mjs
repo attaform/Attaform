@@ -96,7 +96,9 @@ function main() {
 
   // Most recent v-prefixed tag. `pnpm version` runs this hook BEFORE
   // it creates the new tag, so the tip is the previous release.
-  let previousTag = ''
+  // No initializer: the catch below returns, so nothing reads this before
+  // the assignment, and `no-useless-assignment` is right that `''` was dead.
+  let previousTag
   try {
     previousTag = execFileSync(
       'bash',

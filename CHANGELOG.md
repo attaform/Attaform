@@ -590,7 +590,7 @@
   gzipped bytes and the npm tarball down from 1.8 MB across 182 files to
   364.9 kB across 88. The wins below are the observable pieces of that
   program; the full ledger, including every refused arm and its
-  arithmetic, lives in `plans/size-teardown/00-program.md` and the landed
+  arithmetic, lives at [`plans/size-teardown/00-program.md`](https://github.com/attaform/Attaform/blob/bbcc0912/plans/size-teardown/00-program.md) and the landed
   appendix in `SIZE-TEARDOWN.md`. (#561)
 - **`v-register` is delivered where it is used, not welded into every
   bundle.** `createAttaform()` registers no app-wide directive anymore. A

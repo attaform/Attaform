@@ -45,7 +45,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { bench, describe } from 'vitest'
+import { test, type BenchRegistration } from 'vitest'
 import { createSSRApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { z as zV4 } from 'zod'
@@ -102,22 +102,34 @@ function buildSSRApp(adapter: Adapter, form: MatrixForm, mode: Mode): App {
   return app
 }
 
-describe('SSR per-field: emission cost decomposition (P5)', () => {
+test('SSR per-field: emission cost decomposition (P5)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const a of ADAPTERS) {
     for (const F of FIELD_COUNTS) {
       const form = flat(a.z, F)
-      bench(`ssr noreg F=${F} [${a.tag}]`, async () => {
-        await renderToString(buildSSRApp(a, form, 'noreg'))
-      })
-      bench(`ssr plain F=${F} [${a.tag}]`, async () => {
-        await renderToString(buildSSRApp(a, form, 'plain'))
-      })
-      bench(`ssr register-noaria F=${F} [${a.tag}]`, async () => {
-        await renderToString(buildSSRApp(a, form, 'register-noaria'))
-      })
-      bench(`ssr register-aria F=${F} [${a.tag}]`, async () => {
-        await renderToString(buildSSRApp(a, form, 'register-aria'))
-      })
+      arms.push(
+        bench(`ssr noreg F=${F} [${a.tag}]`, async () => {
+          await renderToString(buildSSRApp(a, form, 'noreg'))
+        })
+      )
+      arms.push(
+        bench(`ssr plain F=${F} [${a.tag}]`, async () => {
+          await renderToString(buildSSRApp(a, form, 'plain'))
+        })
+      )
+      arms.push(
+        bench(`ssr register-noaria F=${F} [${a.tag}]`, async () => {
+          await renderToString(buildSSRApp(a, form, 'register-noaria'))
+        })
+      )
+      arms.push(
+        bench(`ssr register-aria F=${F} [${a.tag}]`, async () => {
+          await renderToString(buildSSRApp(a, form, 'register-aria'))
+        })
+      )
     }
   }
+
+  await bench.compare(...arms)
 })

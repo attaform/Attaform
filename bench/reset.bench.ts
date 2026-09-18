@@ -9,7 +9,7 @@
  *
  * Reported absolute throughput; no regression floor gating yet.
  */
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
 import { createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { z } from 'zod'
@@ -48,23 +48,25 @@ function mount() {
   return captured
 }
 
-describe('reset: 100-leaf object form', () => {
+test('reset: 100-leaf object form', async ({ bench }) => {
   const form = mount()
   // Dirty every leaf before each run so reset has real work to do,
-  // leaving the form pristine would make reset a near-no-op.
-  bench(
+  // leaving the form pristine would make reset a near-no-op. `beforeEach`
+  // runs outside the timed window, so the dirtying is not charged to
+  // `reset()`; vitest 4 spelled this hook `setup`.
+  await bench(
     'reset() — full baseline rebuild',
-    () => {
-      form.reset()
-    },
     {
-      setup: () => {
+      beforeEach: () => {
         for (let g = 0; g < 10; g++) {
           for (let f = 0; f < 10; f++) {
             form.setValue(`g${g}.f${f}` as never, `x-${Math.random()}` as never)
           }
         }
       },
+    },
+    () => {
+      form.reset()
     }
-  )
+  ).run()
 })

@@ -29,6 +29,34 @@
   containment. `test/composables/wizard-slot-throw-containment.test.ts`
   is the standing audit.
 
+### Internal
+
+- **Attaform's benchmarks run on vitest 5.** vitest 5 rewrote the
+  benchmark API rather than removing it: `bench` is a test-context
+  fixture now, so each group in `bench/` is a `test(name, async ({ bench
+  }) => ...)` that hands its registrations to `bench.compare`. The 3x
+  ratio floor moved out of `scripts/check-bench.mjs` and into
+  `bench/lib/ratio-floor.ts`, where vitest asserts it directly, so a
+  broken floor fails `pnpm bench` and not only the gate script. Nothing
+  outside the benchmark layer needed changing, and the published package
+  is untouched.
+
+  The bump also found a measurement hazard worth naming. vitest 5 wraps
+  every module export in a counting getter while benchmarks run, and
+  charges that counter only to code crossing a module boundary. In a
+  paired suite that is the replacement arm alone, never the historical
+  baseline written inline beside it, so the tracker moves the ratio's
+  numerator on its own: `keystroke: 100-leaf form` read 3.03x with the
+  tracker on and 5.61x with it off. `vitest.config.ts` disables it
+  through `benchmark.suppressExportGetterWarnings`.
+
+- **The development toolchain moved to Node 24.** `.nvmrc` and the
+  Dockerfile now name Node 24 (`node:24-alpine`, pinned by digest),
+  matching the `lts/*` that CI has been resolving to since Krypton
+  became Active LTS. `engines.node` still declares a floor of Node 22
+  with no upper bound, and the weekly peer matrix still exercises
+  Node 22, so what Attaform supports is unchanged.
+
 ## v0.30.0
 ### Breaking
 

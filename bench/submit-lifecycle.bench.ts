@@ -11,7 +11,7 @@
  *
  * Reported absolute throughput; no regression floor gating yet.
  */
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
 import { createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { z } from 'zod'
@@ -47,7 +47,7 @@ function mount() {
   return captured
 }
 
-describe('submit-lifecycle: validate → handleSubmit → setErrors', () => {
+test('submit-lifecycle: validate → handleSubmit → setErrors', async ({ bench }) => {
   const form = mount()
   // Seed a plausible-looking form value so validation hits the happy
   // path; the server-error write is the work we're really measuring.
@@ -69,7 +69,7 @@ describe('submit-lifecycle: validate → handleSubmit → setErrors', () => {
     }
   )
 
-  bench('full submit cycle: validate + onSubmit + setErrors', async () => {
+  await bench('full submit cycle: validate + onSubmit + setErrors', async () => {
     await handler()
-  })
+  }).run()
 })

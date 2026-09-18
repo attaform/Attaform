@@ -14,7 +14,7 @@
  * benches are informational: a future commit can add a floor once a
  * stable baseline is recorded.
  */
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
 import { createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { z } from 'zod'
@@ -59,31 +59,31 @@ function mountAndCaptureForm(seedCount: number) {
   return captured
 }
 
-describe('field-arrays: append on a 100-item array', () => {
+test('field-arrays: append on a 100-item array', async ({ bench }) => {
   const form = mountAndCaptureForm(100)
-  bench('append(posts, newPost)', () => {
+  await bench('append(posts, newPost)', () => {
     form.append('posts', newPost(Math.random()))
-  })
+  }).run()
 })
 
-describe('field-arrays: append on a 1000-item array', () => {
+test('field-arrays: append on a 1000-item array', async ({ bench }) => {
   const form = mountAndCaptureForm(1000)
-  bench('append(posts, newPost)', () => {
+  await bench('append(posts, newPost)', () => {
     form.append('posts', newPost(Math.random()))
-  })
+  }).run()
 })
 
-describe('field-arrays: remove+append churn on a 500-item array', () => {
+test('field-arrays: remove+append churn on a 500-item array', async ({ bench }) => {
   const form = mountAndCaptureForm(500)
-  bench('remove(50) + append(newPost) — sustained rotation', () => {
+  await bench('remove(50) + append(newPost) — sustained rotation', () => {
     form.remove('posts', 50)
     form.append('posts', newPost(Math.random()))
-  })
+  }).run()
 })
 
-describe('field-arrays: swap on a 500-item array', () => {
+test('field-arrays: swap on a 500-item array', async ({ bench }) => {
   const form = mountAndCaptureForm(500)
-  bench('swap(posts, 0, 499)', () => {
+  await bench('swap(posts, 0, 499)', () => {
     form.swap('posts', 0, 499)
-  })
+  }).run()
 })

@@ -26,7 +26,8 @@
  * gated pair stays a stable check against the pre-5.1 baseline.
  */
 
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
+import { benchAgainstBaseline } from './lib/ratio-floor'
 import { getAtPath } from '../src/runtime/core/path-walker'
 import {
   canonicalizePath,
@@ -103,13 +104,22 @@ function makeOriginalsNew(): Map<PathKey, { segments: readonly Segment[]; value:
 
 const HOT_PATH = 'items.0.variants.0.pricing.regions.0.amount'
 
-describe('canonicalizePath: repeated dotted input', () => {
-  bench('old: parse + normalize + stringify, no cache', () => {
-    oldCanonicalizePath(HOT_PATH)
-  })
-  bench('new: LRU-cached on string inputs', () => {
-    canonicalizePath(HOT_PATH)
-  })
+test('canonicalizePath: repeated dotted input', async ({ bench }) => {
+  await benchAgainstBaseline(
+    bench,
+    [
+      'parse + normalize + stringify, no cache',
+      () => {
+        oldCanonicalizePath(HOT_PATH)
+      },
+    ],
+    [
+      'LRU-cached on string inputs',
+      () => {
+        canonicalizePath(HOT_PATH)
+      },
+    ]
+  )
 })
 
 // ---------- Group 2 (gated): isDirty segment recovery ----------
@@ -130,27 +140,35 @@ describe('canonicalizePath: repeated dotted input', () => {
 // gate keeps wide, stable headroom. End-to-end walk cost is the ungated
 // bench below.
 
-describe('isDirty recovery: 100-entry originals', () => {
+test('isDirty recovery: 100-entry originals', async ({ bench }) => {
   const originalsOld = makeOriginalsOld()
   const originalsNew = makeOriginalsNew()
 
-  bench('old: JSON.parse(pathKey) per entry', () => {
-    let total = 0
-    for (const [pathKey] of originalsOld) {
-      const segments = JSON.parse(pathKey) as Segment[]
-      total += segments.length
-    }
-    // Observe the result so the parse can't be optimized away.
-    if (total !== 200) throw new Error('fixture invariant: 100 entries × 2 segments')
-  })
-
-  bench('new: read stored segments', () => {
-    let total = 0
-    for (const [, { segments }] of originalsNew) {
-      total += segments.length
-    }
-    if (total !== 200) throw new Error('fixture invariant: 100 entries × 2 segments')
-  })
+  await benchAgainstBaseline(
+    bench,
+    [
+      'JSON.parse(pathKey) per entry',
+      () => {
+        let total = 0
+        for (const [pathKey] of originalsOld) {
+          const segments = JSON.parse(pathKey) as Segment[]
+          total += segments.length
+        }
+        // Observe the result so the parse can't be optimized away.
+        if (total !== 200) throw new Error('fixture invariant: 100 entries × 2 segments')
+      },
+    ],
+    [
+      'read stored segments',
+      () => {
+        let total = 0
+        for (const [, { segments }] of originalsNew) {
+          total += segments.length
+        }
+        if (total !== 200) throw new Error('fixture invariant: 100 entries × 2 segments')
+      },
+    ]
+  )
 })
 
 // ---------- Group 3 (ungated): end-to-end dirty walk ----------
@@ -161,11 +179,11 @@ describe('isDirty recovery: 100-entry originals', () => {
 // prototype-shadow guard in `descendStep`) stays visible over time
 // without gating a fragile ratio against it.
 
-describe('isDirty walk: 100-leaf pristine form (current shape)', () => {
+test('isDirty walk: 100-leaf pristine form (current shape)', async ({ bench }) => {
   const form = makeForm100()
   const originalsNew = makeOriginalsNew()
 
-  bench('stored-segments dirty walk', () => {
+  await bench('stored-segments dirty walk', () => {
     let dirty = false
     for (const [, { segments, value: original }] of originalsNew) {
       if (!Object.is(getAtPath(form, segments), original)) {
@@ -174,5 +192,5 @@ describe('isDirty walk: 100-leaf pristine form (current shape)', () => {
       }
     }
     if (dirty) throw new Error('fixture invariant: 100-leaf pristine form should read clean')
-  })
+  }).run()
 })

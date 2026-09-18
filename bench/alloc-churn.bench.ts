@@ -74,7 +74,7 @@
  * these are absolute-ops probes for the dashboard, like matrix.bench.ts.
  */
 
-import { bench, describe } from 'vitest'
+import { test, type BenchRegistration } from 'vitest'
 
 type Entry = {
   // `controller` models the PRE-SWAP scheduler (the comparison cells);
@@ -101,7 +101,9 @@ function readSink(): unknown {
 
 const KEY = 'f0'
 
-describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () => {
+test('P1: validation-schedule alloc (per keystroke, change/blur mode)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   // The irreducible floor: only the AbortController is freshly allocated; the
   // entry is reused so we isolate JUST the controller alloc + the prior-abort.
   {
@@ -112,15 +114,17 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       settled: false,
       released: false,
     })
-    bench('controller-only (irreducible floor)', () => {
-      const prev = state.get(KEY)
-      if (prev === undefined) return
-      if (prev.timer !== null) clearTimeout(prev.timer)
-      if (prev.controller !== undefined) prev.controller.abort()
-      const controller = new AbortController()
-      prev.controller = controller
-      blackbox(controller)
-    })
+    arms.push(
+      bench('controller-only (irreducible floor)', () => {
+        const prev = state.get(KEY)
+        if (prev === undefined) return
+        if (prev.timer !== null) clearTimeout(prev.timer)
+        if (prev.controller !== undefined) prev.controller.abort()
+        const controller = new AbortController()
+        prev.controller = controller
+        blackbox(controller)
+      })
+    )
   }
 
   // Today's pattern: a fresh entry object + run closure + map.set per keystroke.
@@ -133,24 +137,26 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       settled: false,
       released: false,
     })
-    bench('current (fresh entry + closure + map.set)', () => {
-      const prev = state.get(KEY)
-      if (prev !== undefined) {
-        if (prev.timer !== null) clearTimeout(prev.timer)
-        if (prev.controller !== undefined) prev.controller.abort()
-      }
-      const controller = new AbortController()
-      const fresh: Entry = { controller, timer: null, settled: false, released: false }
-      state.set(KEY, fresh)
-      const myEpoch = ++epoch
-      const run = (): void => {
-        if (controller.signal.aborted) return
-        if (fresh.settled) return
-        void myEpoch
-      }
-      fresh.run = run
-      blackbox(run)
-    })
+    arms.push(
+      bench('current (fresh entry + closure + map.set)', () => {
+        const prev = state.get(KEY)
+        if (prev !== undefined) {
+          if (prev.timer !== null) clearTimeout(prev.timer)
+          if (prev.controller !== undefined) prev.controller.abort()
+        }
+        const controller = new AbortController()
+        const fresh: Entry = { controller, timer: null, settled: false, released: false }
+        state.set(KEY, fresh)
+        const myEpoch = ++epoch
+        const run = (): void => {
+          if (controller.signal.aborted) return
+          if (fresh.settled) return
+          void myEpoch
+        }
+        fresh.run = run
+        blackbox(run)
+      })
+    )
   }
 
   // The bust: reuse the entry object, skip the map.set. AbortController and the
@@ -164,25 +170,27 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       settled: false,
       released: false,
     })
-    bench('pooled (reuse entry, mutate in place)', () => {
-      const entry = state.get(KEY)
-      if (entry === undefined) return
-      if (entry.timer !== null) clearTimeout(entry.timer)
-      if (entry.controller !== undefined) entry.controller.abort()
-      const controller = new AbortController()
-      entry.controller = controller
-      entry.timer = null
-      entry.settled = false
-      entry.released = false
-      const myEpoch = ++epoch
-      const run = (): void => {
-        if (controller.signal.aborted) return
-        if (entry.settled) return
-        void myEpoch
-      }
-      entry.run = run
-      blackbox(run)
-    })
+    arms.push(
+      bench('pooled (reuse entry, mutate in place)', () => {
+        const entry = state.get(KEY)
+        if (entry === undefined) return
+        if (entry.timer !== null) clearTimeout(entry.timer)
+        if (entry.controller !== undefined) entry.controller.abort()
+        const controller = new AbortController()
+        entry.controller = controller
+        entry.timer = null
+        entry.settled = false
+        entry.released = false
+        const myEpoch = ++epoch
+        const run = (): void => {
+          if (controller.signal.aborted) return
+          if (entry.settled) return
+          void myEpoch
+        }
+        entry.run = run
+        blackbox(run)
+      })
+    )
   }
 
   // Bust B: no AbortController at all. Cancellation rides a generation counter,
@@ -198,22 +206,24 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
       settled: false,
       released: false,
     })
-    bench('epoch-only (no AbortController, generation counter)', () => {
-      const entry = state.get(KEY)
-      if (entry === undefined) return
-      if (entry.timer !== null) clearTimeout(entry.timer)
-      const myGen = ++gen
-      entry.timer = null
-      entry.settled = false
-      entry.released = false
-      const run = (): void => {
-        if (myGen !== gen) return
-        if (entry.settled) return
-        void myGen
-      }
-      entry.run = run
-      blackbox(run)
-    })
+    arms.push(
+      bench('epoch-only (no AbortController, generation counter)', () => {
+        const entry = state.get(KEY)
+        if (entry === undefined) return
+        if (entry.timer !== null) clearTimeout(entry.timer)
+        const myGen = ++gen
+        entry.timer = null
+        entry.settled = false
+        entry.released = false
+        const run = (): void => {
+          if (myGen !== gen) return
+          if (entry.settled) return
+          void myGen
+        }
+        entry.run = run
+        blackbox(run)
+      })
+    )
   }
 
   // Bust B AS SHIPPED: drop the AbortController, cancel via a one-shot
@@ -229,25 +239,29 @@ describe('P1: validation-schedule alloc (per keystroke, change/blur mode)', () =
   {
     const state = new Map<string, Entry>()
     state.set(KEY, { aborted: false, timer: null, settled: false, released: false })
-    bench('flag (shipped: aborted boolean on entry)', () => {
-      const prev = state.get(KEY)
-      if (prev !== undefined) {
-        if (prev.timer !== null) clearTimeout(prev.timer)
-        prev.aborted = true
-      }
-      const fresh: Entry = { aborted: false, timer: null, settled: false, released: false }
-      state.set(KEY, fresh)
-      const run = (): void => {
-        // `=== true` only because the shared `Entry` type leaves `aborted`
-        // optional for the controller cells; the live scheduler's field is a
-        // non-optional `boolean`, read as a bare `if (fresh.aborted)`.
-        if (fresh.aborted === true) return
-        if (fresh.settled) return
-      }
-      fresh.run = run
-      blackbox(run)
-    })
+    arms.push(
+      bench('flag (shipped: aborted boolean on entry)', () => {
+        const prev = state.get(KEY)
+        if (prev !== undefined) {
+          if (prev.timer !== null) clearTimeout(prev.timer)
+          prev.aborted = true
+        }
+        const fresh: Entry = { aborted: false, timer: null, settled: false, released: false }
+        state.set(KEY, fresh)
+        const run = (): void => {
+          // `=== true` only because the shared `Entry` type leaves `aborted`
+          // optional for the controller cells; the live scheduler's field is a
+          // non-optional `boolean`, read as a bare `if (fresh.aborted)`.
+          if (fresh.aborted === true) return
+          if (fresh.settled) return
+        }
+        fresh.run = run
+        blackbox(run)
+      })
+    )
   }
+
+  await bench.compare(...arms)
 })
 
 // Keep the sink referenced at module scope so it is never dead code.

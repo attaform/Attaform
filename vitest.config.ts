@@ -71,6 +71,25 @@ export default defineConfig({
     // scenario run twice, and `check-bench` then gates on both halves.
     benchmark: {
       include: ['bench/**/*.bench.?(c|m)[jt]s?(x)'],
+      // vitest 5 wraps every module export in a counting getter while
+      // benchmarks run, so it can warn about benches that read imported
+      // bindings more than a million times. The counter is not free, and
+      // it is charged ONLY to code that crosses a module boundary.
+      //
+      // That is the worst possible shape for a ratio gate. The paired
+      // suites compare a historical implementation, written inline in the
+      // bench file and importing nothing, against the one that replaced
+      // it, which calls into `src/`. The tracker taxes the replacement
+      // and leaves the baseline alone, so it moves the numerator only.
+      // Measured on the vitest 5 bump, tracker on vs off, same commit:
+      // keystroke 100-leaf 3.03x -> 5.61x, keystroke 500-leaf 6.24x ->
+      // 10.74x, materializeErrors 3.40x -> 6.70x. The first of those sat
+      // 1% above the 3x floor purely as an artefact of the measurement.
+      //
+      // The warning it buys would not have caught this: its threshold is
+      // a million accesses per export and it never fired, while the
+      // overhead is paid on every access regardless.
+      suppressExportGetterWarnings: true,
     },
     // Stubs `window.isSecureContext = true`, so the secure-context gate
     // does not disable persistence under jsdom, and resets the one-shot

@@ -40,7 +40,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { bench, describe } from 'vitest'
+import { test, type BenchRegistration } from 'vitest'
 import { createSSRApp, defineComponent, h, type App } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { z as zV4 } from 'zod'
@@ -103,30 +103,44 @@ const FIELD_COUNTS = [5, 50, 500]
 const DEPTHS = [3, 8, 16]
 const ARRAY_ROWS = [10, 100, 1000]
 
-describe('init: cold form construction', () => {
+test('init: cold form construction', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const F of FIELD_COUNTS) {
     for (const a of ADAPTERS) {
       const form = flat(a.z, F)
-      bench(`init flat F=${F} [${a.tag}]`, async () => {
-        await mountAsync(a.useForm, form)
-      })
+      arms.push(
+        bench(`init flat F=${F} [${a.tag}]`, async () => {
+          await mountAsync(a.useForm, form)
+        })
+      )
     }
   }
+  await bench.compare(...arms)
 })
 
-describe('keystroke: single scalar write, flat (T2 diff vs F)', () => {
+test('keystroke: single scalar write, flat (T2 diff vs F)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const F of FIELD_COUNTS) {
     const form = flat(zV4, F)
     const handle = mountSync(useFormV4, form)
     handle.setValue(form.keystrokePath, form.keystrokeValue(0)) // prime the path
     let i = 1
-    bench(`keystroke flat F=${F} [v4]`, () => {
-      handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
-    })
+    arms.push(
+      bench(`keystroke flat F=${F} [v4]`, () => {
+        handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
+      })
+    )
   }
+  await bench.compare(...arms)
 })
 
-describe('keystroke: scalar write into a mostly-BLANK flat form (blank-sweep vs F)', () => {
+test('keystroke: scalar write into a mostly-BLANK flat form (blank-sweep vs F)', async ({
+  bench,
+}) => {
+  const arms: BenchRegistration<string>[] = []
+
   // Distinct from the defaulted flat sweep above. Provided defaults are NOT
   // blank-marked (schema-default-no-autoblank), so that form has an empty
   // blankPaths and never exercises the descendant sweep. Here every field is
@@ -138,34 +152,47 @@ describe('keystroke: scalar write into a mostly-BLANK flat form (blank-sweep vs 
     for (let k = 0; k < F; k++) handle.setValue(`f${k}`, unset) // mark all blank
     handle.setValue('f0', 'v0') // prime f0 (now non-blank; f1..f{F-1} stay blank)
     let i = 1
-    bench(`keystroke blank-flat F=${F} [v4]`, () => {
-      handle.setValue('f0', `v${i++}`)
-    })
+    arms.push(
+      bench(`keystroke blank-flat F=${F} [v4]`, () => {
+        handle.setValue('f0', `v${i++}`)
+      })
+    )
   }
+  await bench.compare(...arms)
 })
 
-describe('keystroke: deep-leaf write (T1 guard vs D, zero unions)', () => {
+test('keystroke: deep-leaf write (T1 guard vs D, zero unions)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const D of DEPTHS) {
     const form = deep(zV4, D)
     const handle = mountSync(useFormV4, form)
     handle.setValue(form.keystrokePath, form.keystrokeValue(0))
     let i = 1
-    bench(`keystroke deep D=${D} [v4]`, () => {
-      handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
-    })
+    arms.push(
+      bench(`keystroke deep D=${D} [v4]`, () => {
+        handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
+      })
+    )
   }
+  await bench.compare(...arms)
 })
 
-describe('keystroke: row-field write, wide array (T2 diff vs N)', () => {
+test('keystroke: row-field write, wide array (T2 diff vs N)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const N of ARRAY_ROWS) {
     const form = wideArray(zV4, N)
     const handle = mountSync(useFormV4, form)
     handle.setValue(form.keystrokePath, form.keystrokeValue(0))
     let i = 1
-    bench(`keystroke array N=${N} [v4]`, () => {
-      handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
-    })
+    arms.push(
+      bench(`keystroke array N=${N} [v4]`, () => {
+        handle.setValue(form.keystrokePath, form.keystrokeValue(i++))
+      })
+    )
   }
+  await bench.compare(...arms)
 })
 
 /**
@@ -205,7 +232,9 @@ const REFINE_ADAPTERS: RefineAdapter[] = [
   { tag: 'v3', z: zV3 as any, build: zodV3Adapter },
 ]
 
-describe('validate: whole-form parse forced by a container refine (T4 vs F)', () => {
+test('validate: whole-form parse forced by a container refine (T4 vs F)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const a of REFINE_ADAPTERS) {
     for (const F of FIELD_COUNTS) {
       const refined = flatRefined(a.z, F)
@@ -229,17 +258,24 @@ describe('validate: whole-form parse forced by a container refine (T4 vs F)', ()
       const leafPath = [plain.keystrokePath]
       const leafValue = plain.defaultValues[plain.keystrokePath]
 
-      bench(`t4 whole-form refined F=${F} [${a.tag}]`, async () => {
-        await builtRefined.validateAtPath(wholeRefined, undefined)
-      })
-      bench(`t4 whole-form plain F=${F} [${a.tag}]`, async () => {
-        await builtPlain.validateAtPath(wholePlain, undefined)
-      })
-      bench(`t4 subtree-leaf F=${F} [${a.tag}]`, async () => {
-        await builtPlain.validateAtPath(leafValue, leafPath)
-      })
+      arms.push(
+        bench(`t4 whole-form refined F=${F} [${a.tag}]`, async () => {
+          await builtRefined.validateAtPath(wholeRefined, undefined)
+        })
+      )
+      arms.push(
+        bench(`t4 whole-form plain F=${F} [${a.tag}]`, async () => {
+          await builtPlain.validateAtPath(wholePlain, undefined)
+        })
+      )
+      arms.push(
+        bench(`t4 subtree-leaf F=${F} [${a.tag}]`, async () => {
+          await builtPlain.validateAtPath(leafValue, leafPath)
+        })
+      )
     }
   }
+  await bench.compare(...arms)
 })
 
 /**
@@ -259,7 +295,11 @@ describe('validate: whole-form parse forced by a container refine (T4 vs F)', ()
  * O(1) subtree-leaf floor above (~3M ops/sec). A'' shrinks the constant; it does not
  * change the order. See PERF-ANALYSIS.md "T4".
  */
-describe("validate: refines-only win vs whole-form, format-heavy leaves (T4 A'')", () => {
+test("validate: refines-only win vs whole-form, format-heavy leaves (T4 A'')", async ({
+  bench,
+}) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const a of REFINE_ADAPTERS) {
     for (const F of FIELD_COUNTS) {
       const pair = flatRefinedFormatHeavy(a.z, F)
@@ -276,12 +316,17 @@ describe("validate: refines-only win vs whole-form, format-heavy leaves (T4 A'')
         throw new Error(`fmt refines-only must trip hasContainerOrRootRefine [${a.tag} F=${F}]`)
 
       const whole = pair.defaultValues
-      bench(`t4 fmt full F=${F} [${a.tag}]`, async () => {
-        await builtFull.validateAtPath(whole, undefined)
-      })
-      bench(`t4 fmt refines-only F=${F} [${a.tag}]`, async () => {
-        await builtRefinesOnly.validateAtPath(whole, undefined)
-      })
+      arms.push(
+        bench(`t4 fmt full F=${F} [${a.tag}]`, async () => {
+          await builtFull.validateAtPath(whole, undefined)
+        })
+      )
+      arms.push(
+        bench(`t4 fmt refines-only F=${F} [${a.tag}]`, async () => {
+          await builtRefinesOnly.validateAtPath(whole, undefined)
+        })
+      )
     }
   }
+  await bench.compare(...arms)
 })

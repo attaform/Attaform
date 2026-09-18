@@ -62,7 +62,7 @@
  * alloc-churn.bench.ts.
  */
 
-import { bench, describe } from 'vitest'
+import { test, type BenchRegistration } from 'vitest'
 import { z } from 'zod'
 import { zodAdapter } from '../src/zod-v4'
 import { getAtPath } from '../src/runtime/core/path-walker'
@@ -80,7 +80,9 @@ function readSink(): unknown {
 
 // ── Block 1: guard walk ────────────────────────────────────────────────────
 
-describe('P2: cross-variant DU guard (per nested write, zero unions)', () => {
+test('P2: cross-variant DU guard (per nested write, zero unions)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   // A nested zero-union schema `a.b.c.d` (depth 4: a realistic nested form;
   // the guard loop runs path.length-1 = 3 ancestor checks). Built through the
   // real adapter so `getUnionDiscriminatorAtPath` is the real cached method.
@@ -97,19 +99,21 @@ describe('P2: cross-variant DU guard (per nested write, zero unions)', () => {
 
   // Today: the loop runs unconditionally for path.length >= 2 (every nested
   // or array-row write), doing a slice + cached lookup per ancestor.
-  bench('guard current (slice + cached lookup per ancestor)', () => {
-    if (path.length >= 2) {
-      for (let i = 0; i < path.length - 1; i++) {
-        const ancestorPath = path.slice(0, i + 1)
-        const du = schema.getUnionDiscriminatorAtPath(ancestorPath)
-        if (du === undefined) continue
-        // Zero-union schema: never reached. (A real DU ancestor would do the
-        // getAtPath + variant-default checks the loop guards behind this.)
-        blackbox(du)
+  arms.push(
+    bench('guard current (slice + cached lookup per ancestor)', () => {
+      if (path.length >= 2) {
+        for (let i = 0; i < path.length - 1; i++) {
+          const ancestorPath = path.slice(0, i + 1)
+          const du = schema.getUnionDiscriminatorAtPath(ancestorPath)
+          if (du === undefined) continue
+          // Zero-union schema: never reached. (A real DU ancestor would do the
+          // getAtPath + variant-default checks the loop guards behind this.)
+          blackbox(du)
+        }
       }
-    }
-    blackbox(path)
-  })
+      blackbox(path)
+    })
+  )
 
   // The candidate bust: an init-time `hasAnyDiscriminatedUnion` flag lets a
   // zero-union schema skip the whole loop. Models the short-circuit.
@@ -120,15 +124,19 @@ describe('P2: cross-variant DU guard (per nested write, zero unions)', () => {
   const hasAnyDiscriminatedUnion = path
     .map((_, i) => path.slice(0, i + 1))
     .some((p) => schema.getUnionDiscriminatorAtPath(p) !== undefined)
-  bench('guard gated (has-any-DU init flag short-circuits)', () => {
-    // A zero-union schema short-circuits before the per-ancestor loop; the
-    // flag check is the entire per-write guard cost. The body models the work
-    // that WOULD run (never reached here: the flag is false).
-    if (hasAnyDiscriminatedUnion && path.length >= 2) {
-      for (let i = 0; i < path.length - 1; i++) blackbox(path.slice(0, i + 1))
-    }
-    blackbox(path)
-  })
+  arms.push(
+    bench('guard gated (has-any-DU init flag short-circuits)', () => {
+      // A zero-union schema short-circuits before the per-ancestor loop; the
+      // flag check is the entire per-write guard cost. The body models the work
+      // that WOULD run (never reached here: the flag is false).
+      if (hasAnyDiscriminatedUnion && path.length >= 2) {
+        for (let i = 0; i < path.length - 1; i++) blackbox(path.slice(0, i + 1))
+      }
+      blackbox(path)
+    })
+  )
+
+  await bench.compare(...arms)
 })
 
 // ── Block 2: blur-dedup snapshot ────────────────────────────────────────────
@@ -139,23 +147,29 @@ function flatValue(fieldCount: number): Record<string, unknown> {
   return o
 }
 
-describe('P2: blur-dedup snapshot clone (per committed blur-mode validation)', () => {
+test('P2: blur-dedup snapshot clone (per committed blur-mode validation)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const F of [5, 50, 500]) {
     // Whole-form scope (container/root refine present): the entire form is
     // deep-cloned per blur commit. O(F).
     const wholeForm = flatValue(F)
-    bench(`snapshot whole-form F=${F} (container-refine scope)`, () => {
-      blackbox(structuralSnapshot(wholeForm))
-    })
+    arms.push(
+      bench(`snapshot whole-form F=${F} (container-refine scope)`, () => {
+        blackbox(structuralSnapshot(wholeForm))
+      })
+    )
   }
 
   // Subtree scope (CORE-P1a, refine-free form): a single-leaf write clones
   // only the edited leaf. F-independent: this is what CORE-P1a saves the
   // common form down to.
   const leaf = 'v499'
-  bench('snapshot subtree (leaf, CORE-P1a scope)', () => {
-    blackbox(structuralSnapshot(leaf))
-  })
+  arms.push(
+    bench('snapshot subtree (leaf, CORE-P1a scope)', () => {
+      blackbox(structuralSnapshot(leaf))
+    })
+  )
 
   // The READER: a later blur extracts the subtree-AT-PATH from the snapshot
   // and the live form and diffs them. Only the leaf is walked, so this is
@@ -165,16 +179,20 @@ describe('P2: blur-dedup snapshot clone (per committed blur-mode validation)', (
     const live = flatValue(F)
     live[`f${F - 1}`] = 'changed'
     const leafPath = [`f${F - 1}`]
-    bench(`dedup compare F=${F} (reader: getAtPath x2 + diffAndApply)`, () => {
-      const snapshotSubtree = getAtPath(snapshot, leafPath)
-      const liveSubtree = getAtPath(live, leafPath)
-      let changed = false
-      diffAndApply(snapshotSubtree, liveSubtree, leafPath, () => {
-        changed = true
+    arms.push(
+      bench(`dedup compare F=${F} (reader: getAtPath x2 + diffAndApply)`, () => {
+        const snapshotSubtree = getAtPath(snapshot, leafPath)
+        const liveSubtree = getAtPath(live, leafPath)
+        let changed = false
+        diffAndApply(snapshotSubtree, liveSubtree, leafPath, () => {
+          changed = true
+        })
+        blackbox(changed)
       })
-      blackbox(changed)
-    })
+    )
   }
+
+  await bench.compare(...arms)
 })
 
 // Keep the sink referenced at module scope so it is never dead code.

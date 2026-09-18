@@ -62,7 +62,7 @@
   "build_status": "Met",
   "build_justification": "`pnpm install --frozen-lockfile && pnpm dev:prepare` bootstraps from source. The Docker-based dev flow (`make install` / `make dev`) is the documented setup. `pnpm prepack` (unbuild) is the production build.\n\nEvidence: [CONTRIBUTING.md](https://github.com/attaform/Attaform/blob/main/CONTRIBUTING.md), [package.json](https://github.com/attaform/Attaform/blob/main/package.json), [Makefile](https://github.com/attaform/Attaform/blob/main/Makefile)",
   "build_common_tools_status": "Met",
-  "build_common_tools_justification": "pnpm, Node.js 22, TypeScript, Vue 3, Nuxt 3+, unbuild. All canonical in the JS ecosystem.\n\nEvidence: [package.json](https://github.com/attaform/Attaform/blob/main/package.json), [build.config.ts](https://github.com/attaform/Attaform/blob/main/build.config.ts)",
+  "build_common_tools_justification": "pnpm, Node.js 22+, TypeScript, Vue 3, Nuxt 3+, unbuild. All canonical in the JS ecosystem.\n\nEvidence: [package.json](https://github.com/attaform/Attaform/blob/main/package.json), [build.config.ts](https://github.com/attaform/Attaform/blob/main/build.config.ts)",
   "build_floss_tools_status": "Met",
   "build_floss_tools_justification": "dependency-review.yml's license-policy block denies AGPL/GPL/LGPL but accepts permissive FLOSS licenses (MIT, ISC, Apache-2.0, BSD).\n\nEvidence: all dependencies are FLOSS-licensed (verified by [Pinned-Dependencies](https://securityscorecards.dev/viewer/?uri=github.com/attaform/Attaform) check at 10/10 and [dependency-review.yml](https://github.com/attaform/Attaform/blob/main/.github/workflows/dependency-review.yml))",
   "test_status": "Met",

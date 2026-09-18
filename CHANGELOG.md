@@ -2,9 +2,6 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
-
-@@KEEP@@
 ### Fixed
 
 - **Every function you hand `useWizard` is contained.** A step slot
@@ -3158,7 +3155,7 @@ unwrap, and our API was making consumers pay for it.
   types). The `runtime/adapters/zod-v4/initial-state` module file
   is now `default-values`.
 
-See [`https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.10-to-0.11.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.10-to-0.11.md)
+See [`docs/migration/0.10-to-0.11.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.10-to-0.11.md)
 for a full migration snippet with `sed` one-liners covering all four
 breakages.
 
@@ -3218,11 +3215,11 @@ Two consumer-facing breakages since 0.6:
 
 - `useForm` requires `key`. Compile error without it; runtime error
   if passed `undefined` / `null` / `''`. See
-  [`https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.7-to-0.8.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.7-to-0.8.md).
+  [`docs/migration/0.7-to-0.8.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.7-to-0.8.md).
 - `handleSubmit(cb)` returns a handler function instead of running
   immediately. Bind it directly to `@submit.prevent` or call it
   imperatively. See
-  [`https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.6-to-0.7.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.6-to-0.7.md).
+  [`docs/migration/0.6-to-0.7.md`](https://github.com/attaform/Attaform/blob/c2e57742/docs/migration/0.6-to-0.7.md).
 
 **Out of scope for this release (future candidates)**
 

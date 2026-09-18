@@ -2,7 +2,7 @@ name: Fallow
 
 # Non-gating code-intelligence pass: unused code, dependency hygiene,
 # duplication, circular dependencies, and complexity hotspots. This job
-# NEVER blocks a merge — every step is best-effort and the job is marked
+# NEVER blocks a merge: every step is best-effort and the job is marked
 # continue-on-error, so a finding (or a fallow crash) can't fail CI. The
 # report lands in the run's Step Summary for a reviewer to glance at.
 #
@@ -78,9 +78,9 @@ jobs:
         if: always()
         run: |
           {
-            echo "## 🌱 Fallow — code intelligence (non-gating)"
+            echo "## 🌱 Fallow: code intelligence (non-gating)"
             echo
-            echo "Calibrated by \`.fallowrc.jsonc\`. CRAP/complexity is **estimated** (no coverage in this job). Informational only — never gates a merge."
+            echo "Calibrated by \`.fallowrc.jsonc\`. CRAP/complexity is **estimated** (no coverage in this job). Informational only, never gates a merge."
             echo
             if [ -s fallow-report.md ]; then
               cat fallow-report.md

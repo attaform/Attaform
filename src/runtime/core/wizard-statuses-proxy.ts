@@ -13,7 +13,7 @@ import type { FormStatus, WizardStatusesProxy } from '../types/types-wizard'
  *   - **Reads track dependencies.** Each per-key entry is supplied
  *     as a `ComputedRef<FormStatus>` whose source-of-truth is the
  *     participating form's `meta`. Property access unwraps the
- *     computed (`.value`) so consumers don't deal with `.value` —
+ *     computed (`.value`) so a consumer never deals with `.value`,
  *     Vue's tracking still fires through the unwrap.
  *
  *   - **Writes are blocked.** Status entries are derived; writing
@@ -30,7 +30,7 @@ import type { FormStatus, WizardStatusesProxy } from '../types/types-wizard'
  *     active status set.
  *
  * Topology note: one level deep (no nested chaining), so this surface
- * is roughly half the bespoke logic of `form.values`' proxy — no
+ * is roughly half the bespoke logic of `form.values`' proxy: no
  * path-walking, no canonicalisation, no recursive descent. The
  * shared trap layer lives in `buildCallableReadonlySnapshotProxy`.
  */

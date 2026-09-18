@@ -1,10 +1,10 @@
 /**
- * Phase 5.9 — history overhead on the mutation path.
+ * Phase 5.9, history overhead on the mutation path.
  *
  * Measures `applyFormReplacement` cost with history enabled vs
  * disabled, on a 100-leaf form. With history on, each mutation
  * captures a snapshot (deep-clones the form, copies the errors
- * entries) and appends a ring-buffer position — expect a modest constant-factor
+ * entries) and appends a ring-buffer position, expect a modest constant-factor
  * penalty but no quadratic growth.
  *
  * No regression gate (no `old:` / `new:` pair). Reports numbers

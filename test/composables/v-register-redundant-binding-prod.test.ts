@@ -3,7 +3,7 @@
 // Prod gate for the runtime redundant-binding warn (#464). `__DEV__` (in
 // src/runtime/core/dev.ts) is computed at module-load time from
 // process.env.NODE_ENV, so exercising the prod branch needs the mock
-// hoisted above the directive import — hence a separate file (the main
+// hoisted above the directive import, hence a separate file (the main
 // runtime suite has `__DEV__` cached at `true`). Mirrors
 // transforms-prod-log.test.ts.
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -19,7 +19,7 @@ import { waitUntil } from '../utils/form-harness'
 
 const schema = z.object({ name: z.string() })
 
-describe('v-register runtime redundant-binding warn — production gate', () => {
+describe('v-register runtime redundant-binding warn: production gate', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()

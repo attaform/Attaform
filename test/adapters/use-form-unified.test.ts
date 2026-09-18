@@ -36,7 +36,7 @@ afterEach(() => {
   for (const host of mountedHosts.splice(0)) host.remove()
 })
 
-describe('attaform/zod — unified entry runtime dispatch', () => {
+describe('attaform/zod: unified entry runtime dispatch', () => {
   it('routes a Zod v4 schema through the v4 adapter (parses v4-only output)', () => {
     let captured: unknown
     mountWithSetup(() => {

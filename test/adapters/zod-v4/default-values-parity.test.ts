@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
 
 /**
- * v4 mirror of `test/adapters/zod-v3/default-values-parity.test.ts` —
+ * v4 mirror of `test/adapters/zod-v3/default-values-parity.test.ts`,
  * same scenarios across the same public adapter surface. v4 already
  * produces the contractually-correct default for every case at the time
  * the v3 cluster was written; this file pins the reference so the v3

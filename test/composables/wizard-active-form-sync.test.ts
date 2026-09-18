@@ -9,8 +9,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * Regression guard: under eager activation, sync `defaultValues` on
  * every step (current and non-current) must be visible immediately
- * at construction. Sync values resolve at `buildFreshState` — before
- * any microtask flush — so they are already in `form.values` by the
+ * at construction. Sync values resolve at `buildFreshState`, before
+ * any microtask flush: so they are already in `form.values` by the
  * time `useWizard` initialises.
  */
 
@@ -32,7 +32,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — sync defaults across all steps', () => {
+describe('useWizard: sync defaults across all steps', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -1,19 +1,17 @@
 // @vitest-environment jsdom
 /**
- * PASS2-2 — concurrent per-path async field validations had only
- * a per-path AbortController and no form-level epoch counter, so
- * two runs on DIFFERENT paths could both commit whole-form verdicts.
- * Whichever Promise settled LAST replaced the previously-committed
- * error map — even when its verdict was computed against pre-edit
- * state. Common with slow server-uniqueness refines: type B after A,
- * B's verdict commits first, then A's slow uniqueness check resolves
- * with the pre-B form and clobbers B's just-committed errors.
+ * PASS2-2: a form-level monotonic schedule epoch, re-checked immediately
+ * before `applySchemaErrorsForSubtree([], ...)`, drops any run whose
+ * `myEpoch <= lastCommittedEpoch` because a fresher verdict has already
+ * landed. The per-path AbortController guards same-path rapid typing;
+ * the epoch guards cross-path races.
  *
- * The fix is a form-level monotonic schedule epoch + a re-check
- * immediately before `applySchemaErrorsForSubtree([], …)`: a run
- * whose `myEpoch <= lastCommittedEpoch` is dropped (a fresher
- * verdict already landed). Per-path abort still guards same-path
- * rapid typing; the epoch guards cross-path races.
+ * With only the per-path controller, two runs on DIFFERENT paths both
+ * commit whole-form verdicts and whichever Promise settles LAST replaces
+ * the error map, even when its verdict was computed against pre-edit
+ * state. Slow server-uniqueness refines make it routine: type B after A,
+ * B's verdict commits, then A's uniqueness check resolves against the
+ * pre-B form and clobbers it.
  *
  * The race is forced deterministically by handing each `.refine`
  * a manually-resolvable Promise. Run() chain order:
@@ -43,8 +41,8 @@ async function drainMicrotasks(rounds = 8): Promise<void> {
 function buildSchemaV4() {
   const resolvers: Array<(v: boolean) => void> = []
   // Container refine on the root forces the runtime's per-keystroke
-  // scope to stay whole-form (CORE-P1a's predicate returns `true`)
-  // — which is the regime PASS2-2's cross-path clobber lived in.
+  // scope to stay whole-form (CORE-P1a's predicate returns `true`):
+  // which is the regime PASS2-2's cross-path clobber lived in.
   // The trivial sync `() => true` is enough to flip the predicate
   // without polluting the resolvers queue.
   const schema = zV4
@@ -96,7 +94,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, build: buildSchemaV3 },
 ] as const
 
-describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
+describe.each(adapters)('async-race epoch: $name', ({ useForm, build }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -105,7 +103,7 @@ describe.each(adapters)('async-race epoch — $name', ({ useForm, build }) => {
 
   it('drops a stale call-1 commit that resolves AFTER a fresher call-2 commit', async () => {
     const { schema, resolvers } = build()
-    // useForm has v3-or-v4 union under describe.each — single inline
+    // useForm has v3-or-v4 union under describe.each, single inline
     // cast is the cleanest tool here (mirrors the
     // field-validation-counts-migration pattern).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

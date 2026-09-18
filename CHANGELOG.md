@@ -313,7 +313,7 @@ _No unreleased changes yet._
   it. `Object.keys` invokes a Proxy's `ownKeys` and
   `getOwnPropertyDescriptor` traps and `key in obj` invokes its `has`
   trap, so an existence check or a key listing can throw before any
-  property has been touched — and Vue's `reactive()` returns a Proxy.
+  property has been touched: and Vue's `reactive()` returns a Proxy.
   Array indices get the same treatment: an index can be an accessor,
   and `slice()` reads every one.
 
@@ -1443,7 +1443,7 @@ _No unreleased changes yet._
   an explicit submit reveals the verdict immediately; and focusing out of a
   field mid-check surfaces the spinner promptly instead of waiting out a
   window meant for active typing. `pending` is driven by async-ness, not a
-  network round-trip — a heavy client-side async check surfaces the spinner
+  network round-trip: a heavy client-side async check surfaces the spinner
   exactly like a server call. This shapes only the display projection:
   `errors`, `valid`, `validating`, and the underlying validation run
   exactly as before. New exports:
@@ -1463,13 +1463,13 @@ _No unreleased changes yet._
   drive a form-level "validating" affordance; gate a submit button on
   `form.meta.submitting`, the precise "a submit is in flight" flag.
 
-- **Cross-bundler plugins — `attaform/rollup`, `attaform/esbuild`,
+- **Cross-bundler plugins: `attaform/rollup`, `attaform/esbuild`,
   `attaform/webpack`, `attaform/rspack`.** Each rewrites `attaform/zod` to
   the single matching adapter subpath at the consumer's build (joining the
   existing `attaform/vite` plugin), so a non-Vite consumer stops shipping
   both the v3 and v4 adapters (~7 kB gz). Each plugin imports nothing from
-  its bundler — the hook API is hand-rolled as structural types and
-  injected at the consumer's build — so the zero-dependency contract holds.
+  its bundler: the hook API is hand-rolled as structural types and
+  injected at the consumer's build: so the zero-dependency contract holds.
   The Vue SFC `v-register` transforms remain Vite-only.
 
 ### Changed
@@ -1478,11 +1478,11 @@ _No unreleased changes yet._
   `(prev, ctx) => DisplayMachine`** (previously
   `(field, formMeta) => DisplayState`). A per-form engine owns the clock and
   a single deadline timer; the reducer owns timing policy. Breaking at the
-  override seam — pre-1.0, no back-compat alias. Compose with the exported
+  override seam: pre-1.0, no back-compat alias. Compose with the exported
   `defaultDisplayState`, or retune the spinner with `makeDefaultDisplayState`.
 
-- **Smaller production builds.** Dev-only code — runtime warnings and the
-  devtools install — now folds out of consumer production bundles through a
+- **Smaller production builds.** Dev-only code: runtime warnings and the
+  devtools install: now folds out of consumer production bundles through a
   DCE-able `__DEV__` flag, and optional features (multi-tab sync,
   persistence, the schema fingerprint walker) lazy-load as async chunks off
   the always-on `useForm` path. With the v3 / v4 adapter shared-core
@@ -1496,8 +1496,8 @@ _No unreleased changes yet._
 
 ### Removed
 
-- **The `lodash-es` peer dependency.** Its only runtime uses — a trivial
-  `isFunction` and a `cloneDeep` of a freshly-built Zod schema — are replaced
+- **The `lodash-es` peer dependency.** Its only runtime uses: a trivial
+  `isFunction` and a `cloneDeep` of a freshly-built Zod schema: are replaced
   with a schema-aware clone that preserves the discriminated-union
   pointer-break invariant. The only always-required peers are now `vue` and
   `zod`; Attaform ships zero runtime dependencies.
@@ -2243,7 +2243,7 @@ Pre-1.0 rip-and-replace; no compat shims.
   handshake (O(N) tiny announces + 1 snapshot). Cascade:
   `register({ multiTab })` > `useForm({ multiTab })` > global >
   library default `true`. Defenses: same-origin + secure-context
-  gate (HTTPS or localhost — also gates built-in persistence
+  gate (HTTPS or localhost: also gates built-in persistence
   storage adapters), bidirectional sensitive-path filter,
   prototype-pollution rejection, `senderId` echo drop, `v: 1`
   protocol versioning, post-apply schema validation. See
@@ -2256,15 +2256,15 @@ Pre-1.0 rip-and-replace; no compat shims.
   method + reactive `canUndo` / `canRedo` / `size` flags all
   under one bundle. **Breaking:** `form.undo` / `form.redo` and
   `form.meta.canUndo` / `canRedo` / `historySize` removed.
-- **`form.process()`** — on-demand post-transform snapshot.
-- **`form.touch(path?)`** — programmatic touched-flag flip.
+- **`form.process()`**: on-demand post-transform snapshot.
+- **`form.touch(path?)`**: programmatic touched-flag flip.
 - **`field.showErrors` + `field.firstError`** with configurable
   `shouldShowErrors` predicate (per-form / global).
-- **`form.setFormErrors` / `form.clearFormErrors`** — formal
+- **`form.setFormErrors` / `form.clearFormErrors`**: formal
   surface for the form-level error bucket at `path: []`.
 - **`maxRecursionDepth` knob** for recursive `z.lazy(...)`
   schemas. Library default 64; pass `Infinity` to disable.
-- **Input/output type split** — `defaultValues` + `setValue`
+- **Input/output type split**: `defaultValues` + `setValue`
   accept `z.input<Schema>`; `form.values()` returns
   `z.output<Schema>`. Write-boundary input normalization
   (preprocess) runs at `setValue` time.
@@ -2290,7 +2290,7 @@ Pre-1.0 rip-and-replace; no compat shims.
 - **`handleSubmit` rejects re-entry** while a submission is in
   flight (no double-click parallel submits).
 - **`setFieldErrors` / `addFieldErrors` filter to own
-  `formKey`** — cross-form entries dropped with dev warning.
+  `formKey`**: cross-form entries dropped with dev warning.
 - **Per-instance config lift.** Shared-key `useForm` callsites
   honor their own `validateOn` / `debounceMs` /
   `shouldShowErrors` / `coerce` / `rememberVariants`.
@@ -2335,7 +2335,7 @@ Pre-1.0 rip-and-replace; no compat shims.
   `## Security` section.
 - Persistence recipe: secure-context-gate documentation +
   `sensitiveNames` composition example.
-- SEO discovery gated on `VERCEL_ENV === 'production'` —
+- SEO discovery gated on `VERCEL_ENV === 'production'`:
   preview / sandbox deploys emit `noindex` + suppressed
   sitemap, mirroring the IndexNow ping gate.
 
@@ -2365,14 +2365,14 @@ _No unreleased changes yet._
   `state.schemaErrors` immediately at construction. Pre-fix, the
   presence of any async refine caused `safeParse` to throw, and
   the catch swallowed every sync-refinement error along with the
-  async ones — sync verdicts only landed after the post-mount
+  async ones: sync verdicts only landed after the post-mount
   async pass, so UI bound to construction-time errors ("fix N
   errors" badges, the demo REPL stepper) flickered for a frame.
   The catch now retries against a sync-only variant of the schema
   via a new `stripAsyncChecks` helper that filters async refines
   while preserving every sync refine (`.refine`, `.superRefine`,
   built-in checks). Async-only verdicts stay deferred to the
-  post-mount async pass — that contract is unchanged. The zod-v3
+  post-mount async pass: that contract is unchanged. The zod-v3
   adapter carries the same conceptual gap; lifting v3 to parity
   requires a probe-and-parse detection scheme or a slim-schema
   redesign and is tracked as a follow-up.
@@ -2380,7 +2380,7 @@ _No unreleased changes yet._
 - **Discriminated-union access extends to `form.values` and to
   every path-resolver type.** `form.values.cargo.permitNumber`
   (oversized-only) now types as `string | undefined` regardless of
-  active variant — the same merged-view treatment we applied to
+  active variant: the same merged-view treatment we applied to
   `form.fields` and `form.errors`. Implementation lifts `ValuesSurface`
   via a new `LiftedValueShape<T>` helper. In addition, `NestedType`
   and `NestedReadType` switched to `KeyofUnion` / `ValueOfUnion` so
@@ -2391,7 +2391,7 @@ _No unreleased changes yet._
   union). Net: `setValue('cargo.tempMinC', 4)`, `toRef('cargo.tempMinC')`,
   `register('cargo.tempMinC')` etc. now typecheck on schemas where
   `tempMinC` is variant-only. Strict-variant write-side input still
-  required by `setValue` and `defaultValues` whole-cargo writes —
+  required by `setValue` and `defaultValues` whole-cargo writes:
   `WriteShape` itself stays distributive.
 
 - **Discriminated-union forms expose merged metadata proxies.**
@@ -2453,7 +2453,7 @@ _No unreleased changes yet._
 
 - **`form.setFormErrors` / `form.clearFormErrors`.** First-class
   shortcut for the form-level error case (entries at `path: []`).
-  Replaces just the form-level slot — field errors are untouched —
+  Replaces just the form-level slot, field errors are untouched,
   with the library filling in `path: []`, `formKey`, and a default
   `code: 'atta:form-error'` per entry. Pass an empty array (or call
   `clearFormErrors()`) to clear. Form-level errors continue to
@@ -2461,7 +2461,7 @@ _No unreleased changes yet._
   intentionally excludes them.
 
 - **Per-field `validating` and `valid`.** `form.fields.<path>.validating`
-  is the per-field analogue of `form.meta.validating` — `true` while a
+  is the per-field analogue of `form.meta.validating`: `true` while a
   field-level run is in flight at this path (debounced
   `validate-on-change` runs and cross-field re-validations targeting
   the path). Whole-form `validate()` / `validateAsync()` calls drive
@@ -2472,7 +2472,7 @@ _No unreleased changes yet._
   on `FormStore`); `> 0` semantics so a brief abort/restart overlap
   doesn't flicker `validating` off mid-flight.
 
-- **Breaking — `is`-prefix dropped from state-boolean property names.**
+- **Breaking: `is`-prefix dropped from state-boolean property names.**
   `form.meta` and `FieldStateLeaf` now use bare adjectives for state
   flags, reserving the `is` prefix for type-predicate functions
   (`isPlainRecord(x)`, `isUnset(x)`). Renames:
@@ -2497,7 +2497,7 @@ _No unreleased changes yet._
   is untouched (W3C standard).
 
 - **Reactive `RegisterValue.path` proxy.** `register('email').path`
-  now tracks under `computed` / `watchEffect` reads — rotating the
+  now tracks under `computed` / `watchEffect` reads: rotating the
   parent's path binding re-runs dependents in the child without a
   manual `.value` step. `formKey`, `formInstanceId`, and `segments`
   added alongside; `path` keeps its canonical JSON-encoded `PathKey`
@@ -2508,12 +2508,12 @@ _No unreleased changes yet._
 _No unreleased changes yet._
 
 ## v0.14.0-rc.0
-- **Breaking — `useForm` validation config flattens.** The nested
+- **Breaking: `useForm` validation config flattens.** The nested
   `fieldValidation: { on, debounceMs }` object is gone; both fields
   move to the top level as `validateOn` and `debounceMs`. The third
   trigger renames `'none'` → `'submit'` (submit IS the validator;
   the new name reads more directly). The `debounceMs` default flips
-  `125` → `0` (synchronous; no `setTimeout` indirection — `0` is the
+  `125` → `0` (synchronous; no `setTimeout` indirection: `0` is the
   off-switch). `debounceMs` is now type-gated to `validateOn:
   'change'` via the discriminated `ValidateOnConfig` union; pairing
   it with `'blur'` / `'submit'` is a TS error rather than a silent
@@ -2522,7 +2522,7 @@ _No unreleased changes yet._
   `ValidateOnConfig`. Migration in
   [migration guide](./docs/migration/0.13-to-0.14.md).
 
-- **Breaking — `validationMode: 'strict' | 'lax'` → `strict: boolean`.**
+- **Breaking: `validationMode: 'strict' | 'lax'` → `strict: boolean`.**
   String-literal config flattens to a boolean. Default is `true`
   (previously `'strict'`). The `ValidationMode` type is deleted (no
   alias; pre-1.0 clean replace). The v3 adapter's previously-inconsistent
@@ -2533,7 +2533,7 @@ _No unreleased changes yet._
   refinements in slim defaults; pass `strict: false` to opt back
   into the old `'lax'`-equivalent behaviour.
 
-- **Breaking — useForm return shape rewritten around drillable
+- **Breaking: useForm return shape rewritten around drillable
   proxies + `meta`.** `form.state` → `form.meta` (plus a new
   `meta.errors` flat aggregate and per-mount `meta.instanceId`).
   `form.errors` / `form.values` / `form.fields` become leaf-aware
@@ -2543,19 +2543,19 @@ _No unreleased changes yet._
   `FormFieldErrors` → `FormErrorsSurface`. Full migration in
   [migration guide](./docs/migration/0.13-to-0.14.md).
 
-- **New — schema-driven coercion** (`useForm({ coerce })`).
+- **New: schema-driven coercion** (`useForm({ coerce })`).
   User-typed DOM values get coerced to the schema's slim type at
-  the directive layer — `string→number` and `string→boolean` by
+  the directive layer: `string→number` and `string→boolean` by
   default. Pass `false` to disable, or a `CoercionRegistry` to
   replace the built-in rules. `defineCoercion(...)` narrows
   `transform` parameter typing for custom rules. Programmatic
   writes (`form.setValue`, `setValueWithInternalPath`) are NEVER
-  coerced — coercion is user-input-only. New exports:
+  coerced: coercion is user-input-only. New exports:
   `defaultCoercionRules`, `defineCoercion`, `CoercionEntry`,
   `CoercionRegistry`, `CoercionResult`. See
   [recipe](./docs/recipes/coerce.md).
 
-- **New — register transforms** (`register(path, { transforms: [...] })`).
+- **New: register transforms** (`register(path, { transforms: [...] })`).
   Sync pure-function pipeline that runs AFTER directive modifiers
   (`.lazy` / `.trim` / `.number`) and BEFORE the assigner. Useful
   for trim / lowercase / mask / clamp normalisations. New export:
@@ -2563,27 +2563,27 @@ _No unreleased changes yet._
   so a personal library of transforms plugs into any path. See
   [recipe](./docs/recipes/transforms.md).
 
-- **New — discriminated-union variant memory** (`useForm({ rememberVariants })`).
+- **New: discriminated-union variant memory** (`useForm({ rememberVariants })`).
   Switching a DU variant (`notify.channel: 'email' → 'sms' →
   'email'`) restores the previous variant's typed subtree by
   default. Default `true`; pass `false` to drop the outgoing
   variant on every switch. Memory is in-memory only and does not
-  survive reload — persisted state restores values on hydration,
+  survive reload: persisted state restores values on hydration,
   but variant memory starts empty. `reset()` clears all memory;
   `resetField(path)` clears entries under `path`. See
   [recipe](./docs/recipes/discriminated-unions.md).
 
-- **Fix — DOM force-sync after default assigner.** When a transform
+- **Fix: DOM force-sync after default assigner.** When a transform
   or coerce produces a value identical to current storage, the
   diff-apply layer skipped the patch (no semantic change → no
   reactive trigger → no render), leaving the DOM stranded at the
   user-typed text. The directive now imperatively syncs the DOM
   to storage after the default assigner runs across every variant
   (text / checkbox / radio / select). Custom assigners
-  (`@update:registerValue`) keep ownership — the force-sync is
+  (`@update:registerValue`) keep ownership: the force-sync is
   gated on `isDefaultAssigner`.
 
-- **Fix — `debounceMs: 0` skips `setTimeout` entirely.** Both the
+- **Fix: `debounceMs: 0` skips `setTimeout` entirely.** Both the
   field-validation debouncer and the persistence debouncer
   (`createDebouncedWriter`) treat `0` as the off-switch. Pre-fix
   they fell through to `setTimeout(fn, 0)` (next macrotask, browser
@@ -2591,7 +2591,7 @@ _No unreleased changes yet._
 
 - **Persistence hydration now revalidates against the rehydrated
   value.** Pre-fix `wirePersistence` swapped in the persisted form
-  via `applyFormReplacement` and stopped — sync errors stayed stale
+  via `applyFormReplacement` and stopped: sync errors stayed stale
   (still describing the empty default), and async refines never
   fired. A consumer who persisted `email: 'taken@example.com'`
   (passes `z.email()` sync, fails an async uniqueness refine) would
@@ -2601,10 +2601,10 @@ _No unreleased changes yet._
   validation pass so sync + async results land against the actual
   rehydrated value. Affects every `persist:` configuration.
 
-- **New — construction-time async-validation seed in strict mode.**
+- **New: construction-time async-validation seed in strict mode.**
   Schemas carrying async-only verdicts (e.g. zod's
   `.refine(async (v) => …)`) previously didn't surface those errors
-  at construction — sync `safeParse` throws on async pieces, the
+  at construction: sync `safeParse` throws on async pieces, the
   adapter caught and returned success. The runtime now asks the
   schema's `needsAsyncValidation()` and queues a one-shot full-form
   async pass when true, so errors land on a later microtask without
@@ -2617,11 +2617,11 @@ _No unreleased changes yet._
   scheduling is wrapped in `queueMicrotask` so the
   `activeValidations++` lands AFTER Vue's synchronous hydration /
   first render, keeping SSR and CSR first-render output in sync.
-  Sync schemas (the common case) still validate fully synchronously
-  — detection skips the async pass so `meta.isValidating` doesn't
+  Sync schemas (the common case) still validate fully synchronously:
+detection skips the async pass so `meta.isValidating` doesn't
   flash true at mount for forms that have nothing async to validate.
   `AbstractSchema` gains an OPTIONAL `needsAsyncValidation?(): boolean`
-  method — adapters that don't model async work can omit it, the
+  method: adapters that don't model async work can omit it, the
   runtime treats absence as `false`. Zod v4 implements it via a
   schema-tree walk; the v3 adapter omits it (consumers wanting
   construction-time async errors should use `attaform/zod`).
@@ -2638,10 +2638,10 @@ _No unreleased changes yet._
   `defaultCode?: string` option. Structured `{ message, code }`
   entries continue to forward `code` verbatim. Mixed arrays are
   fine. Half-structured entries (`{ message }` missing `code`) are
-  still rejected — a server emitting that probably has a bug worth
+  still rejected: a server emitting that probably has a bug worth
   surfacing.
 
-- **Behavior change — `focusFirstError` / `scrollToFirstError` /
+- **Behavior change: `focusFirstError` / `scrollToFirstError` /
   `onInvalidSubmit: 'focus-first-error'` target the visually-first
   errored field instead of the schema-declaration-first.** "First" is
   now DOM-tree order via `compareDocumentPosition`; pre-fix it was
@@ -2649,11 +2649,11 @@ _No unreleased changes yet._
   internal error Map preserved). Templates that rendered fields in a
   different order than the schema declared them previously focused
   the wrong field on submit failure. CSS `order:` flexbox/grid
-  reordering is NOT respected — DOM-tree order wins. See the
+  reordering is NOT respected: DOM-tree order wins. See the
   [troubleshooting entry](./docs/troubleshooting.md#focus-jumped-to-a-field-i-didnt-expect-on-submit)
   for the caveat.
 
-- **Behavior change — focus is now scoped to the calling
+- **Behavior change: focus is now scoped to the calling
   `useForm()` instance.** When two `useForm({ key })` callsites share
   a key (sidebar + main rendering the same form), each callsite's
   `focusFirstError` only targets elements registered through THAT
@@ -2663,18 +2663,18 @@ _No unreleased changes yet._
   parent-submit-focus continues to work for inputs registered by
   deep children.
 
-- **New — `form.meta.instanceId: string`.** Per-`useForm()`-call
+- **New: `form.meta.instanceId: string`.** Per-`useForm()`-call
   identity, opaque format, stable per mount. Useful for devtools
   panels disambiguating shared-key mounts, telemetry hooks tagging
   events, E2E test selectors (`data-form-id={form.meta.instanceId}`),
   and Vue `:key` on keyed lists of dynamically-rendered forms.
-  Treat as identity, not state — don't parse, don't compare
+  Treat as identity, not state: don't parse, don't compare
   ordinally, don't persist.
 
-- **Breaking — dropped `WithIndexedUndefined` from `form.values` and
+- **Breaking: dropped `WithIndexedUndefined` from `form.values` and
   the whole-form `setValue((prev) => …)` callback.** The wrapper baked
   `| undefined` into every unbounded array's element type so
-  `arr[N]` reads were honest about out-of-bounds — but the same
+  `arr[N]` reads were honest about out-of-bounds, but the same
   widening also tainted iteration (`v-for`, `for-of`, `.map`, etc.)
   where every element exists by definition, producing spurious
   `T | undefined` on perfectly safe reads. The job is better done by
@@ -2705,30 +2705,30 @@ each has its own lifecycle, and the merged read view stays unchanged
 for consumers. See the [migration guide](./docs/migration/0.11-to-0.12.md)
 for the full set of changes.
 
-- **Breaking — live validation by default.** `fieldValidation.on`
+- **Breaking: live validation by default.** `fieldValidation.on`
   defaulted to `'none'` in 0.11; it now defaults to `'change'`.
   Errors track the live `(value, schema)` instead of going stale
   until the next submit. `'none'` remains as the explicit opt-out
   for "submit-only" workflows. Migration: pass
   `fieldValidation: { on: 'none' }` to keep the old behaviour.
-- **Breaking — `validationMode` defaults to `'strict'`.** Was `'lax'`
+- **Breaking: `validationMode` defaults to `'strict'`.** Was `'lax'`
   in 0.11. Combined with the construction-time seed below, forms
-  whose default values fail validation now report errors immediately
-  — no user mutation or `validateAsync` call required. Lax remains
+  whose default values fail validation now report errors immediately:
+no user mutation or `validateAsync` call required. Lax remains
   as the explicit opt-out for multi-step wizards, placeholder rows
   in field arrays, and any case where mounting with invalid data is
   intentional. Migration: pass `validationMode: 'lax'` to keep the
   old behaviour.
-- **Breaking — errors split by source.** `setFieldErrors` /
+- **Breaking: errors split by source.** `setFieldErrors` /
   `addFieldErrors` write to a separate user-error store internally;
   their entries now SURVIVE schema revalidation AND successful
   submits (only `clearFieldErrors` / `reset` / `resetField` remove
   them). Public surfaces (`fieldErrors`, `state.isValid`,
-  `getFieldState(path).errors`) merge schema + user transparently —
+  `getFieldState(path).errors`) merge schema + user transparently:
   schema first, user second. `clearFieldErrors(path?)` deliberately
   clears both stores at the given path (pragmatic "make these
   errors go away" semantic).
-- **Breaking — `setFieldErrorsFromApi` retired.** Replaced by the
+- **Breaking: `setFieldErrorsFromApi` retired.** Replaced by the
   pure `parseApiErrors(payload, { formKey })` exported helper +
   `setFieldErrors(result.errors)`. The form's setter surface is now
   one canonical write; shape adapters live as composable parsers.
@@ -2739,34 +2739,34 @@ for the full set of changes.
   returns a discriminated `{ ok, errors, rejected? }` so malformed
   payloads are visible (vs. the old "returns empty array" silent
   failure).
-- **Breaking — persistence payload v2.** `PersistConfig.version`
+- **Breaking: persistence payload v2.** `PersistConfig.version`
   defaults to `2` (was `1`). On-disk shape: `data.errors` is gone,
   replaced by `data.schemaErrors` + `data.userErrors`. Old v1
   payloads are dropped silently on read; users see one fresh-defaults
   render after upgrading.
-- **Breaking — SSR / hydration payload split.** `SerializedFormData`
+- **Breaking: SSR / hydration payload split.** `SerializedFormData`
   and `FormStoreHydration` types now carry `schemaErrors` +
   `userErrors` separately. Nuxt + bare-Vue serialize/hydrate
   bridges handle this transparently; only consumers reading the
   payload struct directly need to update.
-- **Breaking — legacy `state.errors` writers removed.** The `errors`
+- **Breaking: legacy `state.errors` writers removed.** The `errors`
   Map alias and `setErrorsForPath` / `setAllErrors` / `addErrors` /
   `clearErrors` methods on `FormStore` are gone. Replacements:
   `state.schemaErrors` + `state.userErrors` for direct access;
   `state.setSchemaErrorsForPath` + `state.setAllSchemaErrors` /
   `state.setAllUserErrors` / `state.addUserErrors` /
   `state.clearSchemaErrors` / `state.clearUserErrors` for writes.
-  Most consumers never touched these — the public
+  Most consumers never touched these: the public
   `setFieldErrors*` + `clearFieldErrors` surfaces still cover the
   standard use cases.
-- **New — construction-time schema-error seed.** Strict-mode forms
+- **New: construction-time schema-error seed.** Strict-mode forms
   whose default values fail schema validation now report errors
   immediately at construction (no user mutation or `validateAsync`
   call required). Lax-mode forms still skip the seed; hydration
   takes precedence over the seed when present. Mostly a quality-of-
-  life win for SSR — `<pre>{{ form.fieldErrors }}</pre>` now
+  life win for SSR: `<pre>{{ form.fieldErrors }}</pre>` now
   matches the client's first frame.
-- **New — app-level defaults on the plugin.** Pass
+- **New: app-level defaults on the plugin.** Pass
   `createAttaform({ defaults: { ... } })` (or
   `attaform: { defaults: { ... } }` on the Nuxt module) to set
   cx-wide preferences once instead of repeating them at every
@@ -2774,9 +2774,9 @@ for the full set of changes.
   `onInvalidSubmit`, `fieldValidation`, `history`. Per-form options
   always win; `fieldValidation` shallow-merges at the field level so
   consumers can set `debounceMs` globally and override `on` per-form.
-  See [recipe](./docs/recipes/app-defaults.md). Additive — existing
+  See [recipe](./docs/recipes/app-defaults.md). Additive: existing
   apps that don't pass `defaults` are unchanged.
-- **Breaking — synthetic-key namespace reserved.** `useForm({ key })`
+- **Breaking: synthetic-key namespace reserved.** `useForm({ key })`
   now throws `ReservedFormKeyError` when the consumer-supplied key
   starts with `__atta:`. The library uses the `__atta:` prefix for its
   internal synthetic keys, and synthetic anonymous-form keys are now
@@ -2785,7 +2785,7 @@ for the full set of changes.
   future internal use; with the entry-reject in place, collisions
   between consumer keys and library-allocated keys are now impossible
   by construction.
-- **Breaking — persistence opt-in moved to per-field.** Form-level
+- **Breaking: persistence opt-in moved to per-field.** Form-level
   `persist: { storage: 'local' }` no longer auto-persists every
   field. Each persisted field opts in explicitly at its `register()`
   call site: `register('email', { persist: true })`. Programmatic
@@ -2794,7 +2794,7 @@ for the full set of changes.
   (password / cvv / ssn / token / api-key / etc.) throw
   `SensitivePersistFieldError` at mount unless
   `acknowledgeSensitive: true` is also passed. Persisted payloads
-  are sparse — only opted-in paths land in storage; hydration
+  are sparse: only opted-in paths land in storage; hydration
   merges over schema defaults. `reset()` and `resetField(path)` now
   wipe the persisted draft alongside the in-memory clear.
   New APIs: `form.persist(path, opts?)`,
@@ -2807,14 +2807,14 @@ for the full set of changes.
   [migration guide](./docs/migration/0.11-to-0.12.md#breaking-persistence-opt-in-moved-to-per-field)
   + [persistence recipe](./docs/recipes/persistence.md) for the full
   rewrite.
-- **New — shorthand `persist:` config.** `useForm({ persist: 'local' })`
+- **New: shorthand `persist:` config.** `useForm({ persist: 'local' })`
   is now equivalent to `useForm({ persist: { storage: 'local' } })`;
   same shorthand for `'session'` / `'indexeddb'` and for custom
   `FormStorage` adapters (`persist: encryptedStorage`). The full
   options bag is still required to override `key`, `debounceMs`,
   `version`, etc. New `PersistConfigOptions` type exported alongside
   `PersistConfig` (which is now the union of all input forms).
-- **New — cross-store cleanup at mount.** The configured `storage` is
+- **New: cross-store cleanup at mount.** The configured `storage` is
   the source of truth for "where the draft lives now." Standard
   backends (`'local'` / `'session'` / `'indexeddb'`) NOT matching the
   configured one get a `removeItem(key)` (fire-and-forget). A
@@ -2823,14 +2823,14 @@ for the full set of changes.
   abandoned backend. Configuring a custom adapter sweeps all three
   standard backends. Inlined per-backend so it doesn't drag in the
   adapter chunks the consumer didn't ask for.
-- **New — auto-wipe of stale persisted entries.** A non-empty raw
+- **New: auto-wipe of stale persisted entries.** A non-empty raw
   value that fails to parse on hydration (version mismatch,
   malformed envelope, corrupted JSON) is now wiped from the
   configured backend instead of being left on disk. Bumping
   `persist.version` no longer leaves the old payload bytes lingering
-  indefinitely. "Truly absent" entries stay a no-op — the wipe only
+  indefinitely. "Truly absent" entries stay a no-op: the wipe only
   fires when there's actually something to clean.
-- **New — symmetric dev-mode warning for the inverse misuse.**
+- **New: symmetric dev-mode warning for the inverse misuse.**
   `register('foo', { persist: true })` on a form with no `persist:`
   option configured on `useForm()` now logs a one-time warning in
   development pointing at the offending call. Pairs with the
@@ -2839,7 +2839,7 @@ for the full set of changes.
   site. Production is silent.
 
 **Structural-completeness invariant + fingerprint persistence + read-
-type honesty.** Three intertwined gaps closed in one pass — every
+type honesty.** Three intertwined gaps closed in one pass: every
 `setValue` write now leaves the form satisfying the slim schema (so
 consumer code can read `prev.first.toUpperCase()` without optional-
 chaining), persisted-draft keys carry a schema fingerprint that
@@ -2850,7 +2850,7 @@ runtime case, not a type-system lie). See the
 [migration guide](./docs/migration/0.11-to-0.12.md) for the full set
 of related changes.
 
-- **Breaking — `AbstractSchema.getDefaultAtPath(path)` is now
+- **Breaking: `AbstractSchema.getDefaultAtPath(path)` is now
   required.** Custom-adapter authors implement a fifth method that
   returns the schema-prescribed default at a structured path
   (object property → property's default; array index → element
@@ -2861,19 +2861,19 @@ of related changes.
   writes leak through and break the new invariant. Migration: see
   [custom-adapter recipe](./docs/recipes/custom-adapter.md). Both
   Zod adapters ship the implementation out of the box.
-- **Breaking — `FormStorage.listKeys(prefix)` is now required.**
+- **Breaking: `FormStorage.listKeys(prefix)` is now required.**
   Custom storage adapters implement a fourth method that returns
   every key whose name starts with `prefix`. The persistence layer
   uses it to find and clean up orphaned fingerprint-suffixed keys
   on mount. Adapters that can't enumerate (HTTP-backed drafts,
-  cookie-backed) can return `[]` — orphan cleanup degrades
+  cookie-backed) can return `[]`: orphan cleanup degrades
   gracefully on those backends.
-- **Breaking — `setValue` drops `DeepPartial` from both forms.**
+- **Breaking: `setValue` drops `DeepPartial` from both forms.**
   `setValue(value)` and `setValue(path, value)` now expect the full
   write shape at the type level, both for direct writes and for the
   callback form's return. Runtime mergeStructural still completes
   partials so dynamic / typecast inputs don't crash, but the type
-  system now leads with strictness — the IDE points consumers at
+  system now leads with strictness: the IDE points consumers at
   the canonical "give me the whole shape" pattern. Path-form
   callback `prev` is now `NonNullable<T>` (the runtime auto-defaults
   missing slots from the schema before invoking the callback);
@@ -2881,18 +2881,18 @@ of related changes.
   reads are honest about returning `Item | undefined`). Migration:
   switch partial value-form writes to the callback form, or spread
   the existing value (`setValue('user', { ...prev, name: 'X' })`).
-- **Breaking — `getValue` and `register` use `NestedReadType<F, P>`
+- **Breaking: `getValue` and `register` use `NestedReadType<F, P>`
   instead of `NestedType<F, P>`.** Once a path crosses an array
   index segment (e.g. `'posts.0.title'`), every result is
   `T | undefined`. Strict (no taint) for paths that don't cross
-  arrays. Tuple positions stay strict — a tuple's length is static
+  arrays. Tuple positions stay strict: a tuple's length is static
   so out-of-bounds is a compile error, not a runtime case. Whole-
   form `getValue()` returns `Readonly<Ref<WithIndexedUndefined<Form>>>`
   (every unbounded array's elements get `| undefined`). Migration:
   consumers narrow at array-crossing paths with `?.` / `??` or a
   conditional check; non-crossing paths are unchanged.
-- **Breaking — `PersistConfig.version` is gone.** The schema's
-  `fingerprint()` is the canonical "shape changed" signal — passing
+- **Breaking: `PersistConfig.version` is gone.** The schema's
+  `fingerprint()` is the canonical "shape changed" signal: passing
   a manual version is redundant and decoupled from the actual
   schema state. Storage keys now resolve to
   `${base}:${fingerprint}` automatically; a schema change produces
@@ -2901,14 +2901,14 @@ of related changes.
   delete the `version: N` line from your `persist:` config; the
   typechecker flags it. The cx-internal envelope version (the `v`
   field on serialized payloads) stays as an internal storage-format
-  invariant — bumped only when cx itself changes the on-disk shape,
+  invariant: bumped only when cx itself changes the on-disk shape,
   never by consumers.
-- **Breaking — `AbstractSchema` parameter rename: `getInitialState`
+- **Breaking: `AbstractSchema` parameter rename: `getInitialState`
   → `getDefaultValues`** has already shipped (0.11.0); the new
   break is `getDefaultAtPath`'s required-method status. The
   five-method contract is now: `fingerprint`, `getDefaultValues`,
   `getDefaultAtPath`, `getSchemasAtPath`, `validateAtPath`.
-- **New — structural-completeness invariant on every `setValue`.**
+- **New: structural-completeness invariant on every `setValue`.**
   After every `setValue` write, the form is guaranteed to satisfy
   the slim schema (objects/arrays/primitives without refines).
   Three concrete consequences:
@@ -2920,39 +2920,39 @@ of related changes.
   - Partial value-form writes (`setValue('user', { name: 'X' })`
     when the schema requires `{ name, age, email }`) get
     structurally completed via `mergeStructural` against the
-    schema's default — sibling keys appear with their schema-
+    schema's default: sibling keys appear with their schema-
     prescribed defaults. Consumer-only keys (validation flags,
     metadata) are preserved.
   - Path-form callback writes (`setValue('user', prev => ({ ...prev,
-    name: 'X' }))`) now receive a strict, fully-defaulted `prev` —
+    name: 'X' }))`) now receive a strict, fully-defaulted `prev`:
     even when the slot was previously empty. The callback no
     longer needs `prev?.name ?? ''` defensive reads.
   Performance: the fast path (writes to existing slots) skips the
   schema entirely. Schema lookups fire only when a write actually
   hits a structural gap, with element-default caching to keep
   sparse-array padding O(N) instead of O(N×schema-traversal).
-- **New — fingerprint-keyed persistence + active orphan cleanup.**
-  Storage keys are now `${base}:${fingerprint}` automatically —
+- **New: fingerprint-keyed persistence + active orphan cleanup.**
+  Storage keys are now `${base}:${fingerprint}` automatically:
   changing the schema produces a different fingerprint, the old
   key becomes unreachable, and on the next mount the new
   `listKeys`-driven cleanup pass removes the orphaned entry. No
   manual `version` bumps, no stale drafts accumulating across
   redeploys. Cleanup uses exact-or-`:`-prefix match scoped to
   `${PERSISTENCE_KEY_PREFIX}${formKey}` (or the consumer's custom
-  `key`) — sibling forms with overlapping prefixes (e.g.
+  `key`): sibling forms with overlapping prefixes (e.g.
   `'my-form'` vs `'my-form-2'`) don't collide. Cross-store
   cleanup on the non-configured standard backends extends to
   orphan-key sweeping symmetrically.
-- **New — `WithIndexedUndefined<T>`, `NestedReadType<F, P>`, and
+- **New: `WithIndexedUndefined<T>`, `NestedReadType<F, P>`, and
   `IsTuple<T>` type transforms** are exported from
   `attaform`. `WithIndexedUndefined` taints every
   unbounded array's element type with `| undefined`; tuples,
   `Date`, `RegExp`, `Map`, `Set`, and functions pass through
   untouched. `NestedReadType` walks a `FlatPath` and tracks
-  whether a numeric segment was crossed — once tainted, all
+  whether a numeric segment was crossed: once tainted, all
   subsequent results are `T | undefined`. Use these directly when
   building wrappers / utility types around the form API.
-- **New — `SetValuePayload<Write, Read = Write>` is parameterised**
+- **New: `SetValuePayload<Write, Read = Write>` is parameterised**
   to support honest read-vs-write shape distinction in callbacks.
   `Write` is what the callback returns / what direct writes
   accept; `Read` is what the callback's `prev` receives. The
@@ -2974,7 +2974,7 @@ of related changes.
   offending `useForm()` call by source frame for click-through in
   DevTools.
 - **Keyed forms bypass the ambient slot.** `useForm({ schema, key })`
-  no longer fills the ambient `provide`/`inject` slot — keyed forms
+  no longer fills the ambient `provide`/`inject` slot: keyed forms
   are addressable explicitly via `useFormContext<F>(key)`, and the
   ambient slot is reserved for anonymous siblings. This cleanly
   separates the two resolution modes and stops keyed forms from
@@ -2989,14 +2989,14 @@ of related changes.
 ## v0.11.0
 **What's new at a glance**
 
-- **`state` — the form-level reactive bundle.** Nine form-level
+- **`state`: the form-level reactive bundle.** Nine form-level
   scalars (`isDirty`, `isValid`, `isSubmitting`, `isValidating`,
   `submitCount`, `submitError`, `canUndo`, `canRedo`, `historySize`)
   previously lived as top-level `Readonly<ComputedRef<X>>` fields on
   `useForm()`'s return. They're now collated on a single `state`
   object (`reactive()` + `readonly()` under the hood). Templates
-  bind to primitives directly — `:disabled="form.state.isSubmitting"`
-  just works — and scripts read without `.value`.
+  bind to primitives directly: `:disabled="form.state.isSubmitting"`
+  just works: and scripts read without `.value`.
 - **`fieldErrors` is a Proxy view.** The ComputedRef wrapper is gone.
   Templates and scripts both dot-access through
   `form.fieldErrors.email` without `.value`. Still readonly (compile
@@ -3005,7 +3005,7 @@ of related changes.
 **Breaking changes**
 
 Three migrations since 0.10, all shaped by the same Vue template-
-auto-unwrap limitation — refs nested inside API *objects* don't
+auto-unwrap limitation: refs nested inside API *objects* don't
 unwrap, and our API was making consumers pay for it.
 
 - **`fieldErrors.value` is gone.** Drop `.value` everywhere. Watchers
@@ -3023,11 +3023,11 @@ unwrap, and our API was making consumers pay for it.
   ```
 
   …for all 9 fields listed above. `undo()` and `redo()` stay at the
-  top level — they're methods, not state.
+  top level: they're methods, not state.
 - **Internal `FormState` type renamed to `FormStore`.** The name was
   freed for the new public `FormState` interface (the shape of
   `useForm().state`). Only breaks consumers who imported the
-  internal type directly — unlikely but possible.
+  internal type directly: unlikely but possible.
 - **`initialState` config key renamed to `defaultValues`.** Same
   motivation: with `state` reserved for the form-level flag bundle,
   `useForm({ initialState: {…} })` read ambiguously. The new name
@@ -3061,7 +3061,7 @@ _No unreleased changes yet._
 
 - **Full rewrite of the core.** The pre-rewrite `useState` composables
   are collapsed into a single `FormState` closure per form. Registry-
-  backed, framework-agnostic — works under Nuxt 3/4, bare Vue 3, and
+  backed, framework-agnostic: works under Nuxt 3/4, bare Vue 3, and
   bare Vue 3 + `@vue/server-renderer`.
 - **Zod v4 adapter** at `attaform/zod`. The v3 adapter stays
   at `attaform/zod-v3` for existing consumers; the two are
@@ -3075,7 +3075,7 @@ _No unreleased changes yet._
   helpers (`append` / `prepend` / `insert` / `remove` / `swap` /
   `move` / `replace`).
 - **Memory-leak fix.** `FormState` is evicted from the registry on
-  the last consumer's scope dispose — prevents accumulation in
+  the last consumer's scope dispose: prevents accumulation in
   long-lived SPAs.
 - **Performance.** The keystroke bench runs several times faster than
   the pre-rewrite baseline; `scripts/check-bench.mjs` fails CI if the
@@ -3084,7 +3084,7 @@ _No unreleased changes yet._
   metric thresholds), and bench regression all run on every PR across
   the Node matrix. Test-file and intra-file execution order shuffles
   on every run.
-- **Tree-shaking.** `sideEffects: false` is declared — unused subpath
+- **Tree-shaking.** `sideEffects: false` is declared: unused subpath
   imports drop out of consumer bundles.
 - **Docs.** A new `docs/` tree covers the full public API, task-
   oriented recipes (dynamic field arrays, server errors, custom
@@ -3120,24 +3120,24 @@ benchmarks against FormKit / VeeValidate / react-hook-form.
 
 - Reactive field-error store + setFieldErrorsFromApi helper ([#107](https://github.com/attaform/Attaform/pull/107))
 - ⚠️  HandleSubmit returns a submit handler instead of running immediately ([#108](https://github.com/attaform/Attaform/pull/108))
-- Phase 0 — max TS strictness, canonical paths, SSR primitives, typed errors ([6157a26](https://github.com/attaform/Attaform/commit/6157a26))
-- Phase 1a — diff-apply walker + keystroke benchmark (7.6x-10.6x faster) ([16a0193](https://github.com/attaform/Attaform/commit/16a0193))
-- Phase 1b.1 — structured-path get/set primitives ([1fcd2a8](https://github.com/attaform/Attaform/commit/1fcd2a8))
-- Phase 1b.2 — hydrate-api-errors with structured result shape ([8e89513](https://github.com/attaform/Attaform/commit/8e89513))
-- Phase 1b.3 — createFormState, the single per-form closure ([872471d](https://github.com/attaform/Attaform/commit/872471d))
-- Phase 1b.4 — API factories for register, field-state, process-form ([79458f1](https://github.com/attaform/Attaform/commit/79458f1))
-- Phase 2.1 — registry, plugin factory, serialization, directive move ([8c45fb0](https://github.com/attaform/Attaform/commit/8c45fb0))
-- Phase 2.2 — wire use-abstract-form to createFormState + registry ([204440a](https://github.com/attaform/Attaform/commit/204440a))
-- Phase 3 — AST + directive hardening (substring match, file input, shim, cleanup) ([d9f5185](https://github.com/attaform/Attaform/commit/d9f5185))
-- Phase 4a — packaging restructure, multi-entry build, new subpaths ([6c8ef1d](https://github.com/attaform/Attaform/commit/6c8ef1d))
-- Phase 4a + 4b — multi-entry build, dual zod v3/v4 adapters ([492577a](https://github.com/attaform/Attaform/commit/492577a))
-- Phase 5 — bare-Vue SSR end-to-end test (@vue/server-renderer) ([c8a4471](https://github.com/attaform/Attaform/commit/c8a4471))
-- ⚠️  Phase 7.2 — require explicit `key` at the type level ([584239e](https://github.com/attaform/Attaform/commit/584239e))
-- Phase 7.6 — v4 adapter parity with v3 (validate-then-fix, DU, strip) ([acdb63d](https://github.com/attaform/Attaform/commit/acdb63d))
-- Phase 8.2 — form-level isDirty and isValid computed aggregates ([0633b6d](https://github.com/attaform/Attaform/commit/0633b6d))
-- Phase 8.3 — expose isSubmitting/submitCount/submitError from handleSubmit ([d0fed7f](https://github.com/attaform/Attaform/commit/d0fed7f))
-- Phase 8.4 — reset() and resetField(path) restore form state ([48de785](https://github.com/attaform/Attaform/commit/48de785))
-- Phase 8.5 — typed array helpers (append/remove/swap/move/...) + recipe ([3de1298](https://github.com/attaform/Attaform/commit/3de1298))
+- Phase 0: max TS strictness, canonical paths, SSR primitives, typed errors ([6157a26](https://github.com/attaform/Attaform/commit/6157a26))
+- Phase 1a: diff-apply walker + keystroke benchmark (7.6x-10.6x faster) ([16a0193](https://github.com/attaform/Attaform/commit/16a0193))
+- Phase 1b.1: structured-path get/set primitives ([1fcd2a8](https://github.com/attaform/Attaform/commit/1fcd2a8))
+- Phase 1b.2: hydrate-api-errors with structured result shape ([8e89513](https://github.com/attaform/Attaform/commit/8e89513))
+- Phase 1b.3: createFormState, the single per-form closure ([872471d](https://github.com/attaform/Attaform/commit/872471d))
+- Phase 1b.4: API factories for register, field-state, process-form ([79458f1](https://github.com/attaform/Attaform/commit/79458f1))
+- Phase 2.1: registry, plugin factory, serialization, directive move ([8c45fb0](https://github.com/attaform/Attaform/commit/8c45fb0))
+- Phase 2.2: wire use-abstract-form to createFormState + registry ([204440a](https://github.com/attaform/Attaform/commit/204440a))
+- Phase 3: AST + directive hardening (substring match, file input, shim, cleanup) ([d9f5185](https://github.com/attaform/Attaform/commit/d9f5185))
+- Phase 4a: packaging restructure, multi-entry build, new subpaths ([6c8ef1d](https://github.com/attaform/Attaform/commit/6c8ef1d))
+- Phase 4a + 4b: multi-entry build, dual zod v3/v4 adapters ([492577a](https://github.com/attaform/Attaform/commit/492577a))
+- Phase 5: bare-Vue SSR end-to-end test (@vue/server-renderer) ([c8a4471](https://github.com/attaform/Attaform/commit/c8a4471))
+- ⚠️  Phase 7.2: require explicit `key` at the type level ([584239e](https://github.com/attaform/Attaform/commit/584239e))
+- Phase 7.6: v4 adapter parity with v3 (validate-then-fix, DU, strip) ([acdb63d](https://github.com/attaform/Attaform/commit/acdb63d))
+- Phase 8.2: form-level isDirty and isValid computed aggregates ([0633b6d](https://github.com/attaform/Attaform/commit/0633b6d))
+- Phase 8.3: expose isSubmitting/submitCount/submitError from handleSubmit ([d0fed7f](https://github.com/attaform/Attaform/commit/d0fed7f))
+- Phase 8.4: reset() and resetField(path) restore form state ([48de785](https://github.com/attaform/Attaform/commit/48de785))
+- Phase 8.5: typed array helpers (append/remove/swap/move/...) + recipe ([3de1298](https://github.com/attaform/Attaform/commit/3de1298))
 
 ### 🔥 Performance
 
@@ -3146,20 +3146,20 @@ benchmarks against FormKit / VeeValidate / react-hook-form.
 ### 🩹 Fixes
 
 - **exports:** Drop null values and fix missing .js extension ([#106](https://github.com/attaform/Attaform/pull/106))
-- Phase 8.1 — release FormState from the registry on scope dispose ([8fc9436](https://github.com/attaform/Attaform/commit/8fc9436))
+- Phase 8.1: release FormState from the registry on scope dispose ([8fc9436](https://github.com/attaform/Attaform/commit/8fc9436))
 
 ### 💅 Refactors
 
-- Phase 2.3 — delete pre-rewrite composables, utils, and directive plugins ([7fa8479](https://github.com/attaform/Attaform/commit/7fa8479))
-- Phase 7.1 — remove dead surface ([d049fd7](https://github.com/attaform/Attaform/commit/d049fd7))
-- Phase 7.4 — tighten ESLint exemptions to zero disables ([e7c9248](https://github.com/attaform/Attaform/commit/e7c9248))
-- Phase 7.5 — rewrite-zod-aliases script → rollup-plugin-alias ([56261af](https://github.com/attaform/Attaform/commit/56261af))
+- Phase 2.3: delete pre-rewrite composables, utils, and directive plugins ([7fa8479](https://github.com/attaform/Attaform/commit/7fa8479))
+- Phase 7.1: remove dead surface ([d049fd7](https://github.com/attaform/Attaform/commit/d049fd7))
+- Phase 7.4: tighten ESLint exemptions to zero disables ([e7c9248](https://github.com/attaform/Attaform/commit/e7c9248))
+- Phase 7.5: rewrite-zod-aliases script → rollup-plugin-alias ([56261af](https://github.com/attaform/Attaform/commit/56261af))
 
 ### 📖 Documentation
 
 - Surface reactive field-errors API in Features list ([#111](https://github.com/attaform/Attaform/pull/111))
-- Phase 6 — README rewrite for the multi-target shape ([4bd4611](https://github.com/attaform/Attaform/commit/4bd4611))
-- Phase 8.7 — API reference, recipes, and migration notes ([864a32d](https://github.com/attaform/Attaform/commit/864a32d))
+- Phase 6: README rewrite for the multi-target shape ([4bd4611](https://github.com/attaform/Attaform/commit/4bd4611))
+- Phase 8.7: API reference, recipes, and migration notes ([864a32d](https://github.com/attaform/Attaform/commit/864a32d))
 
 ### 📦 Build
 
@@ -3168,27 +3168,27 @@ benchmarks against FormKit / VeeValidate / react-hook-form.
 ### 🏡 Chore
 
 - **dev:** Dist-rebuild watcher for consumer-side iteration via pnpm link ([#109](https://github.com/attaform/Attaform/pull/109))
-- Phase 7.7 — CI gates for bundle size, coverage, bench regression ([16088de](https://github.com/attaform/Attaform/commit/16088de))
-- Phase 7.3 — playground migrated to /zod subpath ([d273d36](https://github.com/attaform/Attaform/commit/d273d36))
+- Phase 7.7: CI gates for bundle size, coverage, bench regression ([16088de](https://github.com/attaform/Attaform/commit/16088de))
+- Phase 7.3: playground migrated to /zod subpath ([d273d36](https://github.com/attaform/Attaform/commit/d273d36))
 - Silence npm warnings in husky hooks via `pnpm exec` ([3c2b900](https://github.com/attaform/Attaform/commit/3c2b900))
 
 ### ✅ Tests
 
-- Phase 7.8 — Vite plugin resolution + transforms registration coverage ([42dc662](https://github.com/attaform/Attaform/commit/42dc662))
-- Phase 7.9 — Nuxt SSR payload round-trip for server-written values ([2b61e56](https://github.com/attaform/Attaform/commit/2b61e56))
-- Phase 7.10 — property-based tests for diff-apply, paths, api-errors ([cee5b1b](https://github.com/attaform/Attaform/commit/cee5b1b))
+- Phase 7.8: Vite plugin resolution + transforms registration coverage ([42dc662](https://github.com/attaform/Attaform/commit/42dc662))
+- Phase 7.9: Nuxt SSR payload round-trip for server-written values ([2b61e56](https://github.com/attaform/Attaform/commit/2b61e56))
+- Phase 7.10: property-based tests for diff-apply, paths, api-errors ([cee5b1b](https://github.com/attaform/Attaform/commit/cee5b1b))
 - **packaging:** Skip exports checks when dist contains Nuxt stubs ([698209e](https://github.com/attaform/Attaform/commit/698209e))
 - Add type-inference tests; fix register generic; shuffle tests in CI ([d980198](https://github.com/attaform/Attaform/commit/d980198))
 
 ### 🤖 CI
 
 - Sign publish-workflow version-bump commits with GPG ([#110](https://github.com/attaform/Attaform/pull/110))
-- Phase 8.6 — run full pnpm check on every PR across the Node matrix ([200fe46](https://github.com/attaform/Attaform/commit/200fe46))
+- Phase 8.6: run full pnpm check on every PR across the Node matrix ([200fe46](https://github.com/attaform/Attaform/commit/200fe46))
 
 #### ⚠️ Breaking Changes
 
 - ⚠️  HandleSubmit returns a submit handler instead of running immediately ([#108](https://github.com/attaform/Attaform/pull/108))
-- ⚠️  Phase 7.2 — require explicit `key` at the type level ([584239e](https://github.com/attaform/Attaform/commit/584239e))
+- ⚠️  Phase 7.2: require explicit `key` at the type level ([584239e](https://github.com/attaform/Attaform/commit/584239e))
 
 ### ❤️ Contributors
 

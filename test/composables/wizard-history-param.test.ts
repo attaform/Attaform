@@ -40,7 +40,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — custom restore / persist callbacks', () => {
+describe('useWizard: custom restore / persist callbacks', () => {
   const apps: App[] = []
 
   beforeEach(() => {
@@ -167,7 +167,7 @@ describe('useWizard — custom restore / persist callbacks', () => {
     await nextTick()
     expect(persistedA).toContain('hp-twoA-a2')
     expect(persistedB).toContain('hp-twoB-b2')
-    // Each wizard only sees its own keys — no cross-wizard bleed.
+    // Each wizard only sees its own keys: no cross-wizard bleed.
     expect(persistedA).not.toContain('hp-twoB-b2')
     expect(persistedB).not.toContain('hp-twoA-a2')
   })

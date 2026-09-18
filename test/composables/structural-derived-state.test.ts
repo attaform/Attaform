@@ -19,7 +19,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *   - a removed element's in-flight validation aborts, so a late async
  *     resolution can't write at the dead index and the form settles.
  *
- * Both adapters (v3 + v4) — same runtime contract.
+ * Both adapters (v3 + v4), same runtime contract.
  */
 
 type TestForm = {

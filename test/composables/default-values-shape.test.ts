@@ -5,14 +5,14 @@ import type { Unset } from '../../src/runtime/core/unset'
 /**
  * Compile-time tests for `DefaultValuesShape<T>`. Mirrors the shape of
  * `write-shape.test.ts` but adds the `Unset` widening at every primitive
- * leaf. Non-primitive leaves stay strict — passing `unset` against
+ * leaf. Non-primitive leaves stay strict, passing `unset` against
  * `z.date()` is a TS error.
  *
  * Used by `UseFormConfiguration.defaultValues`, `setValue`'s value
  * parameter, and `reset`'s parameter (commit 7 wires those).
  */
 
-describe('DefaultValuesShape — primitive leaf widening', () => {
+describe('DefaultValuesShape: primitive leaf widening', () => {
   it('widens string to string | Unset', () => {
     expectTypeOf<DefaultValuesShape<string>>().toEqualTypeOf<string | Unset>()
   })
@@ -38,7 +38,7 @@ describe('DefaultValuesShape — primitive leaf widening', () => {
   })
 })
 
-describe('DefaultValuesShape — non-primitive leaves admit Unset', () => {
+describe('DefaultValuesShape: non-primitive leaves admit Unset', () => {
   it('Date widens to Date | Unset', () => {
     expectTypeOf<DefaultValuesShape<Date>>().toEqualTypeOf<Date | Unset>()
   })
@@ -63,7 +63,7 @@ describe('DefaultValuesShape — non-primitive leaves admit Unset', () => {
   })
 })
 
-describe('DefaultValuesShape — recursion through containers', () => {
+describe('DefaultValuesShape: recursion through containers', () => {
   it('object widens each primitive leaf independently AND admits Unset at its own level', () => {
     type Input = { name: string; age: number; alive: boolean }
     type Output =
@@ -108,7 +108,7 @@ describe('DefaultValuesShape — recursion through containers', () => {
   })
 })
 
-describe('DefaultValuesShape — assignability for backward compatibility', () => {
+describe('DefaultValuesShape: assignability for backward compatibility', () => {
   it('plain number is assignable to widened number | Unset', () => {
     const value: DefaultValuesShape<number> = 42
     expectTypeOf(value).toMatchTypeOf<number | Unset>()
@@ -126,7 +126,7 @@ describe('DefaultValuesShape — assignability for backward compatibility', () =
 })
 
 /**
- * Container-position widening — `unset` admitted anywhere, not just
+ * Container-position widening, `unset` admitted anywhere, not just
  * at primitive leaves.
  *
  * The contract: `DefaultValuesShape<T>` adds `| Unset` at EVERY
@@ -137,13 +137,13 @@ describe('DefaultValuesShape — assignability for backward compatibility', () =
  * Each assertion below checks "Unset is assignable to
  * DefaultValuesShape<...> at this position." Because the root itself
  * now admits `| Unset`, indexed access into the position needs to
- * strip the Unset arm first (`Exclude<..., Unset>`) — TypeScript
+ * strip the Unset arm first (`Exclude<..., Unset>`), TypeScript
  * can't index into the Unset symbol arm.
  */
 
 type Strip<T> = Exclude<T, Unset>
 
-describe('DefaultValuesShape — Unset at container positions', () => {
+describe('DefaultValuesShape: Unset at container positions', () => {
   it('Unset admitted at the root', () => {
     type Schema = { name: string; age: number }
     expectTypeOf<Unset>().toMatchTypeOf<DefaultValuesShape<Schema>>()

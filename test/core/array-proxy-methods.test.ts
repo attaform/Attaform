@@ -2,23 +2,21 @@
 /**
  * Array.prototype pass-through gate for PASS2-10.
  *
- * `form.fields.<array>` / `form.errors.<array>` are array-shaped
- * Proxies (Array target → `Array.isArray` true, `v-for` enters the
- * indexed branch). Pre-fix every string key on the `get` trap routed
- * through schema descent — including `'map'`, `'forEach'`, `'find'`,
- * etc. — which produced one phantom FieldState child instead of the
- * Array.prototype method. Typed consumers were shielded by the type
- * surface, but duck-typed / vanilla JS callers ran into broken
- * iteration helpers.
+ * `form.fields.<array>` and `form.errors.<array>` are array-shaped
+ * Proxies: an Array target, so `Array.isArray` is true and `v-for`
+ * enters the indexed branch. The `get` trap routes Array.prototype keys
+ * through to the Array prototype when the path is array-shaped AND the
+ * schema claims no literal field at the would-be child path. Routing
+ * every string key through schema descent instead turns `'map'`,
+ * `'forEach'` and `'find'` into phantom FieldState children; the type
+ * surface hides that from typed consumers, but a duck-typed or vanilla
+ * JS caller gets broken iteration helpers.
  *
- * The fix routes Array.prototype keys through to the Array prototype
- * when the path is array-shaped AND the schema doesn't claim a literal
- * field at the would-be child path. Read-only methods (`map`,
- * `forEach`, `find`, etc.) work because they call `this[i]` /
- * `this.length` back through the proxy's own `get` trap, which still
- * returns the descended sub-proxy / FieldState. Mutating methods
- * (`push`, `pop`, `splice`, …) become reachable but the proxy's `set`
- * trap (warn-and-noop after PASS2-4) prevents any actual mutation.
+ * Read-only methods work because they call `this[i]` and `this.length`
+ * back through the proxy's own `get` trap, which still returns the
+ * descended sub-proxy or FieldState. Mutating methods (`push`, `pop`,
+ * `splice`) become reachable, and the `set` trap's warn-and-noop stops
+ * them mutating anything.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { z as zV4 } from 'zod'
@@ -51,7 +49,7 @@ const adapters = [
   },
 ] as const
 
-describe.each(adapters)('Array.prototype on array-shaped proxies — $name', ({ mount }) => {
+describe.each(adapters)('Array.prototype on array-shaped proxies: $name', ({ mount }) => {
   it('form.fields.<array>.map iterates over the per-element FieldStates', () => {
     const { api, app } = mount()
     const values = (
@@ -141,7 +139,7 @@ describe.each(adapters)('Array.prototype on array-shaped proxies — $name', ({ 
       ;(api.fields.tags as { push: (x: unknown) => number }).push({})
     }).not.toThrow()
     warnSpy.mockRestore()
-    // Underlying form data unchanged — the readonly proxy didn't
+    // Underlying form data unchanged: the readonly proxy didn't
     // propagate the write.
     expect(api.values.tags).toEqual(['alpha', 'beta', 'gamma'])
     app.unmount()

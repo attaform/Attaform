@@ -13,24 +13,23 @@ import type {
 } from '../../src/runtime/types/types-api'
 
 /**
- * Three stale-closure sites that diverge between `created` capture and
- * fire-time read. Each pre-fix listener reads a value frozen at the
- * directive's `created` hook, even though Vue patches the DOM (or the
- * vnode props) on every render — so a consumer's dynamic `:type`,
- * dynamic `@update:registerValue`, or path-level container-type swap
- * sails past the listener invisibly.
+ * Three sites where a listener must re-read at fire time rather than
+ * close over its `created`-hook capture. Vue patches the DOM and the
+ * vnode props on every render, so a value frozen at `created` lets a
+ * consumer's dynamic `:type`, dynamic `@update:registerValue` or
+ * path-level container-type swap sail past invisibly.
  *
- *   A. `setAssignFunction` early-return — once an `onUpdate:registerValue`
- *      handler is installed, subsequent renders never re-read the prop.
- *   B. `vRegisterText` `castToNumber` — captured from `vnode.props.type`
- *      at `created`-time; `:type="..."` swaps are invisible.
- *   C. `vRegisterSelect` `isSetModel` — captured from
- *      `value.innerRef.value` at `created`-time; an Array ↔ Set swap on
- *      the path routes writes to the stale container shape.
+ *   A. `setAssignFunction`: an early return once an
+ *      `onUpdate:registerValue` handler is installed would stop later
+ *      renders re-reading the prop.
+ *   B. `vRegisterText`'s `castToNumber`, read from `vnode.props.type`.
+ *   C. `vRegisterSelect`'s `isSetModel`, read from
+ *      `value.innerRef.value`; an Array-to-Set swap on the path would
+ *      otherwise route writes to the stale container shape.
  *
- * All three exercise the directive's hooks directly so the assertions
- * pin behavior at the listener body — no Vue render cycle, no schema
- * gate, no slim-primitive interference.
+ * All three drive the directive's hooks directly, so the assertions pin
+ * behaviour at the listener body: no render cycle, no schema gate, no
+ * slim-primitive interference.
  */
 
 type Spy = ReturnType<typeof vi.fn>
@@ -116,11 +115,9 @@ const hooks = vRegister as unknown as {
   beforeUnmount?: DirectiveHook
 }
 
-// ─────────────────────────────────────────────────────────────────
-// A — `setAssignFunction` re-derives on every render
-// ─────────────────────────────────────────────────────────────────
+// A, `setAssignFunction` re-derives on every render
 
-describe('setAssignFunction — @update:registerValue prop reactivity', () => {
+describe('setAssignFunction: @update:registerValue prop reactivity', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -147,10 +144,10 @@ describe('setAssignFunction — @update:registerValue prop reactivity', () => {
     expect(handlerA).toHaveBeenCalledTimes(1)
     expect(handlerB).toHaveBeenCalledTimes(0)
 
-    // Parent re-renders with handler B in the vnode prop. The
-    // directive's beforeUpdate must re-derive — pre-fix, the early
-    // return in `setAssignFunction` bailed once any non-default
-    // assigner was installed, so the handler swap was silently dropped.
+    // The parent re-renders with handler B in the vnode prop, and
+    // `beforeUpdate` re-derives. An early return in `setAssignFunction`
+    // once any non-default assigner is installed would drop the swap
+    // silently.
     hooks.beforeUpdate?.(
       input,
       makeBinding(value, {}),
@@ -165,11 +162,9 @@ describe('setAssignFunction — @update:registerValue prop reactivity', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
-// B — `vRegisterText` derives `castToNumber` per fire
-// ─────────────────────────────────────────────────────────────────
+// B, `vRegisterText` derives `castToNumber` per fire
 
-describe('vRegisterText — :type swap reactivity', () => {
+describe('vRegisterText: :type swap reactivity', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -187,9 +182,9 @@ describe('vRegisterText — :type swap reactivity', () => {
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenLastCalledWith('42')
 
-    // Vue patches the DOM attribute when `:type="..."` swaps; mirror
-    // that here. Pre-fix the listener stayed on the created-time
-    // `castToNumber === false` decision and continued writing strings.
+    // Vue patches the DOM attribute when `:type="..."` swaps, mirrored
+    // here. A listener holding its created-time `castToNumber === false`
+    // would keep writing strings.
     input.type = 'number'
 
     input.value = '100'
@@ -198,11 +193,9 @@ describe('vRegisterText — :type swap reactivity', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
-// C — `vRegisterSelect` derives `isSetModel` per fire
-// ─────────────────────────────────────────────────────────────────
+// C, `vRegisterSelect` derives `isSetModel` per fire
 
-describe('vRegisterSelect — Array ↔ Set model swap reactivity', () => {
+describe('vRegisterSelect: Array ↔ Set model swap reactivity', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -235,11 +228,10 @@ describe('vRegisterSelect — Array ↔ Set model swap reactivity', () => {
     expect(Array.isArray(arrayWrite)).toBe(true)
     expect(arrayWrite).toEqual(['a'])
 
-    // The path's container type swaps — production trigger would be
-    // a `form.setValue('picks', new Set([...]))` against a union
-    // schema. Pre-fix the listener kept the created-time
-    // `isSetModel === false` and wrote an Array on every subsequent
-    // change.
+    // The path's container type swaps, as a
+    // `form.setValue('picks', new Set([...]))` against a union schema
+    // would do in production. A listener holding its created-time
+    // `isSetModel === false` writes an Array on every later change.
     ;(value.innerRef as { value: string[] | Set<string> }).value = new Set(['a'])
 
     opt0.selected = true

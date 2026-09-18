@@ -19,14 +19,14 @@ import { awaitSettle, waitUntil } from '../utils/form-harness'
  *           model carries `aria-required`, though no member checkbox is
  *           individually required and an empty selection (`[]`) is valid.
  *   - #404: a component host's root element (a presentational wrapper
- *           such as a `<div>`) carries `aria-required` — invalid ARIA on
- *           a role-less element — instead of only the bound inner control.
+ *           such as a `<div>`) carries `aria-required`, invalid ARIA on
+ *           a role-less element, instead of only the bound inner control.
  *
  * These specs assert the FIXED behaviour and are expected to fail on the
  * unfixed tree (proving the bugs reproduce).
  */
 
-describe('#381 — aria-required is not stamped on array-member checkboxes', () => {
+describe('#381: aria-required is not stamped on array-member checkboxes', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()
@@ -91,7 +91,7 @@ describe('#381 — aria-required is not stamped on array-member checkboxes', () 
   })
 })
 
-describe('#404 — aria-required lands on the bound control, not the component host root', () => {
+describe('#404: aria-required lands on the bound control, not the component host root', () => {
   let app: App | undefined
   afterEach(() => {
     app?.unmount()
@@ -102,7 +102,7 @@ describe('#404 — aria-required lands on the bound control, not the component h
   const schema = z.object({ email: z.string() })
 
   // A presentational wrapper whose root is a non-control <div>, with the
-  // real <input> re-bound via useRegister — the recommended styled-field
+  // real <input> re-bound via useRegister: the recommended styled-field
   // pattern from the #404 report.
   const FieldWrapper = defineComponent({
     name: 'FieldWrapper',

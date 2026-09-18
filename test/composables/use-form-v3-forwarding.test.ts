@@ -44,7 +44,7 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('forwards validateOn / debounceMs — live field errors populate without submit', async () => {
+  it('forwards validateOn / debounceMs: live field errors populate without submit', async () => {
     const strictSchema = z.object({
       email: z.string().email('bad email'),
       password: z.string().min(8, 'min 8 chars'),
@@ -58,8 +58,8 @@ describe('v3 useForm forwards opt-in options to useAbstractForm', () => {
     apps.push(app)
 
     // A non-email string triggers the schema's leaf rule. The
-    // field-validation scheduler — only active if the option
-    // reached useAbstractForm — populates fieldErrors within the
+    // field-validation scheduler, only active if the option
+    // reached useAbstractForm, populates fieldErrors within the
     // debounce window.
     api.setValue('email', 'nope')
     await waitUntil(() => (api.errors.email?.[0]?.message === 'bad email' ? true : null))

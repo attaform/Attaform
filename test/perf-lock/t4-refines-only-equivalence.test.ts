@@ -1,11 +1,11 @@
 /**
- * T4 GATE HARNESS — refines-only decomposition equivalence.
+ * T4 GATE HARNESS, refines-only decomposition equivalence.
  *
- * STATUS: T4 was SCOPED OUT — a measured-and-scoped non-action (2026-06-09; see
+ * STATUS: T4 was SCOPED OUT: a measured-and-scoped non-action (2026-06-09; see
  * PERF-ANALYSIS.md "T4"). This harness stays as reproducible EVIDENCE that the
  * decomposition is byte-identical, and as a standing GUARD on zod's abort/`fatal`
  * spelling asymmetry (the `necessity` block goes red if a future zod renames a
- * spelling) — not as a gate for unshipped runtime code. It answers ONE load-bearing
+ * spelling): not as a gate for unshipped runtime code. It answers ONE load-bearing
  * question:
  *
  *   Can the whole-form parse a container/root refine forces on every keystroke
@@ -13,8 +13,8 @@
  *   on BOTH adapters (zod v3 and v4 are first-class peers)?
  *
  * Why this matters: when `hasContainerOrRootRefine()` is true the keystroke
- * scheduler must run a whole-form `safeParse` (create-form-store.ts:2651),
- * re-validating every unchanged sibling leaf's own constraints — measured at
+ * scheduler must run a whole-form `safeParse` (create-form-store.ts),
+ * re-validating every unchanged sibling leaf's own constraints, measured at
  * O(F)/keystroke, ~92-98% redundant (PERF-ANALYSIS.md "T4"). The only
  * byte-identical lever is to split that pass into the edited leaf's validation
  * (already O(1) via the subtree branch) PLUS a pass that runs ONLY the
@@ -33,12 +33,12 @@
  *               format/range checks dropped + refines kept   (the refines half)
  *
  * The reduction drops only BUILT-IN checks (`.email()`, `.min()`, `.regex()`,
- * ...) — which are provably non-aborting (they go "dirty", never abort) — and
+ * ...), which are provably non-aborting (they go "dirty", never abort), and
  * KEEPS the leaf's base type, coercion, and any CUSTOM `.refine()`/
  * `.superRefine()`. Keeping custom refines is what preserves zod's abort
  * short-circuit byte-identically: an aborting leaf refine still aborts the
  * object parse, so an ancestor container refine still skips, exactly as in the
- * whole-form parse. This needs NO fatal/abort detection — which is essential,
+ * whole-form parse. This needs NO fatal/abort detection: which is essential,
  * because the aborting-refine keyword DIFFERS by adapter (`abort` in v4,
  * `fatal` in v3) and v3 hides it inside a closure where it is not statically
  * inspectable. Dropping built-ins / keeping refines is statically decidable on
@@ -54,10 +54,10 @@
  *   full  ==  issues(slim)  ⊎  ( issues(refinesA″) ∖ issues(reducedNoRefines) )
  *
  * where the subtracted term is the reduction's INCIDENTAL leaf issues (type
- * errors + kept-refine issues — the ones the leaf half already owns), leaving
+ * errors + kept-refine issues: the ones the leaf half already owns), leaving
  * its pure CONTAINER-REFINE delta. `slim` stands in for the aggregate leaf
  * issue set the scheduler maintains across keystrokes (the subtree branch's
- * faithful incremental maintenance is a separately-established property — it
+ * faithful incremental maintenance is a separately-established property: it
  * ships today for refine-free forms).
  *
  * ── What this harness pins ────────────────────────────────────────────────
@@ -66,8 +66,8 @@
  *    scenario (incl. aborting leaf refines, both spellings) + 800 fuzz
  *    samples, on BOTH adapters.
  * 2. NECESSITY (`why keep custom refines`): the NAIVE type-only strip (drop
- *    custom refines too) DIVERGES on both adapters — v3 via `fatal`, v4 via
- *    `abort` — proving the reduction must keep custom refines, and that v3 is
+ *    custom refines too) DIVERGES on both adapters, v3 via `fatal`, v4 via
+ *    `abort`, proving the reduction must keep custom refines, and that v3 is
  *    handled identically to v4. A future zod change to either spelling
  *    surfaces here.
  * 3. The refines-only half genuinely RAISES cross-field verdicts (non-vacuous
@@ -83,7 +83,7 @@ type Z = any
 
 // ── Spec model ────────────────────────────────────────────────────────────
 // A spec is a schema tree. Leaves carry their real schema plus TWO reductions,
-// so the harness never introspects zod internals — it wires structure +
+// so the harness never introspects zod internals: it wires structure +
 // refines and swaps leaf builders:
 //   - typeOnly   : base type + coercion only (the NAIVE strip; for the
 //                  necessity block).
@@ -503,7 +503,7 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
-    // Explicit password / confirmPassword — the canonical cross-field refine.
+    // Explicit password / confirmPassword: the canonical cross-field refine.
     name: 'password / confirmPassword equality refine',
     spec: obj({ password: L.min(8), confirmPassword: L.str() }, [
       {
@@ -552,7 +552,7 @@ describe('T4 refines-only decomposition equivalence (Variant A″)', () => {
 // ── Necessity: the naive type-only strip breaks on BOTH adapters ──────────
 // Drops custom refines too. The aborting leaf refine then no longer aborts in
 // the refines-only half, so a suppressed (would-fail) root refine wrongly
-// reappears — v3 via `fatal`, v4 via `abort`. This is exactly why A″ keeps
+// reappears, v3 via `fatal`, v4 via `abort`. This is exactly why A″ keeps
 // custom refines, and why v3 needs identical treatment to v4. If a future zod
 // release changes an abort spelling, the "diverges" expectation flips here.
 describe('necessity: naive type-only strip diverges where A″ holds', () => {
@@ -645,7 +645,7 @@ function fuzzSample(rnd: () => number): Record<string, unknown> {
   }
 }
 
-describe('T4 decomposition equivalence — seeded fuzz (flat, both adapters)', () => {
+describe('T4 decomposition equivalence: seeded fuzz (flat, both adapters)', () => {
   for (const a of ADAPTERS) {
     it(`[${a.tag}] 400 randomized samples reconstruct the whole-form verdict`, () => {
       const v = variants(a.z, fuzzFlatSpec())

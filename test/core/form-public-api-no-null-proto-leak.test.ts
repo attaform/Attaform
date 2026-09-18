@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 /**
- * Class-of-bug coverage for issue #314 — beyond the SSR snapshot, the
+ * Class-of-bug coverage for issue #314, beyond the SSR snapshot, the
  * other consumer-facing surfaces (`form.values`, `form.record(path)`,
  * `form.errors`) also need to carry `Object.prototype` so any
  * third-party code that calls `.hasOwnProperty()` against them works.
  *
- * Vue's reactivity instruments `hasOwnProperty` on its proxies via
- * `toRaw(this).hasOwnProperty(key)`. With a null-prototype raw target
- * that call throws the same way `@pinia/nuxt` throws on the SSR
- * payload. The fix is the same: stop emitting null-prototype objects on
- * any consumer-observable surface.
+ * Vue's reactivity instruments `hasOwnProperty` on its proxies through
+ * `toRaw(this).hasOwnProperty(key)`, and a null-prototype raw target
+ * makes that call throw the same way `@pinia/nuxt` throws on the SSR
+ * payload. So no consumer-observable surface emits a null-prototype
+ * object.
  *
  * Each adapter (zod v3 + v4) gets the same coverage per
- * `feedback_zod_v3_v4_parity` — both are first-class peers.
+ * `feedback_zod_v3_v4_parity`, both are first-class peers.
  */
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
@@ -81,7 +81,7 @@ function mount<T extends ReturnType<(typeof fixtures)[keyof typeof fixtures]>>(
   return { app, form: handle.form as AnyForm }
 }
 
-describe('public form surfaces — no null-prototype leak into consumer reads', () => {
+describe('public form surfaces: no null-prototype leak into consumer reads', () => {
   for (const [adapter, build] of Object.entries(fixtures)) {
     describe(adapter, () => {
       it('form.values.hasOwnProperty works at the root', () => {

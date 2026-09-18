@@ -10,14 +10,14 @@ import { fieldMeta as fieldMetaV3, withMeta as withMetaV3 } from '../../src/zod-
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * FieldState extension — `label`, `description`, `placeholder`,
+ * FieldState extension, `label`, `description`, `placeholder`,
  * `meta` resolve through the adapter's `getFieldMetaAtPath` with the
  * documented precedence:
  *
  *   - label:       registry → humanize(lastSegment)
  *   - description: registry → schema.description (.describe()) → undefined
  *   - placeholder: registry → undefined
- *   - meta:        registry payload (frozen) — empty object when absent
+ *   - meta:        registry payload (frozen), empty object when absent
  *
  * Both adapters (Zod 4 native registry, Zod 3 WeakMap shim) flow
  * through the same `FieldState` shape so consumer code reads
@@ -47,7 +47,7 @@ function mountWithApp<T>(setup: () => T): T {
   return captured
 }
 
-describe('FieldState metadata — Zod 4 adapter', () => {
+describe('FieldState metadata: Zod 4 adapter', () => {
   it('reads registered label, description, placeholder via fields proxy', () => {
     const schema = zV4.object({
       reference: withMetaV4(zV4.string().min(1), {
@@ -88,7 +88,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
       useFormV4({ schema, key: `meta-v4-${Math.random()}`, defaultValues: { bio: '' } })
     )
     expect(form.fields.bio.description).toBe('Tell us about yourself')
-    // Label still humanizes — description doesn't backfill it.
+    // Label still humanizes, description doesn't backfill it.
     expect(form.fields.bio.label).toBe('Bio')
   })
 
@@ -130,7 +130,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // chain returns the original schema (not a clone), so the registry
     // sees two writes against the same reference. The path-resolver
     // walks the schema tree counting per-schema occurrences and pairs
-    // them with the registration list in declaration order — object
+    // them with the registration list in declaration order, object
     // literals evaluate left-to-right, so registration order matches
     // walk order, and each path lands on its intended payload.
     const addressSchema = zV4.object({ city: zV4.string() })
@@ -153,7 +153,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // FieldStateMap's mapped type strips the optional flag (-?:) so
     // optional schema fields always have a FieldState record at form
     // construction. The optionality of the underlying VALUE survives
-    // (FieldState<string | undefined>) — only the wrapper is locked
+    // (FieldState<string | undefined>), only the wrapper is locked
     // non-undefined. Without this, every reactive read on an
     // optional path would need an optional-chain in consumer code.
     const schema = zV4.object({
@@ -167,7 +167,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
         defaultValues: { required: '' },
       })
     )
-    // Wrapper is present — direct dot-access works without ?.
+    // Wrapper is present, direct dot-access works without ?.
     expect(form.fields.maybe).toBeDefined()
     expect(form.fields.maybe.label).toBe('Maybe')
     // Value carries the optional via the inner type.
@@ -181,7 +181,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // via [1], [2], … rely on the resolver's fallback: when the path
     // map misses, the schema-keyed store read on the schema reference
     // still returns the registered payload. Together that means every
-    // array index reads the same metadata from one .register() call —
+    // array index reads the same metadata from one .register() call,
     // the canonical "every line item shares the schema" pattern.
     const lineItemSchema = zV4
       .object({
@@ -239,7 +239,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // target the SAME clone instance, so the walker visits one path
     // exactly once and would normally pick only list[0]. The
     // resolver's fallback to the schema-keyed store returns the
-    // single-slot value (last-write-wins) — so chained registrations
+    // single-slot value (last-write-wins): so chained registrations
     // on a single path resolve via the OR-fallback in
     // resolveFieldMetaAtPath: pathMap.get(...) ?? store read.
     // Net effect: label survives via the path map, description
@@ -264,7 +264,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
     // Intersection (z.intersection / a.and(b)) folds two schemas
     // together; the walker descends into both at the same path so
     // metadata registered on either side surfaces. Verifies the
-    // case branch in walkForMeta — without it, intersection
+    // case branch in walkForMeta, without it, intersection
     // metadata would be silently dropped.
     const left = zV4.object({
       sku: zV4.string().register(fieldMetaV4, { label: 'SKU' }),
@@ -327,7 +327,7 @@ describe('FieldState metadata — Zod 4 adapter', () => {
   })
 })
 
-describe('FieldState metadata — Zod 3 adapter', () => {
+describe('FieldState metadata: Zod 3 adapter', () => {
   it('reads registered label, description, placeholder via fields proxy', () => {
     const schema = zV3.object({
       reference: withMetaV3(zV3.string().min(1), {
@@ -397,7 +397,7 @@ describe('FieldState metadata — Zod 3 adapter', () => {
   })
 })
 
-describe('FieldState metadata — wrapper registrations resolve symmetrically', () => {
+describe('FieldState metadata: wrapper registrations resolve symmetrically', () => {
   // The path walker returns the wrapper at terminal positions and
   // peels at intermediate descent. The adapter's two-stage lookup
   // (target schema first, peeled inner as fallback) means BOTH
@@ -449,7 +449,7 @@ describe('FieldState metadata — wrapper registrations resolve symmetrically', 
         defaultValues: { reference: '' },
       })
     )
-    // Cast through the call-form's `unknown` return — the runtime
+    // Cast through the call-form's `unknown` return: the runtime
     // always returns a leaf-view proxy at this path; the cast is
     // the test-side acknowledgement of that runtime guarantee.
     const ref = (form.fields as unknown as (p: string) => { label: string })('reference')

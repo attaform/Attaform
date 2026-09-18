@@ -1,19 +1,24 @@
+/**
+ * Structural diff/apply walker. The state layer emits per-leaf patches
+ * through it when `setValue` replaces a subtree, at a cost that scales
+ * with the changed subtree rather than the form's whole leaf count.
+ *
+ * A "leaf" is anything that is not a plain object, array or spellable map:
+ * strings, numbers, booleans, null, undefined, Date, Set, class instances,
+ * functions. That is the right boundary for a form, which has no business
+ * walking into a `Date` or a `File`.
+ *
+ * Every key read goes through `readConsumerProp` / `readConsumerIndex`.
+ * Both sides of a diff are values the consumer wrote, and an accessor that
+ * throws on one of them would escape `setValue` / `reset` into the host
+ * app (#608).
+ */
 import { consumerKeys, readConsumerIndex, readConsumerProp } from './consumer-code'
 import { isPathPrefix, mapSegmentKeys, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
 
-/**
- * Structural diff/apply walker. Used by the state layer to emit per-leaf
- * patches when `setValue` replaces a subtree. Cost scales with the
- * size of the changed subtree, not the full form's leaf count.
- *
- * "Leaves" are anything that's not a plain object or array: strings, numbers,
- * booleans, null, undefined, Date, Map, Set, class instances, functions, etc.
- * For forms, this is the right boundary — we don't want to walk into a `Date`
- * or a `File` value.
- */
-
+/** One leaf-level difference between the two sides of a diff. */
 export type Patch =
   | { readonly kind: 'added'; readonly path: Path; readonly newValue: unknown }
   | { readonly kind: 'removed'; readonly path: Path; readonly oldValue: unknown }
@@ -25,22 +30,21 @@ export type Patch =
     }
 
 /**
- * True for plain objects (own prototype === Object.prototype or null),
- * arrays, and the maps whose every key a path segment can spell.
- * Deliberately rejects Set, Date, class instances, functions — those
- * are treated as opaque leaf values.
+ * True for plain objects (own prototype `Object.prototype` or null),
+ * arrays, and the maps every one of whose keys a path segment can spell.
+ * Set, Date, class instances and functions are opaque leaf values.
  *
- * A map is descendable because its entries are real paths (#614), and
- * the diff is what puts them in `originals`: without a per-entry
- * baseline, `form.fields.scores.ann.dirty` reads `false` the moment
- * after it is edited, and the leaf walks built on `originals`
- * (`form.list`, the container dirty rollup) never see the entry at
- * all. A map holding a key no segment can spell — an object, a symbol
- * — has no addressable entries, so it stays one atomic value, the same
- * answer `entryKeyKindAtPath` gives for it.
+ * A map is descendable because its entries are real paths (#614), and the
+ * diff is what puts them in `originals`: with no per-entry baseline,
+ * `form.fields.scores.ann.dirty` reads `false` the moment after the entry
+ * is edited, and the leaf walks built on `originals` (`form.list`, the
+ * container dirty rollup) never see the entry at all. A map holding a key
+ * no segment can spell (an object, a symbol) has no addressable entries,
+ * so it stays one atomic value, which is also what `entryKeyKindAtPath`
+ * answers for it.
  *
- * A `Set` stays a leaf for the reason its members are not paths: a
- * member is its own key, so there is nothing under it to address.
+ * A `Set` stays a leaf because its members are not paths: a member is its
+ * own key, so there is nothing under it to address.
  */
 function isDescendable(value: unknown): value is Record<string, unknown> | readonly unknown[] {
   if (value === null || typeof value !== 'object') return false
@@ -54,8 +58,8 @@ function appendSegment(prefix: Path, segment: Segment): Path {
   const next: Segment[] = new Array<Segment>(prefix.length + 1)
   for (let i = 0; i < prefix.length; i++) {
     const s = prefix[i]
-    // prefix indices are always in-range by construction; the nullish fallback
-    // placates noUncheckedIndexedAccess without adding runtime overhead.
+    // prefix indices are in-range by construction; the cast satisfies
+    // noUncheckedIndexedAccess at no runtime cost.
     next[i] = s as Segment
   }
   next[prefix.length] = segment
@@ -82,11 +86,11 @@ export function diffAndApply(
   const oldIsDescendable = isDescendable(oldValue)
   const newIsDescendable = isDescendable(newValue)
 
-  // Missing (undefined) <-> descendable: recurse into the descendable side so
-  // every leaf emits an atomic 'added' / 'removed' patch. Populating
-  // per-field metadata during form init / dynamic field additions relies on
-  // this granularity. Other shape mismatches (primitive <-> object, array <->
-  // object) are treated as atomic replacements.
+  // Missing (undefined) <-> descendable: recurse into the descendable side
+  // so every leaf emits an atomic 'added' / 'removed' patch, the
+  // granularity per-field metadata needs at form init and on a dynamic
+  // field addition. Any other shape mismatch (primitive <-> object,
+  // array <-> object) is an atomic replacement.
   if (oldValue === undefined && newIsDescendable) {
     walkNewDescendable(newValue, prefix, visit)
     return
@@ -158,9 +162,9 @@ export function diffAndApply(
 
 /**
  * Walk a descendable `newValue` whose old counterpart was `undefined`,
- * emitting an atomic `'added'` patch for every leaf (via the recursive
- * `diffAndApply`). Hot-path helper — module-level so no closure is
- * allocated per recursion; `prefix` + `visit` thread through explicitly.
+ * emitting an atomic `'added'` patch for every leaf through the recursive
+ * `diffAndApply`. A hot-path helper, kept at module level so no closure is
+ * allocated per recursion; `prefix` and `visit` thread through explicitly.
  */
 function walkNewDescendable(
   newValue: Record<string, unknown> | readonly unknown[],
@@ -184,13 +188,9 @@ function walkNewDescendable(
 }
 
 /**
- * Key reads here go through `readConsumerProp` throughout. Both sides of
- * a diff are values the consumer wrote, and an accessor that throws on
- * one of them would escape `setValue` / `reset` into the host app.
- *
  * Mirror of `walkNewDescendable` for the removal direction: walk a
- * descendable `oldValue` whose new counterpart is `undefined`, emitting
- * an atomic `'removed'` patch for every leaf.
+ * descendable `oldValue` whose new counterpart is `undefined`, emitting an
+ * atomic `'removed'` patch for every leaf.
  */
 function walkOldDescendable(
   oldValue: Record<string, unknown> | readonly unknown[],
@@ -219,13 +219,12 @@ function walkOldDescendable(
  * other, so an added or dropped entry surfaces as an `'added'` /
  * `'removed'` leaf patch, exactly as an object key does.
  *
- * A key spelled as the string `'42'` on one side and the number `42` on
- * the other is the same path, and reconciling that here would make the
- * two sides disagree about which spelling the entry has. Both maps come
- * from the same schema, whose declared key type fixes the spelling
- * (`entryKeyKindAtPath`), so the case does not arise from a write; a
- * consumer who hand-builds one each way sees the entry replaced rather
- * than edited, which is the truthful reading of two different keys.
+ * A key spelled `'42'` on one side and `42` on the other is the same path,
+ * and reconciling that here would leave the two sides disagreeing about
+ * which spelling the entry has. Both maps come from the same schema, whose
+ * declared key type fixes the spelling (`entryKeyKindAtPath`), so a write
+ * cannot produce the case; a consumer who hand-builds one of each sees the
+ * entry replaced rather than edited, the truthful reading of two keys.
  */
 function diffMapsLockstep(
   oldMap: ReadonlyMap<unknown, unknown>,
@@ -269,13 +268,13 @@ function diffArraysLockstep(
  * either side (old keys first, then new-only keys) so additions and
  * removals both surface. A `seen` set dedupes the two passes.
  *
- * Reads stay plain. A prototype-shadowed key (`__proto__`, `toString`, …)
- * present on only one side does resolve the inherited member on the
- * other, so it surfaces as a change rather than as an appearance — but
- * the own-property reader costs ~8% of a 500-leaf write when named
- * anywhere in this function, and the consequence is absorbed for free by
- * `commitWritePatches`, which seeds an absence baseline for any patched
- * path it has no baseline for rather than for `added` patches alone.
+ * Reads stay plain. A prototype-shadowed key (`__proto__`, `toString`) on
+ * only one side resolves the inherited member on the other, so it surfaces
+ * as a change rather than an appearance. Naming the own-property reader
+ * anywhere in this function costs ~8% of a 500-leaf write, and
+ * `commitWritePatches` absorbs the consequence for free by seeding an
+ * absence baseline for any patched path it has no baseline for, not for
+ * `added` patches alone.
  */
 function diffObjectsLockstep(
   oldRec: Record<string, unknown>,
@@ -305,87 +304,81 @@ function diffObjectsLockstep(
 }
 
 /**
- * Apply `source`'s changes to `target` by reassigning only the
- * top-level keys whose subtrees CONTENT-differ. Which keys changed
- * comes from `patches` — the caller's single `diffAndApply(target,
- * source, [], ...)` pass over the same pair — rather than a second
- * structural walk of its own, so every write pays exactly one
- * content diff. Content (not `Object.is`) is the right gate because
- * reactive proxies and copy-on-write spreads routinely produce
- * reference-different but content-equal subtrees that we don't want
- * to reassign — reassigning fires Vue's property dep and re-triggers
- * deep watches on that subtree.
+ * Apply `source`'s changes to `target` by reassigning only the top-level
+ * keys whose subtrees CONTENT-differ. Which keys changed comes from
+ * `patches`, the caller's single `diffAndApply(target, source, [], ...)`
+ * pass over the same pair, rather than a second structural walk here, so
+ * every write pays exactly one content diff. Content, not `Object.is`, is
+ * the right gate: reactive proxies and copy-on-write spreads routinely
+ * produce reference-different but content-equal subtrees, and reassigning
+ * one fires Vue's property dep and re-triggers every deep watch on it.
  *
- * `patches` carries absolute paths and must be the content diff of
- * exactly this `(target, source)` pair, scoped at or under
- * `currentPath` (the root call passes the full list with
- * `currentPath: []`; recursion filters per child). A patch landing AT
- * `currentPath` itself is the container-level shape mismatch the diff
- * emits for object ↔ array flips — the un-reconcilable case.
+ * `patches` carries absolute paths and must be the content diff of exactly
+ * this `(target, source)` pair, scoped at or under `currentPath` (the root
+ * call passes the full list with `currentPath: []`; the recursion filters
+ * per child). A patch landing AT `currentPath` is the container-level
+ * shape mismatch the diff emits for an object ↔ array flip, which is the
+ * un-reconcilable case.
  *
- * Returns `true` on success. Returns `false` when `target` and
- * `source` have incompatible shapes (e.g. object ↔ array, or one
- * side isn't a descendable container) — the caller must fall back
- * to wholesale replacement.
+ * Returns `true` on success, `false` when `target` and `source` have
+ * incompatible shapes (object ↔ array, or one side not a descendable
+ * container), where the caller must fall back to wholesale replacement.
  *
- * **Why** (subtle but load-bearing):
+ * Why this matters: Vue re-creates the reactive proxy for an object-typed
+ * Ref every time the Ref's value is reassigned wholesale
+ * (`form.value = next`), and that re-creation fires every deep watch
+ * transitively bound to the Ref, including watches whose own subtree is
+ * identity-equal across the swap. When such a watch reacts by writing back
+ * to the form (the canonical "same as pickup address" mirror), it re-fires
+ * synchronously on its own write and the browser tab freezes. So
+ * `form.value`'s identity stays stable across writes and only the children
+ * whose CONTENT changed are updated: a deep watch on a sibling subtree
+ * sees no dep change and stays quiet, while the touched child gets a new
+ * reference so computeds and directive bindings on THAT path re-evaluate.
  *
- * Vue's reactive proxy for an object-typed Ref gets re-created every
- * time the Ref's value is reassigned wholesale (`form.value = next`).
- * That re-creation fires every deep watch transitively bound to the
- * Ref — even watches whose underlying sub-tree is identity-equal
- * across the swap. When one of those watches reacts by writing back
- * to the form (the canonical "same as pickup address" mirror
- * pattern), the watch re-fires synchronously on its own write and
- * the browser tab freezes.
+ * An old subtree reassigned here is left unmutated, and nothing depends on
+ * that: a consumer needing a frozen view (a history snapshot, the
+ * `setValue((prev) => ...)` callback arg) takes its own
+ * `structuralSnapshot` deep clone. The single-leaf `setValue` fast path
+ * (`applyTargetedWrite`) mutates the leaf slot in place to preserve
+ * ancestor container identity; this first-segment reassign serves container
+ * and whole-form replacements.
  *
- * The cure is to keep `form.value`'s identity stable across writes
- * and update only the children whose CONTENT actually changed. Deep
- * watches on sibling subtrees see no dep change and stay quiet; the
- * touched child gets a new reference, so reactive consumers tracking
- * THAT path (computeds, directive bindings, etc.) re-evaluate
- * correctly.
+ * `arrayOpPath` opts the typed array helpers into one further
+ * optimization. A write carrying an `arrayOp` meta hint passes the mutated
+ * array's canonical path and every other caller passes `null`. When
+ * non-null, a changed key whose old and new values are BOTH descendable
+ * containers is reconciled IN PLACE: the recursion holds that container's
+ * reference stable and descends, threading `currentPath` so each level
+ * knows where it sits. That keeps EVERY ancestor container on the path to
+ * the mutated array stable at any depth, the objects of an
+ * `address.contacts` chain and the ancestor array elements of a nested
+ * repeater (`append('sections.0.questions', q)`) alike, so a helper op
+ * touches only the genuinely changed leaves and length and a `form.list`
+ * over an untouched container does not re-render.
  *
- * Old subtree references that get reassigned here are left unmutated,
- * but nothing depends on that: the consumers that need a frozen view
- * (history snapshots, the `setValue((prev) => …)` callback arg) take
- * their own `structuralSnapshot` deep-clone. The single-leaf `setValue`
- * fast path (`applyTargetedWrite`) deliberately mutates the leaf slot in
- * place, preserving ancestor container identity; this first-segment
- * reassign is retained for container and whole-form replacements.
+ * The array branch is reached only through that recursion, so `arrayOpPath`
+ * is non-null there, and it splits on whether `currentPath` IS the mutated
+ * array:
+ *   - the MUTATED array (`pathsEqual(currentPath, arrayOpPath)`): truncate
+ *     to the new length and reference-assign only the changed indices.
+ *     Reference-assign is what relocates a swapped or moved element into
+ *     its new slot with its object identity intact (subtree, focus and
+ *     per-element state riding along), so this branch must NOT recurse
+ *     into elements.
+ *   - an ANCESTOR array: a descendant write never changes this array's
+ *     length, only the one element leading to the mutated array. Recurse
+ *     that element in place, guarded by `isPathPrefix` so untouched
+ *     siblings keep their references, and reference-assign anything else.
  *
- * `arrayOpPath` opts the typed array helpers into one extra optimization: the
- * writes that carry an `arrayOp` meta hint pass the mutated array's (canonical)
- * path, every other caller passes `null`. When non-null, a changed key whose old
- * and new values are BOTH descendable containers (a plain object or an array) is
- * reconciled IN PLACE — the recursion keeps that container's own reference stable
- * and descends, threading `currentPath` so each level knows where it sits. This
- * keeps EVERY ancestor container on the path to the mutated array stable at any
- * depth: the objects of an `address.contacts` chain AND the ancestor array
- * elements of a nested repeater (`append('sections.0.questions', q)`) alike. So a
- * helper op touches only the genuinely-changed leaves / length, and a `form.list`
- * over any untouched container does not re-render.
- *
- * The array branch (reached only via this recursion, so `arrayOpPath` is non-null
- * there) splits on whether `currentPath` IS the mutated array:
- *   - the MUTATED array (`pathsEqual(currentPath, arrayOpPath)`): truncate to the
- *     new length and reference-assign only the changed indices. Reference-assign
- *     is what relocates a swapped / moved element to its new slot while keeping
- *     its object identity (its subtree, focus, per-element state all ride along),
- *     so this branch must NOT recurse into elements.
- *   - an ANCESTOR array (not equal): a descendant write never changes this
- *     array's length, only the one element leading to the mutated array. Recurse
- *     that element in place (guarded by `isPathPrefix`, so untouched siblings
- *     keep their references); reference-assign anything else defensively.
- *
- * When `arrayOpPath` is `null` (every non-helper write: an explicit setValue,
- * reset, undo / redo, cross-tab merge, hydration, DU reshape) the object branch
- * reassigns each changed key wholesale and never recurses, so a container-target
- * write replaces the reference like any other — the "reference changes IFF
- * targeted or restructured" contract holds for explicit writes; only the helpers
- * opt into the stable-reference reconcile. Consumers reading a container then
- * subscribe to its length / keys / elements (or take a deep watch), not its bare
- * reference.
+ * With `arrayOpPath` at `null` (every non-helper write: an explicit
+ * setValue, reset, undo / redo, hydration, DU reshape) the object branch
+ * reassigns each changed key wholesale and never recurses, so a
+ * container-target write replaces the reference like any other. The
+ * "reference changes IFF targeted or restructured" contract therefore
+ * holds for explicit writes, and only the helpers opt into the
+ * stable-reference reconcile. A consumer reading a container subscribes to
+ * its length, keys or elements, or takes a deep watch, not its reference.
  */
 export function applyChangedKeys(
   target: unknown,
@@ -395,22 +388,21 @@ export function applyChangedKeys(
   patches: readonly Patch[]
 ): boolean {
   if (!isDescendable(target) || !isDescendable(source)) return false
-  // A map write is copy-on-write, so the new map is already a fresh
-  // object holding every carried-over entry by reference. Bailing here
-  // makes the caller reference-assign it wholesale, which is both the
-  // correct result and the one the in-place reconcile below could not
-  // produce: its object branch reads keys off `Object.keys`, which a
-  // map has none of.
+  // A map write is copy-on-write, so the new map is already a fresh object
+  // holding every carried-over entry by reference. Bailing makes the caller
+  // reference-assign it wholesale, which is both the correct result and the
+  // one the in-place reconcile below could not produce: its object branch
+  // reads keys off `Object.keys`, and a map has none.
   if (target instanceof Map || source instanceof Map) return false
   const targetIsArray = Array.isArray(target)
   const sourceIsArray = Array.isArray(source)
   if (targetIsArray !== sourceIsArray) return false
 
-  // The unique child segments where target and source differ in
-  // CONTENT, read off the caller's patch list at this node's depth. A
-  // patch landing AT this node (path length === depth) is the diff's
-  // container-level shape-mismatch marker: tell the caller to
-  // wholesale-replace. No mutation has happened yet at that point.
+  // The unique child segments where target and source differ in CONTENT,
+  // read off the caller's patch list at this node's depth. A patch landing
+  // AT this node (path length === depth) is the diff's container-level
+  // shape-mismatch marker, so tell the caller to wholesale-replace. No
+  // mutation has happened by that point.
   const depth = currentPath.length
   const changedFirstSegments = new Set<Segment>()
   for (const patch of patches) {
@@ -421,33 +413,34 @@ export function applyChangedKeys(
   if (targetIsArray) {
     const t = target as unknown[]
     const s = source as readonly unknown[]
-    // `arrayOpPath === null` can't actually reach here — the array branch is
-    // only entered by recursion from the object branch, which recurses only
-    // when arrayOpPath is non-null. Folding it into the mutated-array case both
-    // documents that and narrows arrayOpPath to non-null inside the `else`.
+    // `arrayOpPath === null` cannot reach here: the array branch is entered
+    // only by recursion from the object branch, which recurses only when
+    // arrayOpPath is non-null. Folding it into the mutated-array case says
+    // so and narrows arrayOpPath to non-null inside the `else`.
     if (arrayOpPath === null || pathsEqual(currentPath, arrayOpPath)) {
       // This IS the array the op mutated. Truncate to the new length and
-      // reference-assign the changed indices: that relocates a swapped / moved
-      // element to its new slot while preserving its object identity, so its
-      // subtree / focus / per-element state ride along. Recursing here instead
+      // reference-assign the changed indices, which relocates a swapped or
+      // moved element into its new slot with its object identity intact, so
+      // its subtree, focus and per-element state ride along. Recursing here
       // would content-copy and break that identity.
       if (t.length > s.length) t.length = s.length
       for (const idx of changedFirstSegments) {
         const i = typeof idx === 'number' ? idx : Number(idx)
-        // Skip slots the length cut already dropped. On a shrink, diffAndApply
+        // Skip slots the length cut already dropped. On a shrink diffAndApply
         // emits a 'removed' patch at every truncated index, so those land in
-        // `changedFirstSegments`; reassigning `s[i]` (undefined) would re-grow
-        // the array with a trailing hole. Survivors and grown slots are in range.
+        // `changedFirstSegments`, and reassigning `s[i]` (undefined) would
+        // re-grow the array with a trailing hole. Survivors and grown slots
+        // are in range.
         if (i >= s.length) continue
         t[i] = s[i]
       }
     } else {
-      // An ANCESTOR array on the path to the mutated array. A descendant write
-      // never changes this array's length, only the single element leading to
-      // the mutated array — recurse THAT element in place (keeping its
-      // reference) so its siblings and their subtrees stay stable. `isPathPrefix`
-      // selects the one on-path element; anything else reference-assigns
-      // defensively (no length change, so no truncation here).
+      // An ANCESTOR array on the path to the mutated array. A descendant
+      // write never changes this array's length, only the single element
+      // leading to the mutated array, so recurse THAT element in place and
+      // keep its reference, leaving siblings and their subtrees stable.
+      // `isPathPrefix` picks the one on-path element and anything else
+      // reference-assigns. No length change here, so no truncation.
       for (const idx of changedFirstSegments) {
         const i = typeof idx === 'number' ? idx : Number(idx)
         if (i >= s.length) continue
@@ -482,15 +475,16 @@ export function applyChangedKeys(
       const key = String(k)
       const nextVal = safeOwnRead(s, key)
       // On an array helper op (arrayOpPath non-null), reconcile a changed
-      // container-valued key IN PLACE: recurse so the array branch handles the
-      // array and any nested object on the path keeps its own reference, instead
-      // of reassigning the whole subtree. This makes an array nested under an
-      // object chain (`append('address.contacts', x)`) keep `address`'s reference
-      // too, so `form.list('address.contacts')` is the only list that re-renders.
-      // `safeOwnRead` returns the reactive proxy for `t[key]` (tracking intact),
-      // so the in-place sets fire the right deps. Falls through to a plain
-      // reassign for a leaf value, a shape mismatch (the recurse returns false),
-      // or a non-helper write (arrayOpPath null), which replaces the reference.
+      // container-valued key IN PLACE: recurse, so the array branch handles
+      // the array and any nested object on the path keeps its own reference
+      // rather than the whole subtree being reassigned. An array nested
+      // under an object chain (`append('address.contacts', x)`) therefore
+      // keeps `address`'s reference too, and `form.list('address.contacts')`
+      // is the only list that re-renders. `safeOwnRead` hands back the
+      // reactive proxy for `t[key]` with tracking intact, so the in-place
+      // sets fire the right deps. Falls through to a plain reassign for a
+      // leaf value, a shape mismatch (the recurse returned false), or a
+      // non-helper write, which replaces the reference.
       if (arrayOpPath !== null) {
         const curVal = safeOwnRead(t, key)
         const childPath = appendSegment(currentPath, key)
@@ -515,23 +509,23 @@ export function applyChangedKeys(
 }
 
 /**
- * Stable structural snapshot of a value. Walks plain objects, arrays
- * and maps recursively; non-recursable values (primitives, Date,
- * RegExp, Set, functions, class instances) pass through unchanged.
+ * Stable structural snapshot of a value. Walks plain objects, arrays and
+ * maps recursively and passes non-recursable values (primitives, Date,
+ * RegExp, Set, functions, class instances) through unchanged.
  *
- * Used by setValue's callback path so the `prev` arg passed to a
- * consumer's `(prev) => next` lambda is a frozen-in-time snapshot —
- * not a live reference into `form.value` that would silently mutate
- * once the surrounding setValue commits its in-place merge. Consumers
- * routinely cache `prev` in a closure or a test variable; without this
- * clone, those caches would silently drift to the post-setValue state.
+ * setValue's callback path uses it so the `prev` handed to a consumer's
+ * `(prev) => next` lambda is frozen in time rather than a live reference
+ * into `form.value` that would mutate once the surrounding setValue
+ * commits its in-place merge. Consumers routinely cache `prev` in a
+ * closure or a test variable, and without the clone those caches would
+ * drift to the post-setValue state.
  */
 export function structuralSnapshot<T>(value: T): T {
   if (!isDescendable(value)) return value
   if (value instanceof Map) {
-    // Snapshot as a `Map`, not as the plain object the key walk below
-    // would produce. A map's entries are paths, so it is descendable
-    // for the diff's sake, and rebuilding it here as `{}` would hand a
+    // Snapshot as a `Map`, not the plain object the key walk below would
+    // produce. A map's entries are paths, so it is descendable for the
+    // diff's sake, and rebuilding it as `{}` would hand a
     // `setValue((prev) => ...)` callback a `prev` whose shape does not
     // match what it reads back from `form.values`.
     const out = new Map<unknown, unknown>()
@@ -546,13 +540,13 @@ export function structuralSnapshot<T>(value: T): T {
     return out as unknown as T
   }
   const src = value as Record<string, unknown>
-  // Snapshot container carries `Object.prototype` so consumer code
-  // walking `prev` with `.hasOwnProperty(...)` / `in` / Object.keys
-  // gets the shape it expects. The per-key `safeOwnRead` resolves
-  // a literal `__proto__` key to its own data slot rather than
-  // through the inherited accessor; `safeAssign` then defines it as
-  // an own data property on `out` instead of routing through the
-  // inherited setter. Every other key takes the plain branch.
+  // The snapshot container carries `Object.prototype`, so consumer code
+  // walking `prev` with `.hasOwnProperty(...)`, `in` or `Object.keys` gets
+  // the shape it expects. Per key, `safeOwnRead` resolves a literal
+  // `__proto__` to its own data slot rather than through the inherited
+  // accessor, and `safeAssign` then defines it as an own data property on
+  // `out` rather than routing through the inherited setter. Every other
+  // key takes the plain branch.
   const out: Record<string, unknown> = {}
   for (const k of Object.keys(src)) {
     safeAssign(out, k, structuralSnapshot(safeOwnRead(src, k)))

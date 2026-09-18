@@ -1,3 +1,20 @@
+/**
+ * Vue compiler node transform that bridges `v-register` into the binding
+ * shapes its consumers expect, on two kinds of host.
+ *
+ *   - `<select v-register>` gets `:value` on a single-select plus a
+ *     per-`<option>` `:selected`, so the runtime directive can pre-mark
+ *     selected options at SSR time.
+ *   - `<MyComponent v-register>`, and a kebab-case custom-element host,
+ *     gets a `:registerValue` bridge prop, so `useRegister` inside the
+ *     child sees the parent's RegisterValue. Any parent-authored slotted
+ *     `<option>` is marked exactly as the native path marks it, so a
+ *     `<select>` wrapped in a styled component keeps its SSR-selected
+ *     option (#394).
+ *
+ * `attaform/vite` and `attaform/nuxt` wire it for you; reach for it
+ * directly only when integrating a custom bundler.
+ */
 import {
   createCompoundExpression,
   createSimpleExpression,
@@ -27,29 +44,20 @@ import {
 /**
  * Build one `<option>`'s `:selected` expression.
  *
- * Every term resolves in the option's OWN binding scope: the register
- * and `multiple` expressions come from the enclosing `<select>`, which
- * encloses each option, and the value expression is the option's own.
- * Nothing from a sibling option is referenced, which is the property
- * that makes this safe under `v-for`.
+ * Every term MUST resolve in the option's OWN binding scope: the
+ * register and `multiple` expressions come from the enclosing
+ * `<select>`, which encloses every option, and the value expression is
+ * the option's own. Nothing may reference a sibling option, which is the
+ * property that makes this safe under `v-for`, and it is not a
+ * theoretical one: an option inside a `v-for` cannot be referenced from
+ * a sibling loop at all, so an expression that reached across emitted
+ * the first loop's alias inside the second loop's render callback and
+ * died at render with `ReferenceError: a is not defined` (#566).
  *
- * That property was previously violated. Each option also carried an
- * "a preceding option already matched, so I am false" guard built by
- * concatenating every earlier sibling's match expression into this
- * one. Two `<option v-for>` siblings under a single `<select>` then
- * emitted the FIRST loop's alias inside the SECOND loop's render
- * callback, where it does not exist, and the component died at render
- * with `ReferenceError: a is not defined` (#566). An option inside a
- * `v-for` cannot be referenced from a sibling loop at all, so no
- * repair of that expression was possible: the guard had to go.
- *
- * Removing it costs nothing, because it never fired. It compared the
- * register HANDLE against an option value (`(register) === ('apple')`)
- * rather than the model behind it, so it was false for every input a
- * consumer could supply. The only shape it aimed at is two options
- * sharing one value on a single-select, where the two are already
- * indistinguishable to the user, the browser resolves the duplicate on
- * parse, and the directive re-syncs from the model at mount.
+ * Two options sharing one value on a single-select need no
+ * disambiguation here. They are indistinguishable to the user, the
+ * browser resolves the duplicate on parse, and the directive re-syncs
+ * from the model at mount.
  */
 function generateEqualityExpression(
   selectValue: SummarizedProp['value'],
@@ -65,26 +73,24 @@ function generateEqualityExpression(
     return expression
   }
 
-  // Single-select branch String-coerces both sides to mirror the
-  // runtime directive's `looseEqual`-style match — a typed-numeric
-  // model (`z.number()`) matches `<option value="1">` at SSR time.
-  // The `typeof !== 'object'` guard preserves the pre-existing
-  // "array model on a single-select doesn't match" behaviour: an
-  // array stringifies to its joined elements, which would otherwise
-  // false-positive against a single-element option.
-  // The multi-select branch keeps `innerRef.value` because Array
-  // / Set models need findIndex / membership iteration.
+  // The single-select branch String-coerces both sides, mirroring the
+  // runtime directive's `looseEqual`-style match, so a typed-numeric
+  // model (`z.number()`) matches `<option value="1">` at SSR time. The
+  // `typeof !== 'object'` guard keeps an array model from matching on a
+  // single-select: an array stringifies to its joined elements, which
+  // would false-positive against a single-element option. The
+  // multi-select branch keeps `innerRef.value`, Array and Set models
+  // needing findIndex and membership iteration.
   //
-  // The single-select comparison reads `displayValue`, the same ref
-  // the `:value` injection on the enclosing `<select>` reads and the
-  // same one the runtime `setSelected` matches against. For every
-  // value a form holds it equals `String(innerRef.value)`; where the
-  // two part is a path holding nothing, which displays as `''` and so
-  // marks an authored `<option value="">` placeholder server-side.
-  // Reading `innerRef` raw stringified an absent model to
-  // `'undefined'`, which matched nothing, so the server marked no
-  // option at all and the browser parsed the first one as selected —
-  // whichever it happened to be (#569).
+  // It compares against `displayValue`, the same ref the `:value`
+  // injection on the enclosing `<select>` reads and the same one the
+  // runtime `setSelected` matches. For every value a form holds it
+  // equals `String(innerRef.value)`; where the two part is a path
+  // holding NOTHING, which displays as `''` and so marks an authored
+  // `<option value="">` placeholder server-side. Raw `innerRef`
+  // stringifies an absent model to `'undefined'`, matches nothing, and
+  // leaves the browser to parse whichever option came first as selected
+  // (#569).
   return [
     '(',
     ...getImplicitTrueMultipleExpression(multipleExpression),
@@ -122,10 +128,10 @@ function extractMultipleFromSelectSummarizedProps(
   return typeof value === 'string' ? value.replace(/'|"/g, '') : (value ?? 'true')
 }
 
-// Whitelist of node types that contain iterable child nodes. Used by
-// traverseSelectNode so we don't recurse into interpolation / comment / text
-// nodes (which have no `children` in the traversal sense) and don't crash on
-// future Vue node-type additions.
+// The node types that hold iterable children. `traverseSelectNode` reads
+// it so the walk skips interpolation, comment and text nodes, which have
+// no children in the traversal sense, and skips a future Vue node type
+// rather than crashing on it.
 const RECURSABLE_NODE_TYPES: ReadonlySet<number> = new Set<number>([
   NodeTypes.ELEMENT,
   NodeTypes.FOR,
@@ -133,16 +139,15 @@ const RECURSABLE_NODE_TYPES: ReadonlySet<number> = new Set<number>([
   NodeTypes.IF_BRANCH,
 ])
 
-// Native form-shell tags excluded from the kebab-case extension. The
-// hyphen check on `node.tag` already excludes most native HTML tags
-// (which have no hyphen), but listing the form-shell ones explicitly
-// documents the conservative stance: even if a future native tag like
-// `<my-form-something>` lands, it won't accidentally collide with a
-// custom-element transform branch. `<input>`, `<select>`, `<textarea>`
-// already have dedicated branches via inputTextAreaNodeTransform and
-// the isSelect path above; the others (form, fieldset, label, button,
-// option) carry no meaningful v-register binding and shouldn't be
-// rewritten with component-style props.
+// Native form-shell tags held back from the kebab-case extension. The
+// hyphen check on `node.tag` already excludes most native HTML tags,
+// which carry no hyphen, so listing these is the conservative stance: a
+// future native tag like `<my-form-something>` cannot collide with the
+// custom-element branch. `<input>`, `<select>` and `<textarea>` have
+// their own branches through `inputTextAreaNodeTransform` and the
+// `isSelect` path above; form, fieldset, label, button and option carry
+// no meaningful v-register binding and must not be rewritten with
+// component-style props.
 const NATIVE_FORM_TAGS: ReadonlySet<string> = new Set<string>([
   'input',
   'textarea',
@@ -155,21 +160,18 @@ const NATIVE_FORM_TAGS: ReadonlySet<string> = new Set<string>([
 ])
 
 /**
- * Synthesise a static value for `<option>foo</option>` (no `value=`
- * attr). Returns the text content as a single-quoted JS string literal
- * so the equality check rendered into the AST treats it as a string.
+ * Synthesise a static value for an `<option>foo</option>` carrying no
+ * `value=`. The text comes back as a single-quoted JS string literal, so
+ * the equality check rendered into the AST treats it as a string:
+ * `"'apple'"` for a single static text child, `null` for mixed, dynamic
+ * or empty children, where the caller skips the binding rather than
+ * guess.
  *
- * Returns:
- *   - quoted-string `"'apple'"` for a single static text child,
- *   - `null` for mixed / dynamic / empty children — caller skips the
- *     binding rather than synthesise a guess.
- *
- * The HTML spec says an option's value defaults to its descendant
- * text. We restrict to "single static text node" to keep the
- * code-path safe: handling interpolation correctly would need a
- * wrapped runtime expression, which we can't emit at compile time
- * without leaking runtime references that may not exist in the
- * template's binding scope.
+ * The HTML spec defaults an option's value to its descendant text, but
+ * only a single static text node is handled here. Handling interpolation
+ * would need a wrapped runtime expression, which cannot be emitted at
+ * compile time without leaking runtime references that may not exist in
+ * the template's binding scope.
  */
 function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): string | null {
   if (!('children' in node)) return null
@@ -179,37 +181,15 @@ function inferOptionValueFromChildren(node: TemplateChildNode | RootNode): strin
   if (only === undefined) return null
   if (typeof only === 'string' || typeof only === 'symbol') return null
   if (only.type !== NodeTypes.TEXT) return null
-  // Mirror Vue's option-value semantic: trim leading/trailing whitespace
-  // so `<option> apple </option>` matches a model value of `'apple'`.
+  // Vue's own option-value semantic: trim, so `<option> apple </option>`
+  // matches a model value of `'apple'`.
   const text = only.content.trim()
-  // Emit a fully escaped JS string literal — `JSON.stringify` covers
-  // backslashes, quotes, and line terminators (`\n`, `\r`, U+2028,
-  // U+2029) so the synthesized literal stays single-line and valid.
+  // A fully escaped JS string literal: `JSON.stringify` covers
+  // backslashes, quotes and the line terminators (`\n`, `\r`, U+2028,
+  // U+2029), so the synthesized literal stays single-line and valid.
   return JSON.stringify(text)
 }
 
-/**
- * Vue compiler node transform that bridges `v-register` into the
- * downstream binding shapes its consumers expect:
- *
- *   - `<select v-register>` — injects `:value` (single-select) and
- *     per-`<option>` `:selected` so the runtime directive can pre-mark
- *     selected options at SSR time.
- *   - `<MyComponent v-register>` and kebab-case custom-element hosts
- *     — injects a `:registerValue` bridge prop so `useRegister` inside
- *     the child sees the parent's RegisterValue (the binding the audit
- *     called out as the transform's "fires on every component" path),
- *     and marks any parent-authored slotted `<option>`s with `:selected`
- *     the same way the native path does, so a `<select>` wrapped in a
- *     styled component keeps its SSR-selected option (#394).
- *
- * Wired automatically by `attaform/vite` and `attaform/nuxt`. Use
- * directly only when integrating with a custom bundler.
- *
- * Renamed from `selectNodeTransform` (DIR-F6): the original name read
- * as a `<select>`-only transform, but the component-bridge path is
- * load-bearing for every `useRegister` consumer.
- */
 /**
  * What an `<option>` needs from its enclosing `<select>` in order to
  * build its own `:selected` binding, parked on the option node until the
@@ -221,63 +201,55 @@ type PendingOptionBinding = {
 }
 
 /**
- * The parking slot, keyed by the AST node itself. A `WeakMap` rather
- * than a property on the node: it leaves the AST untouched, it cannot
- * reach codegen, and entries die with the compile that made them. Node
- * identity is what makes it work, and identity holds through the
- * rewrites `v-for` / `v-if` perform — those wrap the element node
- * rather than replacing it.
+ * The parking slot, keyed by the AST node itself. A `WeakMap` rather than
+ * a property on the node, so the AST is untouched, nothing can reach
+ * codegen, and entries die with the compile that made them. Node identity
+ * is what makes it work, and identity survives the rewrites `v-for` and
+ * `v-if` perform: both WRAP the element node rather than replacing it.
  */
 const pendingOptionBindings = new WeakMap<object, PendingOptionBinding>()
 
 /**
- * Why the option's binding is built on the OPTION's own visit rather
- * than from the `<select>` that knows the register.
+ * Why the option's binding is built on the OPTION's own visit rather than
+ * from the `<select>` that knows the register.
  *
  * An `<option>` resolves its expressions in whatever binding scope it
  * landed in, and the enclosing `<select>` is visited BEFORE any of that
  * scope exists. Reading an option's props from there hands back raw
- * source text: `code` where the compiler would have written `_ctx.code`,
- * and `o` for a `v-for` alias where `o` is correct. Splicing either into
- * an injected expression makes it a plain string inside a compound node,
- * which Vue's `transformExpression` cannot descend into — so whatever
- * came out is what ships. The `v-for` alias survived that by luck; a
- * plain `<option :value="code">` did not, and the emitted `:selected`
- * threw `ReferenceError: code is not defined` wherever identifiers are
+ * source text: `code` where the compiler would write `_ctx.code`, and
+ * `o` for a `v-for` alias where `o` happens to be correct. Splicing
+ * either into an injected expression makes it a plain string inside a
+ * compound node, which Vue's `transformExpression` cannot descend into,
+ * so whatever came out is what ships. A `v-for` alias survives that by
+ * luck; a plain `<option :value="code">` does not, and its `:selected`
+ * throws `ReferenceError: code is not defined` wherever identifiers are
  * prefixed rather than resolved lexically.
  *
- * By the option's own visit the compiler has already processed its props
- * in the right scope (`_ctx.code`, and a bare `o` inside the loop), and
+ * By the option's own visit the compiler has processed its props in the
+ * right scope, `_ctx.code` and a bare `o` inside the loop, and
  * `context.identifiers` carries the aliases. Both are simply read. This
- * is #566's rule held from the other side: an expression belongs to the
- * node it was written on, and the way to respect that is to build it
- * there.
+ * is #566's rule from the other side: an expression belongs to the node
+ * it was written on, and building it there is how that is respected.
  */
 function applyPendingOptionBinding(node: PlainElementNode, pending: PendingOptionBinding): void {
   const optionProps = getSummarizedProps(node)
   const valueIndex = optionProps.findIndex((p) => isExactKey(p.key, 'value'))
 
-  // D3: HTML lets `<option>apple</option>` use text content as the
-  // value. The original transform required an explicit `value=`
-  // attr and silently dropped value-less options — they'd render
-  // unselectable through `register('fruit')` because the AST
-  // emitted no `:selected` binding.
-  //
-  // Fallback: if no `value=`, look at the option's children. A
-  // single static TextNode → use it as the static value. Anything
-  // else (interpolation, mixed children, no children) → skip with
-  // a dev-warn rather than guess.
+  // HTML lets `<option>apple</option>` use its text content as the
+  // value, so an option with no `value=` falls back to its children: a
+  // single static TextNode becomes the static value, and anything else
+  // (interpolation, mixed children, none at all) skips with a dev warn
+  // rather than a guess. Without the fallback a value-less option emits
+  // no `:selected` and renders unselectable through `register('fruit')`.
   let optionValueSummarizedProp: SummarizedProp | undefined
   if (valueIndex >= 0 && valueIndex < optionProps.length) {
     optionValueSummarizedProp = optionProps[valueIndex]
   } else {
     const fallback = inferOptionValueFromChildren(node)
     if (fallback === null) {
-      // Dynamic / mixed children — can't synthesize a static
-      // equality expression. Bail without binding so the option
-      // simply isn't reactive (matches pre-D3 behaviour for the
-      // genuinely-dynamic cases). Producing a wrong binding would
-      // be worse than no binding.
+      // No static equality expression can be synthesized from dynamic
+      // or mixed children. Bail without binding, leaving the option
+      // non-reactive: a wrong binding is worse than none.
       return
     }
     optionValueSummarizedProp = { key: 'value', value: fallback }
@@ -289,9 +261,9 @@ function applyPendingOptionBinding(node: PlainElementNode, pending: PendingOptio
     removePropsByName(props, ['selected'])
 
     // The author's own `:selected` becomes the UNBOUND leg, the same
-    // deal the `<select>`'s `:value` gets. Only reachable now that the
-    // expression is read in the option's own scope: from the `<select>`
-    // it would have been raw source text (#620).
+    // deal the `<select>`'s `:value` gets. Only possible because the
+    // expression is read in the option's own scope; from the `<select>`
+    // it would be raw source text (#620).
     const authorSelectedArr = toExpressionArray(
       optionProps.find((p) => isExactKey(p.key, 'selected'))?.value
     )
@@ -323,9 +295,9 @@ function applyPendingOptionBinding(node: PlainElementNode, pending: PendingOptio
       loc: node.loc,
     })
   } catch (err) {
-    // Restore THIS option only. A failure here leaves one option
-    // non-reactive instead of taking the whole template down, and the
-    // blast radius is naturally one node now that each builds its own.
+    // Restore THIS option only, so a failure leaves one option
+    // non-reactive rather than taking the template down. Each option
+    // building its own binding is what keeps the blast radius there.
     props.length = 0
     props.push(...snapshot)
     console.error('[attaform] component-bridge transform: option binding failed, skipping:', err)
@@ -333,14 +305,13 @@ function applyPendingOptionBinding(node: PlainElementNode, pending: PendingOptio
 }
 
 export const componentBridgeTransform: NodeTransform = (node, context) => {
-  // Snapshot every prop array we're about to mutate so a throw
-  // mid-traversal rewinds to the pre-transform state. Without this,
-  // a partial transform leaves the template with some `<option
-  // :selected>` bindings rewritten and others not — worse than
-  // skipping the transform entirely, since the runtime directive
-  // would then miscompute initial state against a shape it doesn't
-  // recognise. `snapshotProps` is idempotent per target; calling
-  // twice records one snapshot.
+  // Snapshot every prop array about to be mutated, so a throw
+  // mid-traversal rewinds to the pre-transform state. A PARTIAL
+  // transform is worse than none: some `<option :selected>` bindings
+  // rewritten and others not leaves the runtime directive computing
+  // initial state against a shape it does not recognise.
+  // `snapshotProps` is idempotent per target, so calling it twice
+  // records one snapshot.
   type NodeProps = (AttributeNode | DirectiveNode)[]
   const snapshots: Array<{ target: NodeProps; snapshot: NodeProps }> = []
   const snapshotProps = (target: NodeProps): void => {
@@ -349,14 +320,14 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
   }
   try {
     // An `<option>` the enclosing `<select>` parked a binding on. Its
-    // props are processed and its scope is live only at this point in
-    // the traversal, which is the whole reason the work waited.
+    // props are processed and its scope live only at this point in the
+    // traversal, which is the whole reason the work waited.
     if (node.type === NodeTypes.ELEMENT && node.tagType === ElementTypes.ELEMENT) {
       const pending = pendingOptionBindings.get(node)
       if (pending !== undefined) {
-        // Consumed once. A doubly-registered pipeline parks again on the
-        // second `<select>` pass and builds from whichever visit gets
-        // here first, so the option ends with exactly one binding.
+        // Consumed once. A doubly-registered pipeline parks again on
+        // the second `<select>` pass and builds from whichever visit
+        // arrives first, so the option ends with exactly one binding.
         pendingOptionBindings.delete(node)
         applyPendingOptionBinding(node, pending)
         return
@@ -366,22 +337,19 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     const isSelect = node.type === NodeTypes.ELEMENT && node.tag === 'select'
     const isCustomComponent =
       node.type === NodeTypes.ELEMENT && node.tagType === ElementTypes.COMPONENT
-    // Kebab-case tags (those with a hyphen, like `<my-input>`) compile
-    // as `tagType === ElementTypes.ELEMENT` — Vue's compiler can't tell
-    // statically whether the tag will resolve to an `app.component`
-    // registration or to a user-supplied `compilerOptions.isCustomElement`
-    // predicate, so it emits an element creation that the runtime
-    // disambiguates. The transform fires the bridge prop injection on
-    // these tags too: a kebab-case Vue component sees `useRegister`
-    // work in its setup; a real Web Component sees `:value` /
-    // `:registerValue` as DOM attributes (the documented `assignKey`
-    // escape hatch handles that interop).
+    // A kebab-case tag like `<my-input>` compiles as `tagType ===
+    // ElementTypes.ELEMENT`: Vue's compiler cannot tell statically
+    // whether it resolves to an `app.component` registration or to a
+    // user-supplied `compilerOptions.isCustomElement` predicate, so it
+    // emits an element creation the runtime disambiguates. The bridge
+    // prop is injected on these too, which serves both answers: a
+    // kebab-case Vue component sees `useRegister` work in its setup, and
+    // a real Web Component sees `:value` and `:registerValue` as DOM
+    // attributes, where the documented `assignKey` escape hatch handles
+    // the interop.
     //
-    // NATIVE_FORM_TAGS keeps the conservative stance: only inject on
-    // tags Vue would NEVER treat as a component. The hyphen check
-    // already excludes most native HTML tags (which have no hyphen);
-    // the explicit list documents the contract and guards against
-    // hypothetical future native form tags with hyphens.
+    // `NATIVE_FORM_TAGS` keeps this conservative, injecting only on tags
+    // Vue would NEVER treat as a component.
     const isKebabCustomElement =
       node.type === NodeTypes.ELEMENT &&
       node.tagType === ElementTypes.ELEMENT &&
@@ -402,16 +370,15 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
 
     const registerSummarizedProp = selectSummarizedProps[registerIndex]
 
-    // Inject location matches the originating element so source maps
-    // for runtime errors in the synthesized expressions point at the
-    // user's <select v-register=...> rather than line 0.
+    // The inject location matches the originating element, so a source
+    // map for a runtime error in a synthesized expression points at the
+    // author's `<select v-register=...>` rather than line 0.
     const selectLoc: SourceLocation = node.loc
 
-    // Set by traverseSelectNode when it encounters any <option> descendant.
-    // Distinguishes a select-like host (native <select> or a component that
-    // projects slotted <option>s) from a plain input component host: the
-    // former keeps the legacy :value bind so SSR option selection survives,
-    // the latter gets the standard v-model pair instead.
+    // Set by `traverseSelectNode` on meeting any `<option>` descendant.
+    // It separates a select-like host, a native `<select>` or a component
+    // projecting slotted options, from a plain input component host: the
+    // first keeps the `:value` bind, the second gets the v-model pair.
     let hasSlottedOptions = false
 
     function traverseSelectNode(
@@ -420,10 +387,9 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     ): void {
       const isOption = _node.type === NodeTypes.ELEMENT && _node.tag === 'option'
       if (!isOption) {
-        // Only recurse into node types that genuinely hold iterable children.
-        // Text / interpolation / comment nodes are skipped; future Vue node
-        // types that we don't know about are also skipped rather than
-        // crashing on a shape we didn't expect.
+        // Only node types that genuinely hold iterable children. Text,
+        // interpolation and comment nodes are skipped, and so is an
+        // unrecognised future Vue node type.
         if (!RECURSABLE_NODE_TYPES.has(_node.type)) return
         const hasChildren = 'children' in _node
         if (!hasChildren) return
@@ -435,13 +401,13 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         return
       }
 
-      // This host projects at least one <option>: it's select-like, so the
-      // value channel stays :value (below) rather than the v-model pair.
+      // At least one projected `<option>` makes this host select-like, so
+      // the value channel stays `:value` below rather than v-model.
       hasSlottedOptions = true
 
-      // Park what the option needs and leave. Everything else about the
-      // binding is the option's own business, in its own scope, on its
-      // own visit — see `applyPendingOptionBinding`.
+      // Park what the option needs and leave. The rest of the binding is
+      // the option's own business, in its own scope on its own visit;
+      // see `applyPendingOptionBinding`.
       pendingOptionBindings.set(_node, {
         registerValue: registerSummarizedProp?.value ?? 'undefined',
         multiple: multipleExpression,
@@ -453,68 +419,68 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     const multipleExpression: CompoundExpressionNode['children'] =
       typeof rawMultipleExpression === 'string' ? [rawMultipleExpression] : rawMultipleExpression
 
-    // <option> children of a v-register host derive their SSR :selected from
-    // the host's single register. For a native <select> they're inline; for a
-    // component / custom-element host they're parent-authored slot content,
-    // still present in node.children at this (enter-phase) point in the parent
-    // AST -- before Vue's later buildSlots pass folds them into a slot
-    // function. Walking them here marks them identically, so wrapping a
-    // <select> in a styled component no longer drops the SSR selected option
-    // (and reintroduces a first-paint flash). traverseSelectNode is a no-op
-    // when there are no <option> descendants, so this is zero-cost for hosts
-    // that don't project options. Run before the value-channel decision below
-    // so hasSlottedOptions is settled when we choose :value vs v-model.
+    // Every `<option>` child of a v-register host derives its SSR
+    // `:selected` from the host's single register. Under a native
+    // `<select>` they are inline; under a component or custom-element
+    // host they are parent-authored slot content, still sitting in
+    // `node.children` at this enter-phase point in the parent AST,
+    // BEFORE Vue's later `buildSlots` pass folds them into a slot
+    // function. Walking them here marks them identically, so a `<select>`
+    // wrapped in a styled component keeps its SSR selected option and
+    // its first paint. `traverseSelectNode` no-ops when there are no
+    // `<option>` descendants, so a host projecting none pays nothing.
+    // It runs before the value-channel decision below, so
+    // `hasSlottedOptions` is settled by the time `:value` and v-model
+    // are weighed.
     for (const child of node.children) {
       traverseSelectNode(child, multipleExpression) // start searching for options in dfs manner
     }
 
-    // Multi-select hydration trap. Setting `select.value = X` on a
-    // `<select multiple>` runs the spec's value-setter loop: for each
-    // option, set selectedness to (option.value === X). For an array
-    // model, `displayValue.value` resolves to `String(arr)` —
-    // `"red,blue"` — which matches NO option's value, so the patch
-    // DESELECTS every option (including the SSR-selected ones the
-    // per-option `:selected` injection just placed). At runtime the
-    // directive's `setSelected` re-syncs from the model, but the value
-    // patch + the directive's identity-skip path can leave the DOM
-    // stuck deselected if the model hasn't moved since the last apply.
+    // The multi-select hydration trap. Setting `select.value = X` on a
+    // `<select multiple>` runs the spec's value-setter loop, setting each
+    // option's selectedness to `option.value === X`. For an array model
+    // `displayValue.value` resolves to `String(arr)`, so `"red,blue"`,
+    // which matches NO option's value, and the patch DESELECTS every
+    // option, the SSR-selected ones the per-option `:selected` injection
+    // just placed included. The directive's `setSelected` re-syncs from
+    // the model at runtime, but the value patch plus the directive's
+    // identity-skip path can leave the DOM stuck deselected when the
+    // model has not moved since the last apply.
     //
-    // Per-option `:selected` bindings are the canonical mechanism for
-    // multi-select initial state — the runtime directive's setSelected
-    // mirrors exactly the same logic on the client. The select-level
-    // `:value` adds nothing for multi: it's only useful as Vue's
-    // single-select `value` patch shorthand, which is benign there
-    // (`select.value = "1"` selects the matching option, a no-op when
-    // it's already selected via `<option selected>`).
+    // Per-option `:selected` is the canonical mechanism for multi-select
+    // initial state, and `setSelected` mirrors its logic exactly on the
+    // client. A select-level `:value` adds nothing for multi, being
+    // useful only as Vue's single-select `value` patch shorthand, which
+    // is benign there: `select.value = "1"` selects the matching option,
+    // a no-op when `<option selected>` already did.
     //
-    // Conservative gate: skip `:value` whenever `multiple` isn't
-    // statically false. Static `<select>` and static `<select
-    // multiple="false">` keep the injection (`extractMultipleFromSelect…`
-    // returns the literal string `'false'` for both). Anything else —
-    // static `multiple`, `multiple="true"`, or a dynamic `:multiple`
-    // expression we can't evaluate at compile time — skips. The
-    // dynamic case is rare; trading SSR `value=` on the select for
-    // hydration correctness is the right call.
+    // So the gate is conservative: skip `:value` unless `multiple` is
+    // STATICALLY false. A static `<select>` and a static `<select
+    // multiple="false">` keep the injection, both yielding the literal
+    // string `'false'`. Static `multiple`, `multiple="true"`, and a
+    // dynamic `:multiple` that cannot be evaluated at compile time all
+    // skip. The dynamic case is rare, and trading SSR `value=` on the
+    // select for hydration correctness is the right call.
     const isStaticallyNonMultiple = rawMultipleExpression === 'false'
 
-    // Value-channel split (the corrected gate). A "select-like" host keeps the
-    // legacy :value bind: a native <select>, or a component / custom-element
-    // host that projects slotted <option>s. The option :selected marks are
-    // register-driven (generateEqualityExpression reads the register, never
-    // this :value), so :value never drove SSR selection -- it's retained only
-    // so the browser's single-select value patch lands. A plain input
-    // component host (no projected options) instead gets the standard Vue
-    // v-model pair, which is SSR-correct by construction and carries the typed
-    // model value rather than the stringified display form.
+    // The value-channel split. A select-like host, a native `<select>` or
+    // a component or custom-element host projecting slotted `<option>`s,
+    // keeps the `:value` bind. It never drove SSR selection, the option
+    // `:selected` marks being register-driven through
+    // `generateEqualityExpression`; it is kept only so the browser's
+    // single-select value patch lands. A plain input component host,
+    // projecting no options, gets the standard Vue v-model pair instead,
+    // which is SSR-correct by construction and carries the TYPED model
+    // value rather than the stringified display form.
     const isComponentHost = isCustomComponent || isKebabCustomElement
     const isSelectLikeHost = isSelect || (isComponentHost && hasSlottedOptions)
     const isPlainComponentHost = isComponentHost && !hasSlottedOptions
 
     const selectProps = node.props
     // Same capture-before-strip as the options above: an author-written
-    // `:value` on a dual-mode `<select>` is its unbound binding, not a
-    // redundant one, and the strip used to take it with nothing put back
-    // for a nullish register (#620).
+    // `:value` on a dual-mode `<select>` is its UNBOUND binding, not a
+    // redundant one, so stripping it with nothing put back would leave a
+    // nullish register with no value at all (#620).
     const authorSelectValueArr = toExpressionArray(
       selectSummarizedProps.find((p) => isExactKey(p.key, 'value'))?.value
     )
@@ -526,17 +492,17 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       const valuePropExpArray = Array.isArray(registerSummarizedProp?.value)
         ? registerSummarizedProp.value
         : [registerSummarizedProp?.value ?? 'undefined']
-      // Read `displayValue.value` rather than `innerRef.value` so
-      // selects share the same single read surface as text inputs, the
-      // per-option `:selected` expression above, and the runtime
-      // `setSelected`. For every value a form holds it is just
-      // `String(storage)`; where it earns its keep is a path holding
-      // nothing, which displays as `''` and so lands on an authored
-      // `<option value="">` placeholder (#569).
+      // `displayValue.value`, not `innerRef.value`, so a select shares
+      // one read surface with text inputs, the per-option `:selected`
+      // above, and the runtime `setSelected`. For every value a form
+      // holds it is just `String(storage)`; where it earns its keep is a
+      // path holding NOTHING, which displays as `''` and so lands on an
+      // authored `<option value="">` placeholder (#569).
+      //
       // `displayValue` always resolves to a string for a real register,
       // `''` included, so the `??` fallback is reachable only when the
-      // register expression itself is nullish — never when a bound field
-      // merely holds an empty value.
+      // register EXPRESSION is nullish, never when a bound field merely
+      // holds an empty value.
       const initExpression = createCompoundExpression(
         authorSelectValueArr === undefined
           ? ['(', ...valuePropExpArray, ')?.displayValue.value']
@@ -550,13 +516,12 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       )
 
       const simpleExpression = createSimpleExpression(flattenExpression(initExpression), false)
-      // `processExpression` can throw on malformed identifiers or
-      // exotic expression shapes. Pre-fix, the throw bubbled to the
-      // outer try/catch, which then ran the snapshot-restore path AND
-      // skipped both the select's `:value` injection AND every option's
-      // `:selected` binding — turning a single-expression problem into
-      // a whole-template fallback. Isolate here so a parser failure on
-      // this one expression keeps the other injections.
+      // `processExpression` can throw on a malformed identifier or an
+      // exotic expression shape. Isolating it here keeps a parser failure
+      // on this ONE expression from reaching the outer try/catch, which
+      // would run the snapshot-restore path and drop both the select's
+      // `:value` and every option's `:selected`, turning a
+      // single-expression problem into a whole-template fallback.
       let outputExp: ExpressionNode
       try {
         outputExp = processExpression(simpleExpression, { ...context, prefixIdentifiers: false })
@@ -582,22 +547,24 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     }
 
     if (isPlainComponentHost) {
-      // A plain third-party / custom-element host speaks the standard Vue
-      // v-model contract. Strip first, then inject the pair. The strip does
-      // double duty: it drops any author-written v-model (a `v-model`
-      // directive, or an explicit `:modelValue` / `@update:modelValue`) so
-      // v-register owns the binding without a duplicate-prop collision, AND it
-      // drops a prior injection of our own `modelValue` / `onUpdate:modelValue`
-      // so a doubly-registered transform pipeline re-injects exactly once
-      // (the same strip-then-reinject idempotency the :value path above uses).
-      // :modelValue reads hostModelValue -- the typed model value (Date /
-      // number / array), or undefined for a blank path so a cleared numeric
-      // reads empty in the component, not the stringified displayValue a
-      // <select> uses.
-      // onUpdate:modelValue routes through setValueFromHost, which writes the
-      // value AND flips the sticky `interacted` bit (a v-model host has no DOM
-      // input listener to do it), so blur-validation and the reward-early
-      // display state arm the same as they do for a native input.
+      // A plain third-party or custom-element host speaks the standard
+      // Vue v-model contract: strip first, then inject the pair. The
+      // strip does double duty. It drops any author-written v-model, the
+      // directive or an explicit `:modelValue` / `@update:modelValue`, so
+      // v-register owns the binding with no duplicate-prop collision; and
+      // it drops a prior injection of this transform's own pair, so a
+      // doubly-registered pipeline re-injects exactly once, the same
+      // strip-then-reinject idempotency the `:value` path uses.
+      //
+      // `:modelValue` reads `hostModelValue`, the TYPED model value (Date,
+      // number, array) or `undefined` for a blank path, so a cleared
+      // numeric reads empty in the component rather than as the
+      // stringified `displayValue` a `<select>` takes.
+      // `onUpdate:modelValue` routes through `setValueFromHost`, which
+      // writes the value AND flips the sticky `interacted` bit, a v-model
+      // host having no DOM input listener to do it, so blur-validation
+      // and the reward-early display state arm as they do for a native
+      // input.
       removePropsByName(node.props, [
         'model',
         'modelValue',
@@ -678,16 +645,18 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       node.props.push(updateModelValueProp)
     }
 
-    // Bridge the form's effective freeze to a `:disabled` bind, covering
-    // every host this transform owns: a native `<select>`, a select-like
-    // component host (slotted options), and a plain v-model host. A
-    // `useRegister`-based component also reads `registerValue.disabled`
-    // from the bridge prop below; the two agree. Skipped when the author
-    // already bound `disabled` / `:disabled`: overriding it would force the
-    // control enabled whenever the form is not frozen. The data-layer
-    // freeze rejects writes regardless, so only the visual affordance
-    // defers to the author. Idempotent: a re-run sees its own prior
-    // injection as an author binding and no-ops.
+    // Bridge the form's effective freeze to a `:disabled` bind, on every
+    // host this transform owns: a native `<select>`, a select-like
+    // component host with slotted options, and a plain v-model host. A
+    // `useRegister`-based component reads `registerValue.disabled` off
+    // the bridge prop below instead, and the two agree.
+    //
+    // Skipped when the author already bound `disabled` or `:disabled`,
+    // since overriding would force the control ENABLED whenever the form
+    // is not frozen. The data-layer freeze rejects writes either way, so
+    // only the visual affordance defers to the author. Idempotent: a
+    // re-run reads its own prior injection as an author binding and
+    // no-ops.
     const registerExprArray = Array.isArray(registerSummarizedProp?.value)
       ? registerSummarizedProp.value
       : [registerSummarizedProp?.value ?? 'undefined']
@@ -729,8 +698,9 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     }
 
     if (isSelect) {
-      // Native <select> is fully handled by the option walk above plus the
-      // :value injection; component hosts fall through to the bridge prop.
+      // A native `<select>` is fully handled by the option walk above plus
+      // the `:value` injection; a component host falls through to the
+      // bridge prop.
       return
     }
 
@@ -741,14 +711,13 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
 
     if (!registerProp) return
 
-    // Idempotency marker. The hint and preamble transforms record
-    // their own per-node markers; this one detects an already-injected
-    // `:registerValue` directive on the props array and skips
-    // re-pushing. Without the check, a doubly-registered transform
-    // pipeline (rare in production, common in test combinatorics)
-    // would emit two `registerValue:` keys in the generated render —
-    // the last wins for prop resolution, but the output is bloated and
-    // confusing under codegen inspection.
+    // Idempotency. The hint and preamble transforms keep their own
+    // per-node markers; this one looks for an already-injected
+    // `:registerValue` on the props array and skips re-pushing. Without
+    // it a doubly-registered pipeline, rare in production and common in
+    // test combinatorics, emits two `registerValue:` keys in the
+    // generated render. The last wins for prop resolution, but the output
+    // is bloated and confusing to read under codegen inspection.
     const alreadyInjected = node.props.some(
       (p) =>
         p.type === NodeTypes.DIRECTIVE &&
@@ -759,12 +728,12 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
     )
     if (alreadyInjected) return
 
-    // Signal compiled SSR that this v-register host is a component, so the
-    // directive's getSSRProps suppresses the managed aria attrs on the
-    // host root (the inner control the component re-binds via useRegister
-    // carries them).
-    // The runtime path reads the component vnode directly; compiled SSR
-    // only has a null vnode, so this modifier is the channel. (#404)
+    // Tells compiled SSR this v-register host is a component, so the
+    // directive's `getSSRProps` suppresses the managed aria attrs on the
+    // host root; the inner control the component re-binds through
+    // `useRegister` carries them. The runtime path reads the component
+    // vnode directly, but compiled SSR has only a null vnode, so this
+    // modifier is the channel (#404).
     if (
       registerProp.type === NodeTypes.DIRECTIVE &&
       !registerProp.modifiers.some(
@@ -785,12 +754,12 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
 
     node.props.push(customElementProp)
   } catch (err) {
-    // AST shape drift or malformed template: rewind every prop array
-    // we mutated so the template falls back cleanly to the runtime
-    // directive. Reverse order mirrors the push order so later
-    // snapshots restore against the state their earlier siblings
-    // saw. Runtime directive alone still handles value binding; only
-    // SSR initial-render correctness is affected.
+    // AST shape drift or a malformed template: rewind every mutated prop
+    // array so the template falls back cleanly to the runtime directive.
+    // Reverse order mirrors the push order, so a later snapshot restores
+    // against the state its earlier siblings saw. The directive alone
+    // still handles value binding; only SSR initial-render correctness
+    // is affected.
     for (const { target, snapshot } of snapshots.slice().reverse()) {
       target.splice(0, target.length, ...snapshot)
     }

@@ -16,12 +16,12 @@
  * analysis/measure-split.mjs, kept as a standing CI guard.
  *
  * The measurement applies the same source-level `__DEV__` strip the
- * package build uses (size-teardown P1a): the dev-flag import is removed
- * and the identifier inlined to a literal before esbuild parses, exactly
- * as `build.config.ts` pre-strips the shipped prod flavor. The ratchet
- * therefore equals shipped prod-flavor bytes — not the weaker
- * define-fold, which leaves behind functions that are only called from
- * dead branches (esbuild marks references before it folds the define).
+ * package build uses: the dev-flag import is removed and the identifier
+ * inlined to a literal before esbuild parses, exactly as
+ * `build.config.ts` pre-strips the shipped prod flavor. The ratchet
+ * therefore equals shipped prod-flavor bytes, not the weaker define-fold,
+ * which leaves behind functions called only from dead branches (esbuild
+ * marks references before it folds the define).
  * The `define` still selects the flavor: a production define measures
  * the prod strip, anything else the dev flavor's literal `true`.
  *
@@ -42,9 +42,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 // Where `src/` is read from. Defaults to this checkout. `eager-delta.mjs`
 // points it at a worktree of the merge base so both revisions are measured
-// with ONE method — this script's. That is the comparison that attributes a
-// byte delta to the source change: measuring each revision with its own
-// harness would fold a harness edit into the number. Dependency resolution
+// with ONE method, this script's. That is what attributes a byte delta to
+// the source change: measuring each revision with its own harness would
+// fold a harness edit into the number. Dependency resolution
 // (esbuild, and the externals list) always stays on ROOT.
 // realpath, because esbuild reports real paths on `onLoad`: a source root
 // under a symlinked directory (macOS `/tmp` -> `/private/tmp`) would fail
@@ -91,7 +91,7 @@ const PROD_DEFINE = { 'process.env.NODE_ENV': '"production"' }
  * build.config.ts: drop the solo named-import line, inline the literal.
  * With every importer's import removed, core/dev.ts falls out of the
  * graph entirely (its own body is never rewritten, so no special case
- * is needed here — esbuild simply never loads it).
+ * is needed here, since esbuild never loads it).
  * @param {boolean} flag
  */
 const devFlagStripPlugin = (flag) => ({

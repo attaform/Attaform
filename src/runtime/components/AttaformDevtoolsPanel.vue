@@ -5,7 +5,7 @@
   // can resolve through the consumer's node_modules → `dist/index.mjs`,
   // rather than through brittle relative paths into the rollup-bundled
   // shared chunks (which mkdist doesn't co-locate). Type-only imports of
-  // internal types stay relative — they're erased at compile time and
+  // internal types stay relative: they're erased at compile time and
   // don't need to resolve at the consumer's runtime.
   import { type AttaformDevtoolsBridge, canonicalizePath, type Segment } from 'attaform'
   import type { FormStore } from '../core/create-form-store'
@@ -18,7 +18,7 @@
   }>()
 
   // Cross-iframe reactivity bridge. Vue's reactivity system is module-
-  // scoped — the host's `@vue/reactivity` instance and the panel's are
+  // scoped: the host's `@vue/reactivity` instance and the panel's are
   // different copies of the same module, each with its own targetMap.
   // When the panel reads `host.form.value` in a `computed`, the proxy's
   // get trap runs in the host's tracking context (the function lives
@@ -31,7 +31,7 @@
   // (`onFormChange` / `onSubmitSuccess` / `onReset`), plus a 250ms
   // polling fallback for state that changes outside those events (user
   // errors via `setErrors`, submit-lifecycle flags). The panel's
-  // own reactivity then re-evaluates everything in one pass — cheap
+  // own reactivity then re-evaluates everything in one pass, cheap
   // because the underlying reads are direct property accesses.
   const updateTick = ref(0)
 
@@ -120,7 +120,7 @@
   }
 
   /**
-   * Render a JS value as a debug-friendly string with no masking —
+   * Render a JS value as a debug-friendly string with no masking,
    * `null` / `undefined` show as their literal names, booleans and
    * numbers as-is, strings bare (no surrounding quotes), everything
    * else JSON-stringified. Devtools is for inspecting state, not for
@@ -169,13 +169,13 @@
   /**
    * Raw field data at the selected path, composed from `FormStore`
    * primitives. The callable `form.fields(path)` proxy lives on the
-   * public `useForm` return, not on `FormStore` — the bridge exposes
+   * public `useForm` return, not on `FormStore`: the bridge exposes
    * the store, so we synthesise the same data from `fields.get(key)`
    * + the error Maps + an inline value walk.
    *
    * Returns the raw `FieldRecord` (updatedAt / focused / blurred /
    * touched / connected) rather than the wrapped `FieldState`
-   * surface. Sufficient for inspection — the full aggregated
+   * surface. Sufficient for inspection: the full aggregated
    * FieldState would require either lifting the surface-proxy into
    * `FormStore` (architectural change) or rebuilding the aggregation
    * walker in the panel (duplication).
@@ -211,7 +211,7 @@
           | undefined) ?? null
 
       // Inline path walk (avoids importing path-walker through the
-      // bridge — it lives in the host's shared chunk).
+      // bridge: it lives in the host's shared chunk).
       let value: unknown = form.form.value
       for (const seg of path) {
         if (value === null || typeof value !== 'object') {
@@ -259,7 +259,7 @@
       const { segments: canonicalPath } = canonicalizePath(rawPath as readonly Segment[])
       form.setValueAtPath(canonicalPath, next)
       // The host's setValueAtPath fires `onFormChange` listeners, which
-      // bumps our updateTick (see subscribeForm) — that refreshes the
+      // bumps our updateTick (see subscribeForm): that refreshes the
       // panel's view of the new value on the next microtask.
     } catch (err) {
       // Surface cross-iframe write failures (e.g., type-instance checks
@@ -285,7 +285,7 @@
 
   /**
    * Hard cap on the in-memory event log. Sized for a debugging session,
-   * not an audit log — older events fall off the back when capacity
+   * not an audit log, older events fall off the back when capacity
    * fills. Tunable later if real consumers ask for more.
    */
   const MAX_TIMELINE_EVENTS = 200
@@ -325,7 +325,7 @@
 
   function subscribeForm(key: FormKey, form: FormStore<GenericForm>): void {
     if (subscribers.has(key)) return
-    // Deep-clone the form value at the moment of fire — FormStore
+    // Deep-clone the form value at the moment of fire, FormStore
     // mutates form data in place, so a stored reference would update
     // every existing timeline entry whenever the form changed again
     // ("type a, delete a, both timeline events show the empty value"
@@ -336,7 +336,7 @@
       try {
         return structuredClone(form.form.value)
       } catch {
-        // Non-cloneable values (functions, Symbols, Vue refs, etc.) —
+        // Non-cloneable values (functions, Symbols, Vue refs, etc.),
         // fall back to the live reference. Worst case: that one entry
         // still shows the current state, same as before this fix.
         return form.form.value
@@ -379,7 +379,7 @@
   )
 
   // Polling fallback for state that changes outside the `onFormChange` /
-  // `onSubmitSuccess` / `onReset` event surface — user errors injected
+  // `onSubmitSuccess` / `onReset` event surface, user errors injected
   // via `setErrors`, submit-lifecycle flags between events, or
   // new forms registered in the host's registry. 120ms is faster than
   // a human can notice between an input event and a visible panel
@@ -624,7 +624,7 @@
 <style scoped>
   /*
    * Self-contained styling. The panel runs in an iframe inside the Nuxt
-   * DevTools overlay — CSS custom properties from the host don't cross
+   * DevTools overlay: CSS custom properties from the host don't cross
    * the iframe boundary, so we ship our own palette here. Dark by
    * default, light via prefers-color-scheme so the panel adapts to the
    * user's OS theme without further wiring.

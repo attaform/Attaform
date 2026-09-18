@@ -1,5 +1,5 @@
 /**
- * Bundled-types regression fixture — Zod v3 consumer (single-major
+ * Bundled-types regression fixture, Zod v3 consumer (single-major
  * install). Compiled with `zod` remapped to a v3 install via the
  * sibling tsconfig's `paths`, recreating what a consumer who installs
  * only `zod@3` sees through the unified `attaform/zod` entry's bundled
@@ -12,18 +12,18 @@
  * slot (`form.values` / `form.fields`) projects through the v4
  * `StorageShape` (structural on the v4-only `_zod` brand, which a v3
  * schema lacks) and collapses to `never`, while the input/output slots
- * keep resolving — so `register` / `handleSubmit` compile but every
+ * keep resolving: so `register` / `handleSubmit` compile but every
  * read is poisoned.
  *
  * In-repo type tests can't catch this: the repo installs both majors,
  * so `zod` and `zod-v3` stay distinct and the v4-vs-v3 discrimination
- * always works. The collapse only happens in a one-major consumer —
+ * always works. The collapse only happens in a one-major consumer,
  * which is exactly what the `paths` remap recreates here.
  */
 import { z } from 'zod' // remapped to a v3 install via tsconfig `paths`
 import { useForm } from 'attaform/zod'
 
-// Strict type equality — distinguishes `never` and `any` from the real
+// Strict type equality, distinguishes `never` and `any` from the real
 // type, so a fix can't regress the read slot to either.
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
@@ -36,14 +36,14 @@ const schema = z.object({
 
 const form = useForm({ schema, key: 'signup-v3' })
 
-// Read slot — the regression. These were `never` for a v3 consumer.
+// Read slot: the regression. These were `never` for a v3 consumer.
 type _ValuesUrls = Expect<Equal<typeof form.values.urls, string[]>>
 type _ValuesName = Expect<Equal<typeof form.values.name, string>>
 
 // Field handles must descend to a real FieldState, not collapse.
 type _FieldValue = Expect<Equal<typeof form.fields.name.value, string>>
 
-// Input / submit slots stayed correct even under the bug — pin them so
+// Input / submit slots stayed correct even under the bug, pin them so
 // the fix can't regress them in the other direction.
 form.register('name')
 form.handleSubmit((data) => {
@@ -52,7 +52,7 @@ form.handleSubmit((data) => {
   void data
 })
 
-// Record-root form — a `z.record` schema as the root (dictionary form),
+// Record-root form: a `z.record` schema as the root (dictionary form),
 // the new surface this guards. Same single-major hazard as the object
 // root: the v4 overload must not greedily match this v3 record, or the
 // read slot collapses to `never`. The `z.ZodRecord` arm of the v4
@@ -64,7 +64,7 @@ const roster = useForm({ schema: rosterSchema, key: 'roster-v3' })
 // Read slot must resolve to the record map (not `never`, not `any`).
 type _RosterEntry = Expect<Equal<ReturnType<typeof roster.values>['member-1'], { tier: number }>>
 
-// Variant-root form — a `z.discriminatedUnion` schema as the root
+// Variant-root form: a `z.discriminatedUnion` schema as the root
 // (variant form), the other new non-object root. Same single-major
 // hazard: the v4 overload must not greedily match this v3 DU, or the
 // read slot collapses to `never`. The v4 SupportedRootSchema's DU arm

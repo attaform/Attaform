@@ -3,7 +3,7 @@
  *
  * `keystroke.bench.ts` covers single-leaf mutation on a deep object
  * tree. That's the primary form-interaction hot path, but arrays add
- * their own cost — each helper reads the array via the path-walker,
+ * their own cost: each helper reads the array via the path-walker,
  * mutates, and writes back through `setValueAtPath`, which routes
  * through diff-apply. Regressions here would ship unnoticed otherwise.
  *
@@ -11,7 +11,7 @@
  * helpers. We report absolute ops/sec so `pnpm bench` surfaces deltas
  * across commits. `scripts/check-bench.mjs` only gates groups that
  * follow the `old: ... / new: ...` pairing convention, so these
- * benches are informational — a future commit can add a floor once a
+ * benches are informational: a future commit can add a floor once a
  * stable baseline is recorded.
  */
 import { bench, describe } from 'vitest'
@@ -39,7 +39,7 @@ function newPost(i: number): Post {
 /**
  * Mount a disposable SSR app so `useForm` can run inside a `setup()`
  * context, then expose the returned form handle to the bench. The
- * captured handle outlives the setup — its closures over `FormStore`
+ * captured handle outlives the setup, its closures over `FormStore`
  * are what we're measuring.
  */
 function mountAndCaptureForm(seedCount: number) {

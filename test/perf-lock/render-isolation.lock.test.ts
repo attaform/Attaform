@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Render-isolation lock — the standing reactivity guard for P3
+ * Render-isolation lock: the standing reactivity guard for P3
  * (PERF-ANALYSIS.md row P3). Firmed from the P3 discovery probe once the
  * bust-vs-lock call was made: both-adapter coverage + exact-count assertions.
  *
@@ -15,35 +15,35 @@
  * collection tracking). P3 measured the next layer up: with one COMPONENT per
  * field, typing into field X re-rendered the components of EVERY other field
  * (O(F) over-render), because each field's `form.fields(path)` computed
- * carried two whole-form dependencies —
+ * carried two whole-form dependencies,
  *
  *   1. `getFormMetaBase()` (field-state-api.ts), called unconditionally to
  *      build the predicate's `formMeta` arg, ran `buildContainerFieldStateBase
- *      (ROOT)` — a rollup that walks every leaf (incl. the edited leaf's
+ *      (ROOT)`: a rollup that walks every leaf (incl. the edited leaf's
  *      `updatedAt`, bumped on every write) and aggregates all errors.
- *   2. `state.derivedBlankErrors.value` (create-form-store.ts) — a computed
+ *   2. `state.derivedBlankErrors.value` (create-form-store.ts): a computed
  *      returning a FRESH Map, read per-leaf; any blank transition gave it a
  *      new identity and woke every field.
  *
  * The bust made `formMeta` lazy (the default predicate reads only
  * `formMeta.submissionAttempts`, an O(1) ref) and synthesized each field's
  * blank error from its OWN `blankPaths.has(key)`. Output stayed byte-identical
- * (locked by behavior-lock.test.ts); only the render COUNT dropped — the one
+ * (locked by behavior-lock.test.ts); only the render COUNT dropped: the one
  * signal P3 set out to move.
  *
  * THE DECISIVE CONTRAST (the subscription style each field component uses):
  *
- *   - `fields-display` / `fields-value` — reads `form.fields(path).displayState`
+ *   - `fields-display` / `fields-value`, reads `form.fields(path).displayState`
  *     / `.value`, i.e. the field-state computed that carried the two whole-form
  *     deps. This is what over-rendered.
- *   - `register-value` — reads `form.register(path).displayValue.value`, which
+ *   - `register-value`, reads `form.register(path).displayValue.value`, which
  *     tracks only `getValueAtPath(path)` + `blankPaths.has(path)`
  *     (register-api.ts). Already isolated; the granular CONTROL. Its presence
  *     proves the harness measures real isolation rather than a setup in which
  *     nothing ever re-renders.
  *
  * Each scenario marks every non-edited field `isolated` (must stay 0) or
- * `ancestor` (a container ABOVE the edit — legitimately re-renders, asserted
+ * `ancestor` (a container ABOVE the edit, legitimately re-renders, asserted
  * `>= 1` so the bust cannot over-shoot and freeze a container that should
  * stay live). Run against BOTH adapters: the over-render lived in shared core,
  * so the lock must hold identically on zod-v3 and zod-v4.
@@ -112,7 +112,7 @@ const flatSiblings: ReadonlyArray<FieldSpec> = [
 ]
 const flatFields = (edit: FieldSpec): ReadonlyArray<FieldSpec> => [edit, ...flatSiblings]
 
-// NESTED — editing a leaf must leave the sibling subtree (contact.*) and the
+// NESTED, editing a leaf must leave the sibling subtree (contact.*) and the
 // sibling container untouched, while the OWN ancestor container stays live.
 // Hoisted because the one-shot pin at the bottom of the file re-runs it with
 // mount-seeded errors.
@@ -144,7 +144,7 @@ const NESTED_FIELDS_DISPLAY: LockScenario = {
 }
 
 const SCENARIOS: ReadonlyArray<LockScenario> = [
-  // CONTROL — register-value is already granular. Green before AND after the
+  // CONTROL, register-value is already granular. Green before AND after the
   // bust; proves the harness can SEE isolation (siblings genuinely hit 0).
   {
     id: 'control: flat / register-value',
@@ -154,12 +154,12 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
     fields: flatFields({ path: 'a', label: 'a', role: 'isolated' }),
     edit: { label: 'a', path: 'a', value: 'Ada' },
     validateOn: 'change',
-    note: 'granular control — register tracks own value + own blank only',
+    note: 'granular control: register tracks own value + own blank only',
   },
-  // VECTOR 1 (structural) — validation off, every field pre-dirtied to a
+  // VECTOR 1 (structural), validation off, every field pre-dirtied to a
   // non-blank value, then "a" re-edited to ANOTHER non-blank value. No blank
   // transition, no pristine flip, no validation. Any sibling re-render is the
-  // root rollup reading the edited leaf's `updatedAt` — pure formMeta deps.
+  // root rollup reading the edited leaf's `updatedAt`, pure formMeta deps.
   {
     id: 'vector1: flat / fields-display (quiet re-edit)',
     style: 'fields-display',
@@ -175,9 +175,9 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
       { path: 'd', value: 'dee' },
       { path: 'e', value: 'eee' },
     ],
-    note: 'structural — isolates the formMeta rollup dep from blank/validation',
+    note: 'structural: isolates the formMeta rollup dep from blank/validation',
   },
-  // VECTORS 1 + 2 (default mode) — the everyday keystroke: validateOn:'change',
+  // VECTORS 1 + 2 (default mode): the everyday keystroke: validateOn:'change',
   // editing "a" from blank to non-blank. Drops "a" from blankPaths (vector 2)
   // AND bumps the rollup (vector 1); both must be busted for siblings to hold 0.
   {
@@ -201,7 +201,7 @@ const SCENARIOS: ReadonlyArray<LockScenario> = [
     note: 'same keystroke through the value surface',
   },
   NESTED_FIELDS_DISPLAY,
-  // ARRAY — editing one cell must leave the other cells (same row and other
+  // ARRAY, editing one cell must leave the other cells (same row and other
   // rows) untouched.
   {
     id: 'array: fields-display',
@@ -395,7 +395,7 @@ describe.each(ADAPTERS)('render isolation on a single-field keystroke ($name)', 
     expect(renders.get('contact(container)') ?? 0).toBe(0)
   })
 
-  it.each(SCENARIOS)('$id — $note', async (scenario) => {
+  it.each(SCENARIOS)('$id: $note', async (scenario) => {
     const counts = await drive(scenario)
 
     // The edited field re-renders (sanity: the write landed and was observed).

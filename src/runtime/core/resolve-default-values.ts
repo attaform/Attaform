@@ -4,11 +4,11 @@
  * `useWizard({ defaultStatuses })`.
  *
  * Plain values (including `undefined` and `null`) resolve immediately
- * at construction — there's nothing to defer, the literal already
- * paid the cost. Function inputs (sync or async) resolve on a
+ * at construction: there is nothing to defer, the literal having already
+ * paid the cost. A function input (sync or async) resolves on a
  * microtask: the form starts with the schema's slim defaults, and the
  * factory's resolved payload applies once it settles. Inside the
- * `'async'` branch, consumers `await result.factory()` — a sync
+ * `'async'` branch, consumers `await result.factory()`; a sync
  * function's return resolves on the next microtask, identical in
  * shape to an immediate `Promise.resolve`.
  *

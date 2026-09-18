@@ -3,7 +3,7 @@
  *
  * Production pipeline (`pnpm build`) runs `pagefind --site .output/public`
  * after `nuxi build`, indexing the rendered HTML for full fidelity.
- * That's slow (a full Nuxt build) and pointless during `nuxi dev` —
+ * That's slow (a full Nuxt build) and pointless during `nuxi dev`,
  * the dev server isn't statically rendered, no .output/public exists.
  *
  * This script walks `docs/` for raw markdown, lifts the title +
@@ -16,7 +16,7 @@
  * Fidelity caveat: anchors point at slugs we generate locally via
  * github-slugger (the same slugger Nuxt Content's MDC parser uses),
  * so heading deep-links match production. Tables / inline MDC
- * components / Twoslash blocks render to plain HTML in the index —
+ * components / Twoslash blocks render to plain HTML in the index,
  * search still finds them, the on-page presentation stays Nuxt's.
  */
 
@@ -72,7 +72,7 @@ function fileToUrl(absPath) {
 }
 
 // Per-page Marked instance with a heading renderer that emits `id`
-// attributes via github-slugger — same slugger Nuxt Content's MDC
+// attributes via github-slugger, same slugger Nuxt Content's MDC
 // pipeline uses, so dev `sub_results` URLs match what the production
 // runtime exposes. New instance per page so the slugger resets
 // (otherwise every "Setup" heading after the first becomes "setup-1",
@@ -86,7 +86,7 @@ function buildMarked() {
         // Concatenate the inline text from each token. Codespans
         // expose their unwrapped contents on `.text` (e.g.,
         // "attaform/zod" without backticks), which is exactly the
-        // input github-slugger needs to match Nuxt Content's slug —
+        // input github-slugger needs to match Nuxt Content's slug,
         // "attaform/zod" → "attaformzod" (slashes stripped).
         const text = tokens.map((t) => t.text ?? t.raw ?? '').join('')
         const id = slugger.slug(text)
@@ -120,7 +120,7 @@ async function indexAll() {
     count++
   }
 
-  // Also index the docs landing page directly — it's not a markdown
+  // Also index the docs landing page directly: it's not a markdown
   // file but readers expect /docs to surface in search.
   await index.addCustomRecord({
     url: '/docs',

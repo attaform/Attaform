@@ -61,7 +61,7 @@ function makeRegisterValue<T>(initial: T): {
     // Derive displayValue from innerRef so the mock matches the real
     // RegisterValue's contract (the directive's beforeUpdate reads
     // through displayValue). Doesn't model the blank/unset rule or
-    // lastTypedForm preference — tests that need those override
+    // lastTypedForm preference, tests that need those override
     // displayValue explicitly.
     displayValue: computed(() => {
       const v = innerRef.value
@@ -127,11 +127,9 @@ const hooks = vRegister as unknown as {
   beforeUnmount?: DirectiveHook
 }
 
-// ─────────────────────────────────────────────────────────────────
 // `<input type="text">` modifier matrix
-// ─────────────────────────────────────────────────────────────────
 
-describe('vRegisterText — `.lazy`', () => {
+describe('vRegisterText: `.lazy`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -143,7 +141,7 @@ describe('vRegisterText — `.lazy`', () => {
     const { value, setValue } = makeRegisterValue('')
     hooks.created?.(input, makeBinding(value, { lazy: true }), makeVNode({}), null)
 
-    // Dispatching `input` MUST NOT write — listener gates on `change`.
+    // Dispatching `input` MUST NOT write, listener gates on `change`.
     input.value = 'typing'
     input.dispatchEvent(new Event('input'))
     expect(setValue).not.toHaveBeenCalled()
@@ -175,13 +173,13 @@ describe('vRegisterText — `.lazy`', () => {
   })
 })
 
-describe('vRegisterText — `.trim`', () => {
+describe('vRegisterText: `.trim`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
 
-  it('input event writes the RAW value (deferred trim — no per-keystroke strip)', () => {
-    // Per-keystroke trim fights Vue's :value patch — typing a
+  it('input event writes the RAW value (deferred trim: no per-keystroke strip)', () => {
+    // Per-keystroke trim fights Vue's :value patch, typing a
     // trailing space would otherwise collapse before the user could
     // keep typing (regression #16b). The trim is committed on blur
     // by the change-normalization listener instead.
@@ -213,7 +211,7 @@ describe('vRegisterText — `.trim`', () => {
   })
 })
 
-describe('vRegisterText — `.number`', () => {
+describe('vRegisterText: `.number`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -253,7 +251,7 @@ describe('vRegisterText — `.number`', () => {
 
     hooks.created?.(input, makeBinding(value, { number: true }), makeVNode({}), null)
 
-    // `'xyz'` is non-castable AND has no `e`/`E` — keeps this test on
+    // `'xyz'` is non-castable AND has no `e`/`E`, keeps this test on
     // the immediate markBlank path. Strings containing `e`
     // hit the scientific-notation deferral instead (covered separately).
     input.value = 'xyz'
@@ -263,10 +261,9 @@ describe('vRegisterText — `.number`', () => {
   })
 
   it('change event normalizes the visible DOM after Vue 3.5.33 parity fix', () => {
-    // The (a) divergence: Vue casts el.value on blur whenever
-    // EITHER trim OR castToNumber is true. Pre-fix, our port skipped
-    // this for `.number`. ` 12 ` would stay ` 12 ` after blur instead
-    // of becoming `12`.
+    // Vue casts `el.value` on blur whenever EITHER trim or
+    // castToNumber is set, and the port matches it. Skipping the cast
+    // for `.number` would leave ` 12 ` as ` 12 ` after blur.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -293,7 +290,7 @@ describe('vRegisterText — `.number`', () => {
   })
 })
 
-describe('vRegisterText — combined modifiers', () => {
+describe('vRegisterText: combined modifiers', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -337,7 +334,7 @@ describe('vRegisterText — combined modifiers', () => {
 
     hooks.created?.(input, makeBinding(value, { trim: true, number: true }), makeVNode({}), null)
 
-    // Input listener writes the cast value. Trim is deferred — but
+    // Input listener writes the cast value. Trim is deferred, but
     // `looseToNumber('  42  ')` calls `parseFloat`, which already
     // handles surrounding whitespace, so the model still lands on 42.
     input.value = '  42  '
@@ -351,12 +348,10 @@ describe('vRegisterText — combined modifiers', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<textarea>` smoke
-// ─────────────────────────────────────────────────────────────────
 
-describe('vRegisterText — <textarea> reuses the same variant', () => {
-  it('`.trim` works on textarea — input writes raw, change commits trimmed', () => {
+describe('vRegisterText: <textarea> reuses the same variant', () => {
+  it('`.trim` works on textarea: input writes raw, change commits trimmed', () => {
     const ta = document.createElement('textarea')
     document.body.appendChild(ta)
     const { value, setValue } = makeRegisterValue('')
@@ -373,11 +368,9 @@ describe('vRegisterText — <textarea> reuses the same variant', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<select>` modifier matrix
-// ─────────────────────────────────────────────────────────────────
 
-describe('vRegisterSelect — `.number`', () => {
+describe('vRegisterSelect: `.number`', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -438,11 +431,10 @@ describe('vRegisterSelect — `.number`', () => {
   })
 
   it('mounted: selects the option matching a numeric model (16f regression)', () => {
-    // Bug report: `<select v-register.number>` with model `1` left
-    // `selectedIndex = -1` (no option highlighted) even though the
-    // first option's value attribute was `"1"`. The pre-fix
-    // `getBaseValue` returned a Set of DOM-currently-selected
-    // values, which never compared equal to the model number.
+    // `<select v-register.number>` with model `1` selects the option
+    // whose value attribute is `"1"`. Driving the comparison off the
+    // DOM's currently-selected values instead never compares equal to
+    // a model number, and selectedIndex stays at -1.
     const select = makeSelectWithOptions(['1', '2', '3'])
     document.body.appendChild(select)
     const { value } = makeRegisterValue(1 as unknown as never)
@@ -454,11 +446,11 @@ describe('vRegisterSelect — `.number`', () => {
   })
 
   it('mounted: selects the option matching a string model', () => {
-    // Same path, string-valued model. Pre-fix `getBaseValue` read
-    // `el.options[el.selectedIndex].value` — effectively a no-op
-    // that left whatever the browser had selected by default. With
-    // the model-driven sync, the right option is selected even when
-    // the default selectedIndex doesn't match.
+    // The same path with a string-valued model. The sync is
+    // model-driven, so the right option is selected even when the
+    // browser's default selectedIndex does not match; reading
+    // `el.options[el.selectedIndex].value` would be a no-op that leaves
+    // whatever the browser picked.
     const select = makeSelectWithOptions(['a', 'b', 'c'])
     document.body.appendChild(select)
     const { value } = makeRegisterValue('c' as unknown as never)
@@ -510,7 +502,7 @@ describe('vRegisterSelect — `.number`', () => {
   })
 })
 
-describe('vRegisterSelect — multi-select (Array / Set models)', () => {
+describe('vRegisterSelect: multi-select (Array / Set models)', () => {
   // The directive captures `isSet(innerRef.value)` at `created` time
   // (`isSetModel`) and uses it to decide whether change events write
   // an Array or a Set. setSelected (mount/updated) drives DOM from
@@ -653,7 +645,7 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
   })
 
   it('mounted: Set<string> model selects matching numeric options (reverse cross-type)', () => {
-    // The other direction — option values are still strings (DOM
+    // The other direction, option values are still strings (DOM
     // contract) but the Set's strings happen to look numeric. The
     // coercion compares both via `String(...)` so the match holds.
     const select = makeSelectWithOptions(['10', '20', '30'])
@@ -707,17 +699,15 @@ describe('vRegisterSelect — multi-select (Array / Set models)', () => {
     hooks.mounted?.(select, makeBinding(value, {}), makeVNode({}), null)
 
     expect(warnSpy).toHaveBeenCalled()
-    // No option should be selected — bail leaves DOM as-is.
+    // No option should be selected, bail leaves DOM as-is.
     expect(select.selectedIndex).toBe(0) // browser default; not driven by us
     warnSpy.mockRestore()
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `vRegisterText.beforeUpdate` lazy/trim escape-hatches
-// ─────────────────────────────────────────────────────────────────
 
-describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
+describe('vRegisterText.beforeUpdate: escape hatches under focus', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -730,11 +720,11 @@ describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
     const { value } = makeRegisterValue('original')
     value.innerRef = ref('mid-edit') as typeof value.innerRef
 
-    // User has typed 'half' — el.value represents in-progress input.
+    // User has typed 'half', el.value represents in-progress input.
     input.value = 'half'
 
     // beforeUpdate fires with `value === oldValue` (the consumer ref
-    // didn't change between renders) — under `.lazy` while focused,
+    // didn't change between renders), under `.lazy` while focused,
     // we should NOT clobber el.value.
     const binding = {
       value,
@@ -762,21 +752,19 @@ describe('vRegisterText.beforeUpdate — escape hatches under focus', () => {
     const binding = makeBinding(value, { trim: true })
     hooks.beforeUpdate?.(input, binding, makeVNode({}), null)
 
-    // el.value preserved — the trimmed form already matches the model.
+    // el.value preserved: the trimmed form already matches the model.
     expect(input.value).toBe('hello ')
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // attaform-specific interactions
-// ─────────────────────────────────────────────────────────────────
 
 describe('attaform interactions: `.number` × slim-primitive gate', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
 
-  it('non-castable input never reaches the gate — directive marks blank instead', () => {
+  it('non-castable input never reaches the gate: directive marks blank instead', () => {
     // Post-commit-5 the directive's `.number` listener short-circuits
     // BEFORE the assigner when `looseToNumber` returns a non-number,
     // so the slim-primitive gate never sees the bogus write. The
@@ -812,7 +800,7 @@ describe('attaform interactions: `.lazy` × value-swap', () => {
     input.type = 'text'
     document.body.appendChild(input)
 
-    // Created with undefined under `.lazy` — listener still attaches
+    // Created with undefined under `.lazy`, listener still attaches
     // to `change` (modifier is read at created time, not at swap time).
     hooks.created?.(
       input,
@@ -845,11 +833,9 @@ describe('attaform interactions: `.lazy` × value-swap', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // Dispatcher propagates modifiers
-// ─────────────────────────────────────────────────────────────────
 
-describe('vRegisterDynamic — propagates modifiers to the per-tag variant', () => {
+describe('vRegisterDynamic: propagates modifiers to the per-tag variant', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -901,18 +887,15 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 })
 
-// ─────────────────────────────────────────────────────────────────
 // Regression: spike-discovered bugs
-// ─────────────────────────────────────────────────────────────────
 
 /**
- * Spike `16b` reported "can't use the spacebar at all" on a
- * `.trim`-modified text input. Pre-fix the directive trimmed the
- * value on every input event; that wrote the trimmed string to the
- * model, Vue's `:value` patch then pulled the DOM back to match
- * the (shorter) model on the next render and the user's
- * just-typed space disappeared. Fix: defer the trim to `change`
- * (blur) and let mid-typing writes keep their whitespace.
+ * `.trim` commits on `change` (blur), not on every input event, so
+ * mid-typing writes keep their whitespace. Trimming per keystroke
+ * writes the shorter string to the model, Vue's `:value` patch pulls
+ * the DOM back to match on the next render, and the space the user just
+ * typed disappears: spike `16b` reported it as "can't use the spacebar
+ * at all".
  */
 describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
   beforeEach(() => {
@@ -955,20 +938,19 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
       input.dispatchEvent(new Event('input'))
     }
 
-    // After the full sequence the form holds the raw "hello w" —
+    // After the full sequence the form holds the raw "hello w",
     // deferred trim does not strip the trailing space until blur.
     expect(setValue).toHaveBeenLastCalledWith('hello w')
     expect(input.value).toBe('hello w')
   })
 
   it('many leading spaces survive until a real character is typed AND blur is committed', () => {
-    // Pre-fix scenario: user mashes the spacebar (form="" each
-    // keystroke under per-keystroke trim). DOM accumulates spaces.
-    // First non-space keystroke triggers per-keystroke trim → form
-    // becomes "a", patchDOMProp pulls DOM back from "          a"
-    // to "a", wiping the user's spaces. With deferred trim, every
-    // intermediate write is the raw el.value; no pull-back happens.
-    // The trim is committed only on blur.
+    // The user mashes the spacebar, so the DOM accumulates spaces
+    // while the form stays "". Under a per-keystroke trim the first
+    // non-space keystroke makes the form "a" and patchDOMProp pulls the
+    // DOM back from "          a" to "a", wiping them. Deferred, every
+    // intermediate write is the raw `el.value` and the trim commits
+    // only on blur.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -981,13 +963,13 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenLastCalledWith(tenSpaces)
 
-    // First real character — model still receives the raw value.
+    // First real character, model still receives the raw value.
     input.value = `${tenSpaces}a`
     input.dispatchEvent(new Event('input'))
     expect(setValue).toHaveBeenLastCalledWith(`${tenSpaces}a`)
     expect(input.value).toBe(`${tenSpaces}a`)
 
-    // Blur commits the trim — DOM and model agree on "a".
+    // Blur commits the trim, DOM and model agree on "a".
     input.dispatchEvent(new Event('change'))
     expect(setValue).toHaveBeenLastCalledWith('a')
     expect(input.value).toBe('a')
@@ -995,18 +977,16 @@ describe('regression: vRegisterText × `.trim` × spacebar after text', () => {
 })
 
 /**
- * Spike `16e` reported a noisy dev warning when backspacing a
- * `<input type="number">` bound to `z.number()` from "1" to empty.
- * The directive auto-casts via looseToNumber; an empty string isn't
- * parseable, so looseToNumber returns the input unchanged and the
- * slim-primitive gate sees a string heading to a numeric slot →
- * rejection + dev-warn.
+ * The directive skips the assigner call when an input is empty AND a
+ * number cast is requested, so form state holds its previous valid
+ * value, the user keeps the empty DOM mid-edit, and no dev-warn fires.
  *
- * Clearing a numeric input is a normal UI affordance; the dev-warn
- * makes that look like a programmer error. The fix: the directive
- * skips the assigner call when the input is empty AND a number cast
- * is requested. Form state stays at the previous valid value, the
- * user retains the empty DOM (mid-edit), and no dev-warn fires.
+ * Without that skip, backspacing a `<input type="number">` bound to
+ * `z.number()` from "1" to empty warns: `looseToNumber` cannot parse
+ * `''` so it returns the input unchanged, and the slim-primitive gate
+ * sees a string heading for a numeric slot and rejects it. Clearing a
+ * numeric input is a normal affordance, and a dev-warn makes it look
+ * like a programmer error (spike `16e`).
  */
 describe('regression: vRegisterText × type="number" × backspace-to-empty', () => {
   beforeEach(() => {
@@ -1019,7 +999,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
     document.body.appendChild(input)
     const { value, setValue } = makeRegisterValue(0 as unknown as never)
 
-    // No explicit `.number` modifier — vnode.props.type='number'
+    // No explicit `.number` modifier, vnode.props.type='number'
     // auto-applies the cast.
     hooks.created?.(input, makeBinding(value, {}), makeVNode({ type: 'number' }), null)
 
@@ -1061,7 +1041,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
     // input ('abc') as the empty case: the assigner doesn't fire,
     // and `markBlank` writes the slim default with the
     // blank meta. Submit-time validation raises "Required"
-    // for required schemas — the dev-warn-via-gate-rejection that
+    // for required schemas: the dev-warn-via-gate-rejection that
     // pre-commit-5 surfaced was a worse UX than this.
     const input = document.createElement('input')
     input.type = 'text'
@@ -1079,7 +1059,7 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
   })
 
   it('backspace-to-empty also routes through markBlank (commit 5)', () => {
-    // Pre-commit-5 the directive skipped the assigner silently — UI
+    // Pre-commit-5 the directive skipped the assigner silently, UI
     // showed empty but storage held the previous valid number, so
     // submit could ship a stale value. Post-commit-5 the empty case
     // marks blank: storage flips to the slim default and
@@ -1106,25 +1086,21 @@ describe('regression: vRegisterText × type="number" × backspace-to-empty', () 
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<input type="checkbox">` setChecked: hydration-with-static-attribute case
-// ─────────────────────────────────────────────────────────────────
 
 /**
- * Repro for the playground bug where SSR rendered `<input type="checkbox"
- * value="banana">` with a static `value` attribute. On client hydration
- * Vue's static-attr fast path skips `patchProp`, so `el._value` is
- * never set AND `vnode.props['value']` is undefined for hoisted attrs.
- * The directive's `setChecked` was reading `vnode.props?.['value']`
- * exclusively — got undefined — and unchecked the box even though state
- * contained 'banana' and the DOM attribute was set.
+ * `setChecked` looks its option value up through the same `getValue(el)`
+ * helper the change handler uses, which falls back to the DOM `value`
+ * property when neither `_value` nor a vnode prop is present.
  *
- * The fix routes setChecked's option-value lookup through the same
- * `getValue(el)` helper the change handler uses (post the prior
- * static-attr fix), which falls back to the DOM `value` property
- * when neither `_value` nor a vnode prop is present.
+ * It has to. SSR renders `<input type="checkbox" value="banana">` with a
+ * static `value` attribute, and on hydration Vue's static-attr fast path
+ * skips `patchProp`, so `el._value` is never set and a hoisted attr
+ * leaves `vnode.props['value']` undefined. Reading only the vnode prop
+ * gets undefined and unchecks the box, even with 'banana' in state and
+ * the DOM attribute set.
  */
-describe('vRegisterCheckbox.setChecked — hydration with static value attribute', () => {
+describe('vRegisterCheckbox.setChecked: hydration with static value attribute', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -1132,14 +1108,14 @@ describe('vRegisterCheckbox.setChecked — hydration with static value attribute
   it('mounts with el.checked=true when array model contains the static-attribute value (no vnode.props.value, no _value)', () => {
     const input = document.createElement('input')
     input.type = 'checkbox'
-    // Static attribute path — sets the attribute AND el.value, but
+    // Static attribute path, sets the attribute AND el.value, but
     // crucially does NOT set el._value (Vue's renderer would).
     input.setAttribute('value', 'banana')
     document.body.appendChild(input)
 
     const { value } = makeRegisterValue<string[]>(['banana'])
 
-    // Both vnode.props.value AND el._value are absent — the exact
+    // Both vnode.props.value AND el._value are absent: the exact
     // shape the directive sees on a hydrated static-attr checkbox.
     hooks.created?.(input, makeBinding(value), makeVNode({ type: 'checkbox' }), null)
     hooks.mounted?.(input, makeBinding(value), makeVNode({ type: 'checkbox' }), null)
@@ -1174,11 +1150,9 @@ describe('vRegisterCheckbox.setChecked — hydration with static value attribute
   })
 })
 
-// ─────────────────────────────────────────────────────────────────
 // `<input type="radio">` created/beforeUpdate: same hydration shape
-// ─────────────────────────────────────────────────────────────────
 
-describe('vRegisterRadio — hydration with static value attribute', () => {
+describe('vRegisterRadio: hydration with static value attribute', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -1190,7 +1164,7 @@ describe('vRegisterRadio — hydration with static value attribute', () => {
     document.body.appendChild(input)
 
     const { value } = makeRegisterValue<string>('banana')
-    // Initial checked-state sync moved from `created` to `mounted` —
+    // Initial checked-state sync moved from `created` to `mounted`,
     // `created` fires BEFORE Vue patches type / value / _value onto
     // the element, so reading them at that point would always come
     // back undefined. Call both hooks here to mirror Vue's lifecycle.

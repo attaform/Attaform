@@ -12,17 +12,16 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Only the slot's own tracked reactive reads should invalidate its
  * resolution.
  *
- * The audit pinned this as P1 perf because pre-fix every `next` /
- * `back` / `goTo` writes `activeKey`, which invalidates the `slotCtx`
- * computed (`use-wizard.ts:282`) and cascades into `compiledSteps` —
- * re-running every bare function slot's resolver. A 50-step wizard
- * with eager function slots therefore re-runs all 50 resolvers per
- * navigation, even ones whose body is independent of the active step.
+ * The audit pinned this as P1 perf. Every `next` / `back` / `goTo`
+ * writes `activeKey`, and if that invalidates the `slotCtx` computed in
+ * `use-wizard.ts` the cascade reaches `compiledSteps` and re-runs every
+ * bare function slot's resolver: a 50-step wizard with eager function
+ * slots re-runs all 50 per navigation, including the ones whose body is
+ * independent of the active step.
  *
- * The fix unifies bare function slots on the same getter-style ctx
- * `lazy()` slots already receive (`use-wizard.ts:341` `lazyCtx`): the
- * `currentKey` dep is only established when the slot body actually
- * reads it.
+ * Bare function slots take the same getter-style ctx that `lazy()`
+ * slots receive, so `normalizeSlot` establishes the `currentKey` dep
+ * only when a slot body actually reads it.
  */
 
 const schema = z.object({ email: z.string().optional() })
@@ -42,7 +41,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — bare function slot resolver-call accounting (COMP-W1)', () => {
+describe('useWizard: bare function slot resolver-call accounting (COMP-W1)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -57,7 +56,7 @@ describe('useWizard — bare function slot resolver-call accounting (COMP-W1)', 
       return useWizard({
         steps: [
           entry,
-          // Bare function slot — no `lazy()` wrapper, no reactive
+          // Bare function slot: no `lazy()` wrapper, no reactive
           // reads inside the body. Should fire once on initial
           // compile and never again, regardless of how many times
           // the wizard navigates around it.
@@ -85,13 +84,12 @@ describe('useWizard — bare function slot resolver-call accounting (COMP-W1)', 
     result.back() //         final → middle
     result.goTo('comp-w1-entry')
 
-    // Pre-fix: `compiledSteps` reads `slotCtx.value` which reads
-    // `activeKey.value`, so each navigation invalidates the
-    // compile-pass computed and the bare function slot re-fires.
-    // Pre-fix resolverCalls === 5 (1 setup + 4 navigations).
-    // Post-fix: the getter-style ctx never establishes the
-    // activeKey dep because the slot body never reads
-    // ctx.currentKey, so resolverCalls stays at 1.
+    // The getter-style ctx never establishes the `activeKey` dep,
+    // because this slot body never reads `ctx.currentKey`, so
+    // resolverCalls stays at 1. A `compiledSteps` that read
+    // `slotCtx.value`, and through it `activeKey.value`, would invalidate
+    // the compile pass on every navigation and reach 5 (one setup plus
+    // four navigations).
     expect(resolverCalls).toBe(1)
   })
 

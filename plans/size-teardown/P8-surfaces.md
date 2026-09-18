@@ -1,4 +1,4 @@
-# P8: surface program — DONE 2026-08-24
+# P8: surface program, DONE 2026-08-24
 
 **OUTCOME: measured 34,530 B gz, -1,091 against the -1,400..-2,200 band.**
 All four slices shipped; full suite 4,755 green both majors; typecheck
@@ -14,9 +14,9 @@ perf fix), + the boundary gates commit.
 
 - **Delta -1,091 vs the -1,400..-2,200 band (61% mid-realization).**
   The rep's -1,937 was the LEAN-semantics ceiling; the pin battery
-  (8a, 24 new tests) forced back the real contract — `[]` clean-leaf
+  (8a, 24 new tests) forced back the real contract, `[]` clean-leaf
   reads, live-union enumeration, leaf-view identity, the values
-  materializer, per-container error trees — and the restored invoke
+  materializer, per-container error trees, and the restored invoke
   shims cost +131. Slice deltas: 8b -704, 8c -365, 8d -193, shims
   +131, metaBase fix +40.
 - **The sucrase finding (flagged for Oswald's re-ruling).** Sign-off
@@ -24,7 +24,7 @@ perf fix), + the boundary gates commit.
   evidence: @vue/repl's transformTS calls sucrase WITHOUT
   disableESTransforms, so the docs playground downlevels the
   documented `surface(path)?.x` idiom into a `_optionalChain` helper
-  that reads `.call` off the surface and invokes it — post-drop that
+  that reads `.call` off the surface and invokes it, post-drop that
   threw "target.call is not a function" in our own playground (and
   under any consumer toolchain targeting below ES2020).
   No-uncaught-exceptions outranks the size sign-off, so
@@ -39,10 +39,10 @@ perf fix), + the boundary gates commit.
   call-form terminals are now ONE cached per-path view, so
   `fields('email') === fields.email`; the fields surface reads through
   the SAME field-state accessor `meta` / register use (one computed
-  per path instead of two parallel caches — the register docblock's
+  per path instead of two parallel caches, the register docblock's
   "same memoised identity" claim is now actually true); errors toJSON
   trees memoise in per-container computeds (rebuilt on store change,
-  not per stringify — the +82% stringify win).
+  not per stringify, the +82% stringify win).
 - **The 8c forest loop initially regressed cold init -4..-9%**:
   getFormMetaBase ran 30 defineProperty calls per field-state
   evaluation (~1,500 per 50-field first-read sweep) where the literal
@@ -56,18 +56,18 @@ perf fix), + the boundary gates commit.
   against the mount-perf capability-tax closure; keystroke unaffected.
 - **Refused with measurement, no code motion** (the rep-first rule
   working): the leaf/container field-state builder fold (only twin is
-  the tail literal — P6 gzip discount — against real risk to the P3
+  the tail literal, P6 gzip discount, against real risk to the P3
   blank-reactivity fast path); the activation-getter loop (implemented,
-  measured +15 B, reverted — gzip had fully pre-discounted the nine
+  measured +15 B, reverted, gzip had fully pre-discounted the nine
   getter twins, and the loop costs the literal's member-completeness
   type-check); the useForm/useAbstractForm layer collapse (the skins
   are ~20 runtime lines; their weight is type-level and never ships;
   folding would make core import adapters).
 - **Also fixed en route**: the stale `bundle-repl-deps` expectation
-  (history.d.ts now emits PathKey as an import from './index' — the
-  unified end state — so the warn was a false positive); the perf
+  (history.d.ts now emits PathKey as an import from './index', the
+  unified end state, so the warn was a false positive); the perf
   benches' one-run artifact class re-confirmed (deep D=8 collapsed to
-  -91% in batch runs, +0.2% solo — positional GC interference, both
+  -91% in batch runs, +0.2% solo, positional GC interference, both
   trees).
 - Module inventory after 8b: callable-tree.ts (2,142 gz attributed)
   replaces surface-proxy + errors-proxy + field-state-proxy +
@@ -93,10 +93,10 @@ measures the proxy-zoo replacement at **-1,937 B gz** on its broader
 scenario (values + errors + fields + register + handleSubmit touched;
 baseline 37,818 -> 35,881). The forest-loops arm of that script is STALE
 (its `build-form-api-mod.ts` predates P3's array-engine consolidation and
-imports the deleted field-arrays.ts) — re-sketch it BEFORE building, per
+imports the deleted field-arrays.ts), re-sketch it BEFORE building, per
 the program's standing rep-first rule. Behavior verbatim except sign-off 8's
 approved drops. Both zod majors. Perf gate: keystroke + mount vs
-reference/p5-bench-after.json (proxy work sits on the read path — watch
+reference/p5-bench-after.json (proxy work sits on the read path, watch
 field-read and errors-materialization benches specifically).
 
 ## Scope (sign-off 8: callable reads STAY)
@@ -107,8 +107,7 @@ field-read and errors-materialization benches specifically).
    proxy-readonly-helpers): function target, apply trap, array-target swap
    for v-for/renderList, memoized computed toJSON trees, live-key
    enumeration, `[]` leaf reads, child cache on interned nodes. The rep
-   modules (errors-rep/fields-rep/values-rep) are LEAN semantics sketches —
-   the real factory must add back enumeration parity and leaf-view
+   modules (errors-rep/fields-rep/values-rep) are LEAN semantics sketches, the real factory must add back enumeration parity and leaf-view
    referential stability; both clawbacks are budgeted (~100 B and covered
    in the band above).
 2. **Getter forests via FIELD_STATE_KEYS defineProperty loops** for the two
@@ -128,7 +127,7 @@ field-read and errors-materialization benches specifically).
 
 - Leaf-view referential stability if `:field`-prop identity matters.
 - Enumeration parity on all three surfaces (Object.keys, v-for, spread).
-- `toJSON` must survive on values/errors/fields — 107
+- `toJSON` must survive on values/errors/fields, 107
   `JSON.stringify(form.values)` sites in apps/site are the canary.
 - Error order schema -> blank -> user unchanged at every read site.
 - Display-state behavior verbatim (field-state builder carries the
@@ -144,7 +143,7 @@ field-read and errors-materialization benches specifically).
   the rewrite must hold.
 - REPL playground pinned + verified per
   reference_playground_repl_debugging (the in-browser Volar worker is
-  separate from CLI types — `bundle:repl` + Playwright on localhost).
+  separate from CLI types, `bundle:repl` + Playwright on localhost).
 - Re-run `reference/rep/measure-claims.mjs` at start to re-anchor the
   proxy delta on the day's tree; re-sketch the forest arm.
 

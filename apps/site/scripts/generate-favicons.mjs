@@ -62,7 +62,7 @@ function buildIco(images) {
   let offset = dataOffset
   images.forEach((img, i) => {
     const base = i * ENTRY_SIZE
-    // ICONDIRENTRY width/height of 0 means 256 — we never go that big.
+    // ICONDIRENTRY width/height of 0 means 256: we never go that big.
     entries.writeUInt8(img.size === 256 ? 0 : img.size, base + 0)
     entries.writeUInt8(img.size === 256 ? 0 : img.size, base + 1)
     entries.writeUInt8(0, base + 2) // color count (0 for >= 8 bpp)

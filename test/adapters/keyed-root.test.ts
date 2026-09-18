@@ -10,7 +10,7 @@
  * for the branch that deleted the construction-time kind audit. That
  * audit enumerated kinds someone had written down. This rejects on the
  * absence of the single property the form engine requires, and every
- * kind stays welcome UNDER a key — which is exactly what the second
+ * kind stays welcome UNDER a key: which is exactly what the second
  * half of this file asserts.
  *
  * v3 has rejected these roots since it shipped. v4 declared the same
@@ -109,7 +109,7 @@ describe('the three keyed roots are accepted', () => {
 
 describe('every refused root is welcome one level down', () => {
   // The whole point. The root rule is about addressability, not about
-  // which kinds Attaform is willing to carry — so each shape refused
+  // which kinds Attaform is willing to carry: so each shape refused
   // above has to mount the moment it is given a name.
   it.each(REFUSED)('v4 accepts %s under a key', (_label, makeV4) => {
     expect(() => buildV4(zV4.object({ field: makeV4() }))).not.toThrow()

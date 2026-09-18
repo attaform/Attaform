@@ -22,7 +22,7 @@ const SHOULD_UPDATE = process.env['ATTA_UPDATE_GOLDEN'] === '1'
 
 /**
  * Recursively sort object keys so the serialized golden has a canonical,
- * order-independent shape — clean diffs, and capture-order changes don't
+ * order-independent shape, clean diffs, and capture-order changes don't
  * spuriously fail.
  */
 function sortKeys(value: unknown): unknown {
@@ -45,12 +45,12 @@ function serialize(value: unknown): string {
  * Assert `actual` matches the committed golden for `name`.
  *
  * - Missing golden + local run: write it (bootstrap), pass.
- * - Missing golden + CI: throw — never let an absent golden silently pass.
+ * - Missing golden + CI: throw, never let an absent golden silently pass.
  * - `ATTA_UPDATE_GOLDEN=1`: rewrite the golden, pass.
  * - Otherwise: deep-equal the parsed structures (precise diff on failure).
  *
  * The golden is read directly and a missing file (ENOENT) is what marks it
- * absent — rather than a prior `existsSync` check, which would be a
+ * absent, rather than a prior `existsSync` check, which would be a
  * time-of-check to time-of-use race on the golden path.
  */
 export function assertGolden(name: string, actual: unknown): void {

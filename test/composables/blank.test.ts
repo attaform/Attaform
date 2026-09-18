@@ -8,7 +8,7 @@ import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/regi
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
- * Public API coverage for the `unset` symbol — declarative
+ * Public API coverage for the `unset` symbol, declarative
  * (`defaultValues: { x: unset }`) and imperative
  * (`setValue('x', unset)`, `reset({ x: unset })`). Plus the bulk
  * `form.blankPaths` introspection accessor and the per-field
@@ -98,7 +98,7 @@ describe('defaultValues with `unset`', () => {
   // should write the slim/blank primitive (`0`) and mark the path
   // blank, NOT honor the schema's `.default(10)`. `defaultValues` is
   // the higher-priority surface, and `unset` is the user's explicit
-  // "blank this leaf" signal — the schema's declared default is
+  // "blank this leaf" signal: the schema's declared default is
   // intentionally bypassed (see `getEmptyValueAtPath` docblock in
   // types-api.ts).
   it('unset overrides z.number().default(N) with slim 0', () => {
@@ -248,7 +248,7 @@ describe('form.blankPaths bulk accessor', () => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('returns a readonly snapshot — consumers cannot mutate', () => {
+  it('returns a readonly snapshot: consumers cannot mutate', () => {
     const { app, form } = setupForm(z.object({ count: z.number() }), { count: unset })
     apps.push(app)
     const snapshot = form.blankPaths.value
@@ -276,12 +276,12 @@ describe('form.blankPaths bulk accessor', () => {
 
 describe('auto-mark: unspecified numeric leaves are blank on construction', () => {
   // Rationale: numeric primitives (`number`, `bigint`) have a
-  // genuine storage / display divergence — storage is forced to `0`
+  // genuine storage / display divergence, storage is forced to `0`
   // / `0n` while the DOM input shows `''`, so the runtime needs the
   // `blank` side-channel to tell "user typed 0" from "user supplied
   // nothing." Strings and booleans don't have this divergence (`''`
   // / `false` match what the DOM shows natively), so they are NOT
-  // auto-marked — the schema is the authority on whether `''` /
+  // auto-marked: the schema is the authority on whether `''` /
   // `false` is acceptable. See `docs/blank.md` for the conceptual
   // model. Explicit `unset` opts ANY primitive in regardless of type.
   const apps: App[] = []
@@ -292,7 +292,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
   it('z.string() leaf is NOT auto-marked at mount', () => {
     const { app, form } = setupForm(z.object({ email: z.string() }))
     apps.push(app)
-    // Storage `''` matches DOM `''` — no side-channel needed; the
+    // Storage `''` matches DOM `''`: no side-channel needed; the
     // schema (`z.string()`) accepts `''` and the library doesn't
     // override that verdict.
     expect(form.blankPaths.value.has('email')).toBe(false)
@@ -324,7 +324,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
   })
 
   it('explicit slim-default value still opts the leaf out of auto-mark', () => {
-    // `defaultValues: { count: 0 }` — the consumer wrote 0 explicitly,
+    // `defaultValues: { count: 0 }`: the consumer wrote 0 explicitly,
     // so the leaf is NOT blank even though storage matches
     // the slim default. The opt-out signal is "consumer supplied a
     // non-`unset` value", not "consumer supplied a non-default value".
@@ -353,14 +353,14 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     expect(form.blankPaths.value.has('user.name')).toBe(false)
     // Numeric child: auto-marked.
     expect(form.blankPaths.value.has('user.age')).toBe(true)
-    // The object path itself is NOT marked — only primitive leaves are.
+    // The object path itself is NOT marked, only primitive leaves are.
     expect(form.blankPaths.value.has('user')).toBe(false)
   })
 
   it('optional string leaf is NOT auto-marked (slim is undefined, no divergence)', () => {
     const { app, form } = setupForm(z.object({ note: z.string().optional() }))
     apps.push(app)
-    // `undefined` isn't a numeric primitive — no auto-mark.
+    // `undefined` isn't a numeric primitive: no auto-mark.
     expect(form.blankPaths.value.has('note')).toBe(false)
     expect(form.values.note).toBeUndefined()
   })
@@ -368,7 +368,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
   it('nullable string leaf is NOT auto-marked (slim is null, no divergence)', () => {
     const { app, form } = setupForm(z.object({ note: z.string().nullable() }))
     apps.push(app)
-    // `null` isn't a numeric primitive — no auto-mark.
+    // `null` isn't a numeric primitive: no auto-mark.
     expect(form.blankPaths.value.has('note')).toBe(false)
     expect(form.values.note).toBeNull()
   })
@@ -377,7 +377,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     // `.default(7)` is the schema author's "start the form at 7"
     // signal. The `<input type="number">` renders 7 natively (no
     // storage/display divergence), so the auto-mark side-channel
-    // MUST NOT fire — auto-marking here would hide the prefill from
+    // MUST NOT fire, auto-marking here would hide the prefill from
     // the user even though storage holds 7. The contract: auto-mark
     // exists only to bridge the slim-numeric (`0` / `0n`) display
     // gap; any other declared default short-circuits it.
@@ -390,7 +390,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
   it('.default(0): storage holds 0, path IS marked blank (slim divergence)', () => {
     // `.default(0)` declares the slim value explicitly. Auto-mark
     // still fires because storage holds `0` and the input would
-    // otherwise render "0" — the schema author asked for 0 as the
+    // otherwise render "0": the schema author asked for 0 as the
     // starting baseline but the field should display empty until
     // the user interacts (otherwise "user typed 0" and "user
     // supplied nothing" are visually identical).
@@ -403,7 +403,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
   it('arrays: pass through without marking elements (runtime-added)', () => {
     const { app, form } = setupForm(z.object({ tags: z.array(z.string()) }))
     apps.push(app)
-    // `tags` itself is a non-primitive leaf — not marked.
+    // `tags` itself is a non-primitive leaf: not marked.
     expect(form.blankPaths.value.has('tags')).toBe(false)
     // No spurious indexed marks either.
     expect(form.blankPaths.value.size).toBe(0)
@@ -415,15 +415,15 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
       age: 0,
     })
     apps.push(app)
-    // Both leaves had user-supplied values (matching slim defaults)
-    // — neither is auto-marked.
+    // Both leaves had user-supplied values (matching slim defaults),
+    // neither is auto-marked.
     expect(form.blankPaths.value.size).toBe(0)
   })
 
   it('explicit unset opts string leaves in (universal opt-in beats type-gated auto-mark)', () => {
     // `count` via explicit unset, `name` ALSO via explicit unset.
     // Auto-mark is numeric-only, but `unset` is the documented
-    // consumer signal that overrides the type gate — explicit intent
+    // consumer signal that overrides the type gate, explicit intent
     // wins everywhere.
     const { app, form } = setupForm(z.object({ count: z.number(), name: z.string() }), {
       count: unset,
@@ -450,7 +450,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
     apps.push(app)
     // Construction auto-marks `count`.
     expect(form.blankPaths.value.has('count')).toBe(true)
-    // User types a value — mark is removed.
+    // User types a value, mark is removed.
     form.setValue('count', 42)
     expect(form.blankPaths.value.has('count')).toBe(false)
     // reset() with no args should restore the construction baseline.
@@ -492,7 +492,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
   })
 
   it('dirty stays false on construction even with auto-marks', () => {
-    // Construction-time auto-marks ARE the baseline — they shouldn't
+    // Construction-time auto-marks ARE the baseline: they shouldn't
     // count as "dirty" (the user hasn't done anything yet).
     const { app, form } = setupForm(z.object({ count: z.number(), name: z.string() }))
     apps.push(app)
@@ -501,17 +501,17 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
 })
 
 /**
- * Container-level `unset` — recursive primitive mark.
+ * Container-level `unset`, recursive primitive mark.
  *
  * `unset` is admitted at every position in `defaultValues`, `setValue`,
  * and `reset`, not just primitive leaves. At a bare object container
  * the walker recurses into the schema's slim/empty subtree and marks
  * EVERY primitive descendant blank (strings + booleans + bigints +
- * numerics — the auto-mark side-channel's numeric-only rule is for
+ * numerics: the auto-mark side-channel's numeric-only rule is for
  * UNSPECIFIED leaves, not for explicit `unset`). At array, tuple, and
  * record containers the walker writes the slim/empty value with NO
- * per-element marks (matching the "always the falsy version" principle
- * — per-element opt-in via explicit `[unset, unset]` still works).
+ * per-element marks (matching the "always the falsy version" principle,
+ * per-element opt-in via explicit `[unset, unset]` still works).
  * Wrappers (`.optional()` / `.nullable()`) write the wrapper's absent
  * value (`undefined` / `null`) and mark the wrapper path itself. The
  * container path itself does NOT enter `blankPaths`; the
@@ -525,7 +525,7 @@ describe('auto-mark: unspecified numeric leaves are blank on construction', () =
  * with it.
  */
 
-describe('defaultValues with container `unset` — bare object', () => {
+describe('defaultValues with container `unset`: bare object', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -579,7 +579,7 @@ describe('defaultValues with container `unset` — bare object', () => {
   })
 
   it("form.fields('profile').blank reads true via the descendant aggregate", () => {
-    // Container `.blank` lives on the FieldState terminal — invoke
+    // Container `.blank` lives on the FieldState terminal, invoke
     // `form.fields('profile')` (call-form) to resolve it. Bare
     // `form.fields.profile.blank` would descend into a non-existent
     // `profile.blank` schema path and return another callable proxy.
@@ -607,7 +607,7 @@ describe('defaultValues with container `unset` — bare object', () => {
   })
 })
 
-describe('defaultValues with container `unset` — discriminated union', () => {
+describe('defaultValues with container `unset`: discriminated union', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -617,7 +617,7 @@ describe('defaultValues with container `unset` — discriminated union', () => {
     // Per the disc-path stub contract: writing `unset` at a DU
     // container produces `{ <discKey>: <kind-blank> }` with no
     // variant-specific keys. The first-variant slim would silently
-    // ACTIVATE the boat variant — that's the bug this contract
+    // ACTIVATE the boat variant: that's the bug this contract
     // forbids.
     const schema = z.object({
       cargo: z.discriminatedUnion('kind', [
@@ -628,7 +628,7 @@ describe('defaultValues with container `unset` — discriminated union', () => {
     const { app, form } = setupForm(schema, { cargo: unset } as never)
     apps.push(app)
     expect((form.values.cargo as { kind: string }).kind).toBe('')
-    // No variant body — the first-variant keys must NOT have been
+    // No variant body: the first-variant keys must NOT have been
     // seeded.
     expect((form.values.cargo as Record<string, unknown>)['length']).toBeUndefined()
     expect((form.values.cargo as Record<string, unknown>)['payload']).toBeUndefined()
@@ -638,7 +638,7 @@ describe('defaultValues with container `unset` — discriminated union', () => {
   })
 })
 
-describe('defaultValues with container `unset` — array / tuple / record', () => {
+describe('defaultValues with container `unset`: array / tuple / record', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -673,7 +673,7 @@ describe('defaultValues with container `unset` — array / tuple / record', () =
   })
 })
 
-describe('defaultValues with container `unset` — wrappers', () => {
+describe('defaultValues with container `unset`: wrappers', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

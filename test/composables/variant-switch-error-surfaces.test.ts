@@ -6,7 +6,7 @@
  * it said the per-leaf view filters by active variant while
  * `form.meta.errors` does not, and prescribed hand-filtering the
  * aggregate to work around stale entries. Measured, it is the other
- * way round, and the page's own worked snippet was the bug — a
+ * way round, and the page's own worked snippet was the bug: a
  * `<small v-if="form.errors.notify.address?.[0]">` commented "only
  * renders when notify.channel === 'email'" renders an email error
  * beside the SMS input whenever a server error is parked there.
@@ -60,7 +60,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('error surfaces across a variant switch — $name', (adapter) => {
+describe.each(ADAPTERS)('error surfaces across a variant switch: $name', (adapter) => {
   it('drops the outgoing variant’s schema errors from the aggregate', async () => {
     const { api } = makeMounter(adapter.useForm, adapter.schema(), {})()
     api.setValue('notify.channel', 'sms')

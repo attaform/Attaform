@@ -8,9 +8,9 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Introspection surfaces that survived the v2 cutover:
- *   - `wizard.steps` — ordered list of compiled `{ key, form }` slots.
- *   - `wizard.forms` — keyed record indexable by step key.
- *   - `wizard.visited` — append-only audit log of navigated step keys.
+ *   - `wizard.steps`, ordered list of compiled `{ key, form }` slots.
+ *   - `wizard.forms`, keyed record indexable by step key.
+ *   - `wizard.visited`, append-only audit log of navigated step keys.
  *
  * Static graph machinery (`flow.tree`, `flow.allForms`, `flow.diagnose`)
  * is retired with v1; only the data that maps cleanly to a positional
@@ -34,7 +34,7 @@ function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('wizard.steps + wizard.forms — positional introspection', () => {
+describe('wizard.steps + wizard.forms: positional introspection', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -89,7 +89,7 @@ describe('wizard.steps + wizard.forms — positional introspection', () => {
   })
 })
 
-describe('wizard.visited — runtime audit log', () => {
+describe('wizard.visited: runtime audit log', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -173,7 +173,7 @@ describe('wizard.visited — runtime audit log', () => {
     expect(result.visited).toEqual(['v-6-a'])
   })
 
-  it('is reactive — a computed reading visited.length recomputes on navigation', async () => {
+  it('is reactive: a computed reading visited.length recomputes on navigation', async () => {
     const { app, result } = mountWizardHarness(() => {
       const a = useForm({ schema, key: 'v-7-a' })
       const b = useForm({ schema, key: 'v-7-b' })

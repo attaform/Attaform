@@ -1,35 +1,32 @@
 /**
- * The single file that reads Zod v3's internal `_def` shape. Every
- * other file in the zod-v3 adapter uses these public-shaped accessors
- * — future Zod v3 minor bumps that reshape internals touch only this
- * file. Mirrors the v4 adapter's introspect surface, with v3-only
- * accessors for kinds the v3 line carries that v4 dropped
- * (`ZodEffects`, `ZodPipeline`, `ZodBranded`, `ZodNativeEnum`).
+ * The ONE file that reads Zod v3's internal `_def` shape. Every other
+ * file in the adapter goes through these public-shaped accessors, so a
+ * v3 minor bump that reshapes internals touches only this file. The v4
+ * adapter has the same surface, plus this one carries accessors for the
+ * kinds v4 dropped: `ZodEffects`, `ZodPipeline`, `ZodBranded` and
+ * `ZodNativeEnum`.
  *
- * Design principle: treat `schema._def.*` as an unstable surface, even
- * when Zod's docs say otherwise. Each helper returns a narrow,
- * well-typed slice; no adapter code outside this file does
- * shape-based pattern matching on `_def`.
+ * Treat `schema._def.*` as unstable whatever Zod's docs say. Each helper
+ * returns a narrow, well-typed slice, and no adapter code outside this
+ * file pattern-matches on `_def`.
  */
 import type { z } from 'zod-v3'
 import { callConsumerSchemaFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 import { isZodSchemaType } from './helpers'
 
-// Shared cap for every wrapper-peeling helper. Pathological schemas
-// (deep `.refine()` chains, self-referential lazy loops) would
-// otherwise stack-overflow or hang. 64 is generous for any realistic
-// form schema; past it we bail conservatively rather than crash.
+// Shared cap for every wrapper-peeling helper. A pathological schema, a
+// deep `.refine()` chain or a self-referential lazy loop, would
+// otherwise stack-overflow or hang. 64 is generous for a real form
+// schema, and past it the helpers bail rather than crash.
 const MAX_UNWRAP_STEPS = 64
 
 /**
- * Stable kind discriminant for a Zod v3 schema. Mirrors the v4
- * adapter's `ZodKind` for the kinds both versions carry, with the
- * v3-only additions (`'effects'`, `'pipeline'`, `'branded'`,
- * `'native-enum'`, `'function'`, `'map'`, `'symbol'`, `'promise'`)
- * for kinds the v3 line still exposes that v4 dropped or renamed.
- * Useful when building a custom integration that needs to branch on
- * schema shape — most consumers don't need this.
+ * Stable kind discriminant for a Zod v3 schema. It matches the v4
+ * adapter's `ZodKind` wherever both majors carry a kind, and adds
+ * `'effects'`, `'pipeline'`, `'branded'`, `'native-enum'`, `'function'`,
+ * `'map'`, `'symbol'` and `'promise'` for the ones only v3 exposes.
+ * Reach for it in a custom integration that branches on schema shape.
  */
 export type ZodKind =
   | 'object'
@@ -69,8 +66,8 @@ export type ZodKind =
   | 'map'
   | 'symbol'
 
-// Narrow accessor for the unstable `_def` surface. All reads from this
-// object go through helpers below — never inline.
+// The unstable `_def` surface. Every read of it goes through a helper
+// below, never inline.
 interface ZodV3InternalShape {
   _def?: {
     typeName?: string
@@ -89,8 +86,8 @@ interface ZodV3InternalShape {
     items?: readonly unknown[] // ZodTuple
     // ZodUnion / ZodDiscriminatedUnion / ZodEnum. A discriminated union
     // carried its options as a `Map` before zod 3.20.0 and as an array
-    // from 3.20.0 on, so the accessors below normalise both rather than
-    // asserting one. See `readOptionList`.
+    // since, so `readOptionList` normalises both rather than asserting
+    // either.
     options?: readonly unknown[] | Map<unknown, unknown>
     optionsMap?: Map<unknown, unknown> // ZodDiscriminatedUnion parse routing
     discriminator?: string // ZodDiscriminatedUnion
@@ -103,10 +100,10 @@ interface ZodV3InternalShape {
     catchValue?: (ctx: { error: unknown; input: unknown }) => unknown
     // Refinement payload.
     checks?: readonly unknown[]
-    // `z.coerce.X()` flags the wrapped primitive's def with `coerce:
-    // true` — the constructor returns a ZodString / ZodNumber / etc.
-    // schema rather than a separate wrapper, and the flag drives Zod's
-    // own safeParse to cast the input. Used by `isCoercePrimitive`.
+    // `z.coerce.X()` sets `coerce: true` on the wrapped primitive's def:
+    // the constructor hands back a plain ZodString or ZodNumber rather
+    // than a wrapper, and the flag is what drives Zod's own safeParse to
+    // cast. Read by `isCoercePrimitive`.
     coerce?: boolean
   }
 }
@@ -117,10 +114,9 @@ function readDef(schema: unknown): ZodV3InternalShape['_def'] | undefined {
 }
 
 /**
- * Inspect a Zod v3 schema and return its `ZodKind`. Returns
- * `'unknown'` for non-Zod inputs and unrecognised shapes (collides
- * with `ZodUnknown` → `'unknown'` by design; `ZodUnknown` is rarely
- * used in form schemas).
+ * The `ZodKind` of a Zod v3 schema. A non-Zod input or an unrecognised
+ * shape is `'unknown'`, which collides with `ZodUnknown` deliberately;
+ * `ZodUnknown` is rare in a form schema.
  */
 export function kindOf(schema: unknown): ZodKind {
   const def = readDef(schema)
@@ -210,13 +206,11 @@ export function getTypeName(schema: unknown): string | undefined {
 }
 
 /**
- * Verify a schema is Zod v3. Throws a clear error if it's a v4
- * schema (which carries `def.type` instead of `_def.typeName`) or a
- * non-Zod value mistakenly imported through `attaform/zod-v3`.
- *
- * Most consumers never call this directly — the v3 adapter calls it
- * internally on every schema. Reach for it only when wiring a custom
- * adapter that needs the same guard.
+ * Verify a schema is Zod v3, throwing a clear error for a v4 schema,
+ * which carries `def.type` rather than `_def.typeName`, or for a non-Zod
+ * value imported through `attaform/zod-v3` by mistake. The adapter calls
+ * it on every schema; reach for it directly only in a custom adapter
+ * that wants the same guard.
  */
 export function assertZodVersion(schema: unknown): void {
   const def = readDef(schema)
@@ -236,25 +230,25 @@ export function assertZodVersion(schema: unknown): void {
 // ---------- Container accessors ----------
 
 /**
- * Returns the object's `Record<string, ZodTypeAny>` shape. v3 stores
- * shape as a thunk on `_def.shape` (lazy evaluation for self-referential
- * schemas); the instance's `.shape` getter and the thunk both resolve
- * to the same record. Prefers the thunk so cases without an instance
- * getter (rare; defensive) still resolve.
+ * The object's `Record<string, ZodTypeAny>` shape. v3 keeps it as a
+ * thunk on `_def.shape`, for lazy evaluation of self-referential
+ * schemas, and the instance's `.shape` getter resolves to the same
+ * record. The thunk comes first, so a schema built without the getter
+ * still resolves.
  */
 export function getObjectShape(schema: z.ZodTypeAny): Record<string, z.ZodTypeAny> {
   const def = readDef(schema)
   const raw = def?.shape
   if (typeof raw === 'function') return raw() as Record<string, z.ZodTypeAny>
   if (raw !== undefined) return raw as Record<string, z.ZodTypeAny>
-  // Fallback to the instance getter — only reached when the schema was
-  // constructed via a path that didn't populate `_def.shape`.
+  // Only reached when the schema was built along a path that left
+  // `_def.shape` unpopulated.
   return (schema as unknown as { shape?: Record<string, z.ZodTypeAny> }).shape ?? {}
 }
 
 /**
- * Returns the element schema of a `z.array(...)`. v3 stores the
- * element on `_def.type` (not `_def.element` — that's v4's name).
+ * The element schema of a `z.array(...)`. v3 keeps it on `_def.type`;
+ * `_def.element` is v4's spelling.
  */
 export function getArrayElement(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -262,8 +256,7 @@ export function getArrayElement(schema: z.ZodTypeAny): z.ZodTypeAny | undefined 
 }
 
 /**
- * Returns the element schema of a `z.set(...)`. v3 stores it on
- * `_def.valueType` (parity with v4).
+ * The element schema of a `z.set(...)`, on `_def.valueType` as in v4.
  */
 export function getSetValueType(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -297,17 +290,17 @@ export function getTupleItems(schema: z.ZodTypeAny): readonly z.ZodTypeAny[] {
 }
 
 /**
- * Read `_def.options` as a list whatever container zod put it in.
+ * Read `_def.options` as a list whichever container zod put it in.
  *
  * A discriminated union's options were a `Map` keyed by discriminator
- * value until zod 3.20.0 and have been an array since. A cast to the
- * array shape compiles against either, so on an older zod every consumer
- * `.default()` inside a DU branch was silently dropped: the walk read a
- * Map as an array, saw no entries, and derived defaults from nothing.
+ * value until zod 3.20.0 and an array since. A cast to the array shape
+ * compiles against either, which is how an older zod could silently drop
+ * every consumer `.default()` inside a DU branch: the walk read a Map as
+ * an array, saw no entries, and derived defaults from nothing.
  *
- * Normalising both shapes here is what supports zod v3 at its own
- * declared floor rather than at the version this repo happens to install.
- * `peerDependencies.zod` says `>=3.0.0`; before this it meant `>=3.20.0`.
+ * Normalising both is what supports zod v3 at its own declared floor
+ * rather than at whichever version this repo installs.
+ * `peerDependencies.zod` says `>=3.0.0` and now means it.
  */
 function readOptionList(
   options: readonly unknown[] | Map<unknown, unknown> | undefined
@@ -342,8 +335,8 @@ export function getDiscriminatedOptionsMap(
   schema: z.ZodTypeAny
 ): Map<unknown, z.AnyZodObject> | undefined {
   const def = readDef(schema)
-  // Before zod 3.20.0 there was no separate `_def.optionsMap`: the routing
-  // map WAS `_def.options`. Both spellings answer the same question.
+  // Before zod 3.20.0 there was no separate `_def.optionsMap`: the
+  // routing map WAS `_def.options`.
   const map = def?.optionsMap ?? def?.options
   return map instanceof Map ? (map as Map<unknown, z.AnyZodObject>) : undefined
 }
@@ -372,11 +365,10 @@ export function getIntersectionRight(schema: z.ZodTypeAny): z.ZodTypeAny | undef
 // ---------- Wrapper unwrap (return inner schema) ----------
 
 /**
- * Reads `_def.innerType` — the inner schema for transparent wrappers
- * (Optional / Nullable / Default / Catch / Readonly). Returns
- * undefined for kinds that don't carry an inner (Branded uses
- * `_def.type`; use `unwrapBranded` instead; Effects uses
- * `_def.schema`, use `unwrapEffectsSource`).
+ * `_def.innerType`, the inner schema of a transparent wrapper: Optional,
+ * Nullable, Default, Catch or Readonly. `undefined` for a kind that
+ * carries no inner there; Branded uses `_def.type` (`unwrapBranded`) and
+ * Effects uses `_def.schema` (`unwrapEffectsSource`).
  */
 export function unwrapInner(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -384,8 +376,8 @@ export function unwrapInner(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
 }
 
 /**
- * `ZodBranded`'s inner schema lives on `_def.type` (v3 quirk; v4 uses
- * `_def.innerType` for branded). Returns undefined for non-Branded.
+ * `ZodBranded`'s inner schema, on `_def.type`; v4 puts it on
+ * `_def.innerType`. `undefined` for anything else.
  */
 export function unwrapBranded(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -393,10 +385,9 @@ export function unwrapBranded(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
 }
 
 /**
- * `ZodEffects` structural source — the inner schema being refined /
- * transformed / preprocessed. v3 stores this on `_def.schema`
- * (v4 has no ZodEffects equivalent; refinements live on the schema
- * directly).
+ * A `ZodEffects`' structural source, the inner schema being refined,
+ * transformed or preprocessed, on `_def.schema`. v4 has no equivalent
+ * kind; its refinements live on the schema itself.
  */
 export function unwrapEffectsSource(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -412,16 +403,16 @@ export function unwrapEffectsSource(schema: z.ZodTypeAny): z.ZodTypeAny | undefi
  */
 export function getEffect(schema: z.ZodTypeAny): Record<string, unknown> | undefined {
   const def = readDef(schema)
-  // `readDef`'s type already models `effect` as an optional object, so
+  // `readDef` already types `effect` as an optional object, so
   // `undefined` is the only non-record it can be.
   return def?.effect as Record<string, unknown> | undefined
 }
 
 /**
- * Kind of effect carried by a `ZodEffects` — `'refinement'`,
- * `'transform'`, `'preprocess'`, or undefined when the def shape is
- * malformed. Used by the preprocess-or-coerce-leaf detector to scope
- * the slim-primitive write gate.
+ * Which effect a `ZodEffects` carries: `'refinement'`, `'transform'`,
+ * `'preprocess'`, or `undefined` on a malformed def. The
+ * preprocess-or-coerce-leaf detector reads it to scope the
+ * slim-primitive write gate.
  */
 export function getEffectsKind(
   schema: z.ZodTypeAny
@@ -433,25 +424,23 @@ export function getEffectsKind(
 }
 
 /**
- * Detect `z.coerce.X()` — a primitive schema (ZodString / ZodNumber /
- * etc.) carrying `_def.coerce === true`. v3 stores coerce as a flag on
- * the wrapped primitive's def rather than as a separate wrapper, so
- * the schema's typeName is just `ZodString` / `ZodNumber` / etc.; the
- * caller still wants to know it's a coerce slot (default-derivation
- * leaves the slot `undefined`; the slim-primitive write gate accepts
- * raw consumer writes verbatim through the coerce subtree). Mirrors
- * v4's `isCoercePrimitive`.
+ * Detect `z.coerce.X()`: a primitive carrying `_def.coerce === true`. v3
+ * records coerce as a flag on the primitive's own def rather than as a
+ * wrapper, so the typeName reads as a plain `ZodString` or `ZodNumber`
+ * and a caller still has to ask. It matters because default-derivation
+ * leaves a coerce slot `undefined` and the slim-primitive write gate
+ * passes raw consumer writes through the coerce subtree verbatim. v4's
+ * `isCoercePrimitive` is the same test.
  */
 export function isCoercePrimitive(schema: z.ZodTypeAny): boolean {
   return readDef(schema)?.coerce === true
 }
 
 /**
- * Detect `z.preprocess(fn, inner)` — v3 wraps preprocess in a
- * `ZodEffects` with `effect.type === 'preprocess'`. The factory's
- * `isPreprocessOrCoerceLeaf` consults this alongside
- * `isCoercePrimitive` to gate raw consumer writes verbatim through the
- * wrapped subtree.
+ * Detect `z.preprocess(fn, inner)`, which v3 wraps in a `ZodEffects`
+ * with `effect.type === 'preprocess'`. The factory's
+ * `isPreprocessOrCoerceLeaf` reads it beside `isCoercePrimitive` to pass
+ * raw consumer writes through the wrapped subtree verbatim.
  */
 export function isPreprocessNode(schema: z.ZodTypeAny): boolean {
   if (!isZodSchemaType(schema, 'ZodEffects')) return false
@@ -459,35 +448,32 @@ export function isPreprocessNode(schema: z.ZodTypeAny): boolean {
 }
 
 /**
- * True iff a `ZodEffects` carries an `async` predicate.
+ * True when a `ZodEffects` carries an `async` predicate, and it can only
+ * answer for HALF of them. That asymmetry is intrinsic to v3's runtime
+ * model:
  *
- * Detection asymmetry vs v4 (intrinsic to v3's runtime model):
+ *  - `.transform(asyncFn)` and `z.preprocess(asyncFn, ...)` store the
+ *    user fn at `_def.effect.transform`, where `constructor.name ===
+ *    'AsyncFunction'` is the standard signal, the same one v4's
+ *    `isAsyncCheck` reads.
+ *  - `.refine(asyncFn, ...)` wraps the predicate in a SYNC closure,
+ *    `(val, ctx) => { const result = check(val); if (result instanceof
+ *    Promise) return result.then(...) }`, whose `constructor.name` is
+ *    always `'Function'`. The user fn is captured with no static
+ *    accessor, so async-ness shows up only at parse time, through the
+ *    "Async refinement encountered during synchronous parse" throw.
  *
- *  - `.transform(asyncFn)` and `z.preprocess(asyncFn, …)` store the
- *    user fn directly at `_def.effect.transform` — its
- *    `constructor.name === 'AsyncFunction'` is the standard runtime
- *    signal and matches v4's `isAsyncCheck` shape.
- *  - `.refine(asyncFn, …)` wraps the user predicate inside a sync
- *    `(val, ctx) => { const result = check(val); if (result
- *    instanceof Promise) return result.then(…) }` closure — the
- *    wrapper's `constructor.name` is always `'Function'`, and the
- *    user fn is captured in the closure with no static accessor.
- *    Async-ness is observable only at parse time (via the
- *    "Async refinement encountered during synchronous parse" throw).
- *
- * So this predicate reliably flags **async transforms / preprocesses
- * only**. For refinement effects it returns `false` regardless of the
- * underlying user fn's async-ness — callers must combine it with
- * `containsAsyncRefine` (which is conservative, treating every
- * refinement effect as potentially async) and the try-parse fallback
- * inside `stripAsyncChecks` to handle refine-side async detection.
+ * So this flags async transforms and preprocesses reliably, and returns
+ * `false` for every refinement effect whatever the user fn does. Pair it
+ * with `containsAsyncRefine`, which is conservative for exactly this
+ * reason, to cover the refine side.
  */
 export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
   const def = readDef(schema)
   const effect = def?.effect
   if (effect === undefined) return false
-  // Refinement wrappers are always sync at the outer layer; the user
-  // fn lives in the closure and isn't statically observable.
+  // A refinement wrapper is always sync at the outer layer, the user fn
+  // living in a closure with nothing statically observable.
   if (effect.type === 'refinement') return false
   const fn = effect.transform
   if (typeof fn !== 'function') return false
@@ -495,30 +481,20 @@ export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
 }
 
 /**
- * True iff the v3 schema tree carries a `.refine` anywhere — sync or
- * async. Conservative by design: v3's `.refine` wraps the user
- * predicate inside a sync closure (see `isAsyncEffect`), so we cannot
- * tell sync from async without invoking the wrapper. Every refinement
- * effect counts as "potentially async" so the runtime never misses
- * the post-mount async pass.
+ * True when the v3 schema tree carries a `.refine` anywhere, sync or
+ * async. Conservative by necessity: v3 wraps the user predicate in a
+ * sync closure (see `isAsyncEffect`), so the two cannot be told apart
+ * without invoking the wrapper, and every refinement effect therefore
+ * counts as potentially async. That is what keeps the runtime from
+ * missing a post-mount async pass.
  *
- * Drives the adapter's `needsAsyncValidation` together with
- * `containsAsyncTransform`. The `getDefaultValues` path pairs this
- * conservative flag with a try-parse fallback inside
- * `stripAsyncChecks`: when the sync parse throws the "Async
- * refinement encountered" error, the stripped tree drops every
- * `ZodEffects` (no static sync/async split possible) and the parse
- * retries to surface container / leaf-check seeds.
+ * It drives `needsAsyncValidation` alongside `containsAsyncTransform`. A
+ * schema whose refines are all sync pays one extra post-mount
+ * `safeParseAsync` of the same shape as the sync parse, and nothing a
+ * consumer can observe beyond timing changes.
  *
- * Cost on pure-sync-refine schemas: one extra post-mount async pass
- * (a `safeParseAsync` of identical shape to the sync parse). No
- * observable consumer-side error semantics change beyond timing.
- *
- * Mirrors `zod-v4/introspect.ts:404 containsAsyncRefine` in role; the
- * v4 walker is exact (per-check `isAsyncCheck`), the v3 walker is
- * conservative. Same name preserved so Phase 12's
- * `createAbstractSchema` factory can fold both adapters' surfaces
- * together.
+ * `zod-v4/introspect.ts` has the same-named predicate in the same role,
+ * except the v4 walker is exact, testing each check with `isAsyncCheck`.
  */
 export function containsAsyncRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
   return walkForTarget(schema, 'refinement', seen ?? new WeakSet<object>())
@@ -538,28 +514,26 @@ export function containsMapOrSet(schema: z.ZodTypeAny, seen?: WeakSet<object>): 
 }
 
 /**
- * True iff the v3 schema tree holds at least one `ZodDiscriminatedUnion`
- * at any depth — the walk reaches unions inside arrays, tuples, records,
- * intersections, pipelines, and (cycle-capped) lazy schemas. Queried
- * once per form at construction to set the DU capability flag.
+ * True when the v3 schema tree holds a `ZodDiscriminatedUnion` at ANY
+ * depth: the walk reaches unions inside arrays, tuples, records,
+ * intersections, pipelines and cycle-capped lazy schemas. Asked once per
+ * form at construction, to set the DU capability flag.
  */
 export function containsDiscriminatedUnion(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
   return walkForTarget(schema, 'discriminated-union', seen ?? new WeakSet<object>())
 }
 
 /**
- * True iff the v3 schema tree carries an `async` `.transform` or
- * `z.preprocess`. Statically accurate — the user's async fn is stored
- * directly at `_def.effect.transform`, and `isAsyncEffect` reads its
- * `constructor.name` exactly like v4's `isAsyncCheck`.
+ * True when the v3 schema tree carries an async `.transform` or
+ * `z.preprocess`. Statically accurate, unlike `containsAsyncRefine`: the
+ * user's fn sits at `_def.effect.transform`, and `isAsyncEffect` reads
+ * its `constructor.name` just as v4's `isAsyncCheck` does.
  *
- * Gates the `getDefaultValues` path independently of
- * `containsAsyncRefine`: async transforms cannot be stripped because
- * the transform's output shape is load-bearing for the inner schema's
- * input, so the construction parse skips entirely and defers to the
- * post-mount `safeParseAsync` pass.
- *
- * Mirrors `zod-v4/introspect.ts:612 containsAsyncTransform`.
+ * It gates the `getDefaultValues` path on its own, because an async
+ * transform cannot be stripped: the transform's output shape is
+ * load-bearing for the inner schema's input, so the construction parse
+ * is skipped outright and the post-mount `safeParseAsync` pass takes
+ * over. `zod-v4/introspect.ts` carries the same-named predicate.
  */
 export function containsAsyncTransform(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
   return walkForTarget(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())
@@ -578,11 +552,11 @@ function walkForTarget(
   if (visited.has(candidate)) return false
   visited.add(candidate)
 
-  // ZodEffects: refinement effects count as "potentially async"
-  // unconditionally (v3 wraps the user fn in a sync closure); transform
-  // / preprocess effects require an actual AsyncFunction at the user
-  // payload (statically detectable). Recurse through the source schema
-  // either way so nested effects deeper in the tree still surface.
+  // A refinement effect counts as potentially async unconditionally, v3
+  // wrapping the user fn in a sync closure; a transform or preprocess
+  // needs a real AsyncFunction at the user payload, which is
+  // statically detectable. Recurse through the source either way, so a
+  // nested effect deeper in the tree still surfaces.
   if (isZodSchemaType(schema, 'ZodEffects')) {
     const kind = getEffectsKind(schema)
     if (target === 'refinement' && kind === 'refinement') return true
@@ -672,9 +646,7 @@ function walkForTarget(
   if (isZodSchemaType(schema, 'ZodMap')) {
     if (target === 'map-or-set') return true
     // Both halves are real sub-schemas, so an async refine parked in a
-    // map's value type is reachable and has to be found here like any
-    // other. The branch was missing entirely before `map-or-set`
-    // needed one.
+    // map's value type is reachable and has to be found like any other.
     const keyType = getMapKeyType(schema)
     if (keyType !== undefined && walkForTarget(keyType, target, visited)) return true
     const valueType = getMapValueType(schema)
@@ -698,22 +670,21 @@ export function unwrapPipeOut(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
 }
 
 /**
- * Convenience: returns the pipeline's input side, falling back to the
- * output side. Mirrors v4's `unwrapPipe`. For most adapter call sites
- * the input side is the right anchor (consumers write values for
- * the input schema; the output is derived).
+ * The pipeline's input side, falling back to its output side. The input
+ * is the right anchor at almost every adapter call site: a consumer
+ * writes values for the input schema, the output being derived. v4's
+ * `unwrapPipe` is the same.
  */
 export function unwrapPipe(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   return unwrapPipeIn(schema) ?? unwrapPipeOut(schema)
 }
 
 /**
- * Resolve a `z.lazy(() => inner)` to its inner schema by invoking the
- * getter. Each invocation runs the factory fresh, so the returned
- * schema may be a distinct object per call — cycle detection should
- * track the getter function identity (see `getLazyGetter`), not the
- * resulting schema. Returns undefined when the getter is absent or
- * throws.
+ * Resolve a `z.lazy(() => inner)` by invoking its getter. Each call runs
+ * the factory fresh, so the schema that comes back may be a distinct
+ * object every time: cycle detection has to track the GETTER's identity
+ * (see `getLazyGetter`), never the resulting schema. `undefined` when the
+ * getter is absent or throws.
  */
 export function unwrapLazy(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
@@ -722,7 +693,7 @@ export function unwrapLazy(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   return callConsumerSchemaFn(() => getter() as z.ZodTypeAny | undefined, undefined, 'lazy-getter')
 }
 
-/** Getter function reference on a `z.lazy()` — used for recursion detection. */
+/** The getter function on a `z.lazy()`, which is what cycle detection keys on. */
 export function getLazyGetter(schema: z.ZodTypeAny): (() => unknown) | undefined {
   const def = readDef(schema)
   return typeof def?.getter === 'function' ? def.getter : undefined
@@ -736,12 +707,11 @@ export function getLiteralValue(schema: z.ZodTypeAny): unknown {
 }
 
 /**
- * Read every value a `z.literal(...)` admits as an array. v3 stores
- * single-value literals as `_def.value` (the value itself) and
- * multi-value literals (`z.literal(['a','b'])`) as `_def.value` set to
- * the array. Returning a unified array shape lets callers iterate
- * without branching on `Array.isArray(_def.value)`. Mirrors v4's
- * `getLiteralValues` (`introspect.ts:238`).
+ * Every value a `z.literal(...)` admits, always as an array. v3 puts a
+ * single-value literal's value on `_def.value` and a multi-value
+ * literal's array on the same slot, so returning one shape lets a caller
+ * iterate without testing `Array.isArray`. v4's `getLiteralValues` does
+ * the same.
  */
 export function getLiteralValues(schema: z.ZodTypeAny): readonly unknown[] {
   const def = readDef(schema)
@@ -752,11 +722,10 @@ export function getLiteralValues(schema: z.ZodTypeAny): readonly unknown[] {
 }
 
 /**
- * Raw values object on a `z.nativeEnum(E)` — the TypeScript enum
- * object itself. Numeric enums have a reverse mapping
- * (`enum E { A } → { A: 0, '0': 'A' }`); callers that need the valid
- * runtime members must filter the reverse-mapped numeric keys
- * themselves.
+ * The raw values object on a `z.nativeEnum(E)`, which is the TypeScript
+ * enum itself. A numeric enum carries a reverse mapping, so `enum E { A
+ * }` reads as `{ A: 0, '0': 'A' }`, and a caller who wants the valid
+ * runtime members has to filter the reverse-mapped numeric keys.
  */
 export function getNativeEnumValues(schema: z.ZodTypeAny): Record<string, unknown> | undefined {
   const def = readDef(schema)
@@ -764,10 +733,10 @@ export function getNativeEnumValues(schema: z.ZodTypeAny): Record<string, unknow
 }
 
 /**
- * Resolve a `z.default(...)` wrapper's value by invoking the v3
- * `_def.defaultValue` thunk. v3 stores the default as a function
- * (lazy evaluation, useful for `new Date()` defaults); v4 stores the
- * value directly. Returns undefined when the field is missing.
+ * The value behind a `z.default(...)`, read by invoking v3's
+ * `_def.defaultValue` thunk. v3 stores a default as a function, which is
+ * what makes a `new Date()` default work; v4 stores the value directly.
+ * `undefined` when the field is missing.
  */
 export function getDefaultValue(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
@@ -777,17 +746,16 @@ export function getDefaultValue(schema: z.ZodTypeAny): unknown {
 }
 
 /**
- * Materialise the fallback value of a `z.catch(inner, value)` wrapper.
- * v3 stores the catch as a function `(ctx) => value` on
- * `_def.catchValue` (parity with v4); we invoke it with a placeholder
- * context. Consumer catch functions that inspect `ctx.input` / `ctx.error`
- * during default-values derivation are rare — if the function throws,
- * we surface `undefined` and let the validate-then-fix loop find a
- * fallback.
+ * Materialise a `z.catch(inner, value)`'s fallback. v3 stores the catch
+ * as a `(ctx) => value` function on `_def.catchValue`, as v4 does, and
+ * this invokes it with a placeholder context. A catch function that
+ * inspects `ctx.input` or `ctx.error` during default derivation is rare;
+ * if one throws, the result is `undefined` and the validate-then-fix
+ * loop finds a fallback.
  *
- * Pairs with `hasCatchValue` for callers that need to distinguish a
- * legitimate `undefined` return from a missing wrapper; this helper
- * alone collapses both into `undefined`.
+ * This helper collapses a legitimate `undefined` and a missing wrapper
+ * into the same answer, so pair it with `hasCatchValue` to tell them
+ * apart.
  */
 export function getCatchDefault(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
@@ -825,26 +793,25 @@ export function getChecks(schema: z.ZodTypeAny): readonly unknown[] {
 // ---------- Walkers ----------
 
 /**
- * True iff the v3 schema tree carries a refine / transform / preprocess
- * (`ZodEffects`) whose effect target is a container — Object / Array /
- * Tuple / Union / DU / Intersection / Record / Set — or the root
- * itself. Drives the runtime's per-keystroke scope cut: a tree with
- * leaf-only effects can be re-validated at the edited subtree alone
- * (subtree pass catches the leaf effect at the same depth); a
- * container effect can be moved by sibling writes and forces a
+ * True when the v3 tree carries a refine, transform or preprocess whose
+ * target is a container (Object, Array, Tuple, Union, DU, Intersection,
+ * Record or Set) or the root itself.
+ *
+ * This is the runtime's per-keystroke scope cut. A tree whose effects
+ * are all leaf-level can be re-validated at the edited subtree alone,
+ * the subtree pass catching the leaf effect at the same depth. A
+ * container effect can be moved by a SIBLING write, so it forces a
  * whole-form pass.
  *
- * Transparent wrappers (Optional / Nullable / Default / Catch /
- * Readonly / Branded / Lazy) peel through to their inner before
- * container detection — `.refine` on `.optional()` over a
- * `z.object(...)` is still a root-scoped effect. Pipelines walk both
- * sides.
+ * A transparent wrapper (Optional, Nullable, Default, Catch, Readonly,
+ * Branded, Lazy) peels through to its inner before the container test,
+ * so `.refine` on `.optional()` over a `z.object(...)` is still
+ * root-scoped. A pipeline walks both sides.
  *
- * Bias conservative: an unrecognised wrapper or a malformed leaf
- * returns `false` for THAT node, but the recurse continues, so
- * nested container effects still surface. False negatives only lose
- * the perf win; correctness preserved by the caller's whole-form
- * default when the predicate isn't reached.
+ * It biases conservative: an unrecognised wrapper or a malformed leaf
+ * answers `false` for THAT node while the recursion continues, so a
+ * nested container effect still surfaces. A false negative costs only
+ * the perf win, the caller's whole-form default keeping correctness.
  */
 export function hasContainerOrRootRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
   const visited = seen ?? new WeakSet<object>()
@@ -853,9 +820,8 @@ export function hasContainerOrRootRefine(schema: z.ZodTypeAny, seen?: WeakSet<ob
   if (visited.has(candidate)) return false
   visited.add(candidate)
 
-  // ZodEffects: refine / transform / preprocess. Peel transparent
-  // wrappers off the inner so `.refine()` applied to `.optional()`
-  // over a container still flags as a container-level effect.
+  // Peel transparent wrappers off the inner, so `.refine()` applied to
+  // `.optional()` over a container still reads as container-level.
   if (isZodSchemaType(schema, 'ZodEffects')) {
     const inner = unwrapEffectsSource(schema)
     if (inner === undefined) return false
@@ -932,18 +898,14 @@ export function hasContainerOrRootRefine(schema: z.ZodTypeAny, seen?: WeakSet<ob
     return elem !== undefined && hasContainerOrRootRefine(elem, visited)
   }
 
-  // Leaves (ZodString / ZodNumber / ZodBoolean / ZodLiteral / ZodEnum /
-  // ZodNativeEnum / ZodDate / ...) — no descendable structure, no
-  // container effect possible.
+  // Leaves: no descendable structure, so no container effect possible.
   return false
 }
 
 /**
- * Peel transparent wrappers off a v3 schema up to MAX_UNWRAP_STEPS,
- * then report whether the result is a container kind (Object / Array
- * / Tuple / Intersection / Union / DU / Record / Set). Used by
- * `hasContainerOrRootRefine` to classify the inner side of a
- * ZodEffects.
+ * Peel transparent wrappers up to `MAX_UNWRAP_STEPS`, then report
+ * whether what is left is a container kind. `hasContainerOrRootRefine`
+ * uses it to classify the inner side of a `ZodEffects`.
  */
 export function isContainerAfterWrapperPeel(schema: z.ZodTypeAny): boolean {
   let cur: z.ZodTypeAny = schema

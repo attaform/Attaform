@@ -16,8 +16,8 @@ import { mapSegmentKeys, type Segment } from './paths'
  * spelling, and the object keys directly for records / objects;
  * primitives, sets and nullish values yield `[]`.
  *
- * A `Set` holds nothing addressable — its members are their own keys,
- * so none of them is a path (#614) — and reports no keys at all.
+ * A `Set` holds nothing addressable, its members being their own keys, so
+ * none of them is a path (#614), and it reports no keys at all.
  */
 export function liveKeysAtPath<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -44,7 +44,7 @@ export function liveKeysAtPath<F extends GenericForm>(
  * O(1) membership test: does the live container at `segments` currently
  * hold `key`? The truthful descend gate in `surface-proxy.ts` calls this
  * per access, so it avoids materialising the full key list that
- * `liveKeysAtPath` builds — an array bounds check or an `Object.hasOwn`,
+ * `liveKeysAtPath` builds: an array bounds check or an `Object.hasOwn`,
  * not an allocate-and-scan. Semantics match `liveKeysAtPath`: an array
  * index is present iff it's a canonical in-bounds integer string
  * (`'0'`, `'1'`, …, no leading zeros), a map entry iff the map holds
@@ -84,12 +84,11 @@ export function liveContainerHasKey<F extends GenericForm>(
  * Whether the path resolves to an array container RIGHT NOW. The live
  * form value is the source of truth so a discriminated-union variant
  * switch that swaps the shape at this path produces a freshly-targeted
- * proxy on the next read. The container cache keys off this same
- * predicate (see `containerProxyAt` in surface-proxy.ts), so a shape
- * flip surfaces a freshly-targeted proxy through `form.fields.X` /
- * `form.errors.X`.
+ * proxy on the next read. `containerCache` in `callable-tree.ts` keys off
+ * this same predicate, so a shape flip surfaces a freshly-targeted proxy
+ * through `form.fields.X` / `form.errors.X`.
  *
- * Root path (`segments.length === 0`) reports false — the form root
+ * Root path (`segments.length === 0`) reports false, the form root
  * is always a container, never an array target.
  */
 export function isArrayPath<F extends GenericForm>(

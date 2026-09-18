@@ -15,20 +15,18 @@ import { waitUntil } from '../utils/form-harness'
  * Fire-time contract for consumer-supplied assigners.
  *
  * The library exposes two install paths for an assigner override:
- *   1. `@update:registerValue` vnode-prop listener — wrapped at
+ *   1. `@update:registerValue` vnode-prop listener, wrapped at
  *      `created`-time by `getModelAssigner`.
- *   2. `el[assignKey] = fn` symbol assignment — installed pre- (a
+ *   2. `el[assignKey] = fn` symbol assignment, installed pre- (a
  *      companion directive ordered first) or post- (`onMounted` /
  *      ref-callback).
  *
- * Both paths must hand the consumer's function the SAME fire-time
- * arg shape: `(post-transform-post-coerce value, registerValue)`. The
- * second arg is what `/demos/custom-assigners` relies on to commit
- * `rv.setValueWithInternalPath(el.dataset.color)`.
- *
- * Pre-fix, the directive bodies invoked the symbol-installed fn with
- * one argument and without running the field's transform pipeline or
- * coerce closure. The two paths diverged silently.
+ * Both paths hand the consumer's function the SAME fire-time arg shape,
+ * `(post-transform-post-coerce value, registerValue)`, with the field's
+ * transform pipeline and coerce closure run first. The second arg is
+ * what `/demos/custom-assigners` commits
+ * `rv.setValueWithInternalPath(el.dataset.color)` through, and a
+ * one-argument call on the symbol path diverges silently.
  */
 describe('fire-time contract: consumer-installed assigner sees (value, rv) consistently', () => {
   let app: App | undefined

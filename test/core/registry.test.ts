@@ -37,14 +37,14 @@ describe('createRegistry', () => {
 
 describe('useRegistry', () => {
   it('throws OutsideSetupError when called outside a Vue setup context', () => {
-    // No `getCurrentInstance()` on the active call stack — typical when
+    // No `getCurrentInstance()` on the active call stack, typical when
     // a consumer (mistakenly) calls useForm / injectForm from a
     // click handler, watcher, or async callback after mount.
     expect(() => useRegistry()).toThrow(OutsideSetupError)
   })
 
   it('throws RegistryNotInstalledError when called inside setup but no plugin attached', () => {
-    // Inside setup, `getCurrentInstance()` resolves — but the `inject`
+    // Inside setup, `getCurrentInstance()` resolves, but the `inject`
     // for `kAttaformRegistry` returns null because `app.use(...)` was
     // never called. Different cause, different fix from the case above.
     let captured: unknown
@@ -59,7 +59,7 @@ describe('useRegistry', () => {
       },
     })
     const app = createApp(Probe)
-    // Note: NO attachRegistryToApp call — that's the point of the test.
+    // Note: NO attachRegistryToApp call: that's the point of the test.
     const host = document.createElement('div')
     app.mount(host)
     expect(captured).toBeInstanceOf(RegistryNotInstalledError)

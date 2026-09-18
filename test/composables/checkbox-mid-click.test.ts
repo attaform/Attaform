@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 //
 // Mirrors `multi-select-cmd-click.test.ts` for `<input type="checkbox">`
-// bound to an Array model. Pre-fix `setChecked`'s scalar branch gated
-// on `originalValue === oldValue`, comparing a primitive scalar against
-// the wrapper RegisterValue object — the comparison was always false,
-// so the guard was a silent no-op and `el.checked = …` re-applied on
-// every parent re-render. Array / Set branches lacked the guard
-// entirely. The per-render re-apply mirrors the multi-select shape:
-// a sibling's reactive write between the user's click and the
-// browser's `change` decision triggers `beforeUpdate`, which writes
-// back the prior model state and clobbers the in-flight toggle.
+// bound to an Array model. Every branch of `setChecked` needs an
+// identity guard, and it has to compare like with like: gating on
+// `originalValue === oldValue` weighs a primitive scalar against the
+// wrapper RegisterValue object, which is never equal, so the guard is a
+// silent no-op and `el.checked = ...` re-applies on every parent
+// re-render. That re-apply is the multi-select shape again: a sibling's
+// reactive write between the user's click and the browser's `change`
+// decision triggers `beforeUpdate`, which writes back the prior model
+// state and clobbers the in-flight toggle.
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z } from 'zod'
@@ -24,7 +24,7 @@ const schema = z.object({
   note: z.string(),
 })
 
-describe('<input type="checkbox" v-register> — sibling re-render mid-click', () => {
+describe('<input type="checkbox" v-register>: sibling re-render mid-click', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -60,7 +60,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
             withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [
               [vRegister, rvNote],
             ]),
-            // Reactive readout — re-renders the parent on every mutation
+            // Reactive readout, re-renders the parent on every mutation
             // (including the `note` keystroke below). This is what
             // exercises the directive's `beforeUpdate` mid-click.
             h('pre', null, JSON.stringify(api.values.items)),
@@ -91,7 +91,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
     expect(banana.checked).toBe(false)
     expect(cherry.checked).toBe(false)
 
-    // Step 1: simulate the browser's native click handling — the user
+    // Step 1: simulate the browser's native click handling: the user
     // clicked cherry, browser flipped its `checked` IDL state. Model
     // is still ['apple'] (change has NOT fired yet).
     cherry.checked = true
@@ -102,7 +102,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
     // microtask flush runs `beforeUpdate` on every checkbox.
     //
     // EXPECTATION: the directive must NOT re-apply `setChecked` from
-    // a stale model — `cherry.checked` must remain `true` so the
+    // a stale model, `cherry.checked` must remain `true` so the
     // browser's subsequent `change` event sees a real toggle and
     // writes ['apple','cherry'] to the model.
     note.value = 'x'
@@ -126,12 +126,12 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
   })
 
   it('subsequent renders with model-identity-unchanged are no-ops on the DOM (skip path)', async () => {
-    // Direct proof of the identity guard: after mount, repeatedly
-    // type into a sibling field. The checkbox model is unchanged the
-    // entire time, so `setChecked` should never re-write `el.checked`.
-    // We instrument `el.checked`'s setter with `Object.defineProperty`
-    // to count writes — pre-fix the count grew with every sibling
-    // keystroke; post-fix it stays at zero after mount.
+    // Direct proof of the identity guard: type repeatedly into a
+    // sibling field after mount. The checkbox model never changes, so
+    // `setChecked` never re-writes `el.checked`. `el.checked`'s setter
+    // is instrumented through `Object.defineProperty` to count writes,
+    // which stay at zero; an unguarded re-apply grows the count with
+    // every sibling keystroke.
     const handle: { api?: UseFormReturn<typeof schema> } = {}
 
     const Parent = defineComponent({
@@ -205,7 +205,7 @@ describe('<input type="checkbox" v-register> — sibling re-render mid-click', (
   })
 
   it('a real model change still drives the DOM (post-skip resync)', async () => {
-    // Counterpart to the skip test — confirm the identity guard
+    // Counterpart to the skip test, confirm the identity guard
     // doesn't get stuck. After a programmatic `setValue` moves the
     // model, the next render must re-apply.
     const handle: { api?: UseFormReturn<typeof schema> } = {}

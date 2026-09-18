@@ -1,11 +1,11 @@
 /**
- * Phase 5.7 — field-validation overhead on the keystroke path.
+ * Phase 5.7, field-validation overhead on the keystroke path.
  *
  * Sanity check: with `validateOn: 'submit'` (or the options omitted
  * entirely), `setValueAtPath` should have near-zero overhead vs a
  * baseline without the feature in the tree. With `validateOn: 'change'`
  * + a positive `debounceMs`, setValueAtPath does one Map lookup + one
- * setTimeout per keystroke — expect a modest constant-factor penalty
+ * setTimeout per keystroke, expect a modest constant-factor penalty
  * but no allocation / schedule storm under rapid typing.
  *
  * No regression gate (no `old:` / `new:` pair). This bench reports

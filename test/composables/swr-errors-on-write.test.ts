@@ -10,7 +10,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * When the consumer edits a field that already carries a verdict, the
  * runtime keeps the prior verdict visible until a new validation
- * lands. The alternative — clearing errors at the write boundary —
+ * lands. The alternative, clearing errors at the write boundary,
  * produces an "error → no error → error" UI between "value changed"
  * and "next validation completed," which reads as a flicker when the
  * value is still invalid against the schema.
@@ -21,7 +21,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *      Render reflects the prior verdict until validation runs.
  *   2. parse({ commit: true }) REPLACES the verdict (not clear-then-re-add)
  *      when the new value is still invalid. Same path, different
- *      message — no empty window in between.
+ *      message: no empty window in between.
  */
 
 function mountForm<R>(setup: () => R): { api: R; unmount: () => void } {
@@ -88,7 +88,7 @@ describe('schema-source errors follow a stale-while-revalidate pattern across wr
 
     // Edit the value. SWR contract: the prior verdict stays in place
     // until the next validation completes. The directive renders the
-    // prior message against the new input — better than blanking the
+    // prior message against the new input, better than blanking the
     // field and re-surfacing the error a tick later.
     api.setValue('url', 'https://apple.com')
 

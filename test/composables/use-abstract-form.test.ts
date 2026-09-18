@@ -42,7 +42,7 @@ function mountWith(config: { keyValue?: unknown; provideKey: boolean }): Promise
   })
 }
 
-describe('useForm — runtime key resolution', () => {
+describe('useForm: runtime key resolution', () => {
   it('allocates an anonymous key when `key` is omitted entirely', async () => {
     const api = await mountWith({ provideKey: false })
     expect(api.key.startsWith(ANONYMOUS_FORM_KEY_PREFIX)).toBe(true)
@@ -75,7 +75,7 @@ describe('useForm — runtime key resolution', () => {
  * the configuration (`useForm({ key: someRef.value, schema })`) gets
  * the snapshot at that moment and the form stays bound to it for
  * its lifetime. The TypeScript signature `key?: FormKey` (where
- * `FormKey = string`) reinforces this — `Ref<string>` and getters
+ * `FormKey = string`) reinforces this, `Ref<string>` and getters
  * are not accepted.
  *
  * The idiomatic Vue pattern for "swap which form is bound" is
@@ -93,7 +93,7 @@ describe('useForm — runtime key resolution', () => {
  * config's key would fail (1); a future refactor that broke
  * setup-time capture would fail (2).
  */
-describe('useForm — key is captured once at setup', () => {
+describe('useForm: key is captured once at setup', () => {
   it('mutating the source ref after mount does not change form.key', async () => {
     const root = document.createElement('div')
     document.body.appendChild(root)

@@ -3,48 +3,39 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * v3 required-vs-optional and discriminator parity tests for the four
- * audit IDs grouped under this cluster:
+ * The v3 half of required-vs-optional and discriminator parity. Six
+ * rules, each an audit ID, each one both adapters must agree on:
  *
- * - **D9** — `z.void()` was missing from `isLeafRequiredV3`'s
- *   short-circuit list, so a `z.void()` slot reported as required (any
- *   write of `undefined` then surfaced as a "required" error). v4 has
- *   `'void'` in the not-required list (`isLeafRequired` short-circuit).
- * - **D10** — `isRequiredAtPath` destructured the first walker
- *   candidate (`const [leaf]`) instead of checking every candidate.
- *   When a path traversed a union and ONLY the first branch was
- *   required, the path looked required overall — v4 returns
- *   `resolved.every(isLeafRequired)` so any permissive branch makes the
- *   union permissive.
- * - **D11** — `computeDiscriminator` peeled wrappers with
- *   `peelV3Wrappers` (Optional / Nullable / Default / Readonly /
- *   Effects / Pipeline / Branded) but not ZodCatch, and
- *   `unwrapToDiscriminatedUnion` did not descend ZodIntersection sides.
- *   So a discriminated union wrapped in `.catch(...)` or inside an
- *   intersection went undetected and the runtime fell back to plain
- *   writes (losing variant-aware reshape).
- * - **D12** — `computeDiscriminator` read `_def.value` as a single
- *   value via `getLiteralValue`. v3 supports multi-value
- *   `z.literal(['a','b'])` which stores `_def.value` as an array, so
- *   the literal set held the array AS one entry and
- *   `isVariantSelected('a')` returned `false`. v4 reads through
- *   `getLiteralValues(litSchema)` which always returns an array.
- * - **lazy parity** — `isLeafRequiredV3` did not peel `ZodLazy`, so a
- *   `z.lazy(() => x.optional())` leaf reported as required while v4
- *   (which peels lazy via `unwrapLazy`) reported not-required. v3 now
- *   peels lazy to match.
- * - **preprocess parity** — `isLeafRequiredV3` and
- *   `unwrapToDiscriminatedUnion` peeled every `ZodEffects` to its inner
- *   source, including `z.preprocess`. v4 desugars preprocess to a pipe
- *   and treats it as an opaque leaf (raw writes pass through verbatim),
- *   so a preprocess-wrapped optional reported required and a
- *   preprocess-wrapped discriminated union exposed no discriminator. v3
- *   now treats preprocess as opaque too, while still peeling `transform`
- *   and `refinement` effects.
+ * - **D9**: a `z.void()` slot is NOT required, so it short-circuits in
+ *   `isLeafRequiredV3` exactly as `'void'` does in v4's
+ *   `isLeafRequired`. Otherwise any write of `undefined` surfaces as a
+ *   "required" error.
+ * - **D10**: `isRequiredAtPath` checks EVERY walker candidate, not just
+ *   the first, so any permissive branch makes a union permissive. v4
+ *   expresses the same rule as `resolved.every(isLeafRequired)`.
+ * - **D11**: `computeDiscriminator` peels ZodCatch alongside the
+ *   wrappers `peelV3Wrappers` handles, and `unwrapToDiscriminatedUnion`
+ *   descends ZodIntersection sides. A discriminated union wrapped in
+ *   `.catch(...)` or nested in an intersection has to stay detectable,
+ *   or the runtime falls back to plain writes and loses variant-aware
+ *   reshape.
+ * - **D12**: the literal set is read through `getLiteralValues`, which
+ *   always returns an array. v3 supports multi-value
+ *   `z.literal(['a','b'])` and stores `_def.value` as an array, so a
+ *   single-value read would hold the array as one entry and
+ *   `isVariantSelected('a')` would be false.
+ * - **lazy**: `isLeafRequiredV3` peels `ZodLazy`, matching v4's
+ *   `unwrapLazy`, so a `z.lazy(() => x.optional())` leaf is not
+ *   required.
+ * - **preprocess**: `z.preprocess` is an OPAQUE leaf on both sides, so
+ *   raw writes pass through verbatim; v4 gets there by desugaring it to
+ *   a pipe. Peeling it like any other `ZodEffects` would make a
+ *   preprocess-wrapped optional report required and hide a
+ *   preprocess-wrapped union's discriminator. `transform` and
+ *   `refinement` effects still peel.
  *
- * Mirror of `required-discriminator-parity.test.ts` under
- * `test/adapters/zod-v4/`; dual-green after the fix is the parity
- * proof.
+ * The v4 half is `required-discriminator-parity.test.ts` under
+ * `test/adapters/zod-v4/`, and dual-green is the parity proof.
  */
 describe('zod v3: required + discriminator parity (D9 / D10 / D11 / D12)', () => {
   describe('z.void() is not required (D9)', () => {
@@ -153,8 +144,9 @@ describe('zod v3: required + discriminator parity (D9 / D10 / D11 / D12)', () =>
     it('a preprocess-wrapped optional leaf reports as required (opaque, not peeled)', () => {
       const schema = z.object({ f: z.preprocess((v) => v, z.string().optional()) })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      // v3 used to peel the effect and report not-required; it now treats
-      // preprocess as opaque, matching v4's isLeafRequired.
+      // preprocess is opaque on both sides, so peeling the effect and
+      // reporting not-required would break parity with v4's
+      // `isLeafRequired`.
       expect(adapter.isRequiredAtPath(['f'])).toBe(true)
     })
 

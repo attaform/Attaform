@@ -79,7 +79,7 @@ function typeInto(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-describe('vRegisterText × type="text" inputmode="numeric" × z.number() — DOM clear', () => {
+describe('vRegisterText × type="text" inputmode="numeric" × z.number(): DOM clear', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

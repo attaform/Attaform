@@ -2,7 +2,7 @@
  * Inlined copies of the handful of utilities we use from @vue/shared.
  *
  * @vue/shared is technically an internal Vue package. Treating it as stable
- * API for a runtime-only form library is a fragility we don't need — these
+ * API from a runtime-only form library is a fragility worth avoiding. These
  * implementations are six functions + ~40 lines, and keeping them in-tree
  * insulates us from future renames or semantic drift.
  *

@@ -25,8 +25,8 @@ export const V_REGISTER_MARKER: unique symbol = Symbol.for('attaform:v-register-
  * an inner v-register.
  *
  * `Symbol.for(...)` so the marker round-trips across duplicate copies
- * of attaform — see `assignKey` in core/directive.ts for the same
- * reasoning. `useRegister` and the directive are typically loaded
+ * of Attaform. Same reasoning as `assignKey` in
+ * core/assigner-pipeline.ts. `useRegister` and the directive load
  * from the same module copy, but a consumer importing from
  * `attaform/zod` (Vite-optimized bundle) and the Nuxt
  * plugin's relative-path import (live ESM) can land on different
@@ -95,7 +95,7 @@ export function isRegisterValue<Value = unknown>(val: unknown): val is RegisterV
  * `true` while a deferred async transform is in flight at this path.
  * `beginTransform` flips it synchronously inside the assigner, so a
  * listener's post-write force-sync block reads it (right after the
- * assigner returns) to skip snapping the DOM back to stale storage —
+ * assigner returns) to skip snapping the DOM back to stale storage:
  * the resolved value is painted in by the orchestrator's `syncDom`
  * once the run lands.
  */

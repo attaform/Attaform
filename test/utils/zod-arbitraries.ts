@@ -2,7 +2,7 @@
  * Shared fast-check arbitraries for zod schemas. The zod v3 and v4 ZodType
  * trees have divergent internal types but parallel constructor APIs for the
  * supported kinds, so these factories are parameterised on the `z`
- * namespace — each adapter's fuzz file passes its own typed `z` in.
+ * namespace: each adapter's fuzz file passes its own typed `z` in.
  *
  * Depth is capped explicitly via recursion parameter; we don't rely on
  * fc.letrec's probabilistic termination. At depth 0 only leaf schemas are
@@ -20,7 +20,7 @@
  *     These have dedicated throw-path tests in the adapter suites.
  *   - Discriminated unions. The cross-branch coordination required to
  *     produce a valid DU (unique discriminator literals on each branch)
- *     adds complexity without materially improving coverage — the DU
+ *     adds complexity without materially improving coverage: the DU
  *     path is exercised by `test/adapters/zod-v4/discriminator.test.ts`.
  *   - Refinements / effects. Generating a value that satisfies an
  *     arbitrary refinement is undecidable in general; lax-mode
@@ -49,7 +49,7 @@ export function buildZodLeafArbitrary(z: ZNs): fc.Arbitrary<ZNs> {
     fc.constant(z.date()),
     // Literal primitives. The adapter's default-derivation returns the
     // literal value itself as the initial state, which must then
-    // round-trip through validateAtPath — this kind stresses both paths
+    // round-trip through validateAtPath: this kind stresses both paths
     // in lockstep.
     fc.oneof(
       fc.string({ minLength: 0, maxLength: 5 }).map((s) => z.literal(s)),
@@ -60,7 +60,7 @@ export function buildZodLeafArbitrary(z: ZNs): fc.Arbitrary<ZNs> {
     fc
       .uniqueArray(fc.string({ minLength: 1, maxLength: 4 }), { minLength: 1, maxLength: 4 })
       .map((arr) => z.enum(arr as [string, ...string[]])),
-    // Primitive schemas with .default() — exercises the default-derivation
+    // Primitive schemas with .default(), exercises the default-derivation
     // branch in default-values.ts without requiring a container-shape
     // default (those would demand shape-matched arbitrary values, which
     // is overkill for this coverage).

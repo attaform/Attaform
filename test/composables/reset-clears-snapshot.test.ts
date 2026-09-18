@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * PASS2-14 — `reset()` cleared field records, errors, and pending
+ * PASS2-14, `reset()` cleared field records, errors, and pending
  * validations but did NOT clear the per-path snapshot map. A reset
  * back to a value that happens to equal the pre-reset state then
  * had a survivor entry in `pathSnapshots` matching the post-reset
  * form, so the next focus/blur cycle's dedup found "no change"
- * against a stale snapshot and SKIPPED revalidation — leaving the
+ * against a stale snapshot and SKIPPED revalidation, leaving the
  * cleared error bucket cleared and the refine never re-running.
  * The audit calls this latent: today's first-interactive-blur
  * force-run masks it for the most common tab-through, but any
@@ -74,7 +74,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, build: buildV3 },
 ] as const
 
-describe.each(adapters)('reset clears snapshot map — $name', ({ useForm, build }) => {
+describe.each(adapters)('reset clears snapshot map: $name', ({ useForm, build }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -120,11 +120,11 @@ describe.each(adapters)('reset clears snapshot map — $name', ({ useForm, build
     const runsAfterFirstBlur = runs()
     expect(runsAfterFirstBlur).toBeGreaterThan(0)
 
-    // Reset to a value matching the post-blur state. The reset
-    // clears errors and zeroes the field's `interacted` flag, so
-    // the next blur is NOT a firstInteractiveBlur — it lands in
-    // the dedup branch. Without the fix the survivor snapshot
-    // matches the live form, and dedup skips.
+    // Reset to a value matching the post-blur state. The reset clears
+    // errors and zeroes the field's `interacted` flag, so the next blur
+    // is not a firstInteractiveBlur and lands in the dedup branch. A
+    // surviving snapshot would match the live form and the dedup would
+    // skip.
     api.reset({ a: 'bad' })
     await drainMicrotasks()
 

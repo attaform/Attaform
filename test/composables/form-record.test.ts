@@ -10,7 +10,7 @@ import type { FieldState, UseFormReturnType } from '../../src/runtime/types/type
 
 /**
  * `form.record` reads a record at `path` as one `FieldState` per entry,
- * keyed by the entry's own key — the keyed-object counterpart to the
+ * keyed by the entry's own key: the keyed-object counterpart to the
  * ordered array `form.list` returns for an array path. zod-v3 and zod-v4
  * are first-class peers, so the same suite runs against both adapters.
  */
@@ -111,7 +111,7 @@ function runRecordSuite(
       }
     })
 
-    it('keeps a record entry FieldState keyless — the key lives on the record view', () => {
+    it('keeps a record entry FieldState keyless: the key lives on the record view', () => {
       const { api, unmount } = buildForm(uniqueKey('keyless'))
       try {
         // FieldState.key is the array-element identity token; a record

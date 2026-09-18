@@ -7,7 +7,7 @@
 //
 // "Synchronous" here means "no `setTimeout` indirection on the
 // debounce side." The schema work itself still rides
-// `Promise.resolve().then(validateAtPath)` — async but microtask, so
+// `Promise.resolve().then(validateAtPath)`, async but microtask, so
 // `await Promise.resolve()` between keystrokes is enough to surface
 // errors. A form with an explicit positive `debounceMs` needs a real
 // `setTimeout(>0)` flush to surface anything.
@@ -27,7 +27,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('spike — debounceMs: 0 disables the debounce timer', () => {
+describe('spike: debounceMs: 0 disables the debounce timer', () => {
   const schema = z.object({
     email: z.string().email('Enter a valid email.'),
   })
@@ -43,7 +43,7 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
           // error. We're testing the per-keystroke debounce, not mount.
           defaultValues: { email: 'good@example.com' },
           key: `default-${Math.random().toString(36).slice(2)}`,
-          // Pin debounceMs explicitly — the library default is 0 now,
+          // Pin debounceMs explicitly: the library default is 0 now,
           // so we have to opt into the slow path to test the timer
           // semantics.
           validateOn: 'change',
@@ -67,7 +67,7 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     input.value = 'a'
     input.dispatchEvent(new Event('input', { bubbles: true }))
 
-    // Microtask flush only — the explicit 125 ms debounce timer hasn't
+    // Microtask flush only: the explicit 125 ms debounce timer hasn't
     // fired, so no per-keystroke re-validation has run. Errors stay
     // empty. Short timeout since waiting longer would let a real
     // failure mode (timer fired early) hide.
@@ -82,7 +82,7 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     expect(handle.api?.errors.email?.[0]?.message).toBe('Enter a valid email.')
   })
 
-  it('debounceMs: 0: errors surface on the next microtask — no timer wait', async () => {
+  it('debounceMs: 0, errors surface on the next microtask with no timer wait', async () => {
     const handle: { api?: UseFormReturn<typeof schema> } = {}
     const Parent = defineComponent({
       setup() {
@@ -111,7 +111,7 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     input.value = 'a'
     input.dispatchEvent(new Event('input', { bubbles: true }))
 
-    // Microtask flush is enough — no setTimeout to wait on. Validation
+    // Microtask flush is enough: no setTimeout to wait on. Validation
     // ran synchronously inside the input handler; the schema's async
     // resolution lands on the next microtask.
     await waitUntil(() =>
@@ -174,7 +174,7 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     // The discriminated `ValidateOnConfig` makes `debounceMs` a TS error
     // when paired with `'blur'` or `'submit'`. The `@ts-expect-error`
     // directives below fail the build if the constraint regresses. The
-    // body executes nothing meaningful at runtime — vitest accepts the
+    // body executes nothing meaningful at runtime, vitest accepts the
     // empty test, the build is the gate.
     type Opts = UseFormConfig<typeof schema>
     const ok1: Opts = { schema, validateOn: 'change', debounceMs: 50 }
@@ -184,9 +184,9 @@ describe('spike — debounceMs: 0 disables the debounce timer', () => {
     void ok2
     void ok3
 
-    // @ts-expect-error — debounceMs is not allowed under validateOn: 'blur'
+    // @ts-expect-error, debounceMs is not allowed under validateOn: 'blur'
     const bad1: Opts = { schema, validateOn: 'blur', debounceMs: 0 }
-    // @ts-expect-error — debounceMs is not allowed under validateOn: 'submit'
+    // @ts-expect-error, debounceMs is not allowed under validateOn: 'submit'
     const bad2: Opts = { schema, validateOn: 'submit', debounceMs: 0 }
     void bad1
     void bad2

@@ -24,7 +24,7 @@ import type { InternalRegisterValue, TransformAbortHolder } from '../../src/runt
 const holder = (): TransformAbortHolder => ({ controller: null, aborted: false })
 
 // Simulate the directive's lazy `ctx.signal` getter reaching for the
-// controller mid-run — the store is what aborts it on teardown.
+// controller mid-run: the store is what aborts it on teardown.
 function touchSignal(h: TransformAbortHolder): AbortSignal {
   h.controller ??= new AbortController()
   return h.controller.signal
@@ -35,7 +35,7 @@ const adapters = [
   { name: 'zod v3', schema: z3.object({ name: z3.string(), email: z3.string() }) },
 ]
 
-describe.each(adapters)('async-transform store machinery — $name', ({ schema }) => {
+describe.each(adapters)('async-transform store machinery: $name', ({ schema }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -90,7 +90,7 @@ describe.each(adapters)('async-transform store machinery — $name', ({ schema }
     await namePromise
     expect(nameSettled).toBe(true)
 
-    // The whole-form waiter is still pending — `email` is in flight.
+    // The whole-form waiter is still pending, `email` is in flight.
     let globalSettled = false
     const globalPromise = api.settleTransforms().then(() => {
       globalSettled = true
@@ -112,7 +112,7 @@ describe.each(adapters)('async-transform store machinery — $name', ({ schema }
     expect(rv.isCurrentTransform(t1)).toBe(false)
     expect(rv.isCurrentTransform(t2)).toBe(true)
 
-    // The stale run ending is a no-op on the counters — the live run
+    // The stale run ending is a no-op on the counters: the live run
     // still holds the field, so the form is not yet quiescent.
     rv.endTransform(t1)
     let settled = false
@@ -149,7 +149,7 @@ describe.each(adapters)('async-transform store machinery — $name', ({ schema }
     rv.beginTransform(holder()) // teardown latches `aborted` before the signal exists
 
     // The directive's getter honors the latch: a controller created late
-    // is born aborted (modeled here — the store already set `aborted`).
+    // is born aborted (modeled here: the store already set `aborted`).
     expect(first.aborted).toBe(true)
   })
 
@@ -182,7 +182,7 @@ describe.each(adapters)('async-transform store machinery — $name', ({ schema }
     expect(rv.isCurrentTransform(token)).toBe(true)
 
     // A committed write through the store chokepoint releases the
-    // in-flight run — the late resolve of the superseded transform would
+    // in-flight run: the late resolve of the superseded transform would
     // then discard rather than clobber this value.
     api.setValue('name', 'direct')
 
@@ -204,7 +204,7 @@ describe.each(adapters)('async-transform store machinery — $name', ({ schema }
     const token = rv.beginTransform(holder())
 
     // `name` is `z.string()`; a number is refused by the slim gate, so
-    // the write never commits — the in-flight transform stays live.
+    // the write never commits: the in-flight transform stays live.
     api.setValue('name', 123 as unknown as string)
 
     expect(rv.isCurrentTransform(token)).toBe(true)

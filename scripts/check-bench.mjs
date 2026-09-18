@@ -5,11 +5,11 @@
  * pairs the two.
  *
  * KNOW WHAT THIS DOES NOT COVER, because it is most of the suite. Only
- * groups pairing an `old:` bench with a `new:` one are gated — three of
- * fifteen bench files — and the ratio compares each revision against a
- * baseline implementation in the same file, not against the previous
- * commit. So when both arms slow down together the ratio holds, and a
- * scenario with no pair is not measured at all. A 34% regression in
+ * groups pairing an `old:` bench with a `new:` one are gated, three of
+ * fifteen bench files, and the ratio compares each revision against a
+ * baseline implementation in the same file rather than against the
+ * previous commit. So when both arms slow down together the ratio holds,
+ * and a scenario with no pair is not measured at all. A 34% regression in
  * `getAtPath` shipped through exactly that gap: `value-tree-access` has
  * no pair, so nothing looked.
  *
@@ -18,9 +18,9 @@
  * revision against the merge base directly.
  *
  * Runs as part of `pnpm check` via the `check:bench` script in
- * package.json. The bench itself lives at bench/keystroke.bench.ts — each
- * `describe` group pairs an "old: ..." and a "new: ..." bench. We parse the
- * vitest bench JSON output, walk each group, and assert
+ * package.json. The bench itself lives at bench/keystroke.bench.ts, where
+ * each `describe` group pairs an "old: ..." and a "new: ..." bench. We parse
+ * the vitest bench JSON output, walk each group, and assert
  *   hz(new) / hz(old) >= RATIO_FLOOR.
  */
 

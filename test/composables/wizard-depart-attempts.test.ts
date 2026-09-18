@@ -13,7 +13,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *    type-visible to consumers; both surface on the readonly meta
  *    proxy.
  *  - Wizard navigation (`next`, `back`, `goTo`) bumps the departing
- *    form's counter on real departures only — early-return guards
+ *    form's counter on real departures only, early-return guards
  *    (back from first, same-key goTo, next at terminal, unknown
  *    goTo) leave it alone. `next()` is pure positional navigation
  *    in v2; it always bumps the active form on success, never

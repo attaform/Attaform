@@ -1,7 +1,7 @@
 <script setup lang="ts">
   /**
    * Inline GitHub brand mark (Simple Icons, CC0). Lives here because
-   * `lucide-vue-next` deprecated all brand icons in v1.0 — the
+   * `lucide-vue-next` deprecated all brand icons in v1.0: the
    * upstream `Github` symbol carries an `@deprecated` JSDoc that
    * surfaces as `[6385] 'Github' is deprecated` in vtsls and is slated
    * for removal. Functional Lucide icons (ShieldCheck, Zap, etc.) stay
@@ -9,7 +9,7 @@
    * needs a permanent home here.
    *
    * Visual: filled mark (the standard recognizable GitHub logo), not
-   * the outline-octocat that Lucide shipped — closer to what most
+   * the outline-octocat that Lucide shipped, closer to what most
    * users recognize as "GitHub" anyway. Inherits `currentColor` so it
    * picks up text-color utilities; class fallthrough lets callers
    * size with the same `h-* w-*` Tailwind utilities they used on

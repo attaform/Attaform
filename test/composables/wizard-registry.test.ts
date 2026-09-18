@@ -47,7 +47,7 @@ function registryOf(app: App): AttaformRegistry {
   return (app as unknown as { _attaform: AttaformRegistry })._attaform
 }
 
-describe('useWizard({ key }) — registry registration', () => {
+describe('useWizard({ key }): registry registration', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -98,7 +98,7 @@ describe('useWizard({ key }) — registry registration', () => {
   })
 })
 
-describe('useWizard({ key }) — duplicate-key registration', () => {
+describe('useWizard({ key }): duplicate-key registration', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
   beforeEach(() => {
@@ -128,7 +128,7 @@ describe('useWizard({ key }) — duplicate-key registration', () => {
   })
 })
 
-describe('useWizard({ key }) — consumer ref-counting + eviction', () => {
+describe('useWizard({ key }): consumer ref-counting + eviction', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -157,7 +157,7 @@ describe('useWizard({ key }) — consumer ref-counting + eviction', () => {
   })
 })
 
-describe('useWizard({ key }) — cross-app isolation', () => {
+describe('useWizard({ key }): cross-app isolation', () => {
   it('two unrelated apps with the same wizard key are isolated', () => {
     const harnessA = mountHarness(() => {
       const only = useForm({ schema, key: 'iso-a-only' })

@@ -9,7 +9,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 
 /**
- * Phase 5.10 — Vue DevTools plugin contract tests.
+ * Phase 5.10, Vue DevTools plugin contract tests.
  *
  * We mock `@vue/devtools-api`'s `setupDevtoolsPlugin` via vi.mock so
  * the setup callback fires synchronously against a spied-upon
@@ -110,7 +110,7 @@ vi.mock('@vue/devtools-api', () => ({
   },
 }))
 
-describe('DevTools plugin — inspector + timeline wiring', () => {
+describe('DevTools plugin: inspector + timeline wiring', () => {
   const apps: App[] = []
 
   beforeEach(() => {
@@ -137,7 +137,7 @@ describe('DevTools plugin — inspector + timeline wiring', () => {
   })
 
   it('exposes registered forms as root nodes in the inspector tree', async () => {
-    // Bare app — no plugin install — so we can attach a registry we
+    // Bare app, no plugin install, so we can attach a registry we
     // fully control without double-provide warnings.
     const regApp = createApp(defineComponent({ setup: () => () => h('div') }))
     const registry = createRegistry({})
@@ -198,14 +198,14 @@ describe('DevTools plugin — inspector + timeline wiring', () => {
     await Promise.resolve()
 
     const submitEvents = currentMock.api!._events.filter((e) => e.event.title === 'submit.success')
-    // Single handleSubmit() invocation ⇒ exactly one submit.success
-    // event. Pre-fix `> 0` would mask a duplicate-emit regression.
+    // One handleSubmit() invocation, exactly one submit.success event.
+    // `> 0` would mask a duplicate emit.
     expect(submitEvents).toHaveLength(1)
     expect(submitEvents[0]?.event.subtitle).toBe('dev-timeline')
   })
 })
 
-describe('DevTools plugin — raw values surface (dev-only)', () => {
+describe('DevTools plugin: raw values surface (dev-only)', () => {
   const apps: App[] = []
 
   beforeEach(() => {

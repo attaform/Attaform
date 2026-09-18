@@ -43,8 +43,8 @@ interface DefCarrier {
 /**
  * Shallow, prototype-preserving rebuild. Returns a new node on
  * `original`'s prototype whose `_def` is `original._def` with
- * `defPatch` merged over it. `original._def` is never mutated — the
- * spread allocates a fresh object.
+ * `defPatch` merged over it. `original._def` is never mutated, the
+ * spread allocating a fresh object.
  *
  * No own properties are copied. The Zod constructor binds `parse` /
  * `safeParse` / `default` / `catch` / ... as own properties bound to
@@ -59,10 +59,10 @@ function rebuildWithDef<T extends z.ZodTypeAny>(original: T, defPatch: Record<st
   // getter-only accessor on the prototype, and writing through an
   // inherited accessor that has no setter throws a TypeError under
   // the strict mode every module runs in. Defining an own data
-  // property shadows the accessor instead, which lands on both
-  // realms — and a foreign-realm node is the exact case this module
-  // exists to survive. The flags reproduce what the old assignment
-  // produced on v3, so the intended path is unchanged there.
+  // property shadows the accessor instead, which lands on both realms,
+  // and a foreign-realm node is the exact case this module exists to
+  // survive. The flags match what a plain assignment produces on v3, so
+  // the intended path is unchanged there.
   return Object.create(Object.getPrototypeOf(original), {
     _def: {
       value: { ...(original as unknown as DefCarrier)._def, ...defPatch },

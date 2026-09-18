@@ -5,7 +5,7 @@
 
 *                      @ozzyfromspace
 
-# High-impact paths — explicit re-listing so the GitHub UI sidebar
+# High-impact paths: explicit re-listing so the GitHub UI sidebar
 # highlights the privileged surface on PRs that touch it.
 /.github/              @ozzyfromspace
 /package.json          @ozzyfromspace

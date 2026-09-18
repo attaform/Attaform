@@ -7,7 +7,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
 /**
- * Runtime coverage for `setValue` — both signatures, both forms.
+ * Runtime coverage for `setValue`, both signatures, both forms.
  *
  * The type system has long advertised the callback form
  * (`SetValuePayload<X> = X | (X => X)`) but the runtime silently stuffed
@@ -16,7 +16,7 @@ import { fakeSchema } from '../utils/fake-schema'
  * applied. The value form is unchanged.
  *
  * Sequential-freshness coverage proves the callback reads the live ref,
- * not a captured snapshot — this is the property that makes
+ * not a captured snapshot: this is the property that makes
  * `setValue('n', n => n + 1)` safe under back-to-back invocations.
  */
 
@@ -54,7 +54,7 @@ function harness() {
   return { app, form: captured }
 }
 
-describe('setValue — value form (existing behaviour)', () => {
+describe('setValue: value form (existing behaviour)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -99,7 +99,7 @@ describe('setValue — value form (existing behaviour)', () => {
   })
 })
 
-describe('setValue — callback form', () => {
+describe('setValue: callback form', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

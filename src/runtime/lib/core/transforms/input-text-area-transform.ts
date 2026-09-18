@@ -38,16 +38,16 @@ function generateEqualityExpression(
   // For radio inputs the model is always scalar and the discriminator
   // IS the option-value, so `optionValue === scalarTarget` there.
   //
-  // The scalar branch routes both sides through `String(...)` to mirror
-  // the runtime `setChecked` path, which uses Vue's `looseEqual` —
-  // looseEqual coerces primitives via `String(...)` before comparing.
-  // Without the coerce, SSR on `<input type="radio" value="2">` bound
-  // to a `z.number()` model of `2` evaluated `2 === "2"` → `false` and
-  // emitted unchecked HTML, then the runtime's `looseEqual(2, applyCoerce("2"))`
-  // returned `true` on hydration and flipped to checked — a one-tick
-  // visible flicker (DIR-F4). The `typeof !== 'object'` guard preserves
-  // current behaviour for non-array / non-Set object models, which both
-  // ladders fall through this scalar branch with no realistic match.
+  // The scalar branch routes both sides through `String(...)` to match
+  // the runtime `setChecked` path, which uses Vue's `looseEqual`, and
+  // `looseEqual` coerces primitives through `String(...)` before
+  // comparing. Without the coerce, `<input type="radio" value="2">`
+  // bound to a `z.number()` model of `2` evaluates `2 === "2"` at SSR,
+  // emits unchecked HTML, and then flips to checked on hydration when
+  // `looseEqual(2, applyCoerce("2"))` returns true: a one-tick visible
+  // flicker. The `typeof !== 'object'` guard covers a non-array,
+  // non-Set object model, which falls through this scalar branch with
+  // no realistic match either way.
   return [
     'Array.isArray((',
     ...registerValueArr,
@@ -75,16 +75,16 @@ function generateEqualityExpression(
 }
 
 /**
- * Parse a one-line JS string literal from `text`. Returns `null` for
- * any non-literal source (dynamic expression, compound, mismatched
- * quotes); on a match returns the quote character and the inner
- * payload separately so callers can disambiguate template literals
- * with interpolations from literal-static strings.
+ * Parse a one-line JS string literal out of `text`. `null` for any
+ * non-literal source: a dynamic expression, a compound, mismatched
+ * quotes. A match returns the quote character and the inner payload
+ * separately, so a caller can tell an interpolated template literal from
+ * a literal-static string.
  *
- * Doesn't attempt to handle escaped quotes inside the literal — a
- * value containing escaped quotes is vanishingly rare in the prop
- * shapes the transforms inspect (HTML attribute values, type names).
- * Callers that can't prove safety on `null` should bail conservatively.
+ * Escaped quotes inside the literal are not handled. They are
+ * vanishingly rare in the prop shapes these transforms inspect, HTML
+ * attribute values and type names, and a caller that cannot prove safety
+ * on `null` should bail.
  */
 function parseStaticStringLiteral(text: string): { quote: string; inner: string } | null {
   const literalMatch = /^(["'`])(.*)\1$/.exec(text.trim())
@@ -93,16 +93,16 @@ function parseStaticStringLiteral(text: string): { quote: string; inner: string 
 }
 
 /**
- * Returns true iff the type prop's value is the static-attribute literal
- * matching one of `names` (case-insensitive). Used to detect static
- * `type="checkbox"` / `type="radio"` shapes where the `value` attribute
- * is the option-value (a discriminator within the group), not display
- * state — so the transform must NOT strip it.
+ * True when the type prop's value is a static-attribute literal matching
+ * one of `names`, case-insensitively. It detects the static
+ * `type="checkbox"` and `type="radio"` shapes, where the `value`
+ * attribute is the OPTION-value, a discriminator within the group,
+ * rather than display state, so the transform must not strip it.
  *
- * Conservative on dynamic shapes — `:type="x"` returns false, falling
- * through to the text-input branch which strips `value`. Authors using
- * dynamic types between checkbox/radio and text are rare; if they hit
- * this they can add a static `type=` to lock the shape.
+ * Conservative on a dynamic shape: `:type="x"` is false and falls
+ * through to the text-input branch, which strips `value`. Switching a
+ * dynamic type between checkbox, radio and text is rare, and an author
+ * who does can add a static `type=` to lock the shape.
  */
 function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly string[]): boolean {
   if (Array.isArray(value)) return false
@@ -112,20 +112,19 @@ function isStaticTypeOneOf(value: SummarizedProp['value'], names: readonly strin
 }
 
 /**
- * True when the `type` prop is a DYNAMIC binding whose value can't be
- * read as a static string literal at compile time. A static attribute
- * (`type="text"`) or a literal bound expression (`:type="'text'"`) is
- * NOT dynamic — its type is settled at compile time, so the transform
- * classifies it directly (and can skip the runtime file guard).
+ * True when the `type` prop is a DYNAMIC binding whose value cannot be
+ * read as a static string literal at compile time. A static attribute or
+ * a literal bound expression is not dynamic: its type is settled, so the
+ * transform classifies it directly and skips the runtime file guard.
  *
- *   - `type="text"`      → value is `'"text"'`      → false (static attr literal)
- *   - `:type="'text'"`   → value is `"'text'"`      → false (literal expression)
- *   - `:type="kind"`     → value is `'kind'`        → true  (dynamic identifier)
- *   - `:type="`a-${x}`"` → array (compound exp)     → true  (interpolated)
+ *   - `type="text"`      value `'"text"'`     false (static attr literal)
+ *   - `:type="'text'"`   value `"'text'"`     false (literal expression)
+ *   - `:type="kind"`     value `'kind'`       true  (dynamic identifier)
+ *   - `:type="`a-${x}`"` array (compound exp) true  (interpolated)
  *
- * Dynamic-typed inputs keep their static `value=` attribute (it may be a
- * checkbox/radio option discriminator at runtime) AND get the runtime
- * file-exclusion guard on the injected binding.
+ * A dynamic-typed input keeps its static `value=`, which may turn out to
+ * be a checkbox or radio option discriminator at runtime, AND gets the
+ * runtime file-exclusion guard on the injected binding.
  */
 function isDynamicTypeValue(value: SummarizedProp['value']): boolean {
   if (Array.isArray(value)) return true // compound / interpolated expression
@@ -133,13 +132,12 @@ function isDynamicTypeValue(value: SummarizedProp['value']): boolean {
 }
 
 /**
- * Vue compiler node transform for `<input v-register>` and
- * `<textarea v-register>`. Injects the `:value` / `:checked`
- * bindings required for SSR-correct initial render.
+ * Vue compiler node transform for `<input v-register>` and `<textarea
+ * v-register>`, injecting the `:value` and `:checked` bindings an
+ * SSR-correct initial render needs.
  *
- * Wired automatically by `attaform/vite` and
- * `attaform/nuxt`. Use directly only when integrating with
- * a custom bundler.
+ * `attaform/vite` and `attaform/nuxt` wire it for you; reach for it
+ * directly only when integrating a custom bundler.
  */
 export const inputTextAreaNodeTransform: NodeTransform = (node) => {
   try {
@@ -156,16 +154,17 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
     const registerSummarizedProp = elementProps[registerIndex]
     if (!registerSummarizedProp) return // no v-register directive; nothing to transform
 
-    // A provably-static `type="file"` (or `:type="'file'"`) bypasses the
-    // value-binding injection entirely — the runtime `vRegisterFile`
-    // variant owns the DOM contract for file inputs (read `el.files` on
-    // change; clear via `el.value = ''` only), and browsers reject a
-    // `value=` attribute on a file input. A DYNAMIC `:type` that could
-    // only SOMETIMES resolve to "file" does NOT bail here: it proceeds to
-    // inject, and the synthesized expression below excludes the file case
-    // at runtime (`type === 'file' ? undefined : …`) so a wrapper input
-    // that resolves to "text" still gets its SSR value. This is what fixes
-    // the first-paint flash on every dynamically-typed wrapper field.
+    // A provably-static `type="file"`, or `:type="'file'"`, skips the
+    // value-binding injection outright: the runtime `vRegisterFile`
+    // variant owns a file input's DOM contract, reading `el.files` on
+    // change and clearing only through `el.value = ''`, and a browser
+    // rejects a `value=` attribute there anyway.
+    //
+    // A DYNAMIC `:type` that might only SOMETIMES resolve to file does
+    // NOT bail. It injects, and the synthesized expression below excludes
+    // the file case at runtime, so a wrapper input resolving to "text"
+    // still gets its SSR value and no dynamically-typed wrapper field
+    // flashes on first paint.
     const typeIndex = elementProps.findIndex((p) => isExactKey(p.key, 'type'))
     const typeProp = elementProps[typeIndex]
     if (typeProp !== undefined && isStaticTypeOneOf(typeProp.value, ['file'])) return
@@ -191,16 +190,15 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
     // this gets paired with `value` to get the [selectionLabel]=[label] prop for the given input
     // checkbox and radio are marked as selected via `checked`, others typically use `value`
     //
-    // The HTML spec matches `type` ASCII case-insensitively, so
-    // `<input type="CHECKBOX">` and `<input type="Radio">` produce the
-    // same runtime element as their lowercase counterparts. The
-    // injected expression normalizes via `String(t).toLowerCase()`
-    // before comparing — the compile-time `isStaticTypeOneOf` already
-    // uses case-insensitive matching, so without the runtime
-    // normalization a `type="CHECKBOX"` input would have its static
-    // `value` preserved (per `keepStaticValue`) but still emit
-    // `:value="..."` instead of `:checked="..."`, breaking SSR initial
-    // checked state.
+    // The HTML spec matches `type` ASCII case-insensitively, so `<input
+    // type="CHECKBOX">` and `<input type="Radio">` produce the same
+    // runtime element as their lowercase spellings. The injected
+    // expression normalizes through `String(t).toLowerCase()` before
+    // comparing, and it MUST: `isStaticTypeOneOf` is already
+    // case-insensitive at compile time, so without the runtime half a
+    // `type="CHECKBOX"` input would keep its static `value` under
+    // `keepStaticValue` and still emit `:value="..."` instead of
+    // `:checked="..."`, losing its SSR initial checked state.
     const elementSelectionLabelExpression = createCompoundExpression([
       '(',
       'String((',
@@ -213,57 +211,52 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       ") ? 'checked' : 'value'",
     ])
 
-    // Narrowed from `PlainElementNode | ComponentNode | SlotOutletNode |
-    // TemplateNode` — `<input>` / `<textarea>` are always PlainElementNode
-    // in Vue's AST. The previous wide union let a TemplateNode slip
-    // through and crash on `_node.props`.
+    // `<input>` and `<textarea>` are always `PlainElementNode` in Vue's
+    // AST. The wider union the signature could take lets a `TemplateNode`
+    // through, which crashes on `_node.props`.
     function computeProps(
       _node: PlainElementNode,
       registerSummarizedProp: SummarizedProp,
       elementValueSummarizedProp: SummarizedProp
     ): void {
-      // Reuse the originating element's source location for the
-      // injected directive — runtime errors in the synthesized expression
-      // get reported at the v-register binding site rather than line 0.
+      // The originating element's source location, so a runtime error in
+      // the synthesized expression reports at the v-register binding site
+      // rather than line 0.
       const injectedLoc: SourceLocation = _node.loc
 
       const props = _node.props
-      // For statically-typed checkbox / radio inputs, the `value=`
-      // attribute is the OPTION-value (the discriminator the directive
-      // matches against the model), not display state. The synthesized
-      // binding below resolves to `:checked="..."` for those types, a
-      // different attribute key — so the static `value` survives
-      // alongside it without conflict. Stripping it (as we still do
-      // for text/textarea, where the synthesized binding resolves to
-      // `:value`) leaves the SSR HTML without the attribute, and on
-      // hydration the directive can't tell which option this checkbox
-      // represents.
+      // On a statically-typed checkbox or radio the `value=` attribute is
+      // the OPTION-value, the discriminator the directive matches against
+      // the model, not display state. The synthesized binding resolves to
+      // `:checked="..."` there, a different attribute key, so the static
+      // `value` survives beside it without conflict. Stripping it, as
+      // still happens for text and textarea where the binding resolves to
+      // `:value`, leaves the SSR HTML without the attribute and the
+      // directive unable to tell which option this checkbox is.
       const isStaticCheckbox =
         typeProp !== undefined && isStaticTypeOneOf(typeProp.value, ['checkbox'])
       const isStaticRadio = typeProp !== undefined && isStaticTypeOneOf(typeProp.value, ['radio'])
-      // A dynamic `:type` could resolve to checkbox/radio at runtime,
-      // where the static `value=` is the option discriminator the runtime
-      // directive matches against the model — so it must survive the
-      // strip. If the runtime type turns out to be text instead, the
-      // injected `:value` binding harmlessly overrides the static
-      // attribute (dynamic binds win over static attrs in mergeProps).
+      // A dynamic `:type` could resolve to checkbox or radio at runtime,
+      // where the static `value=` is the option discriminator, so it has
+      // to survive the strip. If the type turns out to be text instead,
+      // the injected `:value` harmlessly overrides it, a dynamic bind
+      // winning over a static attr in `mergeProps`.
       const isDynamicType = typeProp !== undefined && isDynamicTypeValue(typeProp.value)
       const keepStaticValue = isStaticCheckbox || isStaticRadio || isDynamicType
       // What the author bound on this element, captured BEFORE the strip
-      // below discards it. A dual-mode wrapper is one component used
-      // both `v-register`-bound and plain-bound, and the plain mode is
-      // the one that used to break: the strip took the author's `:value`
-      // and the injected expression resolved to `undefined` for a
-      // nullish register, so the control rendered with no value at all
-      // and the caller's binding was silently gone (#620). Kept as the
-      // UNBOUND leg of the injected expression instead, so one element
-      // serves both modes and the wrapper needs no `v-if` / `v-else`
-      // duplicate of itself.
+      // below discards it, and kept as the UNBOUND leg of the injected
+      // expression. A dual-mode wrapper is one component used both
+      // `v-register`-bound and plain-bound, and its plain mode is what
+      // this protects: strip the author's `:value` and the injected
+      // expression resolves to `undefined` for a nullish register, so the
+      // control renders with no value and the caller's binding is
+      // silently gone (#620). One element now serves both modes, and the
+      // wrapper needs no `v-if` / `v-else` duplicate of itself.
       //
       // `checked` is always taken. `value` only when it is being
-      // stripped: under `keepStaticValue` it stays on the element as the
-      // option discriminator for a checkbox / radio, not as display
-      // state, so it is not a fallback for anything.
+      // stripped: under `keepStaticValue` it stays on the element as a
+      // checkbox or radio's option discriminator, not as display state,
+      // so it is a fallback for nothing.
       const authorCheckedProp = elementProps.find((p) => isExactKey(p.key, 'checked'))
       const authorValueProp = keepStaticValue
         ? undefined
@@ -272,21 +265,19 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       const registerValueArr = Array.isArray(registerSummarizedProp.value)
         ? registerSummarizedProp.value
         : [registerSummarizedProp.value]
-      // Read `displayValue.value` rather than `innerRef.value` so the
-      // `:value` binding renders the blank `''` when the
-      // user clears a numeric field. `displayValue` returns
-      // `String(storage)` for non-empty storage and `''` for both
-      // null/undefined storage and paths in the form's
-      // `blankPaths` set — a single read surface for the
-      // injected expression. For checkbox / radio (the ternary's
-      // truthy branch above), this leg is unreached, so behaviour
-      // there is unchanged.
+      // `displayValue.value`, not `innerRef.value`, so `:value` renders
+      // the blank `''` when the user clears a numeric field.
+      // `displayValue` gives `String(storage)` for non-empty storage and
+      // `''` for both nullish storage and a path in the form's
+      // `blankPaths`, which is one read surface for the whole injected
+      // expression. The checkbox and radio branch above never reaches
+      // this leg.
       //
       // The author's own binding rides in as the `??` right-hand side.
-      // `displayValue` is typed `Ref<string>` and always resolves to a
+      // `displayValue` is a `Ref<string>` and always resolves to a
       // string for a real register, `''` included, so the fallback is
-      // reachable only when the register expression itself is nullish —
-      // never when a bound field merely holds an empty value.
+      // reachable only when the register EXPRESSION is nullish, never
+      // when a bound field merely holds an empty value.
       const authorValueArr = toExpressionArray(authorValueProp?.value)
       const valueExpression = createCompoundExpression(
         authorValueArr === undefined
@@ -294,17 +285,16 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
           : ['((', ...registerValueArr, ')?.displayValue?.value ?? (', ...authorValueArr, '))']
       )
 
-      // Scalar-equality target. Three cases (see the long-form comment
-      // on `generateEqualityExpression`):
-      //   - static checkbox + `:true-value="X"` → X (the explicit
-      //     mapped string the model takes when checked)
-      //   - static checkbox without `:true-value` → boolean `true`
-      //     (matches the runtime's `getCheckboxValue(el, true)` default)
-      //   - static radio → the option-value (since radio model is
-      //     always scalar and the `value=` IS the discriminator)
-      //   - dynamic type → fall back to the option-value (current
-      //     behaviour); a dynamic-type element can't be statically
-      //     classified into checkbox vs radio vs text.
+      // The scalar-equality target, four cases; `generateEqualityExpression`
+      // carries the long form.
+      //   - static checkbox with `:true-value="X"`: X, the explicit
+      //     mapped string the model takes when checked
+      //   - static checkbox without one: boolean `true`, matching the
+      //     runtime's `getCheckboxValue(el, true)` default
+      //   - static radio: the option-value, a radio model always being
+      //     scalar and the `value=` being the discriminator
+      //   - dynamic type: the option-value, since a dynamic-type element
+      //     cannot be statically sorted into checkbox, radio or text
       const trueValueIndex = elementProps.findIndex((p) => isExactKey(p.key, 'true-value'))
       const trueValueProp = elementProps[trueValueIndex]
       const scalarTarget: SummarizedProp['value'] = isStaticCheckbox
@@ -313,13 +303,14 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
           : 'true'
         : elementValueSummarizedProp.value
 
-      // The core binding: a boolean for the `checked` branch (checkbox /
-      // radio), the register's `displayValue` for the `value` branch
-      // (text / textarea). The arg (`elementSelectionLabelExpression`)
-      // picks which attribute key this binds to at runtime.
-      // The checked leg cannot use `??`: the equality expression resolves
-      // to `false` for a nullish register, not to `undefined`, so the
-      // fallback needs an explicit nullish test on the register itself.
+      // The core binding: a boolean on the `checked` branch for checkbox
+      // and radio, the register's `displayValue` on the `value` branch
+      // for text and textarea. `elementSelectionLabelExpression` picks
+      // which attribute key it binds to at runtime.
+      //
+      // The checked leg CANNOT use `??`: the equality expression resolves
+      // to `false` for a nullish register rather than to `undefined`, so
+      // its fallback needs an explicit nullish test on the register.
       const authorCheckedArr = toExpressionArray(authorCheckedProp?.value)
       const checkedExpression =
         authorCheckedArr === undefined
@@ -354,14 +345,13 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
         ')',
       ]
 
-      // Runtime file-exclusion guard, dynamic `:type` only: when the type
-      // resolves to "file" at runtime the binding yields `undefined`, so
-      // Vue omits the attribute (browsers reject `value` on a file input,
-      // and the runtime `vRegisterFile` variant owns that DOM contract).
-      // A provably-static non-file type skips the guard — its file-ness is
-      // already settled at compile time, so the runtime check would be
-      // dead weight on the SSR-correct common path (static `type="file"`
-      // bailed out far above and never reaches here).
+      // The runtime file-exclusion guard, on a dynamic `:type` only: a
+      // type resolving to "file" yields `undefined`, so Vue omits the
+      // attribute, browsers rejecting `value` on a file input and the
+      // runtime `vRegisterFile` variant owning that DOM contract. A
+      // provably-static non-file type skips it, its file-ness being
+      // settled at compile time, and a static `type="file"` bailed out
+      // far above and never reaches here.
       const exp = isDynamicType
         ? createCompoundExpression([
             'String((',
@@ -384,18 +374,18 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
 
       props.push(valueOrCheckedProp)
 
-      // Sibling `:disabled` bind: renders the HTML `disabled` attribute on
-      // the SSR initial paint and patches it on the client, tracking the
-      // form's effective freeze (`useForm({ disabled })`). Valid on every
-      // input type, so no file-exclusion guard: unlike `value`, `disabled`
-      // is a legal attribute on a file input, and a dynamic `:type` that
-      // resolves to file still disables correctly.
+      // A sibling `:disabled` bind, rendering the HTML `disabled`
+      // attribute on the SSR initial paint and patching it on the client,
+      // tracking the form's effective freeze from `useForm({ disabled
+      // })`. It needs no file-exclusion guard: unlike `value`, `disabled`
+      // is legal on a file input, so a dynamic `:type` resolving to file
+      // still disables correctly.
       //
-      // Skipped when the author already wrote a `disabled` / `:disabled` on
-      // this element: overriding it would force the field enabled whenever
-      // the form is not frozen, clobbering a legitimate author condition.
-      // The data-layer freeze still rejects writes regardless, so nothing
-      // leaks; only the visual affordance defers to the author's binding.
+      // Skipped when the author already wrote `disabled` or `:disabled`,
+      // since overriding would force the field ENABLED whenever the form
+      // is not frozen, clobbering a legitimate author condition. The
+      // data-layer freeze rejects writes either way, so only the visual
+      // affordance defers to the author.
       const hasAuthorDisabled = elementProps.findIndex((p) => isExactKey(p.key, 'disabled')) !== -1
       if (!hasAuthorDisabled) {
         const disabledProp: DirectiveNode = {
@@ -410,15 +400,15 @@ export const inputTextAreaNodeTransform: NodeTransform = (node) => {
       }
     }
 
-    // The outer guards (`node.type === NodeTypes.ELEMENT` + `node.tag
-    // === 'input' | 'textarea'`) narrow `node` to a PlainElementNode
-    // at runtime; the cast records that for the type system.
+    // The outer guards on `node.type` and `node.tag` narrow to a
+    // `PlainElementNode` at runtime; the cast records that for the type
+    // system.
     computeProps(node as PlainElementNode, registerSummarizedProp, elementValueSummarizedProp)
   } catch (err) {
-    // AST shapes can shift with minor Vue compiler updates. If we hit
-    // anything unexpected, skip this transform — the runtime directive
-    // alone handles value binding (via mounted/beforeUpdate), so the only
-    // cost is a one-frame flash on SSR initial render.
+    // AST shapes shift with minor Vue compiler updates, so anything
+    // unexpected skips the transform. The runtime directive still handles
+    // value binding through `mounted` and `beforeUpdate`, leaving a
+    // one-frame flash on SSR initial render as the only cost.
 
     console.error('[attaform] input/textarea transform failed, skipping:', err)
   }

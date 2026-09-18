@@ -6,10 +6,10 @@
  *
  * This exists because `check-bench` cannot see most of what it is
  * guarding. It gates only groups that pair an `old:` bench against a
- * `new:` one — 3 of 15 bench files — and it skips everything else in
- * silence. A 34% regression in `getAtPath` shipped through it: the
- * suite that measures path reads has no such pair, so the gate never
- * looked, and the suites that do have pairs compare each revision
+ * `new:` one, 3 of 15 bench files. A 34% regression in `getAtPath`
+ * shipped through that gap: the suite that measures path reads has no
+ * such pair, so the gate never looked, and the suites that do have pairs
+ * compare each revision
  * against a baseline implementation living in the same file rather than
  * against the previous commit, so both arms move together and the ratio
  * holds.
@@ -221,7 +221,7 @@ if (moved.length === 0) {
   lines.push('| scenario | base | PR | change | |', '| --- | ---: | ---: | ---: | --- |')
   for (const r of moved) {
     const direction = r.pct > 0 ? 'faster' : 'slower'
-    const note = r.noisy ? "noisy — within this scenario's own run-to-run spread" : ''
+    const note = r.noisy ? "noisy (within this scenario's own run-to-run spread)" : ''
     lines.push(
       `| ${r.name} | ${fmt(r.base)} hz | ${fmt(r.head)} hz | **${Math.abs(r.pct).toFixed(1)}% ${direction}** | ${note} |`
     )

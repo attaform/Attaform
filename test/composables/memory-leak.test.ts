@@ -6,19 +6,18 @@ import { attachRegistryToApp, createRegistry } from '../../src/runtime/core/regi
 import { fakeSchema } from '../utils/fake-schema'
 
 /**
- * Regression coverage for Phase 8.1 — registry cleanup on scope dispose.
+ * Registry cleanup on scope dispose. `useForm` pairs
+ * `registry.trackConsumer(key)` with an `onScopeDispose` release, and
+ * the registry evicts the FormStore once the last consumer disposes.
+ * Two invariants:
+ *   1. The sole consumer unmounts and the entry is gone.
+ *   2. Consumers sharing a key clear it only on the last unmount.
  *
- * The pre-fix runtime stored every form in `registry.forms` on mount but
- * never removed it. A long-lived SPA that mounts and unmounts form-heavy
- * pages would accumulate detached FormStore instances (each holding a
- * reactive `form` ref, an `originals` Map, an `errors` Map, and field
- * records) for the lifetime of the app.
- *
- * Fix: `useForm` now pairs `registry.trackConsumer(key)` with an
- * `onScopeDispose` release. The registry evicts the FormStore once the
- * last consumer disposes. These tests assert the two invariants:
- *   1. Sole consumer unmounts → entry is gone.
- *   2. Multiple consumers share a key → only the last unmount clears it.
+ * Storing every form in `registry.forms` on mount without removing it
+ * leaks: a long-lived SPA mounting and unmounting form-heavy pages
+ * accumulates detached FormStore instances, each holding a reactive
+ * `form` ref, an `originals` Map, an `errors` Map and field records, for
+ * the lifetime of the app.
  */
 
 type Form = { name: string }
@@ -39,9 +38,9 @@ function mountProbe(registry: ReturnType<typeof createRegistry>, key: string) {
   return app
 }
 
-describe('useForm — registry cleanup on scope dispose', () => {
+describe('useForm: registry cleanup on scope dispose', () => {
   // Eviction is deferred to the next microtask once the last consumer
-  // disposes — a new consumer claiming the same key in the same tick
+  // disposes: a new consumer claiming the same key in the same tick
   // cancels the schedule and reuses the live FormStore (HMR / KeepAlive
   // safety). `await Promise.resolve()` drains the microtask queue so
   // we can assert post-eviction state in tests.
@@ -52,14 +51,14 @@ describe('useForm — registry cleanup on scope dispose', () => {
 
     expect(registry.forms.has('gc-solo')).toBe(true)
     app.unmount()
-    // Synchronous read still sees the store — eviction is queued, not
+    // Synchronous read still sees the store, eviction is queued, not
     // applied.
     expect(registry.forms.has('gc-solo')).toBe(true)
     await Promise.resolve()
     expect(registry.forms.has('gc-solo')).toBe(false)
   })
 
-  it('ref-counts shared-key consumers — only the last unmount queues eviction', async () => {
+  it('ref-counts shared-key consumers: only the last unmount queues eviction', async () => {
     const registry = createRegistry()
     const app1 = mountProbe(registry, 'gc-shared')
     const app2 = mountProbe(registry, 'gc-shared')
@@ -114,7 +113,7 @@ describe('useForm — registry cleanup on scope dispose', () => {
     expect(secondState).toBe(firstState)
 
     await Promise.resolve()
-    // Microtask fires but the schedule was cancelled — store stays.
+    // Microtask fires but the schedule was cancelled, store stays.
     expect(registry.forms.get('gc-cancel')).toBe(firstState)
     app2.unmount()
   })

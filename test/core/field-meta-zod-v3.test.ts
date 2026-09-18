@@ -3,7 +3,7 @@ import { z } from 'zod-v3'
 import { getFieldMetaForSchema as getFieldMeta } from '../../src/runtime/core/field-meta-store'
 import { fieldMeta, withMeta } from '../../src/runtime/adapters/zod-v3/field-meta'
 
-describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
+describe('Zod 3: fieldMeta WeakMap shim + withMeta helper', () => {
   it('round-trips a payload via the withMeta helper', () => {
     const schema = withMeta(z.string(), { label: 'Reference', placeholder: 'PO-12345' })
     expect(getFieldMeta(schema)).toEqual({ label: 'Reference', placeholder: 'PO-12345' })
@@ -17,7 +17,7 @@ describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
   })
 
   it('returns a fresh schema clone (not the original) from withMeta', () => {
-    // withMeta clones first so each call gets distinct identity —
+    // withMeta clones first so each call gets distinct identity,
     // shields shared sub-schemas from the last-wins overwrite that
     // the schema-keyed registry would otherwise impose. The clone
     // round-trips its payload independently.
@@ -34,7 +34,7 @@ describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
 
   it('chained withMeta merges payloads through clones', () => {
     // Each withMeta returns a clone with the previous clone's
-    // payload merged in plus the new fields — chaining accumulates
+    // payload merged in plus the new fields, chaining accumulates
     // rather than replacing.
     const labeled = withMeta(z.string(), { label: 'Email' })
     const labeledAndDescribed = withMeta(labeled, { description: 'For login' })
@@ -53,7 +53,7 @@ describe('Zod 3 — fieldMeta WeakMap shim + withMeta helper', () => {
   })
 })
 
-describe('Zod 3 — registry stores against schema reference identity', () => {
+describe('Zod 3: registry stores against schema reference identity', () => {
   // Direct fieldMeta.add (the .register-equivalent for v3) keys on
   // the schema reference. The path-resolver disambiguates per
   // tree-walk occurrence when the same schema instance is bound at
@@ -90,7 +90,7 @@ describe('Zod 3 — registry stores against schema reference identity', () => {
   })
 })
 
-describe('Zod 3 — coexistence with .describe()', () => {
+describe('Zod 3: coexistence with .describe()', () => {
   it('keeps schema.description independent of registry payload', () => {
     const schema = withMeta(z.string().describe('legacy desc'), { description: 'fresh' })
     expect(schema.description).toBe('legacy desc')

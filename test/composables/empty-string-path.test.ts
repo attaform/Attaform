@@ -10,7 +10,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * `''` is a real one-segment path (the literal empty-key field `['']`),
  * distinct from the root `[]`. Form-level (global) errors live at the
- * root `[]`, NOT at `['']` — so `''` is a free, ordinary field key. The
+ * root `[]`, NOT at `['']`: so `''` is a free, ordinary field key. The
  * contract:
  *
  *   - `errors()` → all errors (full aggregate, == `meta.errors`)
@@ -72,11 +72,9 @@ function callValues(form: { values: unknown }): ValuesCallForm {
   return form.values as unknown as ValuesCallForm
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
-describe('empty-string path semantics — zod-v3 adapter', () => {
+describe('empty-string path semantics: zod-v3 adapter', () => {
   const schema = zV3
     .object({
       from: zV3.string().min(1, 'Required'),
@@ -159,11 +157,9 @@ describe('empty-string path semantics — zod-v3 adapter', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
-describe('empty-string path semantics — zod-v4 adapter', () => {
+describe('empty-string path semantics: zod-v4 adapter', () => {
   const schema = zV4
     .object({
       from: zV4.string().min(1, 'Required'),
@@ -234,13 +230,11 @@ describe('empty-string path semantics — zod-v4 adapter', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
-// Literal root '' field — proves '' is free of form-level duty. errors('')
+// Literal root '' field, proves '' is free of form-level duty. errors('')
 // reads THIS field; meta.ownErrors returns the root [] bucket alone, and
 // errors([]) is the full aggregate like errors().
-// -----------------------------------------------------------------------------
 
-describe("literal root '' field — zod-v3 adapter", () => {
+describe("literal root '' field: zod-v3 adapter", () => {
   const schema = zV3
     .object({
       '': zV3.string().min(1, 'empty-key required'),
@@ -282,7 +276,7 @@ describe("literal root '' field — zod-v3 adapter", () => {
   })
 })
 
-describe("literal root '' field — zod-v4 adapter", () => {
+describe("literal root '' field: zod-v4 adapter", () => {
   const schema = zV4
     .object({
       '': zV4.string().min(1, 'empty-key required'),

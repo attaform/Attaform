@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Regression gate for issue #314 — the SSR payload `renderAttaformState`
+ * Regression gate for issue #314: the SSR payload `renderAttaformState`
  * produces must not carry null-prototype objects.
  *
  * A dogfooder reported that any Nuxt SSR page mounting an attaform form
@@ -10,25 +10,24 @@
  *   1. Attaform's Nuxt plugin writes `renderAttaformState(app)` into
  *      `nuxtApp.payload.attaform` on the `app:rendered` hook.
  *   2. `@pinia/nuxt` registers a global devalue payload reducer that
- *      runs `shouldHydrate(node)` on every node of the payload — and
+ *      runs `shouldHydrate(node)` on every node of the payload, and
  *      `shouldHydrate` calls `node.hasOwnProperty(skipHydrateSymbol)`.
  *   3. The form's `values` object was allocated via `Object.create(null)`
  *      as part of the prototype-pollution defense (PRs #308-310). A
  *      null-prototype object has no inherited `hasOwnProperty` method,
  *      so the reducer's call throws and the SSR pipeline aborts.
  *
- * The fix is to keep `Object.prototype` on every container that reaches
- * a consumer-observable surface, while keeping the prototype-pollution
- * defense by switching to `safeAssign` (defineProperty for `__proto__`)
- * paired with spread (which uses `CreateDataProperty`, bypassing the
- * `__proto__` accessor on a regular target).
+ * So every container reaching a consumer-observable surface keeps
+ * `Object.prototype`, and the prototype-pollution defense moves to
+ * `safeAssign` (defineProperty for `__proto__`) paired with spread,
+ * which uses `CreateDataProperty` and bypasses the `__proto__` accessor
+ * on a regular target.
  *
  * These tests are the standing diagnostic: walk every plain-object node
- * of the SSR snapshot and call `hasOwnProperty` on it. Pre-fix at least
- * one node throws. Post-fix every node responds cleanly. The devalue
- * test exercises the same call path Nuxt's payload serializer uses, so
- * a future regression that reintroduces null-proto on the snapshot
- * surface gets caught at the same boundary the dogfooder hit.
+ * of the SSR snapshot and call `hasOwnProperty` on it, and every node
+ * responds. The devalue test drives the same call path Nuxt's payload
+ * serializer uses, so a regression is caught at the boundary the
+ * dogfooder hit.
  */
 import { stringify as devalueStringify } from 'devalue'
 import { describe, expect, it } from 'vitest'
@@ -55,7 +54,7 @@ function probeHasOwnPropertyEverywhere(value: unknown, path: string[] = []): voi
   }
   if (typeof value !== 'object') return
   const obj = value as Record<string, unknown>
-  // The call site that broke at the dogfooder's app — third-party code
+  // The call site that broke at the dogfooder's app, third-party code
   // assumes Object.prototype.hasOwnProperty is reachable through the
   // prototype chain. Switching to `Object.prototype.hasOwnProperty.call`
   // would erase the regression we're guarding against.
@@ -105,7 +104,7 @@ const SCHEMAS = {
   },
 } as const
 
-describe('renderAttaformState — no null-prototype leak into the SSR payload', () => {
+describe('renderAttaformState: no null-prototype leak into the SSR payload', () => {
   for (const [adapterName, fixture] of Object.entries(SCHEMAS)) {
     describe(adapterName, () => {
       async function buildSnapshot(): Promise<unknown> {
@@ -138,7 +137,7 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
         // where pinia's `shouldHydrate` does
         // `!isPlainObject(obj) || !obj.hasOwnProperty(skipHydrateSymbol)`.
         // devalue invokes this reducer on every node it visits during
-        // `stringify`, so the throw — when it happens — propagates out
+        // `stringify`, so the throw, when it happens, propagates out
         // of `devalue.stringify` exactly as it propagates out of Nuxt's
         // payload serialization in production.
         const skipHydrateSymbol = Symbol.for('pinia:skipHydrate')
@@ -160,8 +159,8 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
       })
 
       it('a deeply-nested null-prototype leaf in `defaultValues` is reparented before reaching the payload', async () => {
-        // Probe: `{ some: { nested: { path: { to: { this: Object.create(null) } } } } }`
-        // — the null-proto sits four levels deep, not at the root.
+        // Probe: `{ some: { nested: { path: { to: { this: Object.create(null) } } } } }`:
+        // the null-proto sits four levels deep, not at the root.
         // Schema declares a matching nested shape so the merge has a
         // chance to walk into the null-proto. We assert the snapshot
         // is fully safe regardless of where the null-proto appears.
@@ -225,7 +224,7 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
         const snapshot = renderAttaformState(app)
 
         // The walker stands in for any third-party payload walker
-        // (pinia-style or otherwise) — every node must respond.
+        // (pinia-style or otherwise): every node must respond.
         expect(() => probeHasOwnPropertyEverywhere(snapshot)).not.toThrow()
 
         // Also walk the snapshot and assert every plain-object node
@@ -254,7 +253,7 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
         // merge pipeline has no shape to walk into. The
         // `mergeStructuralImpl` early-return at this branch (when
         // `defaultValue` is non-record) would naively pass the
-        // consumer's reference through unchanged — but the downstream
+        // consumer's reference through unchanged, but the downstream
         // `structuralSnapshot` in `createFormStore` rebuilds every
         // descendable container as a fresh `Object.prototype`-backed
         // record, so the null-proto can't survive to the snapshot.
@@ -337,7 +336,7 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
         const app = createSSRApp(App).use(createAttaform({ ssr: true }))
         await renderToString(app)
         const snapshot = renderAttaformState(app)
-        // The walker assertion stands in for every consumer surface —
+        // The walker assertion stands in for every consumer surface,
         // the snapshot must be safe even when the consumer's input was
         // null-prototype.
         expect(() => probeHasOwnPropertyEverywhere(snapshot)).not.toThrow()
@@ -352,7 +351,7 @@ describe('renderAttaformState — no null-prototype leak into the SSR payload', 
             return
           }
           if (typeof value !== 'object') return
-          // Tag-check pins "plain object" — we don't want to flag class
+          // Tag-check pins "plain object": we don't want to flag class
           // instances (Date, RegExp, etc.) that intentionally carry
           // their own prototype.
           if (Object.prototype.toString.call(value) !== '[object Object]') return

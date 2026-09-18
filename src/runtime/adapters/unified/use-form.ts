@@ -1,35 +1,30 @@
 /**
- * Unified `useForm` for the `attaform/zod` entry. Runtime-dispatches
- * on schema shape: a Zod v4 schema (`def.type` truthy) routes to the
- * v4 adapter; a Zod v3 schema (or any other `AbstractSchema`) routes
- * to the v3 wrapper, which already accepts both Zod v3 input and
- * `AbstractSchema` directly via its built-in shape branch.
+ * The unified `useForm` behind the `attaform/zod` entry. At runtime it
+ * dispatches on schema shape: a Zod v4 schema, with a truthy `def.type`,
+ * goes to the v4 adapter, and a Zod v3 schema or any other
+ * `AbstractSchema` goes to the v3 wrapper, which already takes both
+ * through its own shape branch.
  *
- * Type-level dispatch happens via TWO typed overloads — v4 first, v3
- * second — plus an untyped impl. Each overload mirrors the matching
- * direct adapter's signature exactly, so a v4-schema call site pays
- * the same per-call depth cost as importing from `attaform/zod-v4`
- * directly. Overload resolution at concrete call sites commits to one
- * overload immediately on argument shape — no type-level dispatch tax.
+ * At the type level, TWO overloads (v4 first, v3 second) plus an untyped
+ * impl. Each overload matches its direct adapter's signature exactly, so
+ * a v4 call site pays the same per-call depth cost as importing
+ * `attaform/zod-v4`, and overload resolution commits on argument shape
+ * at a concrete call site, so there is no dispatch tax.
  *
- * Tests and other call sites that need the equivalent of
- * `typeof useForm<X>` should reach for the `UseFormReturn<X>` /
- * `UseFormConfig<X>` helpers in `types-api.ts` — instantiation
- * expressions on overloaded functions follow brittle resolution rules,
- * and the helper types give a deterministic projection.
+ * For the equivalent of `typeof useForm<X>`, reach for the
+ * `UseFormReturn<X>` and `UseFormConfig<X>` helpers in
+ * `types/types-api.ts`: instantiation expressions on an overloaded
+ * function follow brittle resolution rules, and the helpers give a
+ * deterministic projection.
  *
- * This module is the FALLBACK path. Vite consumers see the
- * `attaform/vite` plugin's `resolveId` hook rewrite `attaform/zod`
- * imports to either `attaform/zod-v3` or `attaform/zod-v4` at build
- * time — in that case this dispatch never runs and the consumer
- * bundle ships only the matching adapter. Other bundlers (and
- * non-bundled ESM consumption) hit this dispatch instead, paying a
- * modest size cost for the convenience of a single hello-world import.
- *
- * Power users who want a guaranteed lean bundle on non-Vite tooling
- * can import directly from `attaform/zod-v3` or `attaform/zod-v4` —
- * those subpaths are never rewritten and never load the other
- * adapter.
+ * This module is the FALLBACK path. Under Vite, the `attaform/vite`
+ * plugin's `resolveId` hook rewrites `attaform/zod` to `attaform/zod-v3`
+ * or `attaform/zod-v4` at build time, so this dispatch never runs and
+ * the bundle ships one adapter. Another bundler, or unbundled ESM, hits
+ * the dispatch and pays a modest size cost for a single hello-world
+ * import. Importing `attaform/zod-v3` or `attaform/zod-v4` directly
+ * guarantees the lean bundle anywhere: those subpaths are never
+ * rewritten and never load the other adapter.
  */
 import { InvalidUseFormConfigError } from '../../core/errors'
 import { isZodV4SchemaShape } from '../../core/zod-shape'
@@ -64,18 +59,18 @@ import type {
  * import { useForm } from 'attaform/zod'
  * import { z } from 'zod'
  *
- * const form = useForm({
- *   schema: z.object({
- *     username: z.string().min(2, 'At least 2 characters'),
- *     password: z.string().min(8, 'At least 8 characters'),
- *   }),
+ * const schema = z.object({
+ *   username: z.string().min(2, 'At least 2 characters'),
+ *   password: z.string().min(8, 'At least 8 characters'),
  * })
+ *
+ * const form = useForm({ schema })
  * ```
  *
- * The constraint intersects `ZodV4Internals` (the v4-only `_zod`
- * brand) so a v3 schema can't bind this overload even when `z`
- * resolves to v3 in a single-major consumer install; v3 schemas fall
- * through to the v3 overload below. See `types-zod-major.ts`.
+ * The constraint intersects `ZodV4Internals`, the v4-only `_zod` brand,
+ * so a v3 schema cannot bind this overload even where `z` resolves to v3
+ * in a single-major install; it falls through to the v3 overload below.
+ * See `types-zod-major.ts`.
  */
 export function useForm<
   Schema extends SupportedRootSchemaV4 & ZodV4Internals,
@@ -86,25 +81,24 @@ export function useForm<
       V4FormOf<Schema>,
       V4OutOf<Schema>,
       AbstractSchema<V4FormOf<Schema>, V4OutOf<Schema>>,
-      // `defaultValues` is Omitted below and re-supplied via the
-      // `AcceptableDefaults` intersection, so this `DefaultValues` slot is
-      // inert. `never` keeps it from re-instantiating the deep
-      // `DefaultValuesInput` cascade here — that redundant instantiation,
-      // across both overloads at a concrete call site, tips the bundled
-      // `.d.ts` into TS2589.
+      // Inert: `defaultValues` is Omitted below and re-supplied through
+      // the `AcceptableDefaults` intersection. `never` keeps the deep
+      // `DefaultValuesInput` cascade from re-instantiating here, which
+      // across BOTH overloads at one concrete call site is what tips the
+      // bundled `.d.ts` into TS2589.
       never,
       K
     >,
     'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
   > & {
     schema: Schema
-    // #422: the `AcceptableDefaults` slot adds the schema's own input
-    // (`V4SchemaInput<Schema>`) as a reflexive escape arm so a generic form
-    // wrapper forwarding `defaultValues` does not trip TS2589 / TS2769.
-    // The arm is redundant at concrete call sites (a schema's input is a
-    // subset of its `DefaultValuesInput`), so concrete checking is
-    // unchanged. The return type never references the slot, so field
-    // inference is preserved through the wrapper. See `AcceptableDefaults`.
+    // The slot adds the schema's own input, `V4SchemaInput<Schema>`, as a
+    // reflexive escape arm, so a generic form wrapper forwarding
+    // `defaultValues` does not trip TS2589 or TS2769 (#422). It is
+    // redundant at a concrete call site, a schema's input being a subset
+    // of its `DefaultValuesInput`, so concrete checking is unchanged, and
+    // the return type never references the slot, so field inference
+    // survives the wrapper. See `AcceptableDefaults`.
     defaultValues?: AcceptableDefaults<V4FormOf<Schema>, V4SchemaInput<Schema>>
   } & ValidateOnConfig
 ): UseFormReturnType<V4FormOf<Schema>, V4OutOf<Schema>, V4ReadOf<Schema>, K>
@@ -115,16 +109,15 @@ export function useForm<
  * import { useForm } from 'attaform/zod'
  * import { z } from 'zod-v3'
  *
- * const form = useForm({
- *   schema: z.object({
- *     username: z.string().min(2, 'At least 2 characters'),
- *     password: z.string().min(8, 'At least 8 characters'),
- *   }),
+ * const schema = z.object({
+ *   username: z.string().min(2, 'At least 2 characters'),
+ *   password: z.string().min(8, 'At least 8 characters'),
  * })
+ *
+ * const form = useForm({ schema })
  * ```
  *
- * v3 schemas match this overload; v4 schemas hit the v4 overload
- * above first and never reach here.
+ * A v4 schema binds the overload above and never reaches this one.
  */
 export function useForm<Schema extends SupportedRootSchemaV3, K extends FormKey = FormKey>(
   configuration: Omit<
@@ -132,14 +125,14 @@ export function useForm<Schema extends SupportedRootSchemaV3, K extends FormKey 
       V3FormOf<Schema>,
       V3OutOf<Schema>,
       AbstractSchema<V3FormOf<Schema>, V3OutOf<Schema>>,
-      // Inert `DefaultValues` slot — see the v4 overload above.
+      // Inert `DefaultValues` slot; see the v4 overload above.
       never,
       K
     >,
     'schema' | 'validateOn' | 'debounceMs' | 'defaultValues'
   > & {
     schema: Schema
-    // #422 — see the v4 overload above for the escape-arm rationale.
+    // See the v4 overload above for the escape-arm rationale (#422).
     defaultValues?: AcceptableDefaults<V3FormOf<Schema>, V3SchemaInput<Schema>>
   } & ValidateOnConfig
 ): UseFormReturnType<V3FormOf<Schema>, V3OutOf<Schema>, V3ReadOf<Schema>, K>

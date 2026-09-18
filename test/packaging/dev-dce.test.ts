@@ -9,16 +9,16 @@ import { measureEager } from '../../scripts/check-eager-size.mjs'
  * applies the identical strip, so these assertions run against exactly
  * what the shipped prod flavor delivers. The original F-cases stay:
  *
- *   F1 — rewriting the dev flag to a shape the strip cannot rewrite.
+ *   F1, rewriting the dev flag to a shape the strip cannot rewrite.
  *   Asserted via a dev-only warning string: present in a dev build,
  *   absent in a prod build.
  *
- *   F2 — dropping `__DEV__` from the devtools install gate. The devtools
+ *   F2, dropping `__DEV__` from the devtools install gate. The devtools
  *   integration is dev-only; in prod its dynamic import must be
  *   eliminated so the chunk is never fetched. Asserted via the
  *   reachable-input set: loaded in dev, orphaned in prod.
  *
- *   F3 — a top-level function whose only caller sits in a dead branch.
+ *   F3: a top-level function whose only caller sits in a dead branch.
  *   The define-fold approach left these behind (esbuild marks references
  *   before it folds a define); the source-level strip makes the dead
  *   branch visible at parse time, so they drop. The key-collision
@@ -28,13 +28,13 @@ import { measureEager } from '../../scripts/check-eager-size.mjs'
  * visible (the pre-P1a CI asserted a single foldable string and was blind
  * to a ~2.5 kB gz leak):
  *
- *   S1 — no minified dead-branch husks (`if(!1)`, dead `!1&&` chains) in
+ *   S1: no minified dead-branch husks (`if(!1)`, dead `!1&&` chains) in
  *   the prod eager output.
  *
- *   S2 — the dev-stack-trace module (statically imported by five
+ *   S2: the dev-stack-trace module (statically imported by five
  *   composables for warn call-site capture) leaves the prod eager set.
  *
- *   S3 — every `[attaform]` string on the prod eager path matches an
+ *   S3: every `[attaform]` string on the prod eager path matches an
  *   explicit allowlist of intentional production messages.
  */
 
@@ -52,8 +52,8 @@ const DEV_STACK_TRACE_MODULE = 'src/runtime/core/dev-stack-trace.ts'
 /**
  * The intentional production `[attaform]` messages on the minimal-useForm
  * (zod-v4) eager path. Since P1b, every prose diagnostic ships as an AF##
- * code with its attaform.dev/e URL — the `'[attaform] AF'` prefix covers
- * all of them — plus the short no-uncaught-exceptions "callback threw"
+ * code with its attaform.dev/e URL: the `'[attaform] AF'` prefix covers
+ * all of them, plus the short no-uncaught-exceptions "callback threw"
  * breadcrumbs and the transform gate-rejection message. Everything else
  * is dev-flavor-only. Additions here are reviewed, never incidental.
  *

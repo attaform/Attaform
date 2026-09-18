@@ -2,16 +2,13 @@
 /**
  * `form.errors` enumeration parity gate for PASS2-5.
  *
- * `ownKeys` used to read strictly from the FORM-DATA keys at the
- * container path, while `get` / call-form / `JSON.stringify` read the
- * ERROR stores. So `Object.keys(form.errors)` and `{...form.errors}`
- * silently dropped **server-only** errors at a path the schema doesn't
- * know (`['ghost']`, `['address', 'ghost']`).
- *
- * The fix unions the form-data keys with the error-store-derived
- * first-child segments at the container path. Reading
- * `form.errors('ghost')` already returned the merged errors today —
- * this just makes enumeration agree.
+ * `ownKeys` unions the FORM-DATA keys at the container path with the
+ * first-child segments derived from the ERROR stores, so enumeration
+ * agrees with `get`, the call form and `JSON.stringify`. Reading only
+ * form-data keys silently drops a server-only error at a path the schema
+ * does not know (`['ghost']`, `['address', 'ghost']`) from
+ * `Object.keys(form.errors)` and `{...form.errors}`, even though
+ * `form.errors('ghost')` returns it.
  *
  * Global errors at the root `[]` (`setErrors`, root `.refine()`)
  * are NOT a child key, so they never enumerate here and never appear
@@ -50,7 +47,7 @@ const adapters = [
   },
 ] as const
 
-describe.each(adapters)('form.errors enumeration — $name', ({ mount }) => {
+describe.each(adapters)('form.errors enumeration: $name', ({ mount }) => {
   it("Object.keys(form.errors) excludes '' for a global error (it lives at [])", () => {
     const { api, app } = mount()
     api.setErrors([{ message: 'top-level' }])

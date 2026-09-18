@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
  *
  * `mkdist` (build.config.ts) compiles every `.vue` file under
  * `src/runtime/components/` into `dist/runtime/components/`, stripping
- * `lang="ts"` and `//` comments along the way — the dist `.vue` output
+ * `lang="ts"` and `//` comments along the way: the dist `.vue` output
  * is intentionally lossy. It's an artifact, not editable source.
  *
  * During the wizard QC session, a copy of that dist output silently
@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
  * emit-on-save firing against the host editor's TS project graph,
  * possibly compounded by stale `.d.vue.ts` / `.vue.d.ts` stubs that
  * survive a `git checkout`). Reverted manually before commit. This
- * test catches the same class of corruption regardless of writer —
+ * test catches the same class of corruption regardless of writer,
  * both symptoms are observable from the file-system shape:
  *
  *  - `<script setup lang="ts">` reduces to `<script setup>` → the

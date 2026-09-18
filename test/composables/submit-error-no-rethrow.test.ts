@@ -22,7 +22,7 @@ import { waitUntil } from '../utils/form-harness'
  *     `Error` (a non-Error throw is wrapped, original preserved on
  *     `.cause`) so the slot is `Error | null`, never `unknown`;
  *   - keeps `meta.submitError` distinct from the curated user-error
- *     store (no auto-inject) — it is the `hydrateError` twin, rendered
+ *     store (no auto-inject): it is the `hydrateError` twin, rendered
  *     with a one-liner where the consumer chooses;
  *   - preserves the no-stranded-button guarantee: `submitting` resets and
  *     `submissionAttempts` increments regardless of the throw.
@@ -59,7 +59,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('handleSubmit — a rejecting callback does not re-throw', () => {
+describe('handleSubmit: a rejecting callback does not re-throw', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -90,7 +90,7 @@ describe('handleSubmit — a rejecting callback does not re-throw', () => {
     const handler = api.handleSubmit(async () => {
       throw new Error('boom')
     })
-    // Fire as a floating promise — exactly how a DOM-bound
+    // Fire as a floating promise, exactly how a DOM-bound
     // `@submit.prevent="submit"` invokes it. The old contract re-threw,
     // surfacing here as an unhandledrejection.
     void handler(new Event('submit'))

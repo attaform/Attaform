@@ -45,7 +45,7 @@ function mountForm(factory: () => Promise<Shape>): { app: App; api: Api } {
   return { app, api: captured.api as Api }
 }
 
-describe('useForm — ready state machine', () => {
+describe('useForm: ready state machine', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -147,7 +147,7 @@ describe('useForm — ready state machine', () => {
   })
 })
 
-describe('useForm — activate() idempotency', () => {
+describe('useForm: activate() idempotency', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -196,7 +196,7 @@ describe('useForm — activate() idempotency', () => {
     expect(calls).toBe(1)
     expect(api.hydrateError?.message).toBe('first-fail')
 
-    // activate() is idempotent — does NOT replay a previous failure.
+    // activate() is idempotent, does NOT replay a previous failure.
     await api.activate()
     expect(calls).toBe(1)
 

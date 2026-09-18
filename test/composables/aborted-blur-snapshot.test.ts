@@ -1,28 +1,23 @@
 // @vitest-environment jsdom
 /**
- * PASS2-3 — `run()` wrote `lastValidatedSnapshot` at run-START,
- * BEFORE the post-resolve abort re-check. A path-scoped
+ * PASS2-3: `run()` writes its `pathSnapshots` entry past the abort and
+ * epoch checks, inside the applied branch, so a snapshot advances only
+ * for a verdict that actually commits.
+ *
+ * Writing it at run-START instead loses errors. A path-scoped
  * `parse(other, { commit: true })` calls `cancelFieldValidation()`
- * synchronously, aborting the in-flight blur run for the
- * interactively-blurred path — but the snapshot had already
- * advanced. The blur-dedup at the next focus/blur cycle then
- * compared the (unchanged) form value to the advanced snapshot,
- * SKIPPED revalidation, and surfaced no error for a field that
- * was actually invalid: `displayState === 'success'` instead of
- * `'error'`.
+ * synchronously and aborts the in-flight blur run, but the snapshot has
+ * already advanced. At the next focus/blur cycle the blur-dedup compares
+ * the unchanged form value against that advanced snapshot, skips
+ * revalidation, and an invalid field reads `displayState === 'success'`.
  *
- * The fix moves the snapshot write past the abort + epoch
- * checks, into the applied branch — so the snapshot advances
- * only for verdicts that actually commit.
- *
- * Repro forces the race deterministically with async refines:
- *   1. Type into A so the directive flips `interacted`, then
- *      blur A. `run()` queues the validate microtask.
- *   2. SYNCHRONOUSLY call `parse('b', { commit: true })` —
- *      `cancelFieldValidation()` aborts A's pending run before
- *      its `.then` ever fires; `parse({ commit: true })` writes for B only.
- *   3. Refocus A, blur unchanged. Without the fix, the snapshot
- *      from step 1 makes the dedup skip → A shows success.
+ * Async refines force the race deterministically:
+ *   1. Type into A so the directive flips `interacted`, then blur it.
+ *      `run()` queues the validate microtask.
+ *   2. SYNCHRONOUSLY call `parse('b', { commit: true })`, whose
+ *      `cancelFieldValidation()` aborts A's pending run before its
+ *      `.then` fires, and which writes for B only.
+ *   3. Refocus A and blur it unchanged.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, withDirectives, type App } from 'vue'
@@ -59,14 +54,14 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, buildSchema: buildSchemaV3 },
 ] as const
 
-describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSchema }) => {
+describe.each(adapters)('aborted-blur snapshot: $name', ({ useForm, buildSchema }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
     document.body.innerHTML = ''
   })
 
-  it('an aborted blur run does not skip the next blur — invalid A still surfaces error', async () => {
+  it('an aborted blur run does not skip the next blur: invalid A still surfaces error', async () => {
     const schema = buildSchema()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let api: any
@@ -102,7 +97,7 @@ describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSche
 
     const aInput = root.querySelector('input[data-id="a"]') as HTMLInputElement
 
-    // Edit A invalid through the DOM — the directive flips `interacted`
+    // Edit A invalid through the DOM: the directive flips `interacted`
     // on path 'a', which arms the upcoming blur to be an interactive blur.
     aInput.dispatchEvent(new FocusEvent('focus'))
     aInput.value = 'invalid'
@@ -120,7 +115,7 @@ describe.each(adapters)('aborted-blur snapshot — $name', ({ useForm, buildSche
     void api.parse('b', { commit: true })
 
     await drainMicrotasks()
-    // Sanity — A's verdict was aborted, so A's bucket stays empty.
+    // Sanity: A's verdict was aborted, so A's bucket stays empty.
     expect(api.errors.a).toEqual([])
 
     // Refocus A and blur without typing. The blur-dedup compares

@@ -1,6 +1,6 @@
 /**
- * `attaform/transforms` — raw node-transform functions for
- * advanced bundler integrations.
+ * `attaform/transforms`, the raw node-transform functions for advanced
+ * bundler integrations.
  *
  * The Vite plugin at `attaform/vite` handles @vitejs/plugin-vue
  * automatically; the Nuxt module at `attaform/nuxt` pushes these

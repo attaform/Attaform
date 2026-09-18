@@ -41,7 +41,7 @@ const attaformModule = (await import('../../src/nuxt')).default
 
 // The mocked `defineNuxtModule` returns a bare `(options, nuxt) => void`.
 // Cast through the mock's real runtime shape to invoke it with a fake
-// Nuxt — a test-harness cast, not a library type gap.
+// Nuxt: a test-harness cast, not a library type gap.
 type ModuleInvoke = (options: Partial<AttaformModuleOptions>, nuxt: FakeNuxt) => void
 const invokeModule = attaformModule as unknown as ModuleInvoke
 

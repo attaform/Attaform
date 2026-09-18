@@ -13,8 +13,8 @@ import type { ArrayOp, BenchAdapter, MountHandle } from '../contract'
 /**
  * The Attaform (Zod 4) row. Identical to the Attaform adapter in every measured
  * respect: same shared `Field` / `ArrayRow` bindings, same render-isolation
- * idiom, same handle. The only difference is the validator it feeds — `useForm`
- * / `useWizard` from `attaform/zod-v4`, over zod v4 schemas (`zodV4SchemaFor`) —
+ * idiom, same handle. The only difference is the validator it feeds, `useForm`
+ * / `useWizard` from `attaform/zod-v4`, over zod v4 schemas (`zodV4SchemaFor`),
  * so the cohort carries both adapter peers and a reader can compare Attaform's
  * zod-v3 and zod-v4 cost side by side.
  */

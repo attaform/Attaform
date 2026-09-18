@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { attaform } from '../../src/vite'
 
 /**
- * SFC-level Vite transform — injects `__ssrAccessed: true` into the
+ * SFC-level Vite transform, injects `__ssrAccessed: true` into the
  * options bag of `useForm(...)` and `injectForm(...)` calls whose
  * binding the surrounding SFC template references. Lets the runtime
  * registry enqueue the form for SSR prefetch BEFORE
@@ -13,7 +13,7 @@ import { attaform } from '../../src/vite'
  * Tests drive the plugin's `transform(code, id)` hook directly with
  * inline SFC strings and assert on the rewritten script-setup
  * output. Coverage corresponds to the rows in the implementation
- * plan's transform-coverage table — the detected cases AND the
+ * plan's transform-coverage table: the detected cases AND the
  * uncovered cases (which must degrade to schema-defaults rather than
  * silently mis-inject).
  */
@@ -39,7 +39,7 @@ function runTransform(code: string, id: string): TransformReturn {
   if (hook === undefined) throw new Error('attaform() did not register a transform hook')
   const handler = typeof hook === 'function' ? hook : hook.handler
   // Vite passes a `this` plugin context here, but the transform doesn't
-  // call any context methods — a fresh empty object satisfies the
+  // call any context methods: a fresh empty object satisfies the
   // handler binding without polluting the test surface.
   const ctx: Record<string, never> = {}
   return handler.call(ctx, code, id) as TransformReturn
@@ -52,7 +52,7 @@ function transformedCode(code: string, id = '/src/Component.vue'): string {
   return result.code
 }
 
-describe('__ssrAccessed transform — bindings referenced by the surrounding template', () => {
+describe('__ssrAccessed transform: bindings referenced by the surrounding template', () => {
   it('injects __ssrAccessed into useForm whose handle is read in an interpolation', () => {
     const sfc = `<script setup lang="ts">
 import { useForm } from 'attaform'
@@ -210,7 +210,7 @@ const form = injectForm()
   })
 })
 
-describe('__ssrAccessed transform — non-injecting cases', () => {
+describe('__ssrAccessed transform: non-injecting cases', () => {
   it('leaves useForm alone when the binding never appears in the template', () => {
     const sfc = `<script setup lang="ts">
 import { useForm } from 'attaform'
@@ -281,7 +281,7 @@ const someKey = 'values'
 </template>
 `
     const output = transformedCode(sfc)
-    // Bare `form` identifier still appears in the template — that
+    // Bare `form` identifier still appears in the template: that
     // counts as a reference. The dynamic key only matters for
     // narrower coverage cases (`form[k].activate()` patterns). MVP
     // is conservative-positive: any identifier reference enqueues.

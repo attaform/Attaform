@@ -1,5 +1,5 @@
 /**
- * Phase 9.10 bench: full submit lifecycle — validate + handleSubmit +
+ * Phase 9.10 bench: full submit lifecycle, validate + handleSubmit +
  * setErrors.
  *
  * The keystroke bench measures a single-leaf mutation in isolation.

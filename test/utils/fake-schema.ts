@@ -9,7 +9,7 @@ import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-cor
 /**
  * A minimal, dependency-free AbstractSchema implementation used by the core
  * test suite. Tests against the core must exercise the schema-agnostic
- * contract without pulling in Zod — that would defeat the purpose of the
+ * contract without pulling in Zod: that would defeat the purpose of the
  * decoupling.
  *
  * Usage:
@@ -24,7 +24,7 @@ import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-cor
  *
  * For tests that need validation failure cases, pass a custom `validator`.
  * The validator can return either a synchronous `SchemaParseResult<F>` or
- * a `Promise` — the schema's `validateAtPath` is always Promise-returning,
+ * a `Promise`: the schema's `validateAtPath` is always Promise-returning,
  * matching the Phase 5.6 `AbstractSchema` contract.
  */
 export function fakeSchema<F extends GenericForm>(
@@ -60,7 +60,7 @@ export function fakeSchema<F extends GenericForm>(
       return false
     },
     getDefaultAtPath(path) {
-      // fakeSchema is data-keyed, not schema-keyed — it can't distinguish
+      // fakeSchema is data-keyed, not schema-keyed: it can't distinguish
       // tuple from unbounded array. To keep the structural-completeness
       // machinery honest in tests:
       //   - Object paths: return the value at the path (lookup).
@@ -83,12 +83,12 @@ export function fakeSchema<F extends GenericForm>(
     getEmptyValueAtPath() {
       // fakeSchema can't model per-type empty values without per-leaf
       // schemas. Return `undefined` so `form.clear` no-ops under the
-      // fake adapter — callers needing real empty-value semantics
+      // fake adapter, callers needing real empty-value semantics
       // should use a Zod adapter.
       return undefined
     },
     arrayShapeAtPath(path) {
-      // fakeSchema can't model element schemas — report every path as
+      // fakeSchema can't model element schemas, report every path as
       // "not a tuple" (`null`). `getDefaultAtPath` yields no element
       // defaults under arrays, so merges pass consumer arrays through
       // unchanged. Tests needing tuple shape semantics override this
@@ -149,7 +149,7 @@ export function fakeSchema<F extends GenericForm>(
       return new Set(['string', 'number', 'boolean', 'object', 'array', 'null', 'undefined'])
     },
     isLeafAtPath(path) {
-      // fakeSchema is data-keyed — derive leaf-ness from the defaults
+      // fakeSchema is data-keyed, derive leaf-ness from the defaults
       // shape. A path resolves to a leaf iff the value at that path
       // exists and is a primitive (string, number, boolean, bigint,
       // null, undefined, Date, function). Objects and arrays descend.
@@ -160,7 +160,7 @@ export function fakeSchema<F extends GenericForm>(
         if (current === null || current === undefined) return false
         if (typeof current !== 'object') return false
         const key = typeof seg === 'number' ? String(seg) : seg
-        // Treat array index out of range as non-existent — descend
+        // Treat array index out of range as non-existent, descend
         // permissively (most callers extending arrays haven't filled
         // the slot yet, and we don't want to terminate prematurely).
         if (Array.isArray(current)) {

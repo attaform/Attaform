@@ -39,61 +39,53 @@ function isUnderStubAncestor<F extends GenericForm>(
 }
 
 /**
- * Reactive field-state accessor. Combines per-field records, DOM
- * focus/blur state, validation errors, and adapter-resolved metadata
- * into a single `FieldState` object suitable for templates:
+ * Reactive field-state accessor, combining per-field records, DOM focus and
+ * blur state, validation errors and adapter-resolved metadata into one
+ * `FieldState` a template can read.
  *
- *   const emailState = getFieldState('email')
- *   emailState.value.dirty, .errors, .focused, .label, ...
+ * Every read goes through a Vue computed, so reactivity stays fine-grained: a
+ * change to one field's focus does not invalidate a computed watching another.
  *
- * All reads go through Vue computeds so consumers get fine-grained
- * reactivity — a change to one field's focus does not invalidate
- * computeds watching another field.
+ * One shape, `FieldState<unknown>`, comes back at every path. At a leaf the
+ * fields read per-leaf primitives; at a container the same fields aggregate
+ * over descendant leaves, disjunction for event presence (dirty, focused,
+ * touched, validating) and conjunction for absence and uniformity (pristine,
+ * valid, blank). A DU container traverses only the active variant, gated by
+ * `hasAtPath` on the live form value.
  *
- * The accessor returns one shape — `FieldState<unknown>` — at every
- * path. At leaf paths, fields read from per-leaf primitives. At
- * container paths, the same fields aggregate over descendant leaves
- * (disjunction for event-presence: dirty/focused/touched/validating;
- * conjunction for absence/uniformity: pristine/valid/blank). DU
- * containers traverse only the active variant via `hasAtPath` on
- * the live form value.
- *
- * Memoised per canonical path key — repeated calls with the same
- * path return the same `ComputedRef` so consumers don't accumulate
- * duplicate Vue subscriptions.
+ * Memoised per canonical path key, so repeated calls return the same
+ * `ComputedRef` and consumers accumulate no duplicate subscriptions.
  */
 export type { FieldState }
 
 /**
- * Internal shape of a field's reactive state minus the derived
- * reducer-fed properties (`displayState`, the `show*` booleans, and
- * `firstError` — see `FieldStateDerivedKey`). The reducer
- * `defaultDisplayState(prev, { field, formMeta, ... })` is invoked with this exact
- * shape on the field side: the keys literally are not present, so a
- * vanilla-JS adopter (or `as`-cast caller) cannot read `field.displayState`
- * from inside their predicate and form a cycle. Pair with `FormMetaBase`
- * for the matching guard on the form-level argument.
+ * A field's reactive state minus the derived reducer-fed properties:
+ * `displayState`, the `show*` booleans and `firstError`. See
+ * `FieldStateDerivedKey`.
+ *
+ * The display reducer receives exactly this shape on the field side, and the
+ * keys are literally absent at runtime, so neither a vanilla-JS adopter nor an
+ * `as`-cast caller can read `field.displayState` inside their predicate and
+ * form a cycle. `FormMetaBase` is the matching guard on the form-level
+ * argument.
  */
 export type FieldStateBase = Omit<FieldState<unknown>, FieldStateDerivedKey>
 
 /**
- * Internal shape of the form's reactive meta minus the derived
- * predicate-fed properties. Same defense-in-depth role as
- * `FieldStateBase` for the second predicate argument. Built in
- * `build-form-api.ts` once per form (where the history options are
- * in scope) and threaded through to the field-state computeds via
- * the `getFormMetaBase` thunk.
+ * The form's reactive meta minus the derived predicate-fed properties, playing
+ * `FieldStateBase`'s role for the reducer's second argument. Built once per
+ * form in `build-form-api.ts`, where the history options are in scope, and
+ * threaded to the field-state computeds through the `getFormMetaBase` thunk.
  */
 export type FormMetaBase = Omit<FormMeta<unknown>, FieldStateDerivedKey>
 
 /**
- * Thunk shape passed to `buildFieldStateAccessor`. Each call to the
- * accessor's returned `computed` invokes this thunk to materialise
- * a fresh `FormMetaBase` snapshot — Vue's reactivity tracks every
- * `Ref.value` read inside, so the field-state computed re-evaluates
- * when (e.g.) `submissionAttempts` changes. Stateless function, not a Ref:
- * we never need to swap predicates at runtime, and a plain function
- * keeps the dependency graph shallow.
+ * The thunk `buildFieldStateAccessor` takes. Each evaluation of the accessor's
+ * computed invokes it for a fresh `FormMetaBase` snapshot, and Vue tracks every
+ * `Ref.value` read inside, so the field-state computed re-evaluates when
+ * `submissionAttempts` and its like change. A stateless function rather than a
+ * Ref: no predicate is swapped at runtime, and a plain function keeps the
+ * dependency graph shallow.
  */
 export type FormMetaBaseGetter = () => FormMetaBase
 
@@ -108,23 +100,21 @@ export function buildFieldStateAccessor<F extends GenericForm>(
   // path.
   const cache = new Map<PathKey, ComputedRef<FieldState<unknown>>>()
 
-  // A cached entry holds its path's `value` and its `original`, so this
-  // cache pins form data rather than bookkeeping alone. Nothing evicted
-  // it, so across a churning dynamic path set it grew with the number of
-  // paths ever read rather than the number the form has: a form editing
-  // a record over a session kept every value it had ever held, measured
-  // at 200 of 200 removed keys still reachable and 12.5 MB pinned by a
-  // form whose value was `{}` (#612).
+  // A cached entry holds its path's `value` and its `original`, so this cache
+  // pins form DATA and not just bookkeeping. Unevicted, it grows with the
+  // number of paths ever read rather than the number the form has: a form
+  // editing a record over a session keeps every value it ever held, measured
+  // at 200 of 200 removed keys still reachable and 12.5 MB pinned by a form
+  // whose value was `{}` (#612).
   //
-  // The shared sweep drops a path the form no longer has from here and
-  // from every sibling per-path cache in one pass. Evicting is invisible
-  // to consumers: `form.fields.<path>` hands back a view proxy from a
-  // separate cache, and that proxy re-resolves through this accessor on
-  // every trap hit rather than capturing a computed, so a dropped entry
-  // is rebuilt on the next read behind the same view identity. Vue
-  // invalidates a live computed through its own subscriptions, so an
-  // effect still holding one keeps it, and keeps it correct, whether or
-  // not this cache still lists it.
+  // The shared sweep drops a path the form no longer has from here and from
+  // every sibling per-path cache in one pass. Eviction is invisible to
+  // consumers: `form.fields.<path>` hands back a view proxy from a separate
+  // cache, and that proxy re-resolves through this accessor on every trap hit
+  // rather than capturing a computed, so a dropped entry is rebuilt on the next
+  // read behind the same view identity. Vue invalidates a live computed through
+  // its own subscriptions, so an effect still holding one keeps it, and keeps
+  // it correct, whether or not this cache lists it.
   sweep.onEvict((key) => cache.delete(key))
 
   return function getFieldState(pathInput: string | Path): ComputedRef<FieldState<unknown>> {
@@ -161,10 +151,9 @@ function resolveFieldMetaAndLabel<F extends GenericForm>(
 }
 
 /**
- * Per-leaf computation of the predicate-safe base shape. Reads the
- * leaf-specific reactive sources only; does NOT compute
- * `showErrors` / `firstError` (those are layered on by
- * `buildLeafFieldState`).
+ * Per-leaf computation of the predicate-safe base shape, reading the
+ * leaf-specific reactive sources only. `buildLeafFieldState` layers the derived
+ * display props on top.
  */
 function buildLeafFieldStateBase<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -179,14 +168,13 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const cell = state.errorCells.get(key)
   const schemaForKey = cell !== undefined && cell.schema.length > 0 ? cell.schema : undefined
   // Synthesize this leaf's blank-required error from its OWN blank membership
-  // rather than reading the whole-form `derivedBlankErrors` Map. That computed
-  // returns a fresh Map identity on ANY blank transition, which woke every
-  // field's computed (P3 vector 2). `blankPaths.has(key)` tracks only this
-  // key's membership (Vue 3.5 reactive Set), so a sibling's blank change no
-  // longer invalidates this field. Byte-identical to the aggregated entry: the
-  // shared builder, gated on the same `isRequiredAtPath`. `aggregateErrorsAt`
-  // now synthesizes the same way for the same reason, so no reader of a blank
-  // error carries the whole-form map as a dep.
+  // rather than reading the whole-form `derivedBlankErrors` map. That computed
+  // takes a fresh identity on ANY blank transition in the form, so reading it
+  // here wakes every field's computed on a sibling's blank change;
+  // `blankPaths.has(key)` tracks this key alone. The entry is identical either
+  // way, the same builder gated on the same `isRequiredAtPath`.
+  // `aggregateErrorsAt` synthesizes the same way for the same reason, so no
+  // reader of a blank error carries the whole-form map as a dep.
   const blankForKey =
     state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
       ? [makeBlankRequiredError(segments)]
@@ -199,31 +187,27 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const validating = (state.fieldValidationCounts.get(key) ?? 0) > 0
   const transforming = (state.fieldTransformCounts.get(key) ?? 0) > 0
   const transformError = state.transformErrors.get(key) ?? null
-  // `valid` mirrors `meta.valid` per-path: when the sub-schema at
-  // this path declares async work, gate the answer on the form-wide
-  // `firstValidationDone` so the surface doesn't lie about a
-  // yet-to-arrive verdict. Sync-only sub-schemas (e.g. a bare
-  // `z.string()` leaf) skip the gate — there's nothing to wait on,
-  // and clamping every such field to `false` at mount would defeat
-  // the green-checkmark UX pattern that `field.valid` is built for.
+  // `valid` mirrors `meta.valid` per path: where the sub-schema declares async
+  // work, gate the answer on the form-wide `firstValidationDone` so the surface
+  // does not lie about a verdict still in flight. A sync-only sub-schema skips
+  // the gate, having nothing to wait on; clamping every such field false at
+  // mount would defeat the green-checkmark pattern `field.valid` exists for.
   const gated = state.pathHasAsyncValidationByKey(key, segments) && !state.firstValidationDone.value
-  // Stub-state orphan gate: when a leaf is structurally absent from
-  // `form.value` AND any DU ancestor is in stub state (its disc value
-  // isn't a known variant), the surface MUST NOT report `valid: true`.
-  // The parent is broken; pretending the descendant is fine hides
-  // it from error-summary UIs. Inactive-variant siblings under a
-  // VALID disc are a different case — they read as stable stubs
-  // (`valid: true`, errors: []) so unconditional template bindings
-  // keep working across variants.
+  // Stub-state orphan gate. A leaf structurally absent from `form.value` under
+  // a DU ancestor in stub state, its disc naming no variant, MUST NOT report
+  // `valid: true`: the parent is broken, and calling the descendant fine hides
+  // it from an error-summary UI. An inactive-variant sibling under a VALID disc
+  // is different, reading as a stable stub so an unconditional template binding
+  // keeps working across variants.
   const isOrphan =
     segments.length > 0 &&
     !hasAtPath(state.form.value, segments) &&
     isUnderStubAncestor(state, segments)
   const valid = !gated && errors.length === 0 && !validating && !isOrphan
-  // Reads through the DOM-binding slot: `null` (never armed) means no
-  // element was ever registered anywhere in this app, so the empty
-  // fallback below is the truth, not a degradation. The shallowRef read
-  // re-tracks when the binding arms.
+  // Reads through the DOM-binding slot. A `null` slot, never armed, means no
+  // element was registered anywhere in this app, so the empty fallback is the
+  // truth rather than a degradation. The `shallowRef` read re-tracks when the
+  // binding arms.
   const elementRecord = state.domBinding.value?.elements.get(key)
   const elementsArr: readonly HTMLElement[] = elementRecord
     ? Object.freeze([...elementRecord.elements])
@@ -246,9 +230,8 @@ function buildLeafFieldStateBase<F extends GenericForm>(
     updatedAt: record?.updatedAt ?? null,
     errors,
     // A leaf has no descendants, so its own-bucket errors ARE its subtree
-    // errors. Reuse the same array reference: referential `ownErrors ===
-    // errors`, and no second read of the whole-form `derivedBlankErrors`
-    // map (preserves the P3 blank-reactivity optimization above).
+    // errors. Reuse the array reference, which makes `ownErrors === errors`
+    // and avoids a second read of the whole-form `derivedBlankErrors` map.
     ownErrors: errors,
     validating,
     valid,
@@ -268,11 +251,11 @@ function buildLeafFieldStateBase<F extends GenericForm>(
 }
 
 /**
- * Per-leaf full computation: builds the base, then layers on
- * `displayState` / the `show*` booleans / `firstError` via the display
- * reducer. The base object handed to the reducer has none of those keys
- * at runtime (it's the literal `FieldStateBase` we just constructed) —
- * recursion is impossible regardless of TS vs vanilla-JS.
+ * Per-leaf full computation: build the base, then layer `displayState`, the
+ * `show*` booleans and `firstError` on through the display reducer. The base
+ * handed to the reducer is the literal `FieldStateBase`, holding none of those
+ * keys at runtime, so recursion is impossible in TypeScript and vanilla JS
+ * alike.
  */
 function buildLeafFieldState<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -297,29 +280,25 @@ function buildLeafFieldState<F extends GenericForm>(
 }
 
 /**
- * Enumerate the active descendant-leaf paths under a container in
- * O(subtree), emitting one path per present leaf. This is the linear-time
- * replacement for scanning the whole `originals` map per container, which
- * made `form.list` and every post-array-op re-render O(N^2) in the row
- * count (one container build cost O(total form leaves); N element
- * containers cost O(N^2)).
+ * Enumerate the active descendant-leaf paths under a container in O(subtree),
+ * emitting one path per present leaf. Scanning the whole `originals` map per
+ * container instead costs O(total form leaves) each, which makes `form.list`
+ * and every post-array-op re-render O(N^2) in the row count.
  *
- * Descends only present plain-object / array nodes — the same descendable
- * boundary `diffAndApply` seeds `originals` with (`isPlainRecord` plus
- * `Array.isArray`) — and emits every non-descendable slot, INCLUDING a
- * present-but-`undefined` slot. That last case matters: the `hasAtPath`
- * gate this walk replaces keys on key-existence, not value-definedness, so
- * a leaf an optional field was written then cycled back to `undefined`
- * stays present in `form.value` and must still roll up its field-record
- * state. The caller re-gates each emitted path on `originals.has`, so the
- * visited set is exactly the old scan's
- * `{ leaf in originals : strict-descendant-of(base) ∧ present }`.
+ * It descends only present plain-object and array nodes, the descendable
+ * boundary `diffAndApply` seeds `originals` with, and emits every
+ * non-descendable slot INCLUDING a present-but-`undefined` one. That last case
+ * matters, because presence keys on key existence rather than value
+ * definedness: a leaf an optional field was written and then cycled back to
+ * `undefined` stays present in `form.value` and must still roll up its
+ * field-record state. The caller re-gates each emitted path on
+ * `originals.has`, so the visited set is exactly
+ * `{ leaf in originals : strict-descendant-of(base) and present }`.
  *
- * Assumes a schema leaf never holds a descendable value: the slim-primitive
- * write gate rejects object / array writes to a schema-leaf path, so the
- * one shape this walk and an `originals` leaf could disagree on — a leaf
- * whose live value became a container — is unreachable through the public
- * API.
+ * It assumes a schema leaf never holds a descendable value. The slim-primitive
+ * write gate rejects an object or array write to a schema-leaf path, so the one
+ * shape this walk and an `originals` leaf could disagree on, a leaf whose live
+ * value became a container, is unreachable through the public API.
  */
 function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path) => void): void {
   if (Array.isArray(value)) {
@@ -335,11 +314,10 @@ function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path
   }
   if (isPlainRecord(value)) {
     for (const k of consumerKeys(value)) {
-      // Guarded because this walks stored consumer values and runs
-      // inside a `computed`. An accessor that throws here would escape
-      // on every READ of `meta.dirty` or any container field state, not
-      // just on the write that stored it, so the form would be
-      // permanently unrenderable rather than momentarily wrong.
+      // Guarded because this walks stored consumer values inside a `computed`.
+      // A throwing accessor would escape on every READ of `meta.dirty` or any
+      // container field state, not only on the write that stored it, leaving
+      // the form permanently unrenderable rather than momentarily wrong.
       const child = readConsumerProp(value, k)
       if (Array.isArray(child) || isPlainRecord(child)) {
         visitActiveLeafPaths(child, [...base, k], visit)
@@ -351,24 +329,22 @@ function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path
 }
 
 /**
- * Per-container aggregation for the predicate-safe base shape.
- * Rolls up descendant-leaf state per the rule sheet; does NOT
- * compute `showErrors` / `firstError`.
+ * Per-container aggregation for the predicate-safe base shape, rolling up
+ * descendant-leaf state. The derived display props are layered on separately.
  *
- * Aggregation rules (matches `docs/api/use-form-return.md`):
- *   - pristine / valid / blank: conjunction (all descendants)
- *   - dirty: !pristine
- *   - focused / blurred / touched / connected / validating: disjunction (any descendant)
- *   - errors: concat + sort by `pathOrdinal` (schema-declaration order)
- *   - updatedAt: max ISO timestamp (lex-compared) over descendants
- *   - value / original: live subtree at the path
- *   - element / elements: nothing bound at containers — null / empty
- *   - label / description / placeholder / meta: from `getFieldMetaAtPath`
+ * The rules, matching `docs/api/use-form-return.md`:
+ *   - pristine, valid, blank: conjunction over all descendants
+ *   - dirty: the negation of pristine
+ *   - focused, blurred, touched, connected, validating: disjunction
+ *   - errors: concatenated and sorted by schema-declaration ordinal
+ *   - updatedAt: the maximum ISO timestamp, compared lexically
+ *   - value, original: the live subtree at the path
+ *   - element, elements: nothing binds at a container, so null and empty
+ *   - label, description, placeholder, meta: from `getFieldMetaAtPath`
  *
- * Exported so `build-form-api.ts` can build a `FormMetaBase` (the
- * predicate's second arg) without going through the cached
- * field-state accessor — that route would recurse through the
- * root path's own `showErrors` computation.
+ * Exported so `build-form-api.ts` can build a `FormMetaBase` without going
+ * through the cached field-state accessor, which would recurse through the root
+ * path's own `showErrors` computation.
  */
 export function buildContainerFieldStateBase<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -381,30 +357,22 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   readonly transformingSince: number | null
   readonly revealedDescendantError: boolean
 } {
-  // Read live form value first so the access participates in dep
-  // tracking; the discriminator key write that switches a DU variant
-  // shows up here and re-runs the computed. `value` is the container's
-  // own subtree navigated from that same root (identical to
-  // `getValueAtPath(segments)`), so the single read anchors the dep and
-  // feeds the descendant walk below.
+  // Read the live form value first, so the access participates in dep tracking
+  // and the discriminator write that switches a DU variant re-runs this
+  // computed. `value` is the container's own subtree navigated from that same
+  // root, so one read anchors the dep and feeds the descendant walk below.
   const formValue = state.form.value
   const value = getAtPath(formValue, segments)
-  // `key` is the canonical key of `segments` (every caller derives it
-  // via `canonicalizePath` already); use it directly instead of
-  // re-canonicalizing on every read.
+  // `key` is already the canonical key of `segments`, every caller having
+  // derived it, so use it rather than re-canonicalizing per read.
   const original = state.originals.get(key)?.value
-  // Roll up active descendant leaves under the container path. The walk
-  // descends `value` (the live subtree read just above) in O(subtree),
-  // emitting one path per present leaf, then re-gates each on
-  // `originals.has`. That makes the visited set exactly the old
-  // whole-`originals`-scan's `{ leaf in originals : strict-descendant ∧
-  // present }` — walking the live value already filters to the active DU
-  // variant (a switch reshapes `value` wholesale), and the `originals`
-  // gate drops present leaves the form never seeded into its baseline.
-  // The previous scan cost O(total form leaves) per container, so
-  // `form.list` over N rows and every post-array-op re-render were
-  // O(N^2); this is O(N). `keyForSegments` mints each leaf's canonical
-  // key without the spy-counted `canonicalizePath`.
+  // Roll up the active descendant leaves. The walk descends `value`, the live
+  // subtree read above, in O(subtree), emitting one path per present leaf and
+  // re-gating each on `originals.has`. Walking the live value already filters
+  // to the active DU variant, a switch reshaping `value` wholesale, and the
+  // `originals` gate drops a present leaf the form never seeded into its
+  // baseline. `keyForSegments` mints each leaf's canonical key without the
+  // spy-counted `canonicalizePath`.
   let pristine = true
   let blank = true
   let dirty = false
@@ -420,33 +388,30 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   let transformingSince: number | null = null
   let updatedAt: string | null = null
   let asyncPending = false
-  // For the descendant display rollup: submit opens every gate at once;
-  // otherwise each error gates on whether a leaf at-or-under it has been
-  // blurred-after-interaction. Collected here from the one walk we already do.
+  // For the descendant display rollup: a submit opens every gate at once, and
+  // otherwise each error gates on whether a leaf at or under it has been
+  // blurred after interaction. Collected from the one walk already running.
   const submissionAttempts = state.submissionAttempts.value
   const blurredLeafSegments: Path[] = []
   // Collect this container's active descendant leaves by walking its own
-  // subtree in O(subtree) (see `visitActiveLeafPaths`), re-gated on
-  // `originals.has`. Keeping collection separate from the reduction below
-  // lets the rollup stay a plain `for...of` whose `let` accumulators narrow
-  // normally — accumulators mutated from inside the walk callback would read
-  // as never-reassigned to the type-checker.
+  // subtree, re-gated on `originals.has`; see `visitActiveLeafPaths`. Keeping
+  // collection separate from the reduction below lets the rollup stay a plain
+  // `for...of` whose `let` accumulators narrow normally: accumulators mutated
+  // from inside the walk callback read as never-reassigned to the checker.
   const descendantLeaves: { key: PathKey; segments: Path }[] = []
   visitActiveLeafPaths(value, segments, (leafSegments) => {
     const { key: leafKey } = keyForSegments(leafSegments)
     const entry = state.originals.get(leafKey)
-    // The old scan iterated `originals` directly, so a present leaf the
-    // form never seeded into its baseline (e.g. an optional value absent
-    // from the schema-initial shape) contributes nothing here.
+    // A present leaf the form never seeded into its baseline, an optional
+    // value absent from the schema-initial shape, contributes nothing.
     if (entry === undefined) return
     descendantLeaves.push({ key: leafKey, segments: entry.segments })
   })
   for (const { key: leafKey, segments: leafSeg } of descendantLeaves) {
     const leafRecord = state.fields.get(leafKey)
-    // The by-key variants of `isPristineAtPath` and
-    // `pathHasAsyncValidation` skip the canonicalize round-trip
-    // (`leafKey` IS the canonical key for `leafSeg`), keeping
-    // the per-leaf walk allocation-free on the meta hot path.
+    // The by-key variants skip the canonicalize round-trip, `leafKey` being
+    // the canonical key for `leafSeg`, which keeps the per-leaf walk
+    // allocation-free on the meta hot path.
     if (!state.isPristineAtPathByKey(leafKey, leafSeg)) {
       pristine = false
       dirty = true
@@ -463,12 +428,12 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (leafRecord?.connected === true) connected = true
     if ((state.fieldValidationCounts.get(leafKey) ?? 0) > 0) {
       validating = true
-      // Anchor the container spinner at its earliest still-validating leaf,
-      // so a row's show-delay window measures from the first descendant to
-      // start rather than resetting each time another leaf joins the streak.
-      // Only a leaf whose own reveal gate is open contributes the anchor: a
-      // descendant validating on 'change' before it has been blurred would
-      // never show its own spinner, so the container must not show one for it.
+      // Anchor the container spinner at its earliest still-validating leaf, so
+      // a row's show-delay window measures from the first descendant to start
+      // rather than resetting as each further leaf joins the streak. Only a
+      // leaf whose own reveal gate is open contributes the anchor: a descendant
+      // validating on 'change' before being blurred would never show its own
+      // spinner, so the container must not show one for it.
       const leafGateOpen = submissionAttempts > 0 || leafRecord?.blurredAfterInteraction === true
       const since = state.fieldValidatingSince.get(leafKey)
       if (
@@ -480,10 +445,9 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     }
     if ((state.fieldTransformCounts.get(leafKey) ?? 0) > 0) {
       transforming = true
-      // Anchor the container's transform spinner at its earliest still-
-      // transforming leaf, same reveal-gate rule as validating: only a
-      // leaf whose own gate is open contributes the anchor, so a
-      // descendant transforming pre-reveal never lights the container.
+      // Anchor the container's transform spinner at its earliest
+      // still-transforming leaf, under the same reveal-gate rule as validating,
+      // so a descendant transforming pre-reveal never lights the container.
       const leafGateOpen = submissionAttempts > 0 || leafRecord?.blurredAfterInteraction === true
       const since = state.fieldTransformingSince.get(leafKey)
       if (
@@ -501,36 +465,34 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       if (updatedAt === null || ts > updatedAt) updatedAt = ts
     }
   }
-  // A structural change to a descendant array — a reorder, insert, or
-  // removal — is dirty even when every surviving element still matches its
-  // own baseline, because per-element state (including the baseline) travels
-  // with the element. The positional leaf walk above can't see that on its
-  // own, so consult the identity tracker's order comparison.
+  // A structural change to a descendant array, a reorder, insert or removal,
+  // is dirty even when every surviving element still matches its own baseline,
+  // because per-element state including that baseline travels with the element.
+  // The positional leaf walk above cannot see it, so consult the identity
+  // tracker's order comparison.
   if (!dirty && state.hasStructuralChangeUnder(segments)) {
     pristine = false
     dirty = true
   }
   // A baseline-present object or array replaced wholesale by a non-container
-  // (e.g. `setValue('profile', undefined)`) drops every leaf under it from the
-  // live value at once, so the positional walk above never visits the vanished
-  // leaves and the array tracker (array -> array only) can't see it either. Ask
-  // the store whether such a subtree under this container is still absent.
+  // drops every leaf under it at once, so the positional walk never visits the
+  // vanished leaves and the array tracker, which follows array-to-array only,
+  // cannot see it. Ask the store whether such a subtree is still absent.
   if (!dirty && state.hasRemovedSubtreeUnder(segments)) {
     pristine = false
     dirty = true
   }
-  // Aggregate errors at this prefix. Drives `form.fields(p).errors`,
-  // `form.errors(p)`, and `form.meta.errors` through one helper so
-  // the three surfaces read identically. Active-variant filter
-  // applied via the same `hasAtPath` gate the descendant walk used.
-  // `valid` derives from this single source so the two fields can
-  // never disagree.
+  // Aggregate errors at this prefix. `form.fields(p).errors`, `form.errors(p)`
+  // and `form.meta.errors` all read through this one helper, so the three
+  // surfaces cannot differ, and the active-variant filter uses the same
+  // `hasAtPath` gate the descendant walk did. `valid` derives from the same
+  // source, so the two fields can never disagree.
   const errors = aggregateErrorsAt(state, segments, key)
   // Descendant display rollup: does any error UNDER this container have its
-  // owning field's reveal gate open? Iterates the aggregated errors (not just
-  // the leaf walk) so a cross-field error pinned at an intermediate object is
-  // included. The container's OWN-path error is left to the reducer's own-path
-  // rule; this adds only the descendant dimension the aggregate base hides.
+  // owning field's reveal gate open? It iterates the aggregated errors rather
+  // than the leaf walk, so a cross-field error pinned at an intermediate object
+  // counts. The container's OWN-path error is the reducer's own-path rule; this
+  // adds only the descendant dimension the aggregate base hides.
   const revealedDescendantError =
     errors.length > 0 &&
     errors.some((e) => {
@@ -544,24 +506,21 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       // error gates on any blurred leaf beneath it.
       return blurredLeafSegments.some((s) => isPathPrefix(ePath, s))
     })
-  // A container's own sub-schema can also declare async work — a
-  // top-level `.refine(async ...)` on the root, or a cross-field
-  // refine on a sub-object — and those don't show up in any per-
-  // leaf `pathHasAsyncValidation` reading. Check the container's
-  // OWN path too, so the firstValidationDone gate fires until that
-  // pass lands.
+  // A container's own sub-schema can declare async work too, a top-level
+  // `.refine(async ...)` on the root or a cross-field refine on a sub-object,
+  // and neither shows up in a per-leaf reading. Check the container's OWN path,
+  // so the `firstValidationDone` gate holds until that pass lands.
   if (!asyncPending && state.pathHasAsyncValidationByKey(key, segments)) asyncPending = true
   // A transform or validation registered directly on THIS container path runs
-  // at the container key itself, not at a descendant leaf — the walk above
-  // skips self (`segments.length === entry.segments.length`). The file
-  // directive is the canonical case: `register('roster', { transforms })` on
-  // an `<input type="file">` whose schema slot is an array normalizes the
-  // picked File(s) into the array value at the container path. Fold the
-  // container's own in-flight transform / validation state in so
-  // `transforming` / `validating` / `busy` / `valid` and the spinner anchors
-  // reflect it, exactly as a leaf reflects its own. The anchor is set
-  // unconditionally (the container is its own field; the display reducer
-  // applies the container's reveal gate), matching the leaf builder.
+  // at the container key, not at a descendant leaf, and the walk above skips
+  // self. The file directive is the canonical case:
+  // `register('roster', { transforms })` on an `<input type="file">` whose
+  // schema slot is an array normalizes the picked files into the array value at
+  // the container path. Fold the container's own in-flight state in, so
+  // `transforming`, `validating`, `busy`, `valid` and the spinner anchors
+  // reflect it as a leaf reflects its own. The anchor is set unconditionally,
+  // the container being its own field and the reducer applying its reveal
+  // gate, matching the leaf builder.
   if ((state.fieldValidationCounts.get(key) ?? 0) > 0) {
     validating = true
     const since = state.fieldValidatingSince.get(key)
@@ -574,14 +533,13 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (since !== undefined && (transformingSince === null || since < transformingSince))
       transformingSince = since
   }
-  // A directive registered directly on THIS container path -- the file
-  // directive above, and a composite third-party host bound to an array /
-  // object via `v-register` -- records its interaction state on the
-  // container's OWN record, which the descendant walk skips (it visits strict
-  // descendants only). Fold those own-record flags into the disjunction so a
-  // directly-bound container surfaces its own connect / focus / touch state,
-  // exactly as a leaf reflects its own. A container nothing binds directly has
-  // no own record, so this is a no-op for the common case.
+  // A directive registered directly on THIS container path, the file directive
+  // above or a composite third-party host bound to an array or object, records
+  // its interaction state on the container's OWN record, which the descendant
+  // walk skips by visiting strict descendants only. Fold those flags into the
+  // disjunction, so a directly-bound container surfaces its own connect, focus
+  // and touch state. A container nothing binds directly has no own record, so
+  // this is a no-op in the common case.
   const ownRecord = state.fields.get(key)
   if (ownRecord !== undefined) {
     if (ownRecord.focused === true) focused = true
@@ -611,19 +569,19 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       elements: EMPTY_ELEMENTS,
       updatedAt,
       errors,
-      // The container's OWN bucket only (this exact path), excluding every
-      // descendant that `errors` rolls up: a cross-field `.refine()` here,
-      // or `setErrors` pinned at this node. The same raw union the leaf
-      // builds from the three stores; the container already depends on all
-      // three via `aggregateErrorsAt`, so there's no new reactivity cost.
+      // The container's OWN bucket at this exact path, excluding every
+      // descendant `errors` rolls up: a cross-field `.refine()` here, or a
+      // `setErrors` pinned at this node. The same raw union the leaf builds
+      // from the three stores, and the container already depends on all three
+      // through `aggregateErrorsAt`, so it costs no new reactivity.
       ownErrors: state.getErrorsForPath(segments),
       validating,
       valid,
       transforming,
       busy: transforming || validating,
-      // A container surfaces its OWN transform failure (a transform registered
-      // on the container path, e.g. a file normalizer) but never rolls up a
-      // descendant leaf's failure — that stays a per-field channel.
+      // A container surfaces its OWN transform failure, from a transform
+      // registered on the container path such as a file normalizer, and never
+      // rolls up a descendant's: that stays a per-field channel.
       transformError: ownTransformError,
       path: segments,
       ...computeFieldIdentity(formInstanceId, state.formKey, key),
@@ -667,21 +625,20 @@ function buildContainerFieldState<F extends GenericForm>(
 }
 
 /**
- * Layer `displayState`, the four `show*` booleans, and `firstError`
- * onto a freshly-computed base. Shared by leaf and container paths so
- * the reducer runs identically at every depth.
+ * Layer `displayState`, the four `show*` booleans and `firstError` onto a
+ * freshly-computed base. Shared by leaf and container paths, so the reducer
+ * runs identically at every depth.
  *
- * `firstError` is `errors[0]` — deterministic because errors are
- * already sorted by schema-declaration order (within a leaf: schema →
- * blank → user concat; across a container: `pathOrdinal` bucket sort).
+ * `firstError` is `errors[0]`, deterministic because errors are already sorted
+ * by schema-declaration order: within a leaf the schema, blank and user concat;
+ * across a container the ordinal bucket sort.
  *
- * The reducer runs UNCONDITIONALLY through the per-form display engine,
- * which threads the path's previous `DisplayMachine` and the injected
- * clock so the timing policy (the anti-flash spinner) can compute the
- * next verdict. It resolves the full idle/pending/error/success machine,
- * not just error visibility, so it must see the no-error states too. The
- * four `show*` booleans are pure projections of the single
- * `machine.display`, so they can never disagree with it.
+ * The reducer runs UNCONDITIONALLY through the per-form display engine, which
+ * threads the path's previous `DisplayMachine` and the injected clock so the
+ * anti-flash timing policy can compute the next verdict. It resolves the whole
+ * idle / pending / error / success machine rather than error visibility alone,
+ * so it must see the no-error states too. The four `show*` booleans are pure
+ * projections of the single `machine.display` and can never disagree with it.
  */
 function decorateWithDerivedProps<F extends GenericForm>(
   base: FieldStateBase,
@@ -708,19 +665,19 @@ function decorateWithDerivedProps<F extends GenericForm>(
     now: state.ssr ? 0 : Date.now(),
   }
   const machine: DisplayMachine = state.displayEngine.resolve(key, ctx, defaultDisplayState)
-  // Container rollup: surface a descendant's gated error (or a nested
-  // cross-field error) at the container, unless a validation is in flight
-  // (pending wins). The reducer already resolves the field's own-path error
-  // and the anti-flash timing; this only adds the descendant dimension it
-  // cannot see from the aggregate base. The four `show*` booleans below
-  // project from this single value, so the exactly-one-true invariant holds
-  // by construction.
-  // form.meta (the root) also reads as pending while a submit runs its own
-  // validation pass. The submit clears the per-field anchors, so the rollup
-  // cannot see that window; gating on a live submit keeps everyday per-field
-  // validation on the anti-flashed rollup path, and the handler phase
-  // (submitting with no active validation) is never pending, since show*
-  // tracks validation, not submission.
+  // Container rollup: surface a descendant's gated error, or a nested
+  // cross-field error, at the container, unless a validation is in flight,
+  // where pending wins. The reducer already resolves the field's own-path error
+  // and the anti-flash timing, so this adds only the descendant dimension it
+  // cannot see from the aggregate base, and the `show*` booleans below project
+  // from this one value, so exactly-one-true holds by construction.
+  //
+  // The root also reads pending while a submit runs its own validation pass.
+  // The submit clears the per-field anchors, so the rollup cannot see that
+  // window, and gating on a live submit keeps everyday per-field validation on
+  // the anti-flashed path. The handler phase, submitting with no active
+  // validation, is never pending, since `show*` tracks validation rather than
+  // submission.
   const submitValidating = isRoot && state.submitting.value && state.activeValidations.value > 0
   const resolvedDisplayState: DisplayState =
     machine.display === 'pending' || submitValidating
@@ -728,10 +685,10 @@ function decorateWithDerivedProps<F extends GenericForm>(
       : revealedDescendantError
         ? 'error'
         : machine.display
-  // A disabled form shows no field verdict: value writes no-op and the
-  // field is inert, so error / pending / success all stand down to
-  // `'idle'`. The engine still ran above, so its per-path machine state
-  // stays coherent for when the form is re-enabled.
+  // A disabled form shows no field verdict: value writes no-op and the field
+  // is inert, so error, pending and success all stand down to idle. The engine
+  // still ran above, so its per-path machine state stays coherent for when the
+  // form is re-enabled.
   const displayState: DisplayState = base.disabled === true ? 'idle' : resolvedDisplayState
   return {
     ...base,
@@ -746,14 +703,13 @@ function decorateWithDerivedProps<F extends GenericForm>(
 }
 
 /**
- * Walk the merged error stores at every leaf descendant of `prefix`,
- * filter inactive variants via `hasAtPath`, and return the
- * concatenated errors sorted by schema-declaration order
- * (`pathOrdinals` — same ordering metaErrors uses today).
+ * Walk the merged error stores at every leaf descendant of `prefix`, filter
+ * inactive variants through `hasAtPath`, and return the concatenated errors
+ * sorted by schema-declaration ordinal.
  *
- * Shared by container `errors` aggregation here and by the top-level
- * `metaErrors` / `form.errors(path)` aggregation in `build-form-api.ts`
- * — one helper, three call sites, no drift.
+ * Shared by the container `errors` aggregation here and by `metaErrors` and
+ * `form.errors(path)` in `build-form-api.ts`: one helper, three call sites, no
+ * drift.
  */
 export function aggregateErrorsAt<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -769,26 +725,22 @@ export function aggregateErrorsAt<F extends GenericForm>(
     // The index window is a superset (it is a key-range, not a prefix
     // test), so membership is still decided here.
     if (!isPathPrefix(prefix, segments)) continue
-    // Skip inactive variants (e.g. the inactive arm of a discriminated
-    // union after a switch). The root bucket `[]` (global / root
-    // `.refine()` errors, `setErrors`) has `segments.length === 0` and
-    // is never variant-bound, so the `segments.length > 0` guard always
-    // retains it. Container-level errors (cross-field refines on a
-    // container path) are filtered when their container path is
-    // unreachable; the refine pinned the error at the container, not at
-    // any particular leaf.
+    // Skip an inactive variant, the unselected arm of a discriminated union
+    // after a switch. The root bucket, holding global and root-refine errors
+    // and `setErrors` entries, has no segments and is never variant-bound, so
+    // the length guard always retains it. A container-level error, from a
+    // cross-field refine, is filtered when its container path is unreachable,
+    // the refine having pinned it at the container rather than at a leaf.
     if (segments.length > 0 && !hasAtPath(formValue, segments)) continue
-    // One bucket per path, filled schema -> blank -> user. Ordinals are
-    // injective over paths, so gathering a path's three lists together
-    // here is the same order the three separate store passes produced.
+    // One bucket per path, filled schema, then blank, then user. Ordinals are
+    // injective over paths, so gathering a path's three lists here yields the
+    // order three separate store passes would.
     const cell = cells.get(key)
-    // Synthesized per path from its OWN blank membership, for the same
-    // reason the leaf base does it (see `buildLeafFieldStateBase`): the
-    // whole-form `derivedBlankErrors` map returns a fresh identity on
-    // ANY blank transition in the form, so reading it here would give
-    // every container a dep on every other container's blanks. Same
-    // builder, same `isRequiredAtPath` gate, so the entry is identical
-    // to the one that map would have held.
+    // Synthesized per path from its OWN blank membership, for the reason
+    // `buildLeafFieldStateBase` gives: the whole-form `derivedBlankErrors` map
+    // takes a fresh identity on ANY blank transition, so reading it here would
+    // give every container a dep on every other container's blanks. Same
+    // builder and same gate, so the entry is identical.
     const blankList =
       state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)
         ? [makeBlankRequiredError(segments)]
@@ -812,8 +764,7 @@ export function aggregateErrorsAt<F extends GenericForm>(
   return [...buckets.entries()].sort(([a], [b]) => a - b).flatMap(([, errs]) => errs)
 }
 
-// Frozen empty array shared across "no elements bound" reads so
-// consumers can `===`-compare against a stable reference and the
-// computed doesn't allocate a new array on every re-evaluation when
-// the path has no registered elements.
+// One frozen empty array shared by every "no elements bound" read, so
+// consumers can compare against a stable reference and the computed allocates
+// nothing per re-evaluation at a path with no registered elements.
 const EMPTY_ELEMENTS: readonly HTMLElement[] = Object.freeze([])

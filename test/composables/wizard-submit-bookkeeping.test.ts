@@ -48,7 +48,7 @@ const settle = async (): Promise<void> => {
 const accountSchema = z.object({ email: z.string().min(3, 'too short') })
 const noteSchema = z.object({ note: z.string().min(1, 'note required') })
 
-describe('useWizard — what a whole-wizard submit writes', () => {
+describe('useWizard: what a whole-wizard submit writes', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -147,7 +147,7 @@ describe('useWizard — what a whole-wizard submit writes', () => {
 
     // The noop form behind a string slot is processed like any other step:
     // it validates trivially, and its `submitted` is left alone too. (Its
-    // own meta is unreachable by design — a string slot's entry in
+    // own meta is unreachable by design: a string slot's entry in
     // `wizard.forms` is typed `AnyForm`, which carries no schema surface.)
     expect(result.wizard.done).toBe(true)
     expect(result.wizard.statuses['wsb-noop-review']?.submitted).toBe(false)

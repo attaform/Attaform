@@ -6,8 +6,8 @@
  * schema author declared a `.default()` at by diffing the with-defaults
  * value tree against the schema's BLANK baseline. That baseline used to
  * come from a second full `getDefaultValues({ useDefaultSchemaValues:
- * false })` pass — a whole-schema clone (`getSlimSchema`) plus up to two
- * `safeParse`s — even though the diff only ever reads the value tree.
+ * false })` pass: a whole-schema clone (`getSlimSchema`) plus up to two
+ * `safeParse`s, even though the diff only ever reads the value tree.
  *
  * Bust 3 swaps that pass for the raw `deriveDefault(false)` walk the
  * factory already exposes as `getEmptyValueAtPath([])`, which is ~32x
@@ -19,7 +19,7 @@
  * them and the equivalence has to hold for each.
  *
  * If a future change makes `getEmptyValueAtPath([])` and the slim
- * `getDefaultValues(false)` pass drift, this fails — that drift would
+ * `getDefaultValues(false)` pass drift, this fails: that drift would
  * silently move authored-path filtering, so it must surface here.
  */
 import { describe, it, expect } from 'vitest'
@@ -92,7 +92,7 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
   for (const [name, schema] of Object.entries(shapes)) {
     const built = adapter(schema)('authored-baseline-probe', { maxRecursionDepth: 64 })
 
-    it(`raw blank baseline equals the slim-parsed baseline — ${name}`, () => {
+    it(`raw blank baseline equals the slim-parsed baseline: ${name}`, () => {
       const slimPassBaseline = built.getDefaultValues({
         useDefaultSchemaValues: false,
       }).data
@@ -100,7 +100,7 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
       expect(rawBaseline).toStrictEqual(slimPassBaseline)
     })
 
-    it(`authored-path set is identical from either baseline — ${name}`, () => {
+    it(`authored-path set is identical from either baseline: ${name}`, () => {
       const withDefaults = built.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: undefined,

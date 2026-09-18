@@ -11,7 +11,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 /**
  * Stress-scenario coverage for the v2 wizard. Each describe block
  * targets a specific composition probe from the plan's S5-S31
- * register — function-slot branching, lazy slot deep-links,
+ * register, function-slot branching, lazy slot deep-links,
  * ghost forms, SSR mixed-slot hydration, special-character step
  * keys, and the no-router fallback path. Each scenario exercises
  * an interaction that the focused per-feature files don't catch
@@ -47,7 +47,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('S2 — branching via function slot, live-values steer', () => {
+describe('S2: branching via function slot, live-values steer', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -153,7 +153,7 @@ describe('S2 — branching via function slot, live-values steer', () => {
   })
 })
 
-describe('S4 — mixed wizard with review surfaces', () => {
+describe('S4: mixed wizard with review surfaces', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -196,7 +196,7 @@ describe('S4 — mixed wizard with review surfaces', () => {
   })
 })
 
-describe('S6 — deep-link restore to a lazy slot resolves on navigation-land', () => {
+describe('S6: deep-link restore to a lazy slot resolves on navigation-land', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -280,7 +280,7 @@ describe('S6 — deep-link restore to a lazy slot resolves on navigation-land', 
   })
 })
 
-describe('S10 — function slot returns undefined drops the slot', () => {
+describe('S10: function slot returns undefined drops the slot', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -306,7 +306,7 @@ describe('S10 — function slot returns undefined drops the slot', () => {
   })
 })
 
-describe('S10b — function / lazy slot returns an undeclared string key', () => {
+describe('S10b: function / lazy slot returns an undeclared string key', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -407,7 +407,7 @@ describe('S10b — function / lazy slot returns an undeclared string key', () =>
   })
 })
 
-describe('S11 — function slot returns a ghost form (not statically listed)', () => {
+describe('S11: function slot returns a ghost form (not statically listed)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -440,7 +440,7 @@ describe('S11 — function slot returns a ghost form (not statically listed)', (
   })
 })
 
-describe('S14 — SSR mixed-slot wizard hydrates without mismatch', () => {
+describe('S14: SSR mixed-slot wizard hydrates without mismatch', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -484,7 +484,7 @@ describe('S14 — SSR mixed-slot wizard hydrates without mismatch', () => {
   })
 })
 
-describe('S22 — no injected resolver + no router-style restore still works', () => {
+describe('S22: no injected resolver + no router-style restore still works', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard')
@@ -504,12 +504,12 @@ describe('S22 — no injected resolver + no router-style restore still works', (
     expect(result.currentStep).toBe('s22-a')
     await result.next()
     expect(result.currentStep).toBe('s22-b')
-    // URL is untouched — restore/persist were disabled.
+    // URL is untouched, restore/persist were disabled.
     expect(new URL(window.location.href).searchParams.get('step')).toBeNull()
   })
 })
 
-describe('S26 — step keys with special characters round-trip through ?step=', () => {
+describe('S26: step keys with special characters round-trip through ?step=', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard')
@@ -542,7 +542,7 @@ describe('S26 — step keys with special characters round-trip through ?step=', 
   })
 })
 
-describe('S31 — full slot-kind mix under aggressive state churn', () => {
+describe('S31: full slot-kind mix under aggressive state churn', () => {
   const apps: App[] = []
   beforeEach(() => {
     window.history.replaceState(null, '', 'http://localhost:3000/wizard')
@@ -748,7 +748,7 @@ describe('S31 — full slot-kind mix under aggressive state churn', () => {
     expect(probe.lastResolvedRegion).toBe('eu')
 
     // Unrelated churn elsewhere in the wizard does NOT re-fire this
-    // resolver — that's what distinguishes a `lazy()` slot from a
+    // resolver: that's what distinguishes a `lazy()` slot from a
     // plain function slot. Role swap re-evaluates the role function
     // slot but leaves the lazy pricing slot cached.
     forms.attendee.setValue('role', 'speaker')
@@ -757,7 +757,7 @@ describe('S31 — full slot-kind mix under aggressive state churn', () => {
     expect(wizard.steps.map((s) => s.key)).toContain('s31-pricing-eu')
     expect(probe.resolverCalls).toBe(2)
 
-    // Reset bumps the lazy epoch — all lazy resolvers re-fire on the
+    // Reset bumps the lazy epoch, all lazy resolvers re-fire on the
     // next compile pass regardless of whether their tracked deps moved.
     wizard.reset()
     await nextTick()

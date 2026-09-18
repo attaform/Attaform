@@ -12,7 +12,7 @@ type ValueSyncCarrier = HTMLElement & {
 /**
  * ShadowRoot-aware "is this element the focused one" check. A
  * v-register'd control mounted inside a shadow tree reports its focus on
- * the rootNode, not on `document` — mirrors the activeElement lookup in
+ * the rootNode, not on `document`, mirroring the activeElement lookup in
  * the directive's `beforeUpdate` and `register-api`'s focus probe.
  */
 function isElementFocused(el: HTMLElement): boolean {
@@ -26,7 +26,7 @@ export interface ValueSyncOptions {
   /**
    * Skip the write while the element is focused. Set for text / textarea
    * so the watch never overwrites the user's in-flight edit or moves
-   * their caret — the keystroke path and `beforeUpdate` own the focused
+   * their caret: the keystroke path and `beforeUpdate` own the focused
    * case. Left off for checkbox / radio / select: their DOM writes are
    * atomic and idempotent, so an external change must reflect even on a
    * focused control (that's the failure surface this closes), and the
@@ -46,9 +46,9 @@ export interface ValueSyncOptions {
  *
  * The directive's `beforeUpdate` / `updated` hooks only fire on a host
  * re-render, so without this the store updates but the control stays
- * stale. `apply` performs the type-specific DOM write — `el.value` for
- * text, `el.checked` for checkbox / radio, `<option>.selected` for select
- * — and is the SAME write the re-render path runs, so both stay in
+ * stale. `apply` performs the type-specific DOM write (`el.value` for
+ * text, `el.checked` for checkbox / radio, `<option>.selected` for select)
+ * and is the SAME write the re-render path runs, so both stay in
  * lockstep. Runs in its own effect scope, torn down by
  * `teardownValueSync` from the dispatcher's `beforeUnmount`.
  *
@@ -101,7 +101,7 @@ type DisabledSyncCarrier = HTMLElement & {
 
 /**
  * Reactively mirror a register binding's effective freeze onto the DOM
- * control's `disabled` property — the same no-host-re-render case
+ * control's `disabled` property, the same no-host-re-render case
  * `setupValueSync` covers, for `useForm({ disabled })` flipping while the
  * bound component's template reads no field state. Compiled fields also
  * carry the transform's `:disabled` bind, which tracks the same source in

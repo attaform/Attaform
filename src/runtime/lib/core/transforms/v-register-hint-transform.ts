@@ -1,3 +1,34 @@
+/**
+ * Rewrites every `<element v-register="<expr>">` so the binding
+ * expression wraps `<expr>` in an IIFE that calls
+ * `markConnectedOptimistically()` on the resulting `RegisterValue` and
+ * hands back the same object:
+ *
+ *   ((__attaRv) => (__attaRv?.markConnectedOptimistically?.(), __attaRv))(<expr>)
+ *
+ * Vue deliberately skips directive lifecycle hooks during SSR (see the
+ * header of `core/directive.ts`), so the `v-register` directive's
+ * `created` hook, the one that flips `connected: true`, never fires on
+ * the server. Every SSR'd FieldState therefore serialises `connected:
+ * false`, then flickers to `true` when the directive runs on hydration,
+ * and anything reading `getFieldState(path).connected` in a
+ * server-rendered template sees the stale value baked into the HTML.
+ *
+ * The IIFE captures the `RegisterValue` `<expr>` produced, fires the
+ * optimistic mark, itself guarded by `state.ssr` so it is a free no-op
+ * on the client, and returns the same object, so the directive receives
+ * exactly what the author wrote.
+ *
+ * It is agnostic to the shape of `<expr>`, inline, hoisted into a
+ * variable, or dynamically built: all three produce a `RegisterValue` at
+ * runtime and the wrapper never needs the path string. A setup-time
+ * `register()` call NEVER bound to `v-register` gets no wrapper, no
+ * mark, and stays `connected: false` after hydration, which is correct:
+ * it represents no rendered DOM element.
+ *
+ * Idempotent. Running twice on one AST, as some bundler configurations
+ * do, detects the marker on the second pass and skips re-wrapping.
+ */
 import {
   createCompoundExpression,
   NodeTypes,
@@ -6,58 +37,18 @@ import {
   type NodeTransform,
 } from '@vue/compiler-core'
 
-/**
- * `vRegisterHintTransform` — for every `<element v-register="<expr>">`,
- * rewrite the directive's binding expression to wrap `<expr>` in an
- * IIFE that calls `markConnectedOptimistically()` on the resulting
- * `RegisterValue` and returns the same object:
- *
- *   ((__attaRv) => (__attaRv?.markConnectedOptimistically?.(), __attaRv))(<expr>)
- *
- * Why this exists: Vue intentionally skips directive lifecycle hooks
- * during SSR (see `core/directive.ts`'s top comment). That means the
- * `v-register` directive's `created` hook — the one that flips
- * `connected: true` for the field — never fires server-side. Every
- * SSR'd FieldState therefore serialises `connected: false`, and on
- * hydration the directive runs and the flag flickers to `true`. Anyone
- * reading `getFieldState(path).connected` in a server-rendered
- * template sees the stale value baked into the static HTML.
- *
- * The wrapping IIFE captures the `RegisterValue` produced by `<expr>`,
- * fires the optimistic mark (which itself is guarded by `state.ssr`,
- * so client-side it's a free no-op), and returns the same object so
- * the directive receives exactly what the author wrote.
- *
- * The transform is deliberately agnostic to the shape of `<expr>`:
- *
- *   - inline:   `v-register="form.register('email')"`
- *   - hoisted:  `v-register="emailReg"` (where `emailReg = form.register(...)`)
- *   - dynamic:  `v-register="form.register(`${prefix}.email`)"`
- *
- * All three produce a `RegisterValue` at runtime, and the wrapper
- * doesn't need to know the path string. Setup-time `register()` calls
- * that are NEVER bound to `v-register` get no wrapper, no optimistic
- * mark, and stay `connected: false` post-hydration — exactly the
- * desired negative case (those calls don't represent a rendered DOM
- * element).
- *
- * Idempotent: if the transform runs twice on the same AST (some
- * bundler configurations do this), the second pass detects the marker
- * and skips re-wrapping.
- */
-
 const HINT_MARKER = '__attaRv'
 const HINT_PREFIX = `((${HINT_MARKER}) => (${HINT_MARKER}?.markConnectedOptimistically?.(), ${HINT_MARKER}))(`
 const HINT_SUFFIX = `)`
 
 /**
- * Vue compiler node transform that wraps every `v-register`
- * expression in a small IIFE so the directive can flag a field as
- * connected during SSR. Eliminates the `false → true` flicker on
- * `getFieldState(path).connected` after hydration.
+ * Vue compiler node transform that wraps every `v-register` expression
+ * in a small IIFE, so the directive can flag a field connected during
+ * SSR and `getFieldState(path).connected` does not flicker after
+ * hydration.
  *
- * Must run after `vRegisterPreambleTransform`. Wired automatically
- * by `attaform/vite` and `attaform/nuxt`.
+ * It must run after `vRegisterPreambleTransform`. `attaform/vite` and
+ * `attaform/nuxt` wire both.
  */
 export const vRegisterHintTransform: NodeTransform = (node) => {
   try {
@@ -70,10 +61,10 @@ export const vRegisterHintTransform: NodeTransform = (node) => {
       prop.exp = wrapWithOptimisticHint(prop.exp)
     }
   } catch (err) {
-    // AST shape drift across @vue/compiler-core versions or a malformed
-    // directive: skip this transform entirely. The runtime mark is
-    // fail-safe — without the wrapper, we just get the existing
-    // false→true flicker on first paint, never an incorrect render.
+    // AST shape drift across `@vue/compiler-core` versions, or a
+    // malformed directive, skips the transform. Without the wrapper the
+    // only cost is the flicker on first paint, never an incorrect
+    // render.
     console.error('[attaform] v-register hint transform failed, skipping:', err)
   }
 }
@@ -82,10 +73,10 @@ function isAlreadyWrapped(exp: ExpressionNode): boolean {
   if (exp.type === NodeTypes.SIMPLE_EXPRESSION) {
     return exp.content.includes(HINT_MARKER)
   }
-  // Compound expression: scan only the string children. Nested
-  // SimpleExpressionNodes were copied verbatim from the user's
-  // expression and won't contain our marker; the marker only ever
-  // appears in the literal prefix/suffix strings we add.
+  // On a compound expression, scan only the string children. A nested
+  // `SimpleExpressionNode` was copied verbatim from the author's
+  // expression and cannot hold the marker, which appears only in the
+  // literal prefix and suffix strings this transform adds.
   for (const child of exp.children) {
     if (typeof child === 'string' && child.includes(HINT_MARKER)) return true
   }
@@ -93,16 +84,14 @@ function isAlreadyWrapped(exp: ExpressionNode): boolean {
 }
 
 function wrapWithOptimisticHint(exp: ExpressionNode): CompoundExpressionNode {
-  // For a SimpleExpression we keep the node intact as a child so any
-  // later `processExpression` pass (identifier prefixing for setup
-  // refs) still walks it. For a CompoundExpression we splice its
-  // children in — prepending the prefix string and appending the
-  // suffix preserves the post-prefix shape downstream transforms
-  // expect.
+  // A SimpleExpression keeps its node intact as a child, so a later
+  // `processExpression` pass, prefixing identifiers for setup refs, still
+  // walks it. A CompoundExpression has its children spliced in instead:
+  // prefix string prepended, suffix appended, which preserves the
+  // post-prefix shape downstream transforms expect.
   const innerChildren: CompoundExpressionNode['children'] =
     exp.type === NodeTypes.SIMPLE_EXPRESSION ? [exp] : [...exp.children]
-  // Reuse the wrapped expression's source location — runtime errors
-  // in the wrapped IIFE point at the v-register binding site rather
-  // than line 0.
+  // The wrapped expression's source location, so a runtime error in the
+  // IIFE points at the v-register binding site rather than line 0.
   return createCompoundExpression([HINT_PREFIX, ...innerChildren, HINT_SUFFIX], exp.loc)
 }

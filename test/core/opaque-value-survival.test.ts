@@ -66,7 +66,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('class instances survive every write path — $name', (adapter) => {
+describe.each(ADAPTERS)('class instances survive every write path: $name', (adapter) => {
   it('survives scalar writes, sibling writes, and the callback form', () => {
     const doc = mkFile('a.txt')
     const { api } = makeMounter(adapter.useForm, adapter.nested(), {

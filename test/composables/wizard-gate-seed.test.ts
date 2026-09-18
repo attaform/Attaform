@@ -22,7 +22,7 @@ import { awaitSettle } from '../utils/form-harness'
  * What used to clear a gate and no longer does: the member form's values
  * happening to validate at mount. "Value valid" and "prerequisite confirmed"
  * are separate facts (#529). Keying clearance on validity opened the gate on
- * a value that is the opposite of consent — a bare `z.boolean` seeded
+ * a value that is the opposite of consent: a bare `z.boolean` seeded
  * `{ accepted: false }` reads valid, yet `false` withholds consent (#528). So
  * a valid-but-unconfirmed seed keeps the rail sealed; only a submit or an
  * explicit seed opens it. Exercised against both Zod adapters.
@@ -35,7 +35,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3 as AnyUseForm, z: zV3 as unknown as typeof zV4 },
 ] as const
 
-describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
+describe.each(adapters)('gate() seed-clearing: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     for (const app of apps.splice(0)) app.unmount()
@@ -222,7 +222,7 @@ describe.each(adapters)('gate() seed-clearing — $name', ({ useForm, z }) => {
   it('does NOT pre-clear the z.boolean + { accepted: false } trap', async () => {
     // #528/#529: `false` is a VALID boolean, so the old inference opened the
     // gate on a value that is the opposite of consent. Retiring it closes the
-    // class — a valid-but-unconfirmed seed keeps the rail sealed.
+    // class: a valid-but-unconfirmed seed keeps the rail sealed.
     const { consent, wizard } = mount({
       fnSlots: false,
       consentSchema: z.object({ accepted: z.boolean() }),

@@ -17,7 +17,7 @@ import type { Unset } from '../../src/runtime/core/unset'
  * contract depends on.
  */
 
-describe('WriteShape — primitive widening + structural preservation', () => {
+describe('WriteShape: primitive widening + structural preservation', () => {
   it('widens primitive literals to their primitive supertype', () => {
     expectTypeOf<WriteShape<{ color: 'red' | 'green' }>>().toEqualTypeOf<{ color: string }>()
     expectTypeOf<WriteShape<{ kind: 'on' }>>().toEqualTypeOf<{ kind: string }>()
@@ -51,7 +51,7 @@ describe('WriteShape — primitive widening + structural preservation', () => {
   })
 })
 
-describe('DefaultValuesShape — WriteShape topology + `| Unset` everywhere', () => {
+describe('DefaultValuesShape: WriteShape topology + `| Unset` everywhere', () => {
   it('widens primitives AND adds `| Unset` at each non-symbol primitive leaf', () => {
     expectTypeOf<DefaultValuesShape<{ color: 'red' | 'green' }>>().toEqualTypeOf<
       { color: string | Unset } | Unset
@@ -65,7 +65,7 @@ describe('DefaultValuesShape — WriteShape topology + `| Unset` everywhere', ()
   })
 
   it('preserves symbol leaves (no `| Unset` widening)', () => {
-    // Symbol is excluded — the runtime sentinel never carries symbol
+    // Symbol is excluded: the runtime sentinel never carries symbol
     // semantics, and `setValue('foo', unset)` shouldn't tempt the type
     // system into treating a symbol leaf as Unset-admissible.
     expectTypeOf<DefaultValuesShape<{ s: symbol }>>().toEqualTypeOf<{ s: symbol } | Unset>()
@@ -82,7 +82,7 @@ describe('DefaultValuesShape — WriteShape topology + `| Unset` everywhere', ()
     >()
   })
 
-  it('widens arrays — element gets Unset, array itself gets Unset', () => {
+  it('widens arrays: element gets Unset, array itself gets Unset', () => {
     expectTypeOf<DefaultValuesShape<{ tags: string[] }>>().toEqualTypeOf<
       { tags: Array<string | Unset> | Unset } | Unset
     >()

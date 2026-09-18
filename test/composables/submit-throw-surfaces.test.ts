@@ -15,7 +15,7 @@ import type { ValidationError } from '../../src/runtime/types/types-api'
  * surfaced two ways: the raw `Error` parks on `form.meta.submitError`
  * (an inspection channel), AND a normalized copy is piped into the
  * user-error layer under `atta:submit-error` so it shows on
- * `form.errors` / `meta.ownErrors` / `firstOwnError` — the surfaces a UI
+ * `form.errors` / `meta.ownErrors` / `firstOwnError`: the surfaces a UI
  * already renders. A well-constructed throw (`{ path, message, code? }`,
  * or an array of them) lands path-scoped with its own code; a bare
  * `Error` or a non-Error throw lands form-level (`[]`).
@@ -36,7 +36,7 @@ const adapters = [
 
 let keySeq = 0
 
-describe.each(adapters)('handleSubmit throw surfacing — $name', ({ useForm, z }) => {
+describe.each(adapters)('handleSubmit throw surfacing: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -36,7 +36,7 @@ function harness(initial: string[]) {
   return { app, form: captured }
 }
 
-describe('identity-keyed element state — move carries every element fact', () => {
+describe('identity-keyed element state: move carries every element fact', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -131,7 +131,7 @@ describe('identity-keyed element state — move carries every element fact', () 
   })
 })
 
-describe('identity-keyed element state — structural changes stay dirty', () => {
+describe('identity-keyed element state: structural changes stay dirty', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -171,7 +171,7 @@ describe('identity-keyed element state — structural changes stay dirty', () =>
   })
 })
 
-describe('identity-keyed element state — a fresh element registers', () => {
+describe('identity-keyed element state: a fresh element registers', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

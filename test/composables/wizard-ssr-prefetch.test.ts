@@ -12,7 +12,7 @@ import {
 } from '../../src/runtime/core/registry'
 
 /**
- * Wizard SSR prefetch — the v2 contract.
+ * Wizard SSR prefetch: the v2 contract.
  *
  * On the server, the wizard enqueues the initial step's form for
  * prefetch (so its async `defaultValues` resolves inside
@@ -111,7 +111,7 @@ describe('wizard SSR prefetch', () => {
     expect(leakedCalls).toBe(0)
   })
 
-  it('restore lambda — the chosen step is the one whose factory fires', async () => {
+  it('restore lambda: the chosen step is the one whose factory fires', async () => {
     let aCalls = 0
     let bCalls = 0
     const App = defineComponent({
@@ -145,7 +145,7 @@ describe('wizard SSR prefetch', () => {
     expect(bCalls).toBe(1)
   })
 
-  it('injected resolver — the resolver-chosen step prefetches on the server', async () => {
+  it('injected resolver: the resolver-chosen step prefetches on the server', async () => {
     let aCalls = 0
     let bCalls = 0
     const resolver: WizardActiveStepResolver = (param) =>

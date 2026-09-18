@@ -17,11 +17,11 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * Compiled-SSR coverage for #404. Production SSR compiles SFC templates
  * with `@vue/compiler-ssr`, which emits `ssrGetDirectiveProps(...)` and
- * hands the directive a `null` vnode — so the runtime hook cannot tell a
- * component host from a native control there. The fix relies on
- * `componentBridgeTransform` stamping the `SSR_COMPONENT_HOST_MODIFIER`
- * onto a component-host `v-register`, which the directive's `getSSRProps`
- * reads from `binding.modifiers`.
+ * hands the directive a `null` vnode, so the runtime hook cannot tell a
+ * component host from a native control on its own.
+ * `componentBridgeTransform` stamps `SSR_COMPONENT_HOST_MODIFIER` onto a
+ * component-host `v-register` instead, and the directive's `getSSRProps`
+ * reads it from `binding.modifiers`.
  *
  * This file proves both ends of that null-vnode mechanism directly: the
  * transform stamps the modifier (and only for component hosts), and
@@ -49,7 +49,7 @@ function compileSSR(template: string): string {
   }).code
 }
 
-describe('compiled-SSR transform — component-host modifier (#404)', () => {
+describe('compiled-SSR transform: component-host modifier (#404)', () => {
   it('stamps the component-host modifier on a <Component v-register> host', () => {
     const code = compileSSR(`<FieldWrapper v-register="form.register('email')" />`)
     expect(code).toContain('ssrGetDirectiveProps')
@@ -63,7 +63,7 @@ describe('compiled-SSR transform — component-host modifier (#404)', () => {
   })
 })
 
-describe('getSSRProps — null vnode (compiled SSR) honours the host modifier (#404)', () => {
+describe('getSSRProps: null vnode (compiled SSR) honours the host modifier (#404)', () => {
   let app: App | undefined
   const handle: { rv?: RegisterValue | undefined } = {}
 

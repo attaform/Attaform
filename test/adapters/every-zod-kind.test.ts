@@ -102,7 +102,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
+describe.each(ADAPTERS)('every Zod kind: $name', (adapter) => {
   // ── construction ──────────────────────────────────────────────────
 
   it.each(['mapScalar', 'symbolScalar', 'fnScalar', 'promiseScalar'] as const)(
@@ -125,7 +125,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
     ['symbolScalar', 'tag'],
     ['fnScalar', 'cb'],
     ['promiseScalar', 'pending'],
-  ] as const)('leaves %s absent — no canonical empty member to seed', (key, path) => {
+  ] as const)('leaves %s absent: no canonical empty member to seed', (key, path) => {
     // There is no empty Promise and no empty function, and `Symbol()`
     // mints a fresh value on every call: seeding one would make the
     // derived blank non-deterministic and break reference stability
@@ -193,7 +193,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
   it('survives a discriminated-union variant round-trip', async () => {
     // The variant-memory cloner rebuilds a stored object key by key.
     // A Map's entries are not own enumerable properties, so a key-by-key
-    // rebuild returns `{}` — the same defect #605 fixed for File.
+    // rebuild returns `{}`: the same defect #605 fixed for File.
     const { api } = makeMounter(adapter.useForm, adapter.mapVariant(), {
       defaultValues: { src: { kind: 'lookup', index: new Map() } },
     })()
@@ -242,7 +242,7 @@ describe.each(ADAPTERS)('every Zod kind — $name', (adapter) => {
     expect((await settle(api.validate())).success).toBe(true)
 
     // A wrong value type inside the Map is the schema's business, and
-    // it has to actually fire — otherwise the kind is only nominally
+    // it has to actually fire, otherwise the kind is only nominally
     // supported.
     api.setValue('index', new Map([['a', 'not-a-number']]) as unknown as Map<string, number>)
     expect((await settle(api.validate())).success).toBe(false)
@@ -273,7 +273,7 @@ describe('setValue at an opaque leaf keeps the updater overload', () => {
   })
 })
 
-describe('every Zod kind — zod v4 only', () => {
+describe('every Zod kind: zod v4 only', () => {
   it('mounts a z.templateLiteral leaf and seeds the string blank', () => {
     // A template literal parses strings against a pattern, so `''` is
     // its blank. It need not satisfy the pattern, exactly as `''` does

@@ -6,7 +6,7 @@ import { useForm } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `form.clear(path?)` — wipe a path (or the whole form) to the
+ * `form.clear(path?)`, wipe a path (or the whole form) to the
  * "appropriate nullish value" for the schema-declared type at that
  * path, regardless of any `.default(...)` wrapper. Orthogonal to
  * `reset()` (which restores declared defaults) by design: a user
@@ -16,7 +16,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Implementation note: `clear` is sugar for `setValue(path,
  * appropriateNullishValue)`, where the nullish value comes from the
  * adapter's underlying "schema empty for type" walk (in zod-v4, the
- * `deriveDefault(schema, useDefault=false, ...)` branch — the same
+ * `deriveDefault(schema, useDefault=false, ...)` branch: the same
  * machinery that produces blank-path synthesis falsy values).
  */
 
@@ -61,7 +61,7 @@ const schema = z.object({
   nullableRef: z.string().nullable(),
 })
 
-describe('form.clear(path) — primitive leaves wipe to falsy, not default', () => {
+describe('form.clear(path): primitive leaves wipe to falsy, not default', () => {
   it('clear("urls") → []', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('arr') }))
     try {
@@ -107,7 +107,7 @@ describe('form.clear(path) — primitive leaves wipe to falsy, not default', () 
   })
 })
 
-describe('form.clear(path) — nested objects recurse to per-leaf falsy', () => {
+describe('form.clear(path): nested objects recurse to per-leaf falsy', () => {
   it('clear("config") → { enabled: false, label: "" }', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('obj') }))
     try {
@@ -133,7 +133,7 @@ describe('form.clear(path) — nested objects recurse to per-leaf falsy', () => 
   })
 })
 
-describe('form.clear(path) — optional / nullable respect their wrapper semantic', () => {
+describe('form.clear(path): optional / nullable respect their wrapper semantic', () => {
   it('clear("optionalBio") → undefined (the wrapper\'s "absent" marker)', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('opt') }))
     try {
@@ -159,7 +159,7 @@ describe('form.clear(path) — optional / nullable respect their wrapper semanti
   })
 })
 
-describe('form.clear() — whole-form variant clears every leaf to its falsy', () => {
+describe('form.clear(): whole-form variant clears every leaf to its falsy', () => {
   it('clear() with no path wipes every leaf to falsy-for-type', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('whole') }))
     try {
@@ -176,14 +176,14 @@ describe('form.clear() — whole-form variant clears every leaf to its falsy', (
 
   // `''` is a real, distinct path (the form-level slot post-#184), NOT
   // equivalent to "no arg / whole-form". The implementation must NOT
-  // collapse them via special-casing — otherwise it has to maintain a
+  // collapse them via special-casing, otherwise it has to maintain a
   // nuanced exception every time the empty-string path matters. This
   // probe locks the disambiguation so a refactor that conflates `''`
   // with "no path" trips immediately.
   it("clear('') is path-targeted and does NOT wipe non-empty-path values", () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('empty-path') }))
     try {
-      // Sanity — every named field carries its declared default.
+      // Sanity: every named field carries its declared default.
       expect(api.values.notify).toBe(true)
       expect(api.values.name).toBe('ozzy')
       expect(api.values.count).toBe(5)
@@ -202,7 +202,7 @@ describe('form.clear() — whole-form variant clears every leaf to its falsy', (
   })
 })
 
-describe('form.clear vs form.reset — orthogonality', () => {
+describe('form.clear vs form.reset: orthogonality', () => {
   it('reset restores schema defaults; clear wipes to falsy', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('vs') }))
     try {
@@ -241,7 +241,7 @@ describe('form.clear vs form.reset — orthogonality', () => {
   })
 })
 
-describe('form.clear — type-level signature', () => {
+describe('form.clear: type-level signature', () => {
   it('accepts FlatPath strings (same as setValue / resetField)', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('types') }))
     try {
@@ -260,7 +260,7 @@ describe('form.clear — type-level signature', () => {
   })
 })
 
-describe('form.clear — tuple-segment path form', () => {
+describe('form.clear: tuple-segment path form', () => {
   it('accepts [segment, ...] tuples (parallels setValue / toRef)', () => {
     const { api, unmount } = mountForm(() => useForm({ schema, key: uniqueKey('tuple') }))
     try {

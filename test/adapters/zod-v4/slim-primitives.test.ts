@@ -14,7 +14,7 @@ function probe(rootSchema: z.ZodObject, path: (string | number)[]): ReadonlySet<
   return adapter.getSlimPrimitiveTypesAtPath(path)
 }
 
-describe('getSlimPrimitiveTypesAtPath — leaf primitives', () => {
+describe('getSlimPrimitiveTypesAtPath: leaf primitives', () => {
   it('z.string() → {string}', () => {
     expect([...probe(z.object({ x: z.string() }), ['x'])]).toEqual(['string'])
   })
@@ -32,7 +32,7 @@ describe('getSlimPrimitiveTypesAtPath — leaf primitives', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — refinements ignored', () => {
+describe('getSlimPrimitiveTypesAtPath: refinements ignored', () => {
   it('z.string().email() → {string}', () => {
     expect([...probe(z.object({ x: z.string().email() }), ['x'])]).toEqual(['string'])
   })
@@ -44,7 +44,7 @@ describe('getSlimPrimitiveTypesAtPath — refinements ignored', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — enum / literal', () => {
+describe('getSlimPrimitiveTypesAtPath: enum / literal', () => {
   it('z.enum([strings...]) → {string}', () => {
     expect([...probe(z.object({ x: z.enum(['a', 'b', 'c']) }), ['x'])]).toEqual(['string'])
   })
@@ -56,7 +56,7 @@ describe('getSlimPrimitiveTypesAtPath — enum / literal', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — wrappers', () => {
+describe('getSlimPrimitiveTypesAtPath: wrappers', () => {
   it('z.string().optional() → {string, undefined}', () => {
     const set = probe(z.object({ x: z.string().optional() }), ['x'])
     expect(set.has('string')).toBe(true)
@@ -77,7 +77,7 @@ describe('getSlimPrimitiveTypesAtPath — wrappers', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — unions', () => {
+describe('getSlimPrimitiveTypesAtPath: unions', () => {
   it('z.union([z.string(), z.number()]) → {string, number}', () => {
     const set = probe(z.object({ x: z.union([z.string(), z.number()]) }), ['x'])
     expect(set.has('string')).toBe(true)
@@ -91,7 +91,7 @@ describe('getSlimPrimitiveTypesAtPath — unions', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — composites', () => {
+describe('getSlimPrimitiveTypesAtPath: composites', () => {
   it('z.object({...}) at the path → {object}', () => {
     expect([...probe(z.object({ x: z.object({ y: z.string() }) }), ['x'])]).toEqual(['object'])
   })
@@ -106,7 +106,7 @@ describe('getSlimPrimitiveTypesAtPath — composites', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — permissive shapes', () => {
+describe('getSlimPrimitiveTypesAtPath: permissive shapes', () => {
   it('z.any() → permissive (set has many primitives)', () => {
     const set = probe(z.object({ x: z.any() }), ['x'])
     expect(set.has('string')).toBe(true)
@@ -124,13 +124,13 @@ describe('getSlimPrimitiveTypesAtPath — permissive shapes', () => {
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — root path', () => {
+describe('getSlimPrimitiveTypesAtPath: root path', () => {
   it('empty path → {object} (root form is always an object)', () => {
     expect([...probe(z.object({ x: z.string() }), [])]).toEqual(['object'])
   })
 })
 
-describe('getSlimPrimitiveTypesAtPath — literal-dot key disambiguation (V4-6)', () => {
+describe('getSlimPrimitiveTypesAtPath: literal-dot key disambiguation (V4-6)', () => {
   it('keyed segment ["user.name"] resolves the literal-dot key, not nested ["user","name"]', () => {
     const schema = z.object({
       // Literal-dot key in the schema's own shape.
@@ -147,9 +147,9 @@ describe('getSlimPrimitiveTypesAtPath — literal-dot key disambiguation (V4-6)'
   })
 })
 
-// Branch coverage for the walker's long tail — the leaf, wrapper, and
+// Branch coverage for the walker's long tail: the leaf, wrapper, and
 // composite cases the suite above doesn't reach.
-describe('getSlimPrimitiveTypesAtPath — walker long tail', () => {
+describe('getSlimPrimitiveTypesAtPath: walker long tail', () => {
   it('z.nan() → {number}', () => {
     expect([...probe(z.object({ x: z.nan() }), ['x'])]).toEqual(['number'])
   })

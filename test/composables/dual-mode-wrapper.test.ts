@@ -12,7 +12,7 @@
  * value and touches no element. What clobbered was compile-time. The
  * value transforms strip the author's `:value` / `:checked` and inject
  * `(rv)?.displayValue?.value` in its place, and for a nullish register
- * that resolves to `undefined` — a control with no value binding at all.
+ * that resolves to `undefined`: a control with no value binding at all.
  * The author's expression is now kept as the UNBOUND leg of the injected
  * one, so a single element serves both modes and no wrapper has to
  * duplicate itself into `v-if` / `v-else` branches carrying two copies
@@ -89,7 +89,7 @@ function mount(
  *
  * Asserted by EVERY unbound mount rather than once, because the warn
  * dedupes per signature for the life of the process and this suite runs
- * shuffled — a single pin would pass vacuously whenever another mount
+ * shuffled: a single pin would pass vacuously whenever another mount
  * happened to run first and consume the signature.
  */
 function expectNoRedundantWarn(m: Mounted): void {

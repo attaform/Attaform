@@ -5,9 +5,9 @@ import type { RegisterValue } from '../types/types-api'
  * variant in `created`. `vRegisterDynamic.beforeUnmount` (and the file
  * variant's `beforeUnmount`) drain the bag so reused elements
  * (KeepAlive, v-show) don't accumulate orphaned handlers across
- * activation cycles. Shared between every directive variant — both
- * the multi-tag variants in `directive.ts` and the file variant in
- * `directive-file.ts` — so the carrier symbol lives here and the
+ * activation cycles. Shared between every directive variant, the
+ * multi-tag ones in `directive.ts` and the file one in
+ * `directive-file.ts` alike, so the carrier symbol lives here and the
  * single `addEventListener` / `removeTrackedListeners` pair routes
  * every variant through one tracked path.
  *
@@ -65,7 +65,7 @@ export function removeTrackedListeners(el: Element): void {
 
 /**
  * First genuine user-input event flips the field's sticky `interacted`
- * bit — the signal `defaultDisplayState` reads to keep a clean
+ * bit, the signal `defaultDisplayState` reads to keep a clean
  * tab-through quiet while still engaging validation the moment the
  * user edits. Routed only through DOM listeners, so hydration and
  * programmatic setValue never trip it. Idempotent and store-guarded

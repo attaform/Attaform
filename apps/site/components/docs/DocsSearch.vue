@@ -5,7 +5,7 @@
   // `pnpm build` (which runs `pagefind --site .output/public` after
   // `nuxi build`) and ships as `_pagefind/` next to the rest of the
   // static output. At runtime, this component dynamically imports
-  // `/_pagefind/pagefind.js` and queries against its bundled index —
+  // `/_pagefind/pagefind.js` and queries against its bundled index,
   // entirely client-side, no backend.
   //
   // In dev (`nuxi dev`), `_pagefind/` doesn't exist yet, so the
@@ -87,7 +87,7 @@
 
   // Lazily fetch the Pagefind runtime + bundled index. `@vite-ignore`
   // tells Vite not to try to resolve this static-asset path at build
-  // time — we want the browser to fetch it from the deployed origin.
+  // time: we want the browser to fetch it from the deployed origin.
   async function loadPagefind(): Promise<PagefindModule | null> {
     if (pagefind) return pagefind
     if (loadAttempted) return null
@@ -106,7 +106,7 @@
 
   // Pagefind returns one result per page, with `sub_results` for
   // each h2/h3 that matched. Flatten those into individual rows so
-  // a single page can surface multiple section hits — that's the
+  // a single page can surface multiple section hits: that's the
   // pattern users expect from docs search ("typeahead jumps me to
   // the right section, not just the right page").
   function flattenResults(rawResults: PagefindResultData[]): SearchHit[] {
@@ -224,7 +224,7 @@
   }
 
   // ⌘K (Mac) / Ctrl+K (rest) opens the modal from anywhere.
-  // `/` also opens — common docs convention. Don't intercept either
+  // `/` also opens, common docs convention. Don't intercept either
   // when a text input / textarea / contenteditable is focused (we
   // don't want to swallow the user's typing in the REPL).
   function onGlobalKeydown(e: KeyboardEvent) {
@@ -253,7 +253,7 @@
     if (typeof document !== 'undefined') document.body.style.overflow = ''
   })
 
-  // Surface the right modifier glyph based on platform — ⌘ on macOS,
+  // Surface the right modifier glyph based on platform, ⌘ on macOS,
   // Ctrl elsewhere. SSR fallback uses ⌘ since both render the same
   // width and Mac is the dominant dev platform.
   const isMac = ref(true)
@@ -263,7 +263,7 @@
 </script>
 
 <template>
-  <!-- Trigger — wide button on md+ that mimics a search field, then
+  <!-- Trigger: wide button on md+ that mimics a search field, then
        collapses to icon-only on small viewports so it fits next to
        the rest of the header chrome without crowding. -->
   <button
@@ -504,7 +504,7 @@
   }
 
   /* Single keyframe shared across every empty / no-results / error /
-     unavailable state — the modal cross-fades between them as the
+     unavailable state: the modal cross-fades between them as the
      query changes, so the panel never reads as "stuck" between
      states. ~180ms keeps the transition under typeahead debounce
      (180ms in performSearch); they don't queue up. */

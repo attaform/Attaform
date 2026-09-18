@@ -10,7 +10,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
  * `.default()` / `.catch()` wrapper at any layer of the leaf.
  */
 
-describe('zod v4: isRequiredAtPath — required leaves', () => {
+describe('zod v4: isRequiredAtPath: required leaves', () => {
   it('returns true for a strict primitive leaf', () => {
     const schema = z.object({ income: z.number(), name: z.string(), agreed: z.boolean() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -36,7 +36,7 @@ describe('zod v4: isRequiredAtPath — required leaves', () => {
   })
 })
 
-describe('zod v4: isRequiredAtPath — optional / nullable / default / catch wrappers', () => {
+describe('zod v4: isRequiredAtPath: optional / nullable / default / catch wrappers', () => {
   it('returns false for .optional()', () => {
     const schema = z.object({ count: z.number().optional() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -68,7 +68,7 @@ describe('zod v4: isRequiredAtPath — optional / nullable / default / catch wra
   })
 })
 
-describe('zod v4: isRequiredAtPath — unions', () => {
+describe('zod v4: isRequiredAtPath: unions', () => {
   it('union with all required branches → required', () => {
     const schema = z.object({ x: z.union([z.number(), z.string()]) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -88,7 +88,7 @@ describe('zod v4: isRequiredAtPath — unions', () => {
   })
 })
 
-describe('zod v4: isRequiredAtPath — nested paths', () => {
+describe('zod v4: isRequiredAtPath: nested paths', () => {
   it('walks through object nesting', () => {
     const schema = z.object({ user: z.object({ name: z.string(), age: z.number().optional() }) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -122,8 +122,8 @@ describe('zod v4: isRequiredAtPath — nested paths', () => {
   })
 })
 
-describe('zod v4: isRequiredAtPath — readonly / pipe / lazy wrappers', () => {
-  it('readonly is transparent — inner required → required', () => {
+describe('zod v4: isRequiredAtPath: readonly / pipe / lazy wrappers', () => {
+  it('readonly is transparent: inner required → required', () => {
     const schema = z.object({ name: z.string().readonly() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     expect(adapter.isRequiredAtPath(['name'])).toBe(true)

@@ -2,11 +2,11 @@
 //
 // Hydration repro for spike 16h's "starting visual state is incorrect"
 // regression. The client-side mount test in `multi-select-cmd-click.test.ts`
-// passes — but the user's bug is in a Nuxt-rendered (SSR + hydration)
+// passes, but the user's bug is in a Nuxt-rendered (SSR + hydration)
 // app, where after mount `option.selected` is `false` on every option
 // despite the model containing `['red', 'blue']`. Snapshot also showed
 // `hasAttribute('selected') === true` for red/blue, so the SSR HTML
-// somehow carries those attributes — yet the IDL state is false.
+// somehow carries those attributes, yet the IDL state is false.
 //
 // This test runs the same SSR → hydrate flow inside jsdom to find out
 // where in the lifecycle the selectedness gets lost.
@@ -42,7 +42,7 @@ const Parent = defineComponent({
   },
 })
 
-describe('<select multiple v-register> — SSR + hydration', () => {
+describe('<select multiple v-register>: SSR + hydration', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -74,7 +74,7 @@ describe('<select multiple v-register> — SSR + hydration', () => {
     document.body.appendChild(root)
     root.innerHTML = html
 
-    // Pre-hydration state — what the browser parsed from the SSR HTML.
+    // Pre-hydration state, what the browser parsed from the SSR HTML.
     const select = root.querySelector('select') as HTMLSelectElement | null
     if (select === null) throw new Error('select missing from SSR HTML')
     const preHydration = Array.from(select.options).map((o) => ({

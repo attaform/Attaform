@@ -4,22 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * `reference/types.md` opens with "Every public type Attaform exports".
- * It listed 78 of 102. The 24 it left out were not leftovers: the whole
- * `useWizard` callback surface (`WizardCtx`, `WizardOnSubmit`,
- * `WizardSubmitContext`, `WizardAggregateError`, the persist/restore
- * pair), the display-state extension types a custom `getDisplayState`
- * is written against (`DisplayCtx`, `DisplayMachine`, `DisplayTimings`),
- * and `FormStatus` / `FormStatusSeed`.
+ * `reference/types.md` opens with "Every public type Attaform exports",
+ * so this ties the page to the barrel in both directions. Exporting a
+ * type fails here until the page names it, and removing an export fails
+ * too, which is the half that keeps the page from accumulating rows for
+ * types nobody can import any more.
  *
- * `DisplayCtx` and `FormStatus` are worth calling out: both had already
- * drifted once as under-documented enumerations. A type reference that
- * omits them is how that keeps happening.
- *
- * So the page is tied to the barrel. Exporting a type now fails here
- * until the page names it. Removing the export fails too, which is the
- * half that keeps the page from accumulating rows for types nobody can
- * import any more.
+ * An enumeration is what drifts: `FormStatus` had already gone
+ * under-documented once, and a reference that omits a type is how that
+ * keeps happening.
  */
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))

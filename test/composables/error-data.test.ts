@@ -17,7 +17,7 @@ import type { Json, ValidationError } from '../../src/runtime/types/types-api'
  * `ValidationError.data` is an opaque JSON passthrough: the consumer
  * attaches a structured server payload (a captcha challenge, a lockout
  * `unlocks_at` timestamp, an MFA step-up descriptor) and Attaform
- * carries it untouched across every surface — the manual setters, the
+ * carries it untouched across every surface: the manual setters, the
  * aggregate reads, the SSR serialise / hydrate round-trip, and the
  * undo / redo restore.
  */
@@ -37,7 +37,7 @@ const challenge: Json = {
 
 type Signup = { email: string; password: string }
 
-describe('ValidationError.data — serialise / hydrate round-trip', () => {
+describe('ValidationError.data: serialise / hydrate round-trip', () => {
   it('preserves data on user and schema errors across the SSR round-trip', () => {
     const serverApp = createApp({ render: () => null })
     serverApp.use(createAttaform({ ssr: true }))
@@ -132,7 +132,7 @@ const adapters = [
 
 let keySeq = 0
 
-describe.each(adapters)('ValidationError.data through the form API — $name', ({ useForm, z }) => {
+describe.each(adapters)('ValidationError.data through the form API: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -5,8 +5,8 @@
   const { attaformVersion } = useRuntimeConfig().public
 
   // Three categorical link groups + the brand block. Each link
-  // declares either `to` (internal — NuxtLink, no target swap) or
-  // `href` (external — `<a>` with target/rel set automatically).
+  // declares either `to` (internal, NuxtLink, no target swap) or
+  // `href` (external, `<a>` with target/rel set automatically).
   // The split is the same convention Button uses; consumers below
   // don't have to think about it.
   type FooterLink = { label: string; to?: string; href?: string }
@@ -49,7 +49,7 @@
 
 <template>
   <!-- The footer's top edge gets a hairline gradient instead of a flat
-       border — it visually "hands off" the page rather than slamming
+       border: it visually "hands off" the page rather than slamming
        into a hard line. The .footer-divider rule below paints it via
        a 1px-tall pseudo-element so we can fade in from both sides. -->
   <footer class="footer-divider relative mt-24">
@@ -67,10 +67,10 @@
           <p class="text-sm text-fg-muted">
             A type-safe, Zod-first form library for Vue 3 and Nuxt.
           </p>
-          <!-- Version chip — warm-soft pair on a small inline pill so
+          <!-- Version chip: warm-soft pair on a small inline pill so
                it ties to the hero release chip without competing with
                the brand block heading. The dot is the same warm hue
-               (no animate-ping here — that's the hero's job). -->
+               (no animate-ping here: that's the hero's job). -->
           <a
             href="https://github.com/attaform/Attaform/releases"
             target="_blank"
@@ -107,7 +107,7 @@
       </div>
 
       <!-- Bottom region: copyright + "built with" credit. Separated
-           from the link groups by a 1px divider — same pattern as
+           from the link groups by a 1px divider: same pattern as
            Untitled UI's compact footer. -->
       <div
         class="flex flex-col items-center justify-between gap-3 border-t border-border py-6 sm:flex-row"
@@ -158,7 +158,7 @@
 </template>
 
 <style scoped>
-  /* Stripe-style hairline at the top edge — fades in from both sides
+  /* Stripe-style hairline at the top edge: fades in from both sides
      instead of running edge-to-edge. Pseudo-element rather than a
      `border-top` so the gradient mask works without `mask-border-*`
      gymnastics. */

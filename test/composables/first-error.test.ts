@@ -9,7 +9,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { ValidationError } from '../../src'
 
 /**
- * `field.firstError` — pure data primitive.
+ * `field.firstError`, pure data primitive.
  *
  * `firstError` returns the first error in the deterministic schema-
  * declaration order at the path (`errors[0]`). It is INDEPENDENT of
@@ -18,7 +18,7 @@ import type { ValidationError } from '../../src'
  * Adopters who use a different gate read `firstError` directly.
  *
  * For container paths, `firstError` is the first error in the
- * aggregated subtree (descendant errors sorted by `pathOrdinal`).
+ * aggregated subtree (descendant errors sorted by `pathOrdinals`).
  *
  * Mirrored across both adapters (v3 + v4).
  */
@@ -92,7 +92,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
     it('container firstError aggregates over descendants in schema-declaration order', () => {
       const form = makeForm()
       // Inject in REVERSE schema order (users first, then email-equivalent
-      // earlier path) — `firstError` should still surface schema-first.
+      // earlier path), `firstError` should still surface schema-first.
       form.setErrors([
         {
           path: ['users', 1, 'label'],
@@ -133,9 +133,7 @@ function describeFirstError(label: string, makeForm: () => FormLike): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
 const v3Schema = zV3.object({
   email: zV3.string().min(1),
@@ -146,7 +144,7 @@ const v3Defaults = {
   users: [{ label: 'first' }, { label: 'second' }],
 }
 
-describeFirstError('field.firstError — zod-v3 adapter', () =>
+describeFirstError('field.firstError: zod-v3 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV3({
@@ -158,9 +156,7 @@ describeFirstError('field.firstError — zod-v3 adapter', () =>
   )
 )
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
 const v4Schema = zV4.object({
   email: zV4.string().min(1),
@@ -171,7 +167,7 @@ const v4Defaults = {
   users: [{ label: 'first' }, { label: 'second' }],
 }
 
-describeFirstError('field.firstError — zod-v4 adapter', () =>
+describeFirstError('field.firstError: zod-v4 adapter', () =>
   asForm(
     mountWithApp(() =>
       useFormV4({

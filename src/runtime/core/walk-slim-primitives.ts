@@ -1,5 +1,5 @@
 /**
- * Shared slim-primitive walker — returns the set of
+ * The shared slim-primitive walker: it returns the set of
  * `SlimPrimitiveKind`s a schema accepts at write time. Wrappers
  * (Optional / Nullable / Default / Readonly / Catch / Pipe /
  * Pipeline / Effects / Branded / Lazy) are peeled; refinement-level
@@ -7,13 +7,13 @@
  * equality, regex) are ignored.
  *
  * Both v3 and v4 adapters dispatch through this body via their
- * `SchemaIntrospector` instance. Their per-version kind sets — v3's
+ * `SchemaIntrospector` instance. The per-version kind sets (v3's
  * `branded` / `effects` / `pipeline` / `native-enum`, v4's `pipe` /
- * `file` — collapse to distinct cases on the SharedZodKind switch;
- * each adapter's `kindOf` returns only the kinds it knows.
+ * `file`) collapse to distinct cases on the SharedZodKind switch, each
+ * adapter's `kindOf` returning only the kinds it knows.
  *
  * Semantics (preserved verbatim from the prior per-adapter
- * implementations — characterised by `test/adapters/zod-v{3,4}/
+ * implementations, characterised by `test/adapters/zod-v{3,4}/
  * slim-primitives.test.ts`):
  *
  *  - Leaves (string / number / boolean / bigint / date / null /
@@ -26,7 +26,7 @@
  *    register both.
  *  - Object / record → object; array / tuple → array; set → set;
  *    map → map; template-literal → string; file → file + null (the
- *    directive's "no file selected" sentinel — v4 only).
+ *    directive's "no file selected" sentinel, v4 only).
  *  - symbol → symbol, function → function, promise → object, each
  *    plus 'undefined': their derived blank IS undefined, and the gate
  *    has to admit what `form.clear(path)` writes.
@@ -49,7 +49,7 @@ import type { SchemaIntrospector } from './abstract-schema-factory'
 import { slimKindOf } from './slim-primitive-gate'
 import type { SlimPrimitiveKind } from '../types/types-api'
 
-// The slim-primitive permissive set — kinds the gate accepts when the
+// The slim-primitive permissive set: the kinds the gate accepts when the
 // walker can't characterise a schema. Identical between v3 and v4 by
 // design; hosted in core for single-source-of-truth.
 export const PERMISSIVE_SLIM_KINDS: ReadonlySet<SlimPrimitiveKind> =
@@ -92,7 +92,7 @@ const KIND_MAP: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['map']
 // in their accept set, for the same reason `z.file()` carries 'null':
 // the gate has to admit the value `form.clear(path)` is about to write,
 // or clearing the field is a no-op with a "wrong type" warning. It does
-// not loosen schema enforcement — the blank-path channel and the
+// not loosen schema enforcement, since the blank-path channel and the
 // derived "No value supplied" error still gate submission.
 const KIND_SYMBOL: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set(['symbol', 'undefined'])
 const KIND_FUNCTION: ReadonlySet<SlimPrimitiveKind> = /* @__PURE__ */ new Set([
@@ -129,7 +129,7 @@ export function slimPrimitivesWalk<Schema>(
       // `z.file()` accepts `File` instances at write time. `null` is
       // also accepted at the slim-primitive level so the directive's
       // canonical blank value (the "no file selected" sentinel) lands
-      // even on required-file schemas — the blank-path channel + the
+      // even on required-file schemas: the blank-path channel and the
       // derived "No value supplied" error already gates submission, so
       // permitting `null` storage here doesn't loosen schema enforcement.
       return KIND_FILE
@@ -148,7 +148,7 @@ export function slimPrimitivesWalk<Schema>(
       return out.size === 0 ? KIND_STRING : out
     }
     case 'native-enum': {
-      // v3 only — `z.nativeEnum(E)` exposes the reverse-mapped TS enum
+      // v3 only. `z.nativeEnum(E)` exposes the reverse-mapped TS enum
       // object on `_def.values`. Categorise each member by typeof.
       // Numeric enums also include reverse-mapped string keys whose
       // value is a number; both string and number kinds get registered.
@@ -182,7 +182,7 @@ export function slimPrimitivesWalk<Schema>(
     case 'function':
       // A function value is stored by reference like any other opaque
       // leaf. Note zod's own `parse` returns a VALIDATING WRAPPER for
-      // `z.function()`, not the input function, on both majors — the
+      // `z.function()`, not the input function, on both majors, since the
       // wrapper reaches the consumer through `handleSubmit` / `parse`,
       // while storage keeps the identity the consumer wrote.
       return KIND_FUNCTION
@@ -218,7 +218,7 @@ export function slimPrimitivesWalk<Schema>(
     case 'success':
     case 'catch': {
       // `success` reports whether its inner PARSED, so what a consumer
-      // writes is still the inner shape — the same reasoning `transform`
+      // writes is still the inner shape, the same reasoning `transform`
       // and `effects` follow below.
       const inner = intro.unwrapInner(schema)
       return inner === undefined
@@ -229,7 +229,7 @@ export function slimPrimitivesWalk<Schema>(
       // The inverse of `optional`: walk the inner and take `undefined`
       // back out, which is the entire meaning of the wrapper. Without a
       // case here it fell through to `'unknown'`, which is an OPAQUE kind
-      // — so the write gate stopped gating and accepted a number into a
+      // so the write gate would stop gating and accept a number into a
       // string field.
       const inner = intro.unwrapInner(schema)
       if (inner === undefined) return PERMISSIVE_SLIM_KINDS
@@ -326,7 +326,7 @@ export function slimPrimitivesWalk<Schema>(
     case 'unknown':
     case 'custom':
       return PERMISSIVE_SLIM_KINDS
-    // A kind this walker has no case for — in practice a kind a newer
+    // A kind this walker has no case for, in practice one a newer
     // Zod introduced. Be permissive rather than reject: the adapter
     // carries the value opaquely and the schema's own parse is what
     // decides whether it was legal.

@@ -4,10 +4,10 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
 
 /**
  * v4 mirror of `test/adapters/zod-v3/container-checks-parity.test.ts`.
- * v4 routes `getDefaultValues` through the real schema and preserves
- * container `.min` / `.max` / `.length` via `carryChecks`
- * (`strip.ts:52-70`); this file pins that reference so the v3 port
- * lands as proven parity.
+ * v4 routes `getDefaultValues` through the real schema rather than a
+ * rebuild, so container `.min` / `.max` / `.length` are never dropped in
+ * the first place. This file pins the reference the v3 port is measured
+ * against.
  */
 describe('zod v4: getDefaultValues surfaces container .min / .max / .length on defaults (D3 reference)', () => {
   it('z.array(z.string()).min(1) with [] defaults seeds the min-violation error', () => {

@@ -12,7 +12,7 @@
  * tracks the JSON.parse elimination directly. The actual proxy
  * machinery (containerSegments comparison, hasAtPath active-path
  * filter, placeAt tree write) is identical between branches and
- * shared by both implementations under test — only the parse/lookup
+ * shared by both implementations under test, only the parse/lookup
  * step differs.
  */
 
@@ -42,7 +42,7 @@ function makeUncachedKeysFromOldStore(store: Map<PathKey, ErrorEntry[]>): PathKe
   // Pre-5.2 baseline: PathKey strings without the inverse cache
   // populated. We can't actually un-warm the cache from outside it,
   // but the old branch below uses raw `JSON.parse` and so doesn't
-  // touch the cache anyway — the keys are functionally cold relative
+  // touch the cache anyway: the keys are functionally cold relative
   // to that code path.
   return [...store.keys()]
 }

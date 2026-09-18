@@ -5,7 +5,7 @@
  * and `'unknown'` is an OPAQUE kind: nothing descends into it and the
  * slim-primitive write gate stops gating, so any value is accepted at
  * that path. A kind Zod adds in a minor version therefore does not fail
- * loudly — it quietly turns off type checking for the fields that use it.
+ * loudly: it quietly turns off type checking for the fields that use it.
  * That is how `nonoptional` and `success` went unnoticed:
  * `z.string().optional().nonoptional()` accepted a number.
  *
@@ -24,7 +24,7 @@ import { kindOf } from '../../../src/runtime/adapters/zod-v4/introspect'
  * Build one schema from every factory `zod` exports, and collect the
  * `def.type` each produces. The factories take wildly different
  * arguments, so this tries a few plausible shapes and skips a factory
- * that accepts none of them — under-reporting (a kind we never reach)
+ * that accepts none of them, under-reporting (a kind we never reach)
  * is safe, while over-reporting would make the suite flaky.
  *
  * Results are filtered to things that actually parse, because `zod`

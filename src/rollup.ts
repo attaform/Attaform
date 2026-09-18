@@ -1,5 +1,5 @@
 /**
- * `attaform/rollup` — Rollup plugin that rewrites `attaform` and
+ * `attaform/rollup`, the Rollup plugin that rewrites `attaform` and
  * `attaform/zod` imports to the single matching adapter subpath
  * (`attaform/zod-v3` or `attaform/zod-v4`) at build time, based on the
  * consumer's installed Zod major. Without it, Rollup ships both adapters
@@ -14,16 +14,12 @@
  *     plugins: [attaform()],
  *   }
  *
- * This plugin only does the adapter rewrite. The Vue SFC `v-register`
- * transforms that `attaform/vite` wires (load-bearing for SSR initial
- * render) are `@vitejs/plugin-vue`-specific and do not transfer; a
- * non-Vite consumer that needs them wires `attaform/transforms` into
- * their Vue compiler separately. The `v-register` directive itself is
- * also delivered by the Vite plugin's compile-time binding, so outside
- * that pipeline register it once per app:
- *
- *   import { installVRegister } from 'attaform/directive'
- *   installVRegister(app)
+ * The adapter rewrite is all this plugin does. Two things
+ * `attaform/vite` also provides do NOT transfer, because both are
+ * `@vitejs/plugin-vue`-specific: wire `attaform/transforms` into your
+ * Vue compiler for the SSR-critical template transforms, and register
+ * the directive once per app with `installVRegister(app)` from
+ * `attaform/directive`.
  *
  * Zero-dep: the plugin imports nothing from `rollup` (the bundler injects
  * its plugin context at the consumer's build); the structural types below
@@ -66,6 +62,17 @@ export interface AttaformRollupPlugin {
   ): Promise<{ id: string } | null> | null
 }
 
+/**
+ * Rollup plugin that resolves `attaform` and `attaform/zod` to the one
+ * adapter subpath matching the installed Zod major, so the build ships a
+ * single adapter instead of both.
+ *
+ * ```js
+ * import { attaform } from 'attaform/rollup'
+ *
+ * export default { plugins: [attaform()] }
+ * ```
+ */
 export function attaform(options: AttaformRollupPluginOptions = {}): AttaformRollupPlugin {
   const resolveZodAlias = options.resolveZodAlias !== false
   const root = options.root ?? process.cwd()

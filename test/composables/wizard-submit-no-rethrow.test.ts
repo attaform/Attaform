@@ -10,7 +10,7 @@ import { SubmitErrorHandlerError } from '../../src/runtime/core/errors'
 /**
  * Parity with `form.handleSubmit` (see submit-error-no-rethrow.test.ts):
  * `wizard.handleSubmit` returns a function bound to `@submit.prevent`, so
- * a rejecting `onSubmit` / `onError` must NOT re-throw — that would
+ * a rejecting `onSubmit` / `onError` must NOT re-throw: that would
  * surface as a `window` unhandledrejection. The wizard instead:
  *
  *   - resolves the returned promise (never rejects);
@@ -60,7 +60,7 @@ function validWizard(suffix: string) {
   return useWizard({ steps: [account, review], restore: false, persist: false })
 }
 
-describe('wizard.handleSubmit — a rejecting callback does not re-throw', () => {
+describe('wizard.handleSubmit: a rejecting callback does not re-throw', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

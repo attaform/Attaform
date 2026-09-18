@@ -9,7 +9,7 @@ import { renderAttaformState } from '../../src/runtime/core/serialize'
 import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 
 /**
- * SSR prefetch queue contract — Phase 2.
+ * SSR prefetch queue contract, Phase 2.
  *
  * The lazy-by-default form means an async `defaultValues` factory does
  * NOT fire on the server unless something explicitly enqueues the form
@@ -18,7 +18,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
  *   - a wizard auto-marks the current step (covered by wizard tests).
  *
  * Without any positive trigger, the form renders the schema's slim
- * defaults — the factory stays dormant and the server pays for no
+ * defaults: the factory stays dormant and the server pays for no
  * extra fetches. That is the activation rule that drives render
  * efficiency.
  *

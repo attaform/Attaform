@@ -10,7 +10,7 @@ import { fakeSchema } from '../utils/fake-schema'
 /**
  * Component tests for the Nuxt DevTools overlay panel. Mounts the panel
  * with a synthetic registry / form pair, exercises the four sections +
- * the timeline + the edit path. Devtools is dev-only — values surface
+ * the timeline + the edit path. Devtools is dev-only, values surface
  * raw (no redaction) and sensitive paths edit like any other path; the
  * panel's contract matches the Vue DevTools wire-up's same flip.
  */
@@ -28,7 +28,7 @@ function mountPanel(bridge: AttaformDevtoolsBridge): {
   return { root, app }
 }
 
-describe('AttaformDevtoolsPanel — empty state', () => {
+describe('AttaformDevtoolsPanel: empty state', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -47,7 +47,7 @@ describe('AttaformDevtoolsPanel — empty state', () => {
   })
 })
 
-describe('AttaformDevtoolsPanel — form display', () => {
+describe('AttaformDevtoolsPanel: form display', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -92,7 +92,7 @@ describe('AttaformDevtoolsPanel — form display', () => {
     const { root, app } = mountPanel({ registry, version: '0' })
     apps.push(app)
 
-    // Devtools is dev-only — both sensitive and non-sensitive values
+    // Devtools is dev-only, both sensitive and non-sensitive values
     // surface verbatim. Screen-share leak risk is the consumer's call.
     expect(root.textContent).toContain('alice')
     expect(root.textContent).toContain('hunter2')
@@ -115,7 +115,7 @@ describe('AttaformDevtoolsPanel — form display', () => {
   })
 })
 
-describe('AttaformDevtoolsPanel — edit path', () => {
+describe('AttaformDevtoolsPanel: edit path', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -183,7 +183,7 @@ describe('AttaformDevtoolsPanel — edit path', () => {
   })
 })
 
-describe('AttaformDevtoolsPanel — timeline', () => {
+describe('AttaformDevtoolsPanel: timeline', () => {
   const apps: App[] = []
   beforeEach(() => {
     document.body.innerHTML = ''

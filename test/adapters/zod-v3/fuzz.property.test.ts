@@ -8,7 +8,7 @@ import { buildZodRootObjectArbitrary } from '../../utils/zod-arbitraries'
  * Mirror of test/adapters/zod-v4/fuzz.property.test.ts, targeting the
  * v3 adapter. The only deliberate difference from the v4 fuzz: Zod v3's
  * `z.record` signature takes a single value type while v4 requires
- * both key and value — the `makeRecord` closure uses the v3 form.
+ * both key and value: the `makeRecord` closure uses the v3 form.
  *
  * Properties mirror v4's post-fix shape (getDefaultValues is total in
  * lax mode, never throws, always returns success). The v3 adapter used
@@ -18,7 +18,7 @@ import { buildZodRootObjectArbitrary } from '../../utils/zod-arbitraries'
 
 const arbRootSchema = buildZodRootObjectArbitrary(z, 3, (inner) => z.record(inner))
 
-describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
+describe('zod v3 adapter: fuzz over arbitrary supported schemas', () => {
   test.prop([arbRootSchema])('adapter construction never throws on supported schemas', (schema) => {
     expect(() =>
       zodAdapter(schema as z.ZodObject<z.ZodRawShape>)('f', { maxRecursionDepth: 64 })
@@ -36,13 +36,13 @@ describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
       })
       expect(result.success).toBe(true)
       // After `success === true`, the result type narrows so `.data` is
-      // present by construction — assert on shape instead of mere
+      // present by construction, assert on shape instead of mere
       // existence.
       expect(typeof result.data).toBe('object')
     }
   )
 
-  test.prop([arbRootSchema])('validateAtPath is total — never rejects', async (schema) => {
+  test.prop([arbRootSchema])('validateAtPath is total, never rejects', async (schema) => {
     const adapter = zodAdapter(schema as z.ZodObject<z.ZodRawShape>)('f', { maxRecursionDepth: 64 })
     // Fuzz random values through validateAtPath without requiring a
     // valid initial state. The contract is "resolves to a
@@ -51,8 +51,8 @@ describe('zod v3 adapter — fuzz over arbitrary supported schemas', () => {
     // data. Post-5.6 the adapter method is Promise-returning, so the
     // property reads "never rejects" rather than "never throws".
     for (const probe of [undefined, null, 0, '', [], {}]) {
-      // `toHaveProperty('success')` is the contract — a ValidationResponse
-      // — and is stronger than `toBeDefined()`, which would pass for any
+      // `toHaveProperty('success')` is the contract: a ValidationResponse,
+      // and is stronger than `toBeDefined()`, which would pass for any
       // non-undefined resolution.
       await expect(adapter.validateAtPath(probe, undefined)).resolves.toHaveProperty('success')
     }

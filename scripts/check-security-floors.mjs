@@ -28,10 +28,10 @@
  * silently fails to apply, so it gets the same standing check.
  *
  * Two spellings unify:
- *   - a literal version (`rollup: 4.61.1`) — one copy, AND that exact
+ *   - a literal version (`rollup: 4.61.1`): one copy, AND that exact
  *     version. Used where the package is not a root dependency, so
  *     there is no manifest entry to track.
- *   - a `$pkg` alias (`vite: $vite`, `'@nuxt/kit': $nuxt`) — one copy,
+ *   - a `$pkg` alias (`vite: $vite`, `'@nuxt/kit': $nuxt`): one copy,
  *     at whatever the root manifest declares for `pkg`. Preferred when
  *     the package IS a root dependency: the manifest stays the single
  *     source of truth, Dependabot can bump it the ordinary way, and a

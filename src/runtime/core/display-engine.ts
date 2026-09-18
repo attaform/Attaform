@@ -24,15 +24,15 @@ import type { PathKey } from './paths'
  * retained set is bounded by the rendered non-idle fields; none of them
  * arm a timer, so retention costs memory, never CPU.
  *
- * `setTimeout` invariants on the returned `reviewAt`, enforced here rather
- * than trusted from the reducer. A non-finite deadline is ignored rather
- * than handed to `setTimeout`, where it coerces to 0 and spins; an over-large
- * finite deadline is clamped below the 32-bit `setTimeout` overflow; and the
- * timer refuses to re-arm for a deadline it just fired that has also already
- * passed. The last of those is not belt-and-braces: the library reducer's own
- * min-visible hold re-emits ONE fixed instant for the length of the window,
- * which is exactly the shape that stranded a field on `'pending'` forever (see
- * `rearm`).
+ * The `setTimeout` invariants on a returned `reviewAt` are enforced here
+ * rather than trusted from the reducer. A non-finite deadline is ignored
+ * instead of handed to `setTimeout`, where it coerces to 0 and spins; an
+ * over-large finite deadline is clamped below the 32-bit `setTimeout`
+ * overflow; and the timer refuses to re-arm for a deadline it just fired
+ * that has also already passed. That last one is load-bearing, not
+ * belt-and-braces: Attaform's own reducer re-emits ONE fixed instant for
+ * the length of a min-visible hold, which is exactly the shape that can
+ * strand a field on `'pending'` forever (see `rearm`).
  *
  * Background tabs: `setTimeout` is throttled to >= 1s while a tab is hidden,
  * so a min-visible hold can overshoot. A `visibilitychange` listener bumps
@@ -42,7 +42,7 @@ import type { PathKey } from './paths'
  * SSR: no clock, no timers, no listener. With `now` frozen and nothing
  * validating at render, the reducer returns the plain verdict (never
  * pending) and the engine stores nothing, so the server HTML and the
- * client's first render agree — no hydration mismatch on the display
+ * client's first render agree, with no hydration mismatch on the display
  * projection.
  */
 export type DisplayEngine = {
@@ -73,12 +73,11 @@ const IDLE: DisplayMachine = Object.freeze({ display: 'idle' })
 const MAX_DELAY = 2_147_483_647
 
 // Liveness floor for a spinner. A `'pending'` machine with no usable
-// deadline would have nothing scheduled to re-evaluate it, leaving it
-// dependent on an external reactive edge that may never arrive; this is
-// the interval at which the engine re-checks one anyway.
-//
-// Long enough that a spinner which is already animating does not churn,
-// short enough that a missed edge is a blink rather than a stuck field.
+// deadline has nothing scheduled to re-evaluate it and depends on an
+// external reactive edge that may never arrive, so the engine re-checks
+// one at this interval anyway. Long enough that an already-animating
+// spinner does not churn, short enough that a missed edge is a blink
+// rather than a stuck field.
 export const PENDING_LIVENESS_MS = 250
 
 /**
@@ -94,10 +93,10 @@ export const PENDING_LIVENESS_MS = 250
  * which arrive first. The floor only matters when neither does.
  *
  * It is structural rather than a patch on one branch because the engine
- * owns every `setTimeout` invariant already (NaN, Infinity, and
- * fixed-or-past deadlines). A `'pending'` machine with no `reviewAt` is
- * the same hazard with none of those tells, and the library's own reducer
- * emits exactly that on its in-flight branch. It cannot strand a field now.
+ * owns every other `setTimeout` invariant already: NaN, Infinity, and
+ * fixed-or-past deadlines. A `'pending'` machine with no `reviewAt` is the
+ * same hazard carrying none of those tells, and Attaform's own reducer
+ * emits exactly that on its in-flight branch.
  */
 function withLiveness(machine: DisplayMachine, now: number): DisplayMachine {
   if (machine.display !== 'pending') return machine
@@ -140,38 +139,35 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
       clearTimer()
       return
     }
-    // Already aimed at this deadline — leave the live timer alone so a
-    // flush that re-resolves many fields doesn't churn clear/set.
+    // Already aimed at this deadline: leave the live timer alone so a
+    // flush re-resolving many fields does not churn clear/set.
     if (timer !== null && timerTarget === target) return
     // Forward-progress guard: never re-arm for a deadline we just fired
     // that has ALSO already passed. That pair is the busy-loop shape this
     // guards against, where the reducer pins `reviewAt` to a fixed or past
     // instant and every fire immediately re-emits it.
     //
-    // The `target <= now` half is load-bearing, not belt-and-braces. An
-    // earlier version refused on the deadline alone, on the premise that
-    // legitimate timing always advances a deadline or drops it. The
-    // library reducer's own min-visible hold breaks that premise: while
-    // a spinner is inside its window the reducer re-emits
-    // `pendingShownAt + minVisible`, which is
-    // by design the SAME instant on every pass. A timer that fired a
-    // fraction early (or landed on a `Date.now()` that had not yet ticked
-    // past the deadline) left the reducer re-emitting that deadline while
-    // `lastFiredTarget` already held it, so the guard cleared the timer
-    // and armed nothing. Nothing else was scheduled to re-evaluate that
-    // field, so it held `'pending'` permanently: `aria-busy="true"` over a
-    // field whose validation had finished and whose error was already
-    // committed to `errorCells`, invisible because `showErrors` reads
-    // `displayState === 'error'`.
+    // Both halves are required. Refusing on the deadline ALONE assumes
+    // legitimate timing always advances a deadline or drops it, and
+    // Attaform's own min-visible hold breaks that assumption: while a
+    // spinner sits inside its window the reducer re-emits
+    // `pendingShownAt + minVisible`, by design the SAME instant on every
+    // pass. A timer firing a fraction early, or landing on a `Date.now()`
+    // that had not yet ticked past the deadline, then leaves the reducer
+    // re-emitting a deadline `lastFiredTarget` already holds, the guard
+    // clears the timer and arms nothing, and with nothing else scheduled to
+    // re-evaluate the field it holds `'pending'` permanently:
+    // `aria-busy="true"` over a field whose validation has finished and
+    // whose error is already committed to `errorCells`, invisible because
+    // `showErrors` reads `displayState === 'error'`. That is the
+    // `docs-demos-smoke > async-refinements` flake, ~2-3% per mount in a
+    // tight loop, and it needs the field to reach `'pending'` at all, which
+    // is why only a demo whose simulated latency exceeds
+    // `FOCUS_OUT_GRACE` ever showed it.
     //
-    // That is the `docs-demos-smoke > async-refinements` flake, and it
-    // reproduces at ~2-3% per mount in a tight loop. It needs the field to
-    // reach `'pending'` at all, which is why it only ever appeared on a
-    // demo whose simulated latency exceeds `FOCUS_OUT_GRACE`.
-    //
-    // Re-arming for a still-future deadline cannot spin: the delay below
-    // is positive, and once a fire lands at or past `target` the guard
-    // engages again.
+    // Re-arming for a still-future deadline cannot spin: the delay below is
+    // positive, and once a fire lands at or past `target` the guard engages
+    // again.
     if (target === lastFiredTarget && target <= now) {
       clearTimer()
       return
@@ -202,9 +198,9 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
     if (ssr) return reduced
     // A spinner always gets a deadline, even when the reducer omitted one.
     const machine = withLiveness(reduced, ctx.now)
-    // Retain anything non-idle, plus an idle machine that still carries a
+    // Retain anything non-idle, plus an idle machine still carrying a
     // usable (finite) deadline. An idle machine whose only claim to be kept
-    // is a non-finite `reviewAt` is junk — evict it.
+    // is a non-finite `reviewAt` is junk, so evict it.
     const active =
       machine.display !== 'idle' ||
       (machine.reviewAt !== undefined && Number.isFinite(machine.reviewAt))
@@ -243,8 +239,8 @@ export function createDisplayEngine(ssr: boolean): DisplayEngine {
 
   const engine: DisplayEngine = { resolve, clear, dispose }
   if (__DEV__) {
-    // Introspection hooks the test suites read; the prod flavor drops
-    // them with the flag.
+    // Introspection hooks the test suites read; the prod flavor drops them
+    // with the flag.
     engine.size = () => machines.size
     engine.has = (key) => machines.has(key)
     engine.hasTimer = () => timer !== null

@@ -16,10 +16,10 @@ import { waitUntil } from '../utils/form-harness'
  *
  * This means:
  *   1. Per-field re-validation doesn't shuffle siblings (the underlying
- *      Map's insertion-order churn is now invisible — sort runs at the
+ *      Map's insertion-order churn is now invisible, sort runs at the
  *      computed-aggregate boundary).
  *   2. Resurrecting an error returns it to its original slot, NOT the
- *      end of the aggregate — clearing `email` then breaking it again
+ *      end of the aggregate, clearing `email` then breaking it again
  *      produces `[email, password]`, not `[password, email]`.
  *
  * The repro that drove this design was the spike's anonymous form
@@ -58,7 +58,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('form.meta.errors — schema-declaration ordinal sort', () => {
+describe('form.meta.errors: schema-declaration ordinal sort', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -74,8 +74,8 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     apps.push(app)
 
     // Seed the aggregate via a whole-form validation. handleSubmit's
-    // failed branch calls setAllSchemaErrors with the full issue list
-    // — that's what populates the Map in adapter (= schema-declaration)
+    // failed branch calls setAllSchemaErrors with the full issue list:
+    // that's what populates the Map in adapter (= schema-declaration)
     // order: email, then password.
     const handler = api.handleSubmit(
       async () => {},
@@ -91,7 +91,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
 
     // Type into the FIRST-declared field. Without the fix, the
     // per-field re-validation would `delete('email')` then `set('email',
-    // ...)` — moving email to the END of the Map's insertion order, so
+    // ...)`, moving email to the END of the Map's insertion order, so
     // the aggregate flips to [password, email].
     api.setValue('email', 'a')
     await waitUntil(() =>
@@ -202,7 +202,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
 
     // Re-break email. The path's ordinal was assigned at construction
     // (slot 0, ahead of password's slot 1) and the ordinal map never
-    // shrinks — so the resurrected error sorts back to the front.
+    // shrinks: so the resurrected error sorts back to the front.
     api.setValue('email', 'a')
     await waitUntil(() =>
       api.meta.errors.map((e) => e.path.join('.')).join('|') === 'email|password' ? true : null
@@ -212,7 +212,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
   })
 
   it('breaks land in declaration order regardless of which field broke first', async () => {
-    // Mount with valid defaults — no errors at construction. Trigger
+    // Mount with valid defaults: no errors at construction. Trigger
     // failures one at a time. Whichever field breaks first, the final
     // aggregate sorts by schema-declaration ordinal.
     const { app, api } = mountForm(schema, {
@@ -243,7 +243,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
 
   it('reset preserves ordinals across re-derive (reset re-runs validation)', async () => {
     // Construction validates the
-    // mounted defaults and seeds schemaErrors accordingly — and reset
+    // mounted defaults and seeds schemaErrors accordingly, and reset
     // mirrors that by re-deriving against the post-reset state. A
     // form mounted with invalid defaults stays in an invalid surface
     // post-reset; the user-visible verdict can't lie that the form
@@ -267,12 +267,12 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     expect(beforeReset).toEqual(['email', 'password'])
 
     api.reset()
-    // After reset, the invalid defaults still violate the schema —
+    // After reset, the invalid defaults still violate the schema,
     // errors are re-derived synchronously in the same order construction
     // would have produced them.
     expect(api.meta.errors.map((e) => e.path.join('.'))).toEqual(beforeReset)
 
-    // Re-submit with the same default-empty state — the aggregate
+    // Re-submit with the same default-empty state: the aggregate
     // doesn't churn (errors already there, ordinals preserved).
     await handler()
     await waitUntil(() =>
@@ -294,7 +294,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
       api.meta.errors.map((e) => e.path.join('.')).join('|') === 'email|password' ? true : null
     )
 
-    // Inject a user error AT password — same path as the existing
+    // Inject a user error AT password, same path as the existing
     // schema "too small" error. Both should end up in password's slot
     // (ordinal 1), in schema-then-user per-store order. email's
     // schema error stays at ordinal 0 in front.
@@ -357,7 +357,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
 
   it('lazy-assigned paths get ordinals after construction-time leaves', async () => {
     // DU schema: variant 1 has `n` (numeric leaf, seeded at
-    // construction). Variant 2 has `t` (string leaf — not numeric, so
+    // construction). Variant 2 has `t` (string leaf: not numeric, so
     // not auto-blank, but its ordinal is still assigned at
     // construction by the diffAndApply walk if the slim default is
     // variant 1 only). `t` won't be in the slim default, so its
@@ -391,7 +391,7 @@ describe('form.meta.errors — schema-declaration ordinal sort', () => {
     expect(v1Errors).toContain('notify.n')
 
     // Switch to variant 2. `notify.t` is a NEW path the construction
-    // walk didn't visit — its ordinal is assigned lazily on first
+    // walk didn't visit, its ordinal is assigned lazily on first
     // metaErrors read after the variant write.
     api.setValue('notify', { kind: 'txt', t: '' })
     await waitUntil(() => ((api.values.notify as { kind: string }).kind === 'txt' ? true : null))

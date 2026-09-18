@@ -19,13 +19,13 @@ import { vRegister } from '../../src/runtime/core/directive'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
 
 /**
- * `form.interact(path?)` — programmatic simulation of a full
+ * `form.interact(path?)`, programmatic simulation of a full
  * focus -> edit -> blur over a subtree.
  *
  * The gap it closes: `form.touch()` writes `touched`, but the library
  * default display gate reads `blurredAfterInteraction`
  * (`display-state.ts` `isGateOpen`), which only a blur *following* an
- * edit sets — the asymmetry that keeps a bare tab-through from
+ * edit sets: the asymmetry that keeps a bare tab-through from
  * revealing errors. So a seeded or imported value had no route to the
  * gate short of a form-wide submit, which is too blunt for one row of
  * a field array.
@@ -109,9 +109,7 @@ const SEED = {
   ],
 }
 
-// -----------------------------------------------------------------------------
 // Shared behaviour, parameterised by adapter
-// -----------------------------------------------------------------------------
 
 type MakeForm = () => FormWithInteract
 
@@ -159,7 +157,7 @@ const ADAPTERS: ReadonlyArray<{ name: string; makeForm: MakeForm }> = [
 ]
 
 for (const { name, makeForm } of ADAPTERS) {
-  describe(`form.interact — ${name} adapter`, () => {
+  describe(`form.interact: ${name} adapter`, () => {
     it('reveals a leaf that form.touch() leaves idle', async () => {
       const touchOnly = makeForm()
       touchOnly.touch('email')
@@ -189,7 +187,7 @@ for (const { name, makeForm } of ADAPTERS) {
       await nextTick()
       expect(form.fields(['members', 0, 'name']).showErrors).toBe(true)
       expect(form.fields(['members', 0, 'age']).showErrors).toBe(true)
-      // The neighbouring row and the unrelated leaf are untouched —
+      // The neighbouring row and the unrelated leaf are untouched,
       // this is the whole point over a form-wide submit.
       expect(form.fields(['members', 1, 'name']).showErrors).toBe(false)
       expect(form.fields(['members', 1, 'age']).showErrors).toBe(false)
@@ -250,7 +248,7 @@ for (const { name, makeForm } of ADAPTERS) {
       expect(form.fields('email').blurredAfterInteraction).toBe(true)
     })
 
-    it('recovery stays live — fixing the value returns to idle', async () => {
+    it('recovery stays live: fixing the value returns to idle', async () => {
       const form = makeForm()
       await form.interact('email')
       expect(form.fields('email').showErrors).toBe(true)
@@ -295,11 +293,9 @@ for (const { name, makeForm } of ADAPTERS) {
   })
 }
 
-// -----------------------------------------------------------------------------
-// Earned success — engagement, not net value change
-// -----------------------------------------------------------------------------
+// Earned success, engagement, not net value change
 
-describe('form.interact — a valid subtree earns its success check', () => {
+describe('form.interact: a valid subtree earns its success check', () => {
   const schema = zV4.object({
     team: zV4.string().min(1, 'Name your team'),
     members: zV4.array(zV4.object({ name: zV4.string().min(1), email: zV4.string().email() })),
@@ -362,7 +358,7 @@ describe('form.interact — a valid subtree earns its success check', () => {
   })
 })
 
-describe('earned success — a real user who edits and reverts', () => {
+describe('earned success: a real user who edits and reverts', () => {
   const schema = zV4.object({ email: zV4.string().email('Enter a valid email') })
 
   it('greens on a net-unchanged edit, because engagement is what is rewarded', async () => {
@@ -408,11 +404,9 @@ describe('earned success — a real user who edits and reverts', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
 // Disabled forms
-// -----------------------------------------------------------------------------
 
-describe('form.interact — disabled form', () => {
+describe('form.interact: disabled form', () => {
   const schema = zV4.object({ email: zV4.string().email() })
 
   it('is a no-op while the form is frozen', async () => {
@@ -449,11 +443,9 @@ describe('form.interact — disabled form', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
-// Stickiness across unmount — the field-array-row-in-a-modal case
-// -----------------------------------------------------------------------------
+// Stickiness across unmount: the field-array-row-in-a-modal case
 
-describe('form.interact — survives unmount', () => {
+describe('form.interact: survives unmount', () => {
   const schema = zV4.object({ email: zV4.string().email('Enter a valid email') })
 
   it('a subtree interacted with while mounted stays revealed after it remounts', async () => {
@@ -491,7 +483,7 @@ describe('form.interact — survives unmount', () => {
     shown.value = false
     await nextTick()
 
-    // Reopen it — the sticky flags must still have the gate open.
+    // Reopen it: the sticky flags must still have the gate open.
     shown.value = true
     await nextTick()
     await nextTick()

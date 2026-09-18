@@ -13,8 +13,8 @@
  * These are `WeakRef`-proof but not `WeakRef`-testable, which is why
  * this file asserts SIZES where its sibling
  * `field-state-cache-retention.test.ts` asserts reachability. The store
- * maps hold bookkeeping — timestamps, interaction flags, an absence
- * baseline of `undefined` — so they pin no consumer value and a
+ * maps hold bookkeeping, timestamps, interaction flags, an absence
+ * baseline of `undefined`: so they pin no consumer value and a
  * reachability probe sees nothing wrong while the entry count climbs
  * without limit.
  *

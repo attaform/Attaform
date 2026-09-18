@@ -13,7 +13,7 @@ import type { UseFormReturn } from '../../src/zod'
  * `FieldStateMapEntry` (form.fields chained) and `ErrorsProxyShape`
  * (form.errors chained). The lift merges keys across object-union
  * members so per-variant leaves are addressable through one chained
- * shape, regardless of which discriminant is currently active —
+ * shape, regardless of which discriminant is currently active,
  * matching the runtime's stable-stub semantics for inactive paths.
  *
  * Single-object types must NOT regress: the homomorphic branch is
@@ -31,7 +31,7 @@ import type { UseFormReturn } from '../../src/zod'
  * output. See /docs/reading-the-form/type-safety.
  */
 
-describe('IsUnion / KeyofUnion / ValueOfUnion — utility behavior', () => {
+describe('IsUnion / KeyofUnion / ValueOfUnion: utility behavior', () => {
   it('IsUnion<T> distinguishes unions from single types', () => {
     expectTypeOf<IsUnion<{ a: 1 }>>().toEqualTypeOf<false>()
     expectTypeOf<IsUnion<{ a: 1 } | { b: 2 }>>().toEqualTypeOf<true>()
@@ -59,7 +59,7 @@ describe('IsUnion / KeyofUnion / ValueOfUnion — utility behavior', () => {
   })
 })
 
-describe('FieldStateMapEntry — discriminated-union lift (synthetic fixtures)', () => {
+describe('FieldStateMapEntry: discriminated-union lift (synthetic fixtures)', () => {
   type Cargo =
     | { type: 'dry'; items: ReadonlyArray<{ sku: string }>; fragile: boolean }
     | {
@@ -91,7 +91,7 @@ describe('FieldStateMapEntry — discriminated-union lift (synthetic fixtures)',
     // Model P: the NODE is absent when its variant is inactive, so the
     // key carries node-optionality (`FieldState<T> | undefined`), not
     // value-optionality (`FieldState<T | undefined>`). The present node's
-    // value type is precise — the synthetic absent-variant `undefined`
+    // value type is precise: the synthetic absent-variant `undefined`
     // is stripped.
     type FragileLeaf = FieldStateMapEntry<Cargo>['fragile']
     expectTypeOf<FragileLeaf>().toEqualTypeOf<FieldState<boolean> | undefined>()
@@ -160,7 +160,7 @@ const form: CargoForm = (() => {
   return proxy as CargoForm
 })()
 
-describe('useForm — chained access on form.fields with cargo schema', () => {
+describe('useForm: chained access on form.fields with cargo schema', () => {
   it('per-variant fields are reachable via `?.` regardless of active variant', () => {
     // The node is optional (absent when its variant is inactive), so the
     // read chains through `?.`; the resolved value type stays precise.
@@ -178,7 +178,7 @@ describe('useForm — chained access on form.fields with cargo schema', () => {
   })
 })
 
-describe('useForm — chained access on form.errors with cargo schema', () => {
+describe('useForm: chained access on form.errors with cargo schema', () => {
   it('per-variant errors are reachable; leaf is ValidationError[] | undefined', () => {
     expectTypeOf(form.errors.cargo.tempMinC).toEqualTypeOf<readonly ValidationError[] | undefined>()
     expectTypeOf(form.errors.cargo.fragile).toEqualTypeOf<readonly ValidationError[] | undefined>()
@@ -191,7 +191,7 @@ describe('useForm — chained access on form.errors with cargo schema', () => {
   })
 })
 
-describe('useForm — discriminator literals widen to string by design (in-flight types)', () => {
+describe('useForm: discriminator literals widen to string by design (in-flight types)', () => {
   // form.values models what the form is actually holding right now,
   // not what the schema will accept at submit time. A user might not
   // have picked a variant yet, might be rehydrating a half-filled
@@ -214,7 +214,7 @@ describe('useForm — discriminator literals widen to string by design (in-fligh
 
 describe('form.values discriminated-union lift (LiftedValueShape)', () => {
   // form.values uses LiftedValueShape so per-variant keys are
-  // reachable through chained access — matching the runtime, where
+  // reachable through chained access, matching the runtime, where
   // plain JS object access on a missing variant key returns
   // `undefined` rather than throwing. WriteShape (the underlying
   // shape used by setValue / defaultValues) stays distributive so

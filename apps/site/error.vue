@@ -3,7 +3,7 @@
   import type { NuxtError } from '#app'
 
   // Nuxt convention: this file handles every error the framework
-  // throws at the page level — 404s primarily, but also 500s if any
+  // throws at the page level, 404s primarily, but also 500s if any
   // SSR handler explodes. Distinguish the two so a missing page
   // reads as friendly ("wandered off") and a real failure doesn't
   // hide behind that copy. The error prop is provided by Nuxt and
@@ -15,14 +15,14 @@
   const lede = computed(() =>
     isNotFound.value
       ? 'This page wandered off. Check the URL, or jump back to somewhere familiar.'
-      : 'An unexpected error broke this page. The site itself is fine — try the home page or refresh.'
+      : 'An unexpected error broke this page. The site itself is fine, so try the home page or refresh.'
   )
 
   const monogram = computed(() => String(props.error?.statusCode ?? 'oops'))
 
   // The GitHub issue link prefills enough context that a maintainer
   // can chase down the broken inbound link without prying for details.
-  // It's only shown for genuine 404s — a 500 is our bug, not a docs
+  // It's only shown for genuine 404s: a 500 is our bug, not a docs
   // typo.
   const issueUrl = computed(() => {
     const title = encodeURIComponent('Broken docs link')
@@ -44,7 +44,7 @@
   <NuxtLayout>
     <section class="relative isolate overflow-hidden">
       <!-- Same dot-grid + glow stack as the homepage hero. The 404
-           page is a moment, not a corridor — give it the same warmth
+           page is a moment, not a corridor: give it the same warmth
            treatment so it feels like part of the site, not an OS
            error dialog. -->
       <div
@@ -129,7 +129,7 @@
 </template>
 
 <style scoped>
-  /* Single celebratory rotation on mount — the compass needle rights
+  /* Single celebratory rotation on mount: the compass needle rights
      itself once. Looped rotation here would feel like a loading
      spinner; one turn reads as punctuation. */
   .compass-spin {

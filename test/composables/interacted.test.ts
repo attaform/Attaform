@@ -8,7 +8,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { waitUntil } from '../utils/form-harness'
 
-// `name` is a required string defaulting to '' — clearing it back to empty
+// `name` is a required string defaulting to '', clearing it back to empty
 // returns to the pristine baseline, which is exactly the case that tells
 // `interacted` apart from `dirty`.
 const schema = z.object({ name: z.string().min(2) })
@@ -39,7 +39,7 @@ function typeInto(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-describe('interacted — sticky value-mutation signal', () => {
+describe('interacted: sticky value-mutation signal', () => {
   let mounted: Mounted | undefined
   afterEach(() => {
     mounted?.app.unmount()
@@ -94,7 +94,7 @@ describe('interacted — sticky value-mutation signal', () => {
   })
 })
 
-describe('blurredAfterInteraction — sticky edited-then-left signal', () => {
+describe('blurredAfterInteraction: sticky edited-then-left signal', () => {
   let mounted: Mounted | undefined
   afterEach(() => {
     mounted?.app.unmount()

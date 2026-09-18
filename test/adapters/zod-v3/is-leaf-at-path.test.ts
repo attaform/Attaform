@@ -8,7 +8,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * identically across them.
  */
 
-describe('zod v3: isLeafAtPath — primitives are leaves', () => {
+describe('zod v3: isLeafAtPath: primitives are leaves', () => {
   it('returns true for primitive leaves', () => {
     const schema = z.object({
       name: z.string(),
@@ -42,7 +42,7 @@ describe('zod v3: isLeafAtPath — primitives are leaves', () => {
   })
 })
 
-describe('zod v3: isLeafAtPath — wrappers are transparent', () => {
+describe('zod v3: isLeafAtPath: wrappers are transparent', () => {
   it('returns true for .optional() over a primitive', () => {
     const schema = z.object({ note: z.string().optional() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -62,7 +62,7 @@ describe('zod v3: isLeafAtPath — wrappers are transparent', () => {
   })
 })
 
-describe('zod v3: isLeafAtPath — containers descend', () => {
+describe('zod v3: isLeafAtPath: containers descend', () => {
   it('returns false for object containers', () => {
     const schema = z.object({
       address: z.object({ city: z.string(), zip: z.string() }),
@@ -93,7 +93,7 @@ describe('zod v3: isLeafAtPath — containers descend', () => {
   })
 })
 
-describe('zod v3: isLeafAtPath — discriminated unions', () => {
+describe('zod v3: isLeafAtPath: discriminated unions', () => {
   const schema = z.object({
     notify: z.discriminatedUnion('channel', [
       z.object({ channel: z.literal('email'), address: z.string() }),
@@ -116,7 +116,7 @@ describe('zod v3: isLeafAtPath — discriminated unions', () => {
   })
 })
 
-describe('zod v3: isLeafAtPath — non-existent paths', () => {
+describe('zod v3: isLeafAtPath: non-existent paths', () => {
   it('returns false for unknown paths (descend permissively)', () => {
     const schema = z.object({ name: z.string() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -125,7 +125,7 @@ describe('zod v3: isLeafAtPath — non-existent paths', () => {
   })
 })
 
-describe('zod v3: isLeafAtPath — cache behaviour', () => {
+describe('zod v3: isLeafAtPath: cache behaviour', () => {
   it('returns the same result on repeated calls (memoised)', () => {
     const schema = z.object({ email: z.string(), address: z.object({ city: z.string() }) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })

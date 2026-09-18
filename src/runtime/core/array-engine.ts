@@ -1,3 +1,21 @@
+/**
+ * The arrays engine: everything keeping per-element state truthful across a
+ * structural array mutation, in one module around one permutation core.
+ *
+ * A structural mutation, which the typed helpers below tag with an `arrayOp`,
+ * is decoded exactly once into an {@link IndexRemap}, and `remapForOp` is the
+ * single source of permutation truth. Every consumer derives from that remap:
+ *
+ *  - the identity tracker replays it onto its token lists (`permuteList`);
+ *  - per-element state relocation walks it (`migrateMapSubtree` /
+ *    `migrateSetSubtree`);
+ *  - derived-state eviction, schema verdicts and variant memory, drops at its
+ *    `changedIndices`;
+ *  - the write funnel scopes its per-element work to `remap.fresh`.
+ *
+ * One decode and many readers, so the permutation cannot drift between the
+ * consumer-facing `:key` token and the state that must travel with it.
+ */
 import { toRaw, type Ref } from 'vue'
 import type { ErrorCell, WriteMeta } from '../types/types-api'
 import { consumerKeys, readConsumerProp } from './consumer-code'
@@ -18,27 +36,6 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 
 type ArrayOp = NonNullable<WriteMeta['arrayOp']>
-
-/**
- * The arrays engine: everything that keeps per-element state truthful
- * across structural array mutations, in one module around one
- * permutation core.
- *
- * A structural mutation (the typed helpers below tag each write with an
- * `arrayOp`) is decoded exactly once into an {@link IndexRemap} —
- * `remapForOp` is the single source of permutation truth. Every
- * downstream consumer derives from that remap:
- *
- *  - the identity tracker replays it onto its token lists (`permuteList`),
- *  - per-element state relocation walks it (`migrateMapSubtree` /
- *    `migrateSetSubtree`),
- *  - derived-state eviction (schema verdicts, variant memory) drops at
- *    its `changedIndices`,
- *  - the write funnel scopes its per-element work to `remap.fresh`.
- *
- * One decode, many readers — the permutation can't drift between the
- * consumer-facing `:key` token and the state that must travel with it.
- */
 
 /**
  * The exact index permutation an array operation produced, recovered from
@@ -66,9 +63,9 @@ export type IndexRemap = {
 }
 
 /**
- * Build the index permutation for `op` against an array of length `oldLen`.
- * The one place operation kinds are interpreted — everything downstream
- * consumes the remap.
+ * Build the index permutation for `op` against an array of length `oldLen`. The
+ * one place operation kinds are interpreted; everything downstream consumes the
+ * remap.
  */
 export function remapForOp(op: ArrayOp, oldLen: number): IndexRemap {
   const moved = new Map<number, number>()
@@ -134,12 +131,11 @@ export function changedIndices(remap: IndexRemap): ReadonlySet<number> {
 
 /**
  * Replay `remap` onto a list that parallels the array by position: each
- * surviving entry lands at its destination index, vacated entries drop,
- * and every slot no survivor claimed (the fresh ones, plus a grown tail)
- * is filled by `fill()`. The list-shaped counterpart of the path-keyed
- * migrations below — the identity tracker's token lists ride through
- * here so a token follows its element exactly the way the element's
- * keyed state does.
+ * surviving entry lands at its destination index, a vacated entry drops, and
+ * every slot no survivor claimed, the fresh ones plus a grown tail, is filled
+ * by `fill()`. The list-shaped counterpart of the path-keyed migrations below,
+ * so a token follows its element exactly the way the element's keyed state
+ * does.
  */
 function permuteList<T>(list: ReadonlyArray<T>, remap: IndexRemap, fill: () => T): T[] {
   const claimed: Array<T | undefined> = new Array<T | undefined>(remap.newLen)
@@ -158,13 +154,13 @@ function permuteList<T>(list: ReadonlyArray<T>, remap: IndexRemap, fill: () => T
   return next
 }
 
-// ─── The shared key walk ────────────────────────────────────────────
+// --- The shared key walk ---
 //
-// Every path-keyed store (field records, errors, blank sets, identity
-// tokens, variant memory) is interrogated the same way on a structural
-// mutation: decode each key, keep the ones sitting under the mutated
-// array with a numeric element segment at the array's depth, and act on
-// the element index found there. One walk implementation serves them all.
+// Every path-keyed store (field records, errors, blank sets, identity tokens,
+// variant memory) is interrogated the same way on a structural mutation: decode
+// each key, keep the ones under the mutated array carrying a numeric element
+// segment at the array's depth, and act on the element index found there. One
+// walk serves them all.
 
 type KeyAtIndex = {
   readonly key: PathKey
@@ -267,12 +263,11 @@ export function migrateSetSubtree(set: Set<PathKey>, arrayPath: Path, remap: Ind
 }
 
 /**
- * Drop the SCHEMA side of every cell whose element index is in
- * `indices` — stale verdicts describing a prior occupant. User sides
- * survive (already relocated by the cell migration in
- * `migrateElementState`); a cell left empty leaves the map, including
- * the empty husk a relocated schema-only cell leaves at its
- * destination (every relocation destination is a changed index).
+ * Drop the SCHEMA side of every cell whose element index is in `indices`, those
+ * verdicts describing a prior occupant. User sides survive, already relocated
+ * by the cell migration in `migrateElementState`, and a cell left empty leaves
+ * the map, including the empty husk a relocated schema-only cell leaves at its
+ * destination, every relocation destination being a changed index.
  */
 function evictSchemaVerdictsAtIndices(
   errorCells: Map<PathKey, ErrorCell>,
@@ -289,9 +284,9 @@ function evictSchemaVerdictsAtIndices(
   }
 }
 
-// Drop every entry of a path-keyed store whose element index is in
-// `indices` — the eviction half of the walk, for derived state that is
-// recomputed rather than relocated.
+// Drop every entry of a path-keyed store whose element index is in `indices`:
+// the eviction half of the walk, for derived state that is recomputed rather
+// than relocated.
 function deleteKeysAtIndices(
   keys: Iterable<PathKey>,
   del: (key: PathKey) => void,
@@ -303,7 +298,7 @@ function deleteKeysAtIndices(
   }
 }
 
-// ─── Element identity ───────────────────────────────────────────────
+// --- Element identity ---
 
 /**
  * Operation-maintained per-element identity for arrays. Each tracked
@@ -346,11 +341,11 @@ export type ArrayIdentity = {
   /** Realign a tracked array's tokens to its current length by position. */
   realign(arraySegs: Path): void
   /**
-   * Whether any tracked array under `prefix` differs from its baseline
-   * element order — a different length, or a reordered identity sequence.
-   * Backs the structural component of `dirty`: once per-element state
-   * follows its element, a positional value comparison can no longer see a
-   * reorder or removal, so the dirty verdict consults this instead.
+   * Whether any tracked array under `prefix` differs from its baseline element
+   * order, by length or by a reordered identity sequence. It backs the
+   * structural component of `dirty`: once per-element state follows its
+   * element, a positional value comparison can no longer see a reorder or a
+   * removal, so the dirty verdict consults this.
    */
   hasStructuralChangeUnder(prefix: Path): boolean
   /**
@@ -385,7 +380,7 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
     while (ids.length < expectedLen) ids.push(allocate())
     if (ids.length > expectedLen) ids.length = expectedLen
     // Anchor the baseline the first time the array is seen, before any
-    // operation permutes it — that snapshot is its construction-time order.
+    // operation permutes it: that snapshot is its construction-time order.
     if (firstTrack) baselines.set(arrayKey, [...ids])
     return ids
   }
@@ -441,10 +436,10 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
     },
 
     rebaselineAll() {
-      // Reset replaces the form wholesale without an `arrayOp`, so realign
-      // each tracked array to its post-reset length by position first, then
-      // anchor that order as the new baseline — otherwise a reset that
-      // changes a length would read structurally dirty on the next access.
+      // Reset replaces the form wholesale with no `arrayOp`, so realign each
+      // tracked array to its post-reset length by position first and anchor
+      // that order as the new baseline. Otherwise a reset that changes a length
+      // reads structurally dirty on the next access.
       for (const arrayKey of [...tokens.keys()]) {
         const segs = segmentsForPathKey(arrayKey)
         if (segs === null) continue
@@ -455,18 +450,17 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
   }
 }
 
-// ─── Variant memory ─────────────────────────────────────────────────
+// --- Variant memory ---
 
 /**
  * Per-(union-path, outgoing-disc-value) snapshot stashed on a
- * discriminated-union switch. `value` is the deep-cloned outgoing
- * subtree (detached from Vue's reactive graph); `blankPaths` is the
- * subset of the form's `blankPaths` set whose keys live under the
- * union path at the moment of the switch.
+ * discriminated-union switch. `value` is the deep-cloned outgoing subtree,
+ * detached from Vue's reactive graph, and `blankPaths` is the subset of the
+ * form's blank set living under the union path at the moment of the switch.
  *
- * The snapshot is in-memory only — never persisted, never on
- * `form.value` — and is consulted on the next switch-out for the same
- * disc value to restore the prior typed state.
+ * It is in-memory only, never persisted and never on `form.value`, and is
+ * consulted on the next switch to the same disc value to restore the prior
+ * typed state.
  */
 export type VariantSnapshot = {
   readonly value: unknown
@@ -474,16 +468,14 @@ export type VariantSnapshot = {
 }
 
 /**
- * Per-form variant-memory factory. Owns one
- * `Map<unionPathKey, Map<discValue, VariantSnapshot>>` and the
- * manipulation API that keeps the map in sync with structural form
- * mutations (array reshapes, resets, whole-form replacements). The
- * memory is a self-contained bookkeeping concern that doesn't need to
- * live in the store's closure.
+ * Per-form variant-memory factory, owning one
+ * `Map<unionPathKey, Map<discValue, VariantSnapshot>>` plus the API keeping it
+ * in sync with structural form mutations: array reshapes, resets, whole-form
+ * replacements. Self-contained bookkeeping, so it need not live in the store's
+ * closure.
  *
- * The factory takes no parameters — the only state it owns is its own
- * map. Callers feed it raw `Path`s / `PathKey`s and the remaps that
- * flow from `WriteMeta.arrayOp`.
+ * It takes no parameters, the map being the only state it owns; callers feed it
+ * raw paths and the remaps flowing from `WriteMeta.arrayOp`.
  */
 export interface VariantMemory {
   /** Empty all snapshots. Called on `reset()` / whole-form replace. */
@@ -496,12 +488,11 @@ export interface VariantMemory {
    */
   clearUnderPath(parentPath: Path): void
   /**
-   * Drop snapshots whose element index under `arrayPath` is in
-   * `indices` — the structural-mutation eviction. Memory keyed by
-   * absolute index would otherwise bleed onto the new occupants of
-   * those indices on a future variant switch. The caller passes the
-   * op's `changedIndices(remap)`, so every slot whose occupant differs
-   * (shifted, swapped, replaced, or fresh) forgets its cache.
+   * Drop snapshots whose element index under `arrayPath` is in `indices`, the
+   * structural-mutation eviction. Memory keyed by absolute index would bleed
+   * onto the new occupants of those indices at a future variant switch. The
+   * caller passes the op's `changedIndices(remap)`, so every slot whose
+   * occupant differs, shifted, swapped, replaced or fresh, forgets its cache.
    */
   dropAtIndices(arrayPath: Path, indices: ReadonlySet<number>): void
   /** Stash the outgoing-variant snapshot for a future switch-in. */
@@ -543,23 +534,20 @@ export function createVariantMemory(): VariantMemory {
 
 /**
  * Deep-clone a value read out of the live reactive form tree, for the
- * variant-memory snapshot. Calls `toRaw` at every level to bypass
- * Vue's on-demand reactivity wrapping, preserves `BigInt`, `Date`,
- * `Map`, `Set` natively (Zod can validate these at leaves), and
- * recurses through plain arrays + objects. Detached from the form's
- * reactive graph, so a later `form.value = nextForm` doesn't mutate
- * the snapshot.
+ * variant-memory snapshot. It calls `toRaw` at every level to bypass Vue's
+ * on-demand wrapping, preserves `BigInt`, `Date`, `Map` and `Set` natively,
+ * all of which Zod can validate at a leaf, and recurses through plain arrays
+ * and objects. Detached from the reactive graph, so a later whole-form write
+ * does not mutate the snapshot.
  *
- * Anything that is not a plain object or array is carried by
- * REFERENCE. The key-by-key rebuild below only reaches own enumerable
- * properties, and a `File`, `Blob`, `URL`, typed array, or any class
- * instance keeps its state behind prototype accessors or internal
- * slots — so cloning one produced an empty `{}` and silently destroyed
- * the value on a variant switch (#542). Holding the reference is safe
- * because the form never reaches into an opaque value: a write
- * replaces the whole leaf. This is the same failure the named `Date` /
- * `Map` / `Set` branches above were added to prevent, generalised to
- * the types nobody thought to name.
+ * Anything that is not a plain object or array is carried by REFERENCE. The
+ * key-by-key rebuild below reaches own enumerable properties only, while a
+ * `File`, `Blob`, `URL`, typed array or class instance keeps its state behind
+ * prototype accessors or internal slots, so cloning one yields an empty `{}`
+ * and silently destroys the value on a variant switch (#542). Holding the
+ * reference is safe because the form never reaches into an opaque value: a
+ * write replaces the whole leaf. Structural rather than a list of named types,
+ * so a class nobody here thought of is covered the same way.
  */
 export function cloneVariantSnapshot(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value
@@ -583,13 +571,12 @@ export function cloneVariantSnapshot(value: unknown): unknown {
   }
   if (!isPlainRecord(raw)) return raw
   const src = raw as Record<string, unknown>
-  // Variant snapshots restore back into `form.values` on union-switch
-  // reshape; the container carries `Object.prototype` so the
-  // round-trip matches the rest of the value-write pipeline.
-  // `safeAssign` lands a `__proto__` key as an own data property.
-  // Guarded reads: a variant snapshot holds whatever the consumer
-  // wrote, and an accessor that throws here would escape from a
-  // discriminated-union switch.
+  // A variant snapshot restores back into `form.values` on a union-switch
+  // reshape, so the container carries `Object.prototype` and the round-trip
+  // matches the rest of the value-write pipeline, with `safeAssign` landing a
+  // `__proto__` key as an own data property. Reads are guarded because a
+  // snapshot holds whatever the consumer wrote, and a throwing accessor would
+  // escape out of a discriminated-union switch.
   const out: Record<string, unknown> = {}
   for (const k of consumerKeys(src)) {
     safeAssign(out, k, cloneVariantSnapshot(readConsumerProp(src, k)))
@@ -597,26 +584,24 @@ export function cloneVariantSnapshot(value: unknown): unknown {
   return out
 }
 
-// ─── Structural-op bookkeeping ──────────────────────────────────────
+// --- Structural-op bookkeeping ---
 
 /**
- * Per-(field-path) async validation entry. Tracks the in-flight or
- * scheduled validation at the path: a one-shot `aborted` latch, the
- * pending debounce `timer`, a `settled` flag that prevents
- * double-decrementing the parent counters when a chain's `.finally` has
- * run but its entry is still in the state map awaiting replacement by the
- * next schedule, and a `released` flag (below).
+ * Per-path async validation entry, tracking the in-flight or scheduled run: a
+ * one-shot `aborted` latch, the pending debounce `timer`, a `settled` flag that
+ * stops the parent counters double-decrementing once a chain's `.finally` has
+ * run while its entry still sits in the state map awaiting the next schedule,
+ * and a `released` flag.
  *
- * `aborted` is a plain boolean rather than an AbortController: the
- * validation path never hands a signal to a consumer (`validateAtPath`
- * takes none) and attaches no listeners, so cancellation needs only a
- * monotonic flag the run reads through its own captured entry. Avoiding the
- * per-keystroke `new AbortController()` removes the scheduler's dominant
- * per-keystroke allocation.
+ * `aborted` is a plain boolean rather than an AbortController. The validation
+ * path hands no signal to a consumer and attaches no listeners, so cancellation
+ * needs only a monotonic flag the run reads through its own captured entry, and
+ * skipping a per-keystroke `new AbortController()` removes the scheduler's
+ * dominant allocation.
  *
- * Exported from this module so both the host form-store (which owns the
- * state map and writes new entries) and the structural-op bookkeeping
- * (which aborts entries at vacated indices) share the same structural type.
+ * Exported so the host form-store, which owns the state map and writes new
+ * entries, and the structural-op bookkeeping, which aborts entries at vacated
+ * indices, share one structural type.
  */
 export type FieldValidationEntry = {
   // Latched true to cancel this run: a supersede on the next schedule, a
@@ -634,10 +619,10 @@ export type FieldValidationEntry = {
 }
 
 /**
- * The state surface the structural-op bookkeeping keeps in sync with
- * array mutations. Every entry is a reference to one of the
- * form-store's owned maps / refs — the factory holds the references,
- * never owns them, so its lifecycle exactly matches the host store's.
+ * The state surface the structural-op bookkeeping keeps in sync with array
+ * mutations. Every entry is a reference to one of the form-store's own maps or
+ * refs: the factory holds them and owns none, so its lifecycle matches the
+ * host store's exactly.
  */
 export type ArrayBookkeepingDeps = {
   readonly form: Ref<unknown>
@@ -688,11 +673,11 @@ export type ArrayBookkeeping = {
    *     Migration has already relocated the prior occupant's state off
    *     this slot's keys; without this the new element would be
    *     invisible to `touch` and read pristine.
-   *  3. **Evict** derived state at changed indices: schema verdicts
-   *     (recomputed by revalidation — dropped synchronously so a stale
-   *     verdict can't show for a frame, or linger under a `validateOn`
-   *     that won't revalidate this write) and variant memory (keyed by
-   *     absolute index; would bleed onto new occupants).
+   *  3. **Evict** derived state at changed indices: schema verdicts, which
+   *     revalidation recomputes and which drop synchronously so a stale one
+   *     cannot show for a frame or linger under a `validateOn` that will not
+   *     revalidate this write, and variant memory, which is keyed by absolute
+   *     index and would bleed onto the new occupants.
    *  4. **Abort** any field validation still in flight for leaves of
    *     removed elements so a late async resolution can't write a
    *     verdict at a dead index, and release the pending counters so
@@ -801,29 +786,9 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
   }
 }
 
-// ─── The typed array helpers ────────────────────────────────────────
+// --- The typed array helpers ---
 
-/**
- * Typed array helpers on top of FormStore. Each helper reads the current
- * array at the given path, produces a new copy (immutable, so that the
- * `form` ref's reactive notification goes out), and writes it back via
- * `setValueAtPath`. All downstream bookkeeping — diffAndApply patches,
- * field-record `updatedAt` stamps, error-store preservation — comes for
- * free through the normal setValueAtPath pipeline.
- *
- * Out-of-range index semantics:
- *   - `remove` / `swap` / `replace`: no-op on invalid indices. Never grow
- *     the array. Matches ecosystem precedent for typed array helpers.
- *   - `insert`: the target index is clamped via `Array.prototype.splice`
- *     (values past `length` are treated as `length`).
- *   - `move`: invalid `from` is a no-op; `to` is clamped to `[0, length]`.
- *
- * None of the helpers mutate the existing array — every write is a fresh
- * array literal, so Vue's identity-based change detection fires. Callers
- * that need to compose mutations should batch them at the schema level
- * (build the replacement shape, call `setValue(path, shape)` once).
- */
-
+/** The typed array helpers `buildFieldArrayApi` produces. */
 export type FieldArrayApi = {
   append(path: string, value: unknown): boolean
   prepend(path: string, value: unknown): boolean
@@ -834,17 +799,35 @@ export type FieldArrayApi = {
   replace(path: string, index: number, value: unknown): boolean
 }
 
+/**
+ * Typed array helpers on top of FormStore. Each reads the current array at the
+ * path, produces a new copy so the `form` ref's reactive notification goes out,
+ * and writes it back through `setValueAtPath`, where the whole downstream
+ * bookkeeping comes free: diff patches, field-record `updatedAt` stamps, error
+ * store preservation.
+ *
+ * Out-of-range index semantics:
+ *   - `remove`, `swap` and `replace` no-op on an invalid index and never grow
+ *     the array.
+ *   - `insert` clamps its target through `Array.prototype.splice`, so a value
+ *     past `length` is treated as `length`.
+ *   - `move` no-ops on an invalid `from` and clamps `to` to `[0, length]`.
+ *
+ * None of them mutate the existing array: every write is a fresh literal, so
+ * Vue's identity-based change detection fires. A caller composing several
+ * mutations should batch at the schema level instead, building the replacement
+ * shape and calling `setValue(path, shape)` once.
+ */
 export function buildFieldArrayApi<F extends GenericForm>(
   state: FormStore<F, GenericForm>
 ): FieldArrayApi {
   function readArray(path: string): unknown[] {
     const segments = canonicalizePath(path).segments
     const current = state.getValueAtPath(segments)
-    // If the path is missing or points at a non-array (e.g. the schema
-    // default was undefined), treat as an empty array. This lets
-    // `append` work for arrays that haven't been initialised by the
-    // schema; the alternative of throwing surfaces programmer errors
-    // earlier but blocks a common consumer pattern.
+    // A missing path, or one holding a non-array because the schema default was
+    // undefined, reads as an empty array, which lets `append` work on an array
+    // the schema never initialised. Throwing instead would surface a
+    // programmer error earlier and block a common consumer pattern.
     return Array.isArray(current) ? current.slice() : []
   }
 
@@ -858,11 +841,11 @@ export function buildFieldArrayApi<F extends GenericForm>(
 
   return {
     append(path, value) {
-      // Pure length-grow at the tail. Recorded as an insert at the tail slot
-      // so the write funnel scopes its per-element work (slim gate, structural
-      // completion, authoring, bookkeeping) to the one fresh element instead
-      // of re-walking all N. Existing indices keep their identities; an
-      // insert-at-tail remap shifts nothing.
+      // A pure length-grow at the tail, recorded as an insert there so the
+      // write funnel scopes its per-element work, the slim gate, structural
+      // completion, authoring and bookkeeping, to the one fresh element rather
+      // than re-walking all N. Existing indices keep their identities, an
+      // insert-at-tail remap shifting nothing.
       const next = readArray(path)
       next.push(value)
       return writeArray(path, next, { kind: 'insert', index: next.length - 1 })
@@ -876,15 +859,14 @@ export function buildFieldArrayApi<F extends GenericForm>(
     },
     insert(path, index, value) {
       const next = readArray(path)
-      // Compute the actual insertion index using JS `splice` semantics
-      // BEFORE the splice runs — negative values count from the end against
-      // the PRE-splice length, positive values clamp to `[0, preLen]`. Then
-      // pass that same index to both `splice` and the recorded `arrayOp`,
-      // so downstream consumers (variant-memory eviction, identity-token
-      // replay, per-element migration) act on the slot the element
-      // actually landed in. Pre-fix the recorded `op.index` was clamped
-      // against POST-splice length, which for negative inputs yielded 0
-      // even when splice had placed the element later in the array.
+      // Resolve the actual insertion index under `splice` semantics BEFORE the
+      // splice runs: a negative value counts from the end against the PRE-splice
+      // length, a positive one clamps to `[0, preLen]`. Pass that same index to
+      // both `splice` and the recorded `arrayOp`, so variant-memory eviction,
+      // identity-token replay and per-element migration all act on the slot the
+      // element landed in. Clamping the recorded index against the POST-splice
+      // length instead yields 0 for a negative input even where splice placed
+      // the element later in the array.
       const preLen = next.length
       const insertIndex = index < 0 ? Math.max(0, preLen + index) : Math.min(index, preLen)
       next.splice(insertIndex, 0, value)

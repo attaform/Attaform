@@ -4,7 +4,7 @@
   // `useDocsPagination()` walks the canonical reading order in
   // `docsLinksFlat` and returns the prev/next entries adjacent to
   // the current path. Both can be null at the start / end of the
-  // list — the template branches on that.
+  // list: the template branches on that.
   const pagination = useDocsPagination()
 </script>
 

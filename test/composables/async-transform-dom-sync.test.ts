@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 //
-// Commit 6 — plan item 10 (finding C): an async transform must NOT revert the
+// Commit 6, plan item 10 (finding C): an async transform must NOT revert the
 // user's input mid-flight.
 //
 // Every directive variant re-reads storage after the assigner write and snaps
 // the DOM to it (the force-sync that fixes the clamp-divergence bug). With a
-// deferred async commit, storage is still the OLD value at that instant — so a
+// deferred async commit, storage is still the OLD value at that instant: so a
 // naive force-sync would erase the typed text / un-tick the box / drop the
 // selection the moment the user acts. The directive skips the synchronous
 // force-sync while a transform is in flight (`isTransforming(value)` is already
 // true) and instead repaints from the freshly-committed storage inside the
-// deferred `.then`. This file pins both halves for text, checkbox, and select
-// — each owns a distinct force-sync block — across both zod adapters.
+// deferred `.then`. This file pins both halves for text, checkbox, and select,
+// each owns a distinct force-sync block, across both zod adapters.
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, withDirectives, type App } from 'vue'
 import { z as zV4 } from 'zod'
@@ -43,7 +43,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3 as AnyUseForm, z: zV3 as unknown as typeof zV4 },
 ] as const
 
-describe.each(adapters)('async transform — no mid-flight DOM revert ($name)', ({ useForm, z }) => {
+describe.each(adapters)('async transform: no mid-flight DOM revert ($name)', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -133,7 +133,7 @@ describe.each(adapters)('async transform — no mid-flight DOM revert ($name)', 
     expect(box.checked).toBe(true)
     expect(api.values.box).toBe(false)
 
-    // Resolve to `false` — the repaint must un-tick it to match storage.
+    // Resolve to `false`: the repaint must un-tick it to match storage.
     gate.resolve(false)
     await waitUntil(() => (api.fields('box').transforming === false ? true : null))
 
@@ -168,7 +168,7 @@ describe.each(adapters)('async transform — no mid-flight DOM revert ($name)', 
     expect(select.value).toBe('b')
     expect(api.values.pick).toBe('a')
 
-    // Resolve to 'c' — the repaint moves the selection to match storage.
+    // Resolve to 'c': the repaint moves the selection to match storage.
     gate.resolve('c')
     await waitUntil(() => (api.values.pick === 'c' ? true : null))
 

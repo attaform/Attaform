@@ -10,13 +10,12 @@
  *
  * Recursion only when BOTH sides are plain records. The override-key
  * walk uses `Object.keys` (own enumerable) so a key with an explicit
- * `undefined` value lands here too — the consumer's choice to name the
+ * `undefined` value lands here too, the consumer's choice to name the
  * path overrides the base's value, mirroring how an explicit `null`
  * would.
  *
- * Hosted in core so the v3 and v4 default-value walkers single-source
- * the intersection / constraint-merge step. Previously identical
- * `mergeDeep` / `mergeDeepV3` bodies lived per-adapter.
+ * Hosted in core so the v3 and v4 default-value walkers single-source the
+ * intersection / constraint-merge step.
  */
 import { isPlainRecord } from './path-walker'
 import { safeAssign, safeOwnRead } from './safe-assign'
@@ -28,7 +27,7 @@ export function mergeDeep(base: unknown, override: unknown): unknown {
 
   // Object spread carries `base`'s own properties through the
   // spec's `CreateDataProperty` step, which bypasses the
-  // `__proto__` setter — so a `base` carrying a literal
+  // `__proto__` setter, so a `base` carrying a literal
   // `__proto__` own property (e.g. from JSON-parsed adapter
   // defaults that round-tripped through storage) survives the
   // spread without reassigning the result's prototype. The

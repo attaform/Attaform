@@ -27,7 +27,7 @@ const defaults: Form = { email: '', password: '', nickname: '' }
  * one whose merged error set is non-empty. "Merged" spans all three error
  * channels via `getErrorsForPath` (schema refinement + blank-required +
  * user), so a field that fails only because it's blank and required is as
- * valid a target as a refinement failure — see the #468 block at the end.
+ * valid a target as a refinement failure, see the #468 block at the end.
  */
 
 function mountWith(options: {
@@ -37,7 +37,7 @@ function mountWith(options: {
   detachField?: keyof Form | null
   /**
    * Optional render order. When provided, fields are rendered in this
-   * order instead of schema-declaration order — used by the DOM-order
+   * order instead of schema-declaration order, used by the DOM-order
    * regression test (template renders fields in a non-schema order).
    * Defaults to `Object.keys(defaults)` (schema order).
    */
@@ -77,7 +77,7 @@ function mountWith(options: {
           if (options.detachField === name) continue
           // register's type is branded to RegisterFlatPath<Form>; cast
           // through `unknown` so TS accepts the dynamically-chosen key.
-          // (Fine in a test — the field names we loop over are exactly
+          // (Fine in a test: the field names we loop over are exactly
           // the ones the form's shape declares.)
           const reg = handle.api?.register(
             name as unknown as Parameters<NonNullable<typeof handle.api>['register']>[0]
@@ -88,7 +88,7 @@ function mountWith(options: {
               ref: (el: unknown) => {
                 if (el instanceof HTMLInputElement && reg) {
                   // Manual (directive-less) integration: arm the store's
-                  // DOM binding before the element call — in production
+                  // DOM binding before the element call, in production
                   // the directive's created hook or useRegister does this.
                   armDomBinding(reg)
                   reg.registerElement(el)
@@ -217,7 +217,7 @@ describe('focusOnInvalidSubmit wiring', () => {
 
   beforeEach(() => {
     // vi.spyOn on the first describe restores scrollIntoView back to
-    // jsdom's (missing) state at teardown — re-stub before re-spying.
+    // jsdom's (missing) state at teardown, re-stub before re-spying.
     if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
       HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
         return undefined
@@ -265,7 +265,7 @@ describe('focusOnInvalidSubmit wiring', () => {
     app.unmount()
   })
 
-  it('false leaves the imperative helpers working — opting out is not losing them', async () => {
+  it('false leaves the imperative helpers working: opting out is not losing them', async () => {
     // The off-switch exists so a consumer can drive the nudge from their
     // own `onError`. Gating `focusFirstError` / `scrollToFirstError` on
     // it would take away the very thing the opt-out is for.
@@ -281,7 +281,7 @@ describe('focusOnInvalidSubmit wiring', () => {
   })
 })
 
-describe('focusFirstError — DOM-order semantics', () => {
+describe('focusFirstError: DOM-order semantics', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -307,10 +307,10 @@ describe('focusFirstError — DOM-order semantics', () => {
   })
 
   it('focuses the visually-first errored field, not schema-declaration first', async () => {
-    // Schema declares email/password/nickname; template renders them
-    // in REVERSE order. Errors on email + nickname. Pre-fix the focus
-    // landed on `email` (schema-declaration first). Post-fix it lands
-    // on `nickname` (rendered first in DOM order).
+    // The schema declares email, password, nickname; the template
+    // renders them in REVERSE order, with errors on email and nickname.
+    // Focus follows DOM order, so it lands on `nickname`, not on the
+    // schema-declaration-first `email`.
     const { api, app } = mountWith({
       errorsFor: ['email', 'nickname'],
       renderOrder: ['nickname', 'password', 'email'],
@@ -324,7 +324,7 @@ describe('focusFirstError — DOM-order semantics', () => {
   })
 })
 
-describe('applyInvalidSubmitPolicy — public API', () => {
+describe('applyInvalidSubmitPolicy: public API', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -362,7 +362,7 @@ describe('applyInvalidSubmitPolicy — public API', () => {
 
   it('honors a configured opt-out: a form that said false stays put', async () => {
     // This is the method's whole reason to exist next to
-    // `focusFirstError()` — the wizard calls it precisely so the failing
+    // `focusFirstError()`: the wizard calls it precisely so the failing
     // form's own choice is respected after a `goTo`.
     const { api, app } = mountWith({
       errorsFor: ['email'],
@@ -386,7 +386,7 @@ describe('applyInvalidSubmitPolicy — public API', () => {
   })
 })
 
-describe('focusFirstError — shared-key form isolation', () => {
+describe('focusFirstError: shared-key form isolation', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -479,7 +479,7 @@ describe('focusFirstError — shared-key form isolation', () => {
 
     // Trigger validation on both APIs so the shared-store error map is
     // populated. Both submit calls write the same errors to the same
-    // FormStore (by design — they share `key`).
+    // FormStore (by design: they share `key`).
     await handles.sidebar!.handleSubmit(async () => {})()
     await handles.main!.handleSubmit(async () => {})()
 
@@ -539,7 +539,7 @@ describe('focusFirstError — shared-key form isolation', () => {
   })
 })
 
-describe('focusFirstError — sort cache invalidation', () => {
+describe('focusFirstError: sort cache invalidation', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -565,7 +565,7 @@ describe('focusFirstError — sort cache invalidation', () => {
     // Initial DOM: just <input password>. After submit, password gets
     // focus (only registered errored input). Then toggle a v-if to
     // mount <input email> ABOVE password in the DOM. After resubmit,
-    // email is the visually-first errored input — proves the sort
+    // email is the visually-first errored input, proves the sort
     // cache invalidated on the new register call.
     type ApiT = ReturnType<typeof useForm<Form>>
     const handle: { api?: ApiT } = {}
@@ -646,7 +646,7 @@ describe('focusFirstError — sort cache invalidation', () => {
   })
 })
 
-describe('focusFirstError — instanceId inheritance through injectForm', () => {
+describe('focusFirstError: instanceId inheritance through injectForm', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -671,7 +671,7 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
   // The contract: a child reaching the form via injectForm() inherits
   // the closest ancestor useForm()'s `formInstanceId` (provided through
   // `kFormInstanceId`), so inputs the child registers locally are
-  // tagged with the ancestor's instance — keeping parent-submit-focus
+  // tagged with the ancestor's instance, keeping parent-submit-focus
   // working for inputs registered by deep descendants. If injectForm
   // ever allocates its own fresh ID instead of inheriting, the
   // ancestor's focusFirstError would skip the descendant's inputs and
@@ -817,7 +817,7 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
     const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
     expect(focused?.getAttribute('data-mount')).toBe('grandchild')
 
-    // Grandparent's focusFirstError finds NOTHING — its FormStore has
+    // Grandparent's focusFirstError finds NOTHING, its FormStore has
     // an error at `email`, but no element registered with its
     // instanceId is in the DOM (the only `<input email>` in the tree
     // was registered through the injectForm chain that resolved to
@@ -832,14 +832,14 @@ describe('focusFirstError — instanceId inheritance through injectForm', () => 
 
 // --- Blank-required fields are focus / scroll targets (issue #468) ---
 //
-// The blank-required error class (a required leaf left absent / `unset`)
-// lives ONLY in `derivedBlankErrors`, never `schemaErrors` or `userErrors`.
-// `getFirstErrorElement` used to consult just the schema / user stores, so
-// it silently skipped blank required fields — the first empty field on a
-// submit never received focus. These cases use a real Zod schema because
-// the blank class is schema-driven (`isRequiredAtPath` + numeric
-// auto-mark), mirroring the issue repro where `age: z.number()` is
-// submitted blank.
+// The blank-required error class, a required leaf left absent or
+// `unset`, lives ONLY in `derivedBlankErrors`, never in `schemaErrors`
+// or `userErrors`, so `getFirstErrorElement` has to consult all three.
+// Reading the schema and user stores alone silently skips them, and the
+// first empty field on a submit never receives focus. These cases use a
+// real Zod schema because the blank class is schema-driven
+// (`isRequiredAtPath` plus numeric auto-mark), mirroring the issue repro
+// where `age: z.number()` is submitted blank.
 
 function mountApp(component: Parameters<typeof createApp>[0]): {
   app: ReturnType<typeof createApp>
@@ -872,7 +872,7 @@ function registeredInput(
   })
 }
 
-describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
+describe('getFirstErrorElement: blank-required fields (issue #468)', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -931,7 +931,7 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
     })
     const { app } = mountApp(App)
 
-    // No submit — the blank error is a pure function of state, present the
+    // No submit: the blank error is a pure function of state, present the
     // moment the form mounts.
     expect(handle.api!.focusFirstError()).toBe(true)
     const focused = focusSpy.mock.instances.at(-1) as HTMLInputElement | undefined
@@ -957,9 +957,9 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
   })
 
   it('a blank field preceding a schema-errored field wins by DOM order', async () => {
-    // `age` (blank-required, derived) renders first; `name` (schema
-    // refinement `.min(1)` on '') second. Pre-fix the picker skipped the
-    // blank `age` and mistakenly focused `name`; post-fix DOM order wins.
+    // `age` (blank-required, derived) renders first and `name` (a
+    // `.min(1)` refinement on '') second. DOM order wins, so a picker
+    // that skipped the blank `age` for `name` would be wrong.
     const schema = z.object({ age: z.number(), name: z.string().min(1, 'required') })
     const handle: { api?: UseFormReturn<typeof schema> } = {}
     const App = defineComponent({
@@ -985,8 +985,8 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
   })
 
   it('generalizes past numerics: an explicit `unset` string field is a target', async () => {
-    // Proves the fix is not tied to numeric auto-mark: any blank + required
-    // leaf qualifies. A string opts into blank via `unset`.
+    // Nothing here is tied to numeric auto-mark: any blank and required
+    // leaf qualifies, and a string opts into blank through `unset`.
     const schema = z.object({ note: z.string() })
     const handle: { api?: UseFormReturn<typeof schema> } = {}
     const App = defineComponent({
@@ -1009,7 +1009,7 @@ describe('getFirstErrorElement — blank-required fields (issue #468)', () => {
   })
 })
 
-describe('focusFirstError — no-latch component host (#538)', () => {
+describe('focusFirstError: no-latch component host (#538)', () => {
   let focusSpy: ReturnType<typeof vi.spyOn>
   let scrollSpy: ReturnType<typeof vi.spyOn>
 
@@ -1159,7 +1159,7 @@ describe('focusFirstError — no-latch component host (#538)', () => {
     second.app.unmount()
   })
 
-  it('leaves field.element undefined — the host owns no single control', async () => {
+  it('leaves field.element undefined: the host owns no single control', async () => {
     const { api, app } = mountHostForm({ errorsFor: ['nickname'] })
     await nextTick()
     // The host binds a value channel and reads connected from the host mark,

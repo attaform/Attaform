@@ -14,7 +14,7 @@ import { vRegister } from '../../src/runtime/core/directive'
  * intervening edit changes nothing the schema could rule on differently.
  * Re-running the pipeline there is wasted work, and because the run flips
  * `validating` true for the duration, it flickers a settled error through
- * `'pending'` and back on every refocus — `error → pending → error`.
+ * `'pending'` and back on every refocus, `error → pending → error`.
  *
  * Attaform should recognise that nothing changed since the last pass and
  * skip the run. These tests count refine invocations as a direct proxy for
@@ -87,7 +87,7 @@ function typeInto(input: HTMLInputElement, value: string): void {
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
-describe('validateOn: blur — skip revalidation when nothing changed', () => {
+describe('validateOn: blur: skip revalidation when nothing changed', () => {
   it('a focus/blur cycle with no edit does not re-run the validation pipeline', async () => {
     const { api, input, runs } = mountCounted()
 

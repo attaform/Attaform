@@ -17,10 +17,9 @@ import { useForm } from '../../src/zod'
  *     becomes the actual schema default.
  *   - The dropdown visibly flips from "" to (e.g.) "Japan".
  *
- * The fix needs the default-values walker to peel `.refine()` before
- * looking for `.default()`. These tests pin the contract: regardless
- * of whether `.default()` sits before or after `.refine()`, the
- * construction-time value MUST match the schema default.
+ * So the default-values walker peels `.refine()` before looking for
+ * `.default()`, and the construction-time value matches the schema
+ * default whichever order the two are written in.
  */
 
 const mountedApps: App[] = []

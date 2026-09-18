@@ -23,7 +23,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
  * `<optgroup>` that is itself looped. The expression the transform
  * injects has to resolve in whichever scope that option lands in, which
  * means it may only reference the option's own bindings and those of
- * the enclosing `<select>` — never another option's.
+ * the enclosing `<select>`, never another option's.
  *
  * The transform used to concatenate every preceding sibling's match
  * expression into each option's binding, as a "one of us already
@@ -129,7 +129,7 @@ describe("option expressions are resolved in the option's own scope", () => {
   // enclosing `<select>`, which is visited before any option's scope
   // exists. Reading an option's props from there returns raw source
   // text, and raw text spliced into a compound expression is opaque to
-  // the compiler's identifier pass — so whatever was read is what
+  // the compiler's identifier pass: so whatever was read is what
   // shipped. A `v-for` alias survived that by luck, because bare is
   // what an alias needs. Anything else did not.
   //
@@ -182,7 +182,7 @@ describe("option expressions are resolved in the option's own scope", () => {
 
 // ── generated code: no option may reference a sibling's scope ────────
 
-describe('option `:selected` binding scopes — generated code', () => {
+describe('option `:selected` binding scopes: generated code', () => {
   // The reported repro, read at the level the issue pinned it to.
   it('two sibling `<option v-for>`s each reference only their own alias', () => {
     const code = compileModule(
@@ -267,7 +267,7 @@ describe('option `:selected` binding scopes — generated code', () => {
 
 // ── rendering: the templates above actually mount and select ─────────
 
-describe.each(ADAPTERS)('option `:selected` binding scopes — SSR ($name)', (adapter) => {
+describe.each(ADAPTERS)('option `:selected` binding scopes: SSR ($name)', (adapter) => {
   function ssr(
     template: string,
     makeForm: () => unknown,
@@ -313,10 +313,10 @@ describe.each(ADAPTERS)('option `:selected` binding scopes — SSR ($name)', (ad
     expect(html).toContain('<option value="b1" selected>B1</option>')
   })
 
-  // Two of eight stories passed pre-fix, and these were exactly the ones
-  // whose second loop rendered nothing: an empty array never runs the
-  // callback holding the out-of-scope reference. Same template, opposite
-  // outcome, which is what made it read as a data problem.
+  // Two of these eight stories are the ones whose second loop renders
+  // nothing, and an empty array never runs the callback holding the
+  // out-of-scope reference. Same template, opposite outcome, which is
+  // what made the original report read as a data problem.
   it('renders with an empty second loop (the case that used to pass)', async () => {
     const html = await ssr(TWO_LOOPS, () => adapter.choiceForm('a1'), {
       alpha: ALPHA,

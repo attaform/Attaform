@@ -16,7 +16,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * and for the rare test that legitimately needs a wall-clock pause.
  *
  * Prefer `waitUntil(predicate)` over `wait(N)` followed by an
- * assertion — a fixed-time pump can blow past its budget on a
+ * assertion: a fixed-time pump can blow past its budget on a
  * contended CI runner (dynamic-imported adapters, debounced writes,
  * async refinement chains), producing flakes that pass locally and
  * fail intermittently on CI.
@@ -42,7 +42,7 @@ function describePredicate(predicate: () => unknown): string {
  * Returns the resolved value, and THROWS when the deadline passes.
  *
  * Use this for any wait-then-assert pattern that depends on async
- * I/O — async Zod refinements and other deferred work. The classic alternative
+ * I/O, async Zod refinements and other deferred work. The classic alternative
  * (`await wait(40); expect(...)`) silently flakes when the chain
  * exceeds the fixed budget under CI contention.
  *
@@ -131,7 +131,7 @@ export async function assertNeverSettles(
  * Yield twice through Vue's microtask queue so the directive's
  * input/change cycle (handler → gate → reactive patch → DOM sync) has
  * fired. Use for "prove the write was rejected / nothing happened"
- * assertions where there is no positive state change to poll on — a
+ * assertions where there is no positive state change to poll on: a
  * `waitUntil` predicate that's structurally never true burns the full
  * timeout ceiling on every run.
  *

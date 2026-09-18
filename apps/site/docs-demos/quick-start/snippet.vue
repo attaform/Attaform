@@ -7,7 +7,7 @@
   This is deliberately NOT a live demo (the DocsDemo/playground globs only pick
   up `<slug>/App.vue`, and the smoke tracker ignores non-App siblings). The
   playful live demo lives next door in App.vue and keeps its `toast` popup;
-  this file stays copy-paste clean — no toast, no styles import, no `key` — so
+  this file stays copy-paste clean, no toast, no styles import, no `key`, so
   a reader can paste it into an empty project and run it as-is.
 -->
 <script setup lang="ts">

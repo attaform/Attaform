@@ -7,15 +7,13 @@
  * default; the override carries the consumer's authored layer. Both
  * can flow through to the form's initial values.
  *
- * Before the proto-less swap, `mergeDeep` allocated the result as
- * `{ ...base }` — a plain `{}` carrying `__proto__`'s inherited
- * `[[Set]]` accessor. A `result['__proto__'] = …` write would
- * reassign the result's prototype chain instead of landing as an
- * own property, silently dropping the consumer's value.
- *
- * The fix matches the rest of the sweep: allocate the result via
- * `Object.assign(Object.create(null), base)` so the bracket-assign
- * below is a plain own-property write at every step.
+ * `mergeDeep` allocates its result with
+ * `Object.assign(Object.create(null), base)`, so every bracket-assign
+ * below is a plain own-property write. A `{ ...base }` result is a plain
+ * `{}` carrying `__proto__`'s inherited `[[Set]]` accessor, and a
+ * `result['__proto__'] = ...` write reassigns the result's prototype
+ * chain instead of landing as an own property, silently dropping the
+ * consumer's value.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mergeDeep } from '../../src/runtime/core/merge-deep'
@@ -34,13 +32,13 @@ describe('mergeDeep proto-less default-value derivation', () => {
 
   it('keeps Object.prototype clean despite a __proto__ override own property', () => {
     const base = { name: 'base' }
-    // JSON.parse promotes `__proto__` to an own data property — the
+    // JSON.parse promotes `__proto__` to an own data property: the
     // shape an adapter-side default carries when the constraint
     // layer rounds through serialised form.
     const override = JSON.parse(`{"__proto__":{"${SENTINEL}":"polluted"},"name":"override"}`)
     const merged = mergeDeep(base, override) as Record<string, unknown>
 
-    // Negative invariant — Object.prototype is unchanged.
+    // Negative invariant, Object.prototype is unchanged.
     const probe: Record<string, unknown> = {}
     expect(probe[SENTINEL]).toBeUndefined()
 

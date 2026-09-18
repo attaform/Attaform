@@ -4,7 +4,7 @@
  * Walks a value tree from a write path, validating that each leaf's
  * primitive type matches the schema's slim primitive set at the
  * corresponding sub-path. Used by `setValueAtPath` to reject writes
- * whose primitive shape can't possibly satisfy the slim schema —
+ * whose primitive shape cannot possibly satisfy the slim schema,
  * regardless of refinement-level conformance.
  *
  * Refinement-level constraints (format checks, length / range bounds,
@@ -23,8 +23,8 @@ import { __DEV__ } from './dev'
  * dotted path + offending kind) so the same misuse during a v-for
  * re-render doesn't flood the console.
  *
- * In production, `__DEV__` is `false` and the WeakMap allocation
- * tree-shakes out — `recordRejection` returns `false` (don't warn).
+ * In production, `__DEV__` is `false`, the WeakMap allocation tree-shakes
+ * out, and `shouldWarnOnce` returns `false`.
  */
 const warnedRejections: WeakMap<object, Set<string>> | null = __DEV__
   ? new WeakMap<object, Set<string>>()
@@ -57,7 +57,7 @@ export function slimKindOf(value: unknown): SlimPrimitiveKind {
   if (value instanceof Date) return 'date'
   if (value instanceof Map) return 'map'
   if (value instanceof Set) return 'set'
-  // Guard the global access — File is browser/Node-21+ only; falling
+  // Guard the global access: File is browser / Node-21+ only, and falling
   // through to 'object' on platforms where it's not defined leaves
   // server-side rendering uncoupled from the DOM globals.
   if (typeof File !== 'undefined' && value instanceof File) return 'file'
@@ -101,11 +101,11 @@ function isLeafValue(value: unknown): boolean {
  * - Empty accept set → REJECT every kind. This covers a `never`-typed
  *   path (intentionally accepts nothing) AND unresolvable paths (typo
  *   in `register('addr.zipp')` against a schema that doesn't have
- *   that field — silently accepting the write would create a phantom
+ *   that field, and silently accepting the write would create a phantom
  *   slot in storage). The "permissive" cases (`any` / `unknown` /
  *   `void` and the lazy-peel-failure case) return the FULL accept set
- *   instead, so they accept anything via the membership check below
- *   — they don't go through this branch.
+ *   instead, so they accept anything via the membership check below and
+ *   never reach this branch.
  * - The value AT the write path is also checked: writing `'oops'`
  *   to a path expecting `'object'` is rejected at the top-level.
  * - An opaque leaf (`any` / `unknown` / `custom`) accepts its value
@@ -113,7 +113,7 @@ function isLeafValue(value: unknown): boolean {
  *   business, and it declares no sub-paths to check the interior
  *   against.
  * - For wrappers like `.optional()` / `.nullable()`, the adapter's
- *   accept set already includes `'undefined'` / `'null'` — no
+ *   accept set already includes `'undefined'` / `'null'`, so there is no
  *   special-casing here.
  */
 export function isSlimPrimitiveValid(
@@ -132,14 +132,14 @@ function walk(
   value: unknown
 ): boolean {
   // Schema-side normalizers (z.preprocess, z.coerce) run at parse,
-  // not at the write boundary — accept anything raw at the wrapper
+  // not at the write boundary, so accept anything raw at the wrapper
   // node OR anywhere underneath it. The consumer's verbatim input
   // lands in storage; `handleSubmit` / `validate` / `parse`
   // re-parses through the wrapper and surfaces the typed shape.
   if (schema.isPreprocessOrCoerceLeaf(path)) return true
   // Top-of-tree check: does the value at THIS path satisfy the
   // schema's slim kinds at this path? Recurse into containers
-  // afterwards — the recursion checks the elements' kinds at
+  // afterwards, the recursion checking the elements' kinds at
   // the sub-paths.
   //
   // An empty accept set means the schema rejects every kind at this
@@ -147,7 +147,7 @@ function walk(
   // the path resolves to a `never`-typed schema. Either way, the
   // membership check below rejects, blocking the write. `any` /
   // `unknown` / `void` and the lazy-peel-failure case return the
-  // full permissive set — those still accept any kind.
+  // full permissive set, which still accepts any kind.
   const accepted = schema.getSlimPrimitiveTypesAtPath(path)
   const kind = isLeafValue(value) ? slimKindOf(value) : Array.isArray(value) ? 'array' : 'object'
   if (!accepted.has(kind)) {
@@ -202,9 +202,9 @@ function reportRejection(
   // enough that they don't deserve top billing.
   if (accepted.size === 0) {
     console.warn(
-      `[attaform] Cannot write to '${dotted}' — this path is not in your schema.\n` +
+      `[attaform] Cannot write to '${dotted}': this path is not in your schema.\n` +
         `  Fix: check for a typo in register('${dotted}'); it should match a leaf key in your schema.\n` +
-        `  (If the path resolves to a never-typed schema, it explicitly admits no values — relax the schema if intentional.)\n` +
+        `  (If the path resolves to a never-typed schema, it explicitly admits no values; relax the schema if intentional.)\n` +
         `  The write was a no-op.`
     )
     return
@@ -218,7 +218,7 @@ function reportRejection(
   // so the dev can copy-paste rather than parse "slim primitive set".
   if (kind === 'string' && accepted.has('number')) {
     console.warn(
-      `[attaform] Cannot write a string to '${dotted}' — the schema expects ${expected}.\n` +
+      `[attaform] Cannot write a string to '${dotted}': the schema expects ${expected}.\n` +
         `  Fix: add type="number" to the input, OR use the .number modifier on v-register:\n` +
         `    <input type="number" v-register="register('${dotted}')" />\n` +
         `    <input v-register.number="register('${dotted}')" />\n` +
@@ -227,9 +227,9 @@ function reportRejection(
     return
   }
 
-  // Generic kind mismatch — no built-in DOM coercion path to suggest.
+  // Generic kind mismatch, with no built-in DOM coercion path to suggest.
   console.warn(
-    `[attaform] Cannot write a ${kind} to '${dotted}' — the schema expects ${expected}.\n` +
+    `[attaform] Cannot write a ${kind} to '${dotted}': the schema expects ${expected}.\n` +
       `  The write was a no-op.`
   )
 }

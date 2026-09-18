@@ -16,10 +16,10 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
  *
  * Four supported component patterns:
  *
- *   1. Native form-element root          — directive lands on the input, just works
- *   2. `useRegister()` inside the child  — child re-binds inner native element
- *   3. `@update:registerValue` listener  — assigner override (requires supported-tag root)
- *   4. `assignKey` escape hatch          — low-level, kept-current behaviour
+ *   1. Native form-element root, directive lands on the input, just works
+ *   2. `useRegister()` inside the child, child re-binds inner native element
+ *   3. `@update:registerValue` listener, assigner override (requires supported-tag root)
+ *   4. `assignKey` escape hatch, low-level, kept-current behaviour
  *
  * Each describe block tests one pattern (or a non-pattern, for the
  * "no escape hatch" case where the directive must NOT attach
@@ -42,7 +42,7 @@ type MountReturn = {
  * Mount a parent component that renders `<Child v-register="api.register('email')" />`.
  *
  * The bridge props (`registerValue: rv` + `value: rv.innerRef.value`)
- * are passed alongside the directive — this mirrors the AST output of
+ * are passed alongside the directive: this mirrors the AST output of
  * `componentBridgeTransform`'s component branch so the runtime test
  * exercises the same prop / attr surface a compiled template would
  * produce. Tests that don't read these props are unaffected.
@@ -106,7 +106,7 @@ async function mountWithChild(
   const rootEl = root.firstElementChild as HTMLElement | null
   if (handle.api === undefined) throw new Error('mountWithChild: api never set')
   if (rootEl === null)
-    throw new Error('mountWithChild: no firstElementChild — multi-root or empty render')
+    throw new Error('mountWithChild: no firstElementChild: multi-root or empty render')
   if (options?.installAssigner) options.installAssigner(rootEl)
   return { app, api: handle.api, rootEl, warnings }
 }
@@ -120,7 +120,7 @@ describe('pattern 1: v-register on a component whose root is <input>', () => {
     document.body.innerHTML = ''
   })
 
-  it('the directive sees the inner <input> as `el` — typing dispatches a write', async () => {
+  it('the directive sees the inner <input> as `el`: typing dispatches a write', async () => {
     const ChildInput = defineComponent({
       name: 'ChildInput',
       inheritAttrs: false,
@@ -223,7 +223,7 @@ describe('pattern 2: v-register on a non-form root WITH useRegister (recommended
     // FieldState (errors, dirty, touched, value, …) without the
     // parent re-threading a `path` prop. Today the child has the same
     // form via the api capture in `mountWithChild`, but the API surface
-    // we exercise — `api.fields(rv.segments)` — is what
+    // we exercise, `api.fields(rv.segments)`, is what
     // `injectForm()` would surface to a real wrapper component.
     const captured: { rv?: RegisterValue } = {}
     const ChildCapturingRv = defineComponent({
@@ -298,7 +298,7 @@ describe('non-pattern: v-register on a non-form root WITHOUT useRegister/assignK
     expect(matched.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('does NOT clobber the seeded form value — no listeners attached to the div root', async () => {
+  it('does NOT clobber the seeded form value: no listeners attached to the div root', async () => {
     mounted = await mountWithChild(PlainDivChild)
     mounted.api.setValue('email', 'seed@example.com')
     expect(mounted.api.values.email).toBe('seed@example.com')
@@ -336,7 +336,7 @@ describe('pattern 4: v-register on a non-form root WITH assignKey (kept-current 
   /**
    * `assignKey` is a low-level escape hatch documented at the directive
    * surface. When installed, the directive suppresses the unsupported-
-   * element warn AND keeps its current text-input listener wiring —
+   * element warn AND keeps its current text-input listener wiring,
    * i.e. listeners attach, read `el.value` off the (non-input) root,
    * and call the consumer's assigner with whatever that read returns.
    * The contract here is "I'll handle the binding, don't yell at me";
@@ -349,7 +349,7 @@ describe('pattern 4: v-register on a non-form root WITH assignKey (kept-current 
     // The directive's tri-state guard reads `assignKey` at `created`-time.
     // To install the consumer's assigner BEFORE `vRegister.created`
     // fires, we use a small companion directive ordered first in the
-    // directive list — Vue 3 runs directives in array order, so
+    // directive list, Vue 3 runs directives in array order, so
     // `vInstallAssignKey.created` lands the assigner on the element
     // before the `vRegister` lookup. ref-callbacks fire AFTER `created`,
     // so they can't install an assigner the directive's `created` hook
@@ -400,11 +400,11 @@ describe('pattern 4: v-register on a non-form root WITH assignKey (kept-current 
     const matched = warnings.filter((w) => w.includes('is a no-op'))
     expect(matched.length).toBe(0)
 
-    // Listeners DID attach (kept-current) — typing in the inner input
+    // Listeners DID attach (kept-current), typing in the inner input
     // bubbles to the div root, hits the directive's text-input
     // listener, which reads `el.value` (the div's) and calls the
     // consumer's assigner. The value is el.value-sourced, so it isn't
-    // 'typed' — that's the documented limitation pointing consumers
+    // 'typed': that's the documented limitation pointing consumers
     // toward useRegister.
     const innerInput = root.querySelector('input') as HTMLInputElement
     innerInput.value = 'typed'
@@ -448,14 +448,14 @@ describe('pattern 3: @update:registerValue prop on a component', () => {
     await waitUntil(() => (received.includes('typed') ? true : null))
 
     expect(received).toContain('typed')
-    // Default assigner was bypassed — the FormStore did NOT receive
+    // Default assigner was bypassed: the FormStore did NOT receive
     // the write because the listener didn't forward.
     expect(mounted.api.values.email).toBe('')
   })
 
   it('passes the RegisterValue as second arg so a top-level handler can re-call setValueWithInternalPath', async () => {
     // Mirrors spike 15o: a top-level handler outside setup() can't
-    // close over `rv` — the directive must hand it in as the second arg.
+    // close over `rv`: the directive must hand it in as the second arg.
     // Without this, `rv.setValueWithInternalPath(...)` throws because
     // the second param is `undefined`.
     const ChildInput = defineComponent({
@@ -539,7 +539,7 @@ describe('pattern 3: @update:registerValue prop on a component', () => {
   })
 })
 
-describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
+describe('register({ transforms: [...] }): sync user-input pipeline', () => {
   let mounted: MountReturn | undefined
 
   afterEach(() => {
@@ -609,7 +609,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     expect(mounted.api.values.email).toBe('untouched')
   })
 
-  it('6. transform throws — caught, logged, write aborted, listener still works', async () => {
+  it('6. transform throws: caught, logged, write aborted, listener still works', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const throwTransform = (_: unknown): unknown => {
       throw new Error('boom')
@@ -628,7 +628,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     expect(msg).toContain('index 0')
     expect(mounted.api.values.email).toBe('') // write aborted; default preserved
 
-    // Subsequent typing still flows — failure didn't poison the listener.
+    // Subsequent typing still flows, failure didn't poison the listener.
     errSpy.mockClear()
     mounted = await mountWithChild(ChildInput, { transforms: [upper] })
     const input2 = mounted.rootEl as HTMLInputElement
@@ -640,7 +640,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('7. throw mid-pipeline — subsequent transforms do not run', async () => {
+  it('7. throw mid-pipeline: subsequent transforms do not run', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const calls: string[] = []
     const t1 = (v: unknown): unknown => {
@@ -668,7 +668,7 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('9. Promise return — defers and commits the resolved value (no console)', async () => {
+  it('9. Promise return: defers and commits the resolved value (no console)', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const asyncTransform = (v: unknown): unknown => Promise.resolve(String(v).toUpperCase())
     mounted = await mountWithChild(ChildInput, { transforms: [asyncTransform] })
@@ -679,14 +679,14 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     await mounted.api.settleTransforms()
 
     // The thenable no longer aborts: it defers, then commits the resolved
-    // value into form state — silently (async failures surface on
+    // value into form state, silently (async failures surface on
     // `field.transformError`, never the console).
     expect(mounted.api.values.email).toBe('ABC')
     expect(errSpy).not.toHaveBeenCalled()
     errSpy.mockRestore()
   })
 
-  it('11. failure isolation — one path throwing does not affect others', async () => {
+  it('11. failure isolation: one path throwing does not affect others', async () => {
     // Mount a parent with two RegisterValue bindings; one throws, one normalizes.
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const handle: { api?: UseFormReturn<typeof schema> } = {}
@@ -735,10 +735,10 @@ describe('register({ transforms: [...] }) — sync user-input pipeline', () => {
     errSpy.mockRestore()
   })
 
-  it('12. per-binding isolation — same path, two register() call sites, only the typed-in binding runs its pipeline', async () => {
+  it('12. per-binding isolation: same path, two register() call sites, only the typed-in binding runs its pipeline', async () => {
     // Two inputs bound to the SAME path 'email'. One register() call passes
     // transforms: [upper], the other passes no transforms. Each input must
-    // run its OWN pipeline when the user types into it — typing in A runs
+    // run its OWN pipeline when the user types into it, typing in A runs
     // upper, typing in B writes raw. No cross-element leakage at the
     // transform layer; form state at the path is still a single shared
     // slot (last-write-wins), so we can read it back to verify.
@@ -803,7 +803,7 @@ describe('v-register="undefined" is a graceful no-op (invariant 4)', () => {
     document.body.innerHTML = ''
   })
 
-  it('mounts cleanly with no warn — directive installs a no-op assigner across updates', async () => {
+  it('mounts cleanly with no warn: directive installs a no-op assigner across updates', async () => {
     const warnings: string[] = []
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map((a) => String(a)).join(' '))
@@ -962,7 +962,7 @@ describe('listener teardown on component unmount (works ✓)', () => {
   })
 })
 
-describe("multi-root component — directive lands on Vue's placeholder ⚠", () => {
+describe("multi-root component: directive lands on Vue's placeholder ⚠", () => {
   let originalConsoleWarn: typeof console.warn
   beforeEach(() => {
     originalConsoleWarn = console.warn

@@ -22,7 +22,7 @@ import { waitUntil } from '../utils/form-harness'
  *     never gets the `:registerValue` bridge prop injected by
  *     `componentBridgeTransform`. The child's useRegister() sees no bridge
  *     attr and falls back to `undefined`, so the inner input never
- *     wires up — typing has no effect.
+ *     wires up, typing has no effect.
  *
  *   - A consumer using a non-Vite bundler that doesn't accept
  *     compile-time transforms (esbuild-plain, Rollup without the
@@ -47,7 +47,7 @@ const schema = z.object({ email: z.string(), name: z.string() })
 
 function compileTemplateWithoutTransforms(template: string): (...args: unknown[]) => unknown {
   // Crucially: no `nodeTransforms` array. This is what a stock Vue
-  // compile looks like — no `componentBridgeTransform`, no
+  // compile looks like: no `componentBridgeTransform`, no
   // `inputTextAreaNodeTransform`, no `vRegisterPreambleTransform`, no
   // `vRegisterHintTransform`. Mirrors the @vue/repl playground's
   // compile path and the bare-bundler scenario.
@@ -58,7 +58,7 @@ function compileTemplateWithoutTransforms(template: string): (...args: unknown[]
   return new Function('Vue', code)(VueRuntime) as (...args: unknown[]) => unknown
 }
 
-describe('useRegister — works without attaform compile-time transforms', () => {
+describe('useRegister: works without attaform compile-time transforms', () => {
   let app: App | undefined
 
   afterEach(() => {

@@ -23,7 +23,7 @@ function makeAccessor() {
   // `test/composables/display-state.test.ts` where a real form is
   // mounted with the production code path. The cast bypasses the
   // full `FormMetaBase` shape (would require duplicating every
-  // FieldState field) — fine for a test stub that's barely read.
+  // FieldState field), fine for a test stub that's barely read.
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
   return {
@@ -37,7 +37,7 @@ function makeAccessor() {
   }
 }
 
-// Arm (or reuse) the store's DOM binding — the element registry the
+// Arm (or reuse) the store's DOM binding: the element registry the
 // field-state accessors read through.
 function armed(state: ReturnType<typeof makeAccessor>['state']) {
   return (state.domBinding.value ??= createDomBinding(state))
@@ -116,7 +116,7 @@ describe('buildFieldStateAccessor', () => {
 
   // Per-field `validating` is driven by the FormStore's
   // `fieldValidationCounts` reactive Map. These tests poke the map
-  // directly (the unit-of-work for the accessor) — see
+  // directly (the unit-of-work for the accessor), see
   // `test/composables/async-validation.test.ts` for the integration
   // path through `scheduleFieldValidation`.
   describe('validating', () => {
@@ -133,7 +133,7 @@ describe('buildFieldStateAccessor', () => {
       state.fieldValidationCounts.set(emailKey, 1)
       expect(s.value.validating).toBe(true)
       state.fieldValidationCounts.set(emailKey, 0)
-      // 0 is treated as "not validating" — and the production helpers
+      // 0 is treated as "not validating", and the production helpers
       // delete the key at zero, but reading via `.get(key) ?? 0`
       // covers either shape.
       expect(s.value.validating).toBe(false)
@@ -141,7 +141,7 @@ describe('buildFieldStateAccessor', () => {
       expect(s.value.validating).toBe(false)
     })
 
-    it('per-key tracking — sibling paths flip independently', () => {
+    it('per-key tracking: sibling paths flip independently', () => {
       const { state, getFieldState } = makeAccessor()
       const email = getFieldState(['email'])
       const name = getFieldState('profile.name')
@@ -158,7 +158,7 @@ describe('buildFieldStateAccessor', () => {
       expect(name.value.validating).toBe(true)
     })
 
-    it('couples with field.valid — true when neither errors nor in-flight, false otherwise', () => {
+    it('couples with field.valid: true when neither errors nor in-flight, false otherwise', () => {
       const { state, getFieldState } = makeAccessor()
       const s = getFieldState(['email'])
       const key = canonicalizePath(['email']).key
@@ -218,7 +218,7 @@ describe('buildFieldStateAccessor', () => {
       expect(s.value.elements).toEqual([])
     })
 
-    it('first registration populates both — element is the first by registration order', () => {
+    it('first registration populates both: element is the first by registration order', () => {
       const { state, getFieldState } = makeAccessor()
       const s = getFieldState(['email'])
       const a = document.createElement('input')
@@ -260,7 +260,7 @@ describe('buildFieldStateAccessor', () => {
       expect(s.value.elements).toEqual([])
     })
 
-    it('per-path isolation — sibling registrations stay scoped', () => {
+    it('per-path isolation: sibling registrations stay scoped', () => {
       const { state, getFieldState } = makeAccessor()
       const email = getFieldState(['email'])
       const name = getFieldState('profile.name')
@@ -273,10 +273,10 @@ describe('buildFieldStateAccessor', () => {
 })
 
 // Per-path memoisation guarantees that consumers reading the same
-// path multiple times share the same `ComputedRef` — Vue's
+// path multiple times share the same `ComputedRef`, Vue's
 // dependency tracking then accumulates one subscription per path,
 // not one per read.
-describe('buildFieldStateAccessor — per-path memoisation', () => {
+describe('buildFieldStateAccessor: per-path memoisation', () => {
   it('returns the same ComputedRef on repeated calls with the same path', () => {
     const { getFieldState } = makeAccessor()
     const a = getFieldState(['email'])
@@ -299,12 +299,12 @@ describe('buildFieldStateAccessor — per-path memoisation', () => {
   })
 })
 
-// Container aggregation — `getFieldState(containerPath)` returns
+// Container aggregation, `getFieldState(containerPath)` returns
 // disjunction-aggregated event-presence (focused / dirty / touched
 // / validating) and conjunction-aggregated absence/uniformity
 // (pristine / valid / blank). Errors concat. updatedAt is the max
 // ISO timestamp across descendants.
-describe('buildFieldStateAccessor — container aggregation', () => {
+describe('buildFieldStateAccessor: container aggregation', () => {
   type C = {
     pickup: { city: string; zip: string }
     delivery: { city: string }

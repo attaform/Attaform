@@ -3,7 +3,7 @@
  *
  * Background: `nuxi build` writes `.nuxt/cache/nuxt/payload` as a
  * single file (a consolidated build-time payload), while `nuxi dev`'s
- * renderer expects `.nuxt/cache/nuxt/payload/<hash>` — i.e., `payload`
+ * renderer expects `.nuxt/cache/nuxt/payload/<hash>`, i.e., `payload`
  * as a directory. If the user runs `pnpm build:site` and then
  * `pnpm dev` (common during local verification), Nitro's setItem call
  * fails with `ENOTDIR: not a directory` and the dev renderer surfaces

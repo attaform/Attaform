@@ -6,9 +6,9 @@ import { zodAdapter as zodAdapterV3 } from '../../src/runtime/adapters/zod-v3'
 
 /**
  * Adapter-level contract for `isFixedObjectAtPath`. The surface proxies
- * query it to tell a FIXED object (closed declared keys — a schema field
+ * query it to tell a FIXED object (closed declared keys: a schema field
  * descends even before its data lands) from an OPEN / union container
- * (array / record / set / tuple / union / discriminated union — descent
+ * (array / record / set / tuple / union / discriminated union, descent
  * follows live keys, absence is `undefined`). Root is always fixed;
  * wrappers peel; an unknown path is not fixed.
  */
@@ -35,7 +35,7 @@ const adapters = [
   { name: 'v3', adapter: zodAdapterV3(build(zV3) as never)('f', { maxRecursionDepth: 64 }) },
 ] as const
 
-describe.each(adapters)('isFixedObjectAtPath — $name', ({ adapter }) => {
+describe.each(adapters)('isFixedObjectAtPath: $name', ({ adapter }) => {
   it('the root form is a fixed object', () => {
     expect(adapter.isFixedObjectAtPath([])).toBe(true)
   })

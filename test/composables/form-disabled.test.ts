@@ -10,14 +10,14 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { awaitSettle, makeMounter, waitUntil } from '../utils/form-harness'
 
 /**
- * `useForm({ disabled })` — the per-form data freeze.
+ * `useForm({ disabled })`: the per-form data freeze.
  *
  * A disabled form no-ops every value write at the store chokepoint
  * (programmatic, directive, and host-model origins alike), forces every
  * field's `displayState` to `'idle'`, and surfaces `disabled` on the
  * field + form meta. `defaultValues` hydration and `reset()` bypass the
  * freeze so a frozen form can still be seeded or restored. Exercised
- * against both Zod adapters — the freeze lives below the adapter layer,
+ * against both Zod adapters: the freeze lives below the adapter layer,
  * so parity is the contract.
  */
 
@@ -32,7 +32,7 @@ const adapters: ReadonlyArray<{ name: string; useForm: AnyUseForm; schema: unkno
   { name: 'v3', useForm: useFormV3, schema: schemaV3 },
 ]
 
-describe.each(adapters)('useForm({ disabled }) — $name', ({ useForm, schema }) => {
+describe.each(adapters)('useForm({ disabled }): $name', ({ useForm, schema }) => {
   let warnings: string[]
   let warnSpy: ReturnType<typeof vi.spyOn>
   const mounted: App[] = []
@@ -56,7 +56,7 @@ describe.each(adapters)('useForm({ disabled }) — $name', ({ useForm, schema })
       defaultValues: { email: 'seed@x.com' },
     })()
     mounted.push(app)
-    // defaultValues hydration bypasses the freeze — a frozen form still seeds.
+    // defaultValues hydration bypasses the freeze: a frozen form still seeds.
     expect(api.values.email).toBe('seed@x.com')
     api.setValue('email', 'changed@x.com')
     await awaitSettle()
@@ -83,11 +83,11 @@ describe.each(adapters)('useForm({ disabled }) — $name', ({ useForm, schema })
       defaultValues: { email: 'seed@x.com' },
     })()
     mounted.push(app)
-    // Not frozen — the write lands.
+    // Not frozen: the write lands.
     api.setValue('email', 'typed@x.com')
     await awaitSettle()
     expect(api.values.email).toBe('typed@x.com')
-    // Freeze — the write no-ops.
+    // Freeze: the write no-ops.
     frozen.value = true
     await nextTick()
     api.setValue('email', 'blocked@x.com')
@@ -97,7 +97,7 @@ describe.each(adapters)('useForm({ disabled }) — $name', ({ useForm, schema })
     api.reset()
     await awaitSettle()
     expect(api.values.email).toBe('seed@x.com')
-    // Unfreeze — writes land again.
+    // Unfreeze, writes land again.
     frozen.value = false
     await nextTick()
     api.setValue('email', 'again@x.com')

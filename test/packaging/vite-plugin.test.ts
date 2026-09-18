@@ -35,13 +35,13 @@ function getVueApi(config: ResolvedConfig): VuePluginApi | undefined {
   return (vuePlugin as unknown as { api?: VuePluginApi } | undefined)?.api
 }
 
-describe('attaform/vite — plugin registration', () => {
+describe('attaform/vite: plugin registration', () => {
   it('registers both node transforms with @vitejs/plugin-vue', async () => {
     const config = await resolveWith([vue(), attaform()])
     const api = getVueApi(config)
     const nodeTransforms = api?.options?.template?.compilerOptions?.nodeTransforms ?? []
 
-    // Reference identity — the plugin must register OUR transform functions,
+    // Reference identity: the plugin must register OUR transform functions,
     // not wrappers. This rules out a regression where a bundler (e.g.
     // unbuild) accidentally wraps the export.
     expect(nodeTransforms).toContain(componentBridgeTransform)
@@ -76,9 +76,9 @@ describe('attaform/vite — plugin registration', () => {
     await expect(resolveWith([attaform()])).rejects.toThrow(/@vitejs\/plugin-vue is not installed/)
   })
 
-  // E2 — second registration of attaform() must NOT double-push
-  // transforms. Pre-fix, two registrations stacked the transforms array
-  // twice, double-injecting every binding the AST emits.
+  // E2: a second registration of attaform() does not double-push
+  // transforms. Stacking the array twice double-injects every binding
+  // the AST emits.
   it('is idempotent on duplicate registration', async () => {
     const config = await resolveWith([vue(), attaform(), attaform()])
     const api = getVueApi(config)
@@ -90,7 +90,7 @@ describe('attaform/vite — plugin registration', () => {
   })
 })
 
-describe('attaform/vite — plugin order', () => {
+describe('attaform/vite: plugin order', () => {
   it('runs with enforce:"pre" so it is not downstream of other transforms', async () => {
     const config = await resolveWith([vue(), attaform()])
     const attaformPlugin = config.plugins.find((p) => p.name === 'attaform')

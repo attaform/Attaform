@@ -5,7 +5,7 @@ import { IDENTITY, buildCoerceFn, resolveCoerceEnabled } from '../../src/runtime
 import type { AbstractSchema } from '../../src/runtime/types/types-api'
 
 /**
- * Unit tests for the schema-coerce module — the on/off switch, the
+ * Unit tests for the schema-coerce module: the on/off switch, the
  * per-path closure, and the two built-in rules. These cases run
  * without DOM; the matching DOM-flow integration coverage is in
  * `test/composables/coerce.test.ts`.
@@ -56,7 +56,7 @@ describe('numeric scalar coercion', () => {
     expect(fn('25.5')).toBe(25.5)
   })
 
-  it("'' → '' (NOT 0 — empty string passthrough)", () => {
+  it("'' → '' (NOT 0: empty string passthrough)", () => {
     expect(fn('')).toBe('')
   })
 
@@ -197,8 +197,8 @@ describe('array of permissive elements', () => {
 describe('no rule targets a kind the library does not ship', () => {
   it('z.bigint() leaves a numeric-looking string alone', () => {
     // Only string->number and string->boolean ship. A path that accepts
-    // bigint alone has no coercion target, so the slim gate — not this
-    // layer — rules on the write.
+    // bigint alone has no coercion target, so the slim gate: not this
+    // layer, rules on the write.
     const schema = adapter(z.object({ amount: z.bigint() }))
     const fn = buildCoerceFn(schema, ['amount'], true)
     expect(fn('42')).toBe('42')

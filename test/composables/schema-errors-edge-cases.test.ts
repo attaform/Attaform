@@ -9,16 +9,14 @@ import type { UseFormReturnType, ValidationError } from '../../src/runtime/types
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Edge cases adjacent to the schemaErrors-keying fix in
- * scheduleFieldValidation (commit 9f0d4ce). The fix grouped errors by
- * each issue's own absolute path and cleared the scheduled path's
- * descendant subtree before writing — so several other failure modes
- * become tractable to pin down here:
+ * `scheduleFieldValidation` keys schemaErrors by each issue's own
+ * absolute path and clears the scheduled path's descendant subtree
+ * before writing. Four failure modes ride on that:
  *
  *   1. Cross-field refines whose error path equals a container path.
- *   2. Validation flipping failing → passing for a previously-failing leaf.
- *   3. Field-array shrink leaving stale errors at a no-longer-existing index.
- *   4. Parent + leaf scheduled validations racing on overlapping paths.
+ *   2. A previously-failing leaf flipping to passing.
+ *   3. A field-array shrink leaving stale errors at a vanished index.
+ *   4. Parent and leaf validations racing on overlapping paths.
  */
 
 type LooseApi<Schema extends z.ZodObject> = Omit<
@@ -56,13 +54,13 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as LooseApi<Schema> }
 }
 
-describe('schemaErrors edge cases — cross-field refine on a container', () => {
+describe('schemaErrors edge cases: cross-field refine on a container', () => {
   // A `.refine()` on a container produces an error whose absolute path
   // equals the container's path (no leaf segment). The new
   // `applySchemaErrorsForSubtree` groups by `err.path`, so it lands at
   // the container's key. By design `form.errors` is descend-only (never
   // terminates at a container), so the refine error is invisible
-  // through dot-access — but it MUST surface in `form.meta.errors` and
+  // through dot-access, but it MUST surface in `form.meta.errors` and
   // it must round-trip cleanly across writes that re-trigger
   // validation.
   const schema = z
@@ -86,14 +84,14 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     // Trigger a write so scheduleFieldValidation fires at the leaf path
-    // (city), which propagates an error at the parent via the refine —
+    // (city), which propagates an error at the parent via the refine,
     // adapters typically surface the refine on the `.address` path.
     api.setValue('address.city', 'Springfield')
     await waitUntil(() => (api.values.address.city === 'Springfield' ? true : null))
 
     // Force whole-form validation through handleSubmit so the
     // top-level refine actually executes (per-leaf schedules don't
-    // run cross-field refines unless the adapter walks the parent —
+    // run cross-field refines unless the adapter walks the parent,
     // submission is the canonical trigger).
     const submit = api.handleSubmit(
       () => {},
@@ -107,7 +105,7 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     expect(refineErr).toBeDefined()
     expect(refineErr?.path).toEqual(['address'])
 
-    // The errors call-form aggregates at containers —
+    // The errors call-form aggregates at containers,
     // `form.errors('address')` returns the merged array including
     // the container-keyed refine error. The call-form, the meta
     // aggregate, and per-field reads all share one helper, so
@@ -121,12 +119,11 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   })
 
   it('container-keyed refine error survives a leaf-keyed re-validation', async () => {
-    // After fixing the leaf and re-validating, the leaf's error clears
-    // BUT the container-keyed refine (a separate canonical key) must
-    // not be wiped by the leaf's own subtree clear. The fix's
-    // `applySchemaErrorsForSubtree(path, …)` only deletes entries whose
-    // key descends from `path` — a container's own entry is not a
-    // descendant of its leaf children, so it stays.
+    // Fixing the leaf and re-validating clears the leaf's error but
+    // leaves the container-keyed refine, which holds a separate
+    // canonical key. `applySchemaErrorsForSubtree(path, ...)` deletes
+    // only entries whose key descends from `path`, and a container's
+    // own entry does not descend from its leaf children.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
     apps.push(app)
     const submit = api.handleSubmit(
@@ -137,7 +134,7 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
     await nextTick()
     expect(api.meta.errors.some((e) => /city and zip/.test(e.message))).toBe(true)
 
-    // Re-validate just the leaf — the leaf's subtree clear is rooted
+    // Re-validate just the leaf: the leaf's subtree clear is rooted
     // at `['address','city']`, so the refine entry keyed at
     // `['address']` is not a descendant and must NOT be cleared.
     api.setValue('address.city', 'Springfield') // unchanged value, but triggers schedule
@@ -151,7 +148,7 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   it('container-level refine error: read-surface coverage across every API', async () => {
     // A `.refine()` at a container path is a legitimate Zod pattern: the
     // resulting error's absolute path equals the container's own path.
-    // Four surfaces include it — the flat aggregate, both call-form
+    // Four surfaces include it: the flat aggregate, both call-form
     // entry points, and the property-access materialisation under the
     // container's `''` sentinel slot.
     const { app, api } = mountForm(schema, { address: { city: 'Springfield', zip: 'Springfield' } })
@@ -206,13 +203,12 @@ describe('schemaErrors edge cases — cross-field refine on a container', () => 
   })
 })
 
-describe('schemaErrors edge cases — failing → passing transition', () => {
-  // Pre-fix, sticky errors were possible because the only clear path
-  // was `setSchemaErrorsForPath(parent, [])` which deleted ONE key.
-  // After the fix, `applySchemaErrorsForSubtree` clears the whole
-  // subtree before writing, and the empty-`entries` path falls
-  // through the `if (entries.length === 0) return` AFTER the clear —
-  // so a leaf transitioning from failing to passing reliably wipes.
+describe('schemaErrors edge cases: failing → passing transition', () => {
+  // `applySchemaErrorsForSubtree` clears the whole subtree before
+  // writing, and the empty-`entries` case falls through
+  // `if (entries.length === 0) return` AFTER that clear, so a leaf going
+  // from failing to passing reliably wipes. A clear that deleted one key
+  // at a time would leave errors stuck.
   const schema = z.object({ email: z.email() })
 
   const apps: App[] = []
@@ -234,7 +230,7 @@ describe('schemaErrors edge cases — failing → passing transition', () => {
     expect(before).toBeDefined()
     expect(before?.[0]?.code).toMatch(/zod:/)
 
-    // Fix the value — schedule fires again, validation passes,
+    // Fix the value, schedule fires again, validation passes,
     // applySchemaErrorsForSubtree clears the (now-empty) subtree.
     api.setValue('email', 'valid@example.com')
     await waitUntil(() => {
@@ -286,12 +282,12 @@ describe('schemaErrors edge cases — failing → passing transition', () => {
   })
 })
 
-describe('schemaErrors edge cases — field-array shrink', () => {
+describe('schemaErrors edge cases: field-array shrink', () => {
   // Removing an erroring element from an array should leave no stale
   // entry at the (now-nonexistent) index. The cleanup happens through
   // setValueAtPath → scheduleFieldValidation(arrayPath), which routes
   // to the same applySchemaErrorsForSubtree clear-then-leaf-write
-  // sweep — so the test pins THAT contract for arrays.
+  // sweep: so the test pins THAT contract for arrays.
   const schema = z.object({
     tags: z.array(z.string().min(1)),
   })
@@ -318,9 +314,9 @@ describe('schemaErrors edge cases — field-array shrink', () => {
       return errs.length === 0 ? true : null
     })
 
-    // tags.0 is now 'b' (was 'b' at index 1) — passes .min(1).
+    // tags.0 is now 'b' (was 'b' at index 1), passes .min(1).
     expect((api.errors as unknown as (p: string) => ValidationError[])('tags.0')).toEqual([])
-    // No ghost meta-error for the removed index — the unfiltered
+    // No ghost meta-error for the removed index: the unfiltered
     // aggregate stays clean too.
     expect(api.meta.errors).toEqual([])
   })
@@ -350,7 +346,7 @@ describe('schemaErrors edge cases — field-array shrink', () => {
   })
 })
 
-describe('schemaErrors edge cases — parent + leaf overlapping schedules', () => {
+describe('schemaErrors edge cases: parent + leaf overlapping schedules', () => {
   // Two scheduled validations on overlapping paths can race. With
   // immediate (debounceMs: 0) schedules, the parent's clear-subtree
   // and the leaf's own write may interleave. The contract we pin:
@@ -405,7 +401,7 @@ describe('schemaErrors edge cases — parent + leaf overlapping schedules', () =
 
     api.setValue('email', 'a')
     api.setValue('email', 'ab')
-    api.setValue('email', 'abc@example.com') // valid — final
+    api.setValue('email', 'abc@example.com') // valid, final
     await waitUntil(() => {
       const errs = (api.errors as unknown as (p: string) => ValidationError[])('email')
       return errs.length === 0 && api.meta.errors.length === 0 ? true : null

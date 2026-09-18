@@ -28,7 +28,7 @@ function isBlankFileValue(value: unknown): boolean {
  *
  * The DOM `el.multiple` property is NOT yet applied inside a directive's
  * `created` hook (Vue patches an element's attributes AFTER its directive
- * `created` hooks run), so the created-time blank-seed can't trust it — a
+ * `created` hooks run), so the created-time blank-seed cannot trust it: a
  * stale `false` makes it seed the single-file shape (`null`) into an array
  * path, which the slim-primitive gate rejects with a dev warning. Read the
  * authored vnode prop instead, falling back to the DOM property for the
@@ -46,7 +46,7 @@ function isMultipleInput(el: HTMLInputElement, vnode: VNode): boolean {
  * directive's canonical storage form: `File[]` when the element has
  * the `multiple` attribute, `File | null` otherwise. `el.files` is
  * `null` on programmatically-detached inputs and the FileList is
- * empty when the user picked nothing — both collapse to the blank
+ * empty when the user picked nothing, and both collapse to the blank
  * shape.
  */
 function readFilesFromInput(el: HTMLInputElement): File[] | File | null {
@@ -73,11 +73,11 @@ type FileScopeCarrier = { [fileScopeKey]?: () => void }
  * `File[]` (multiple). Storage is the canonical blank shape (`null` /
  * `[]`) when no file is selected, with the path marked in
  * `blankPaths` so the friendly "No value supplied" error surfaces
- * through `derivedBlankErrors` on required-file fields — same channel
+ * through `derivedBlankErrors` on required-file fields, the same channel
  * as required numbers / bigints.
  *
  * The `beforeUpdate` hook keeps the DOM in lockstep with storage by
- * clearing `el.value` when storage transitions to blank — the only
+ * clearing `el.value` when storage transitions to blank, the only
  * programmatic write browsers permit on file inputs.
  */
 export const vRegisterFile: RegisterModelDynamicCustomDirective = {
@@ -87,7 +87,7 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     // and `el.type === 'file'`. The variant union type widens to include
     // select/textarea, so narrow once per hook. The dynamic directive's `el`
     // (unlike the `CustomRegisterDirective` variants) doesn't carry the
-    // assign-key symbol index, so widen to the assigner carrier here — the
+    // assign-key symbol index, so widen to the assigner carrier here: the
     // shared `setAssignFunction` / `fireAssigner` both read `el[assignKey]`.
     const input = el as HTMLInputElement & { [k: symbol]: CustomDirectiveRegisterAssignerFn }
     // Direct-use path (`vRegisterFile` bound without the dynamic
@@ -167,7 +167,7 @@ export const vRegisterFile: RegisterModelDynamicCustomDirective = {
     //      value (`null`) but doesn't propagate `meta.blank: true`, so
     //      the path would otherwise drift out of `blankPaths`. The
     //      store's `Set.add` is idempotent, and identity-equal writes
-    //      don't trigger re-renders — safe to call on every update.
+    //      do not trigger re-renders, so it is safe on every update.
     //
     // Skip entirely while an async transform is in flight: storage is
     // transiently still the blank shape (the deferred commit hasn't landed)

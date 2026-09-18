@@ -4,16 +4,15 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 import { fieldMeta } from '../../../src/runtime/adapters/zod-v3/field-meta'
 
 /**
- * v3 field-meta parity tests for D13 / SF3 — shared-instance per-path
- * disambiguation. Pre-fix v3 `resolveFieldMetaAtPathV3` reads ONLY
- * `getFieldMeta(target)` (last-write-wins on the shared registry), so
- * a schema instance registered at multiple form paths surfaces the
- * SAME payload everywhere. v4's adapter walks the tree once,
- * counter-indexes per-schema visits against `getFieldMetaList(schema)`,
- * and binds each visit to its own path → distinct payloads per path.
+ * v3 field-meta parity for D13 / SF3: shared-instance per-path
+ * disambiguation. One schema instance registered at several form paths
+ * surfaces a DISTINCT payload at each. Both adapters walk the tree once,
+ * counter-index per-schema visits against `getFieldMetaList(schema)` and
+ * bind each visit to its own path; reading `getFieldMeta(target)` alone
+ * is last-write-wins and gives every path the same payload.
  *
- * Mirror of `field-meta-parity.test.ts` under `test/adapters/zod-v4/`;
- * dual-green after the fix is the parity proof.
+ * The v4 half is `field-meta-parity.test.ts` under
+ * `test/adapters/zod-v4/`, and dual-green is the parity proof.
  */
 describe('zod v3: shared-instance field-meta per-path disambiguation (D13 / SF3)', () => {
   it('a schema instance registered at two paths surfaces a distinct payload per path', () => {

@@ -12,7 +12,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * (`canonicalizePath` in `src/runtime/core/paths.ts`) already accepts
  * both dotted-string and segment-array forms; these tests confirm the
  * tuple form produces an equivalent `RegisterValue` to the dotted
- * form — same resolved path key, same value reads, same write
+ * form, same resolved path key, same value reads, same write
  * propagation.
  */
 
@@ -53,7 +53,7 @@ function mount(): { app: App; api: Api } {
   return { app, api: handle.api as Api }
 }
 
-describe('register — tuple-segment runtime equivalence', () => {
+describe('register: tuple-segment runtime equivalence', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -105,7 +105,7 @@ describe('register — tuple-segment runtime equivalence', () => {
   })
 })
 
-describe('setValue / toRef — tuple-segment runtime equivalence', () => {
+describe('setValue / toRef: tuple-segment runtime equivalence', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

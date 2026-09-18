@@ -3,13 +3,13 @@ import { describe, expect } from 'vitest'
 import { canonicalizePath, type Segment } from '../../src/runtime/core/paths'
 
 /**
- * Properties for path canonicalisation. The invariants here are subtle —
+ * Properties for path canonicalisation. The invariants here are subtle,
  * the PathKey is a stable Map key, so collisions across "same path, two
  * forms" would cause FormStore key lookups to miss. These properties
  * guard the encoding.
  */
 
-// Strings that never contain a dot — avoids the parse-ambiguity between
+// Strings that never contain a dot, avoids the parse-ambiguity between
 // "a.b" as a single segment vs ["a", "b"] as two segments. Users who need
 // literal dots pass the array form; property testing sticks to strings
 // that round-trip unambiguously.
@@ -29,7 +29,7 @@ const arbSegment: fc.Arbitrary<Segment> = fc.oneof(arbStringSegment, fc.nat({ ma
 
 const arbSegmentArray = fc.array(arbSegment, { maxLength: 6 })
 
-describe('canonicalizePath — properties', () => {
+describe('canonicalizePath: properties', () => {
   test.prop([arbSegmentArray])(
     'idempotent: canonicalize(canonicalize(x).segments).key === canonicalize(x).key',
     (segments) => {

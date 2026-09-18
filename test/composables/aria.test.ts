@@ -161,7 +161,7 @@ describe('auto-aria needs a display-state channel', () => {
   it('manages nothing for a binding carrying no ariaDisplayState', async () => {
     // A hand-rolled register factory has no field-state accessor to
     // close over, so `buildRegister` omits `ariaDisplayState`. That is
-    // the one remaining "aria off" path — there is no opt-out flag.
+    // the one remaining "aria off" path: there is no opt-out flag.
     const handle: { api?: Api } = {}
     const Parent = defineComponent({
       setup() {

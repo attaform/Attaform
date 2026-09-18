@@ -34,7 +34,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — popstate mid-flight safety', () => {
+describe('useWizard: popstate mid-flight safety', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -100,7 +100,7 @@ describe('useWizard — popstate mid-flight safety', () => {
   it('rapid restore flips do not re-fire an unresolved factory', async () => {
     let factoryCalls = 0
     const factoryPromise = new Promise<{ b: string }>(() => {
-      // Never resolves — proves the factory holds in `hydrating: true`
+      // Never resolves, proves the factory holds in `hydrating: true`
       // throughout this probe.
     })
     const restoreRef = ref<string | undefined>(undefined)

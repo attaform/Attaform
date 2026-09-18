@@ -59,7 +59,7 @@ tests/fixtures/doc-snippets/.generated
 # esbuild metafile dumps from the bundle-size analysis tooling
 analysis/meta
 
-# Volar / mkdist Vue declaration stubs. These belong in dist/ only —
+# Volar / mkdist Vue declaration stubs. These belong in dist/ only:
 # the mkdist preset (build.config.ts) emits them at pack time. If a
 # Volar emit-on-save or a misconfigured vue-tsc run drops them next
 # to source .vue files, this rule keeps them out of commits. See

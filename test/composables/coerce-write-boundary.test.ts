@@ -10,7 +10,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Pins the storage-side semantics of `z.coerce.X()` under the
  * no-write-mutation contract.
  *
- * `z.coerce.X()` desugars to `z.pipe(z.transform(coerceFn), z.X())` —
+ * `z.coerce.X()` desugars to `z.pipe(z.transform(coerceFn), z.X())`,
  * the same input-transform shape as `z.preprocess`. Coercion runs at
  * parse / submit (inside `safeParse`), NOT at the write boundary.
  * Storage retains the raw consumer write; reads surface as `unknown`
@@ -18,7 +18,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *
  * Consumers wanting type-correct storage at the write boundary opt in
  * via directive modifiers (`v-register.number`, `.trim`) or register
- * transforms — that side of the contract is the directive layer's, not
+ * transforms: that side of the contract is the directive layer's, not
  * the schema's.
  */
 

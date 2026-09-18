@@ -15,7 +15,7 @@ import type { UseFormReturn } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Phase 5.6 — async validation end-to-end.
+ * Phase 5.6, async validation end-to-end.
  *
  * Covers the AbstractSchema contract change (Promise-returning
  * validateAtPath) at the public useForm surface: async zod refinements
@@ -102,7 +102,7 @@ function mountForm(onCreated: (form: UseFormReturn<typeof signupSchema>) => void
   return { app, api: handle.api as Returned, root }
 }
 
-describe('async validation — handleSubmit awaits async refinements', () => {
+describe('async validation: handleSubmit awaits async refinements', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -160,7 +160,7 @@ describe('async validation — handleSubmit awaits async refinements', () => {
   })
 })
 
-describe('parse({ commit: true }) — imperative one-shot', () => {
+describe('parse({ commit: true }): imperative one-shot', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -190,7 +190,7 @@ describe('parse({ commit: true }) — imperative one-shot', () => {
   })
 })
 
-describe('per-field validating — `form.fields.<path>.validating`', () => {
+describe('per-field validating: `form.fields.<path>.validating`', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -219,7 +219,7 @@ describe('per-field validating — `form.fields.<path>.validating`', () => {
     expect(api.fields.email.validating).toBe(false)
   })
 
-  it('sibling paths flip independently — email validating does not affect password', async () => {
+  it('sibling paths flip independently: email validating does not affect password', async () => {
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))
     apps.push(app)
@@ -273,7 +273,7 @@ describe('per-field validating — `form.fields.<path>.validating`', () => {
     expect(api.meta.validating).toBe(false)
   })
 
-  it('stale-run safety — rapid setValues keep validating true across the abort/restart boundary', async () => {
+  it('stale-run safety: rapid setValues keep validating true across the abort/restart boundary', async () => {
     // Two writes to the same path back-to-back: the second aborts the
     // first's controller before the first's `.finally` can decrement.
     // With a counter (not a Set), the count goes 1 → 2 → 1 → 0 and the
@@ -297,7 +297,7 @@ describe('per-field validating — `form.fields.<path>.validating`', () => {
   })
 })
 
-describe('per-field valid — `form.fields.<path>.valid`', () => {
+describe('per-field valid: `form.fields.<path>.valid`', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -338,7 +338,7 @@ describe('per-field valid — `form.fields.<path>.valid`', () => {
   })
 })
 
-describe('form.meta.valid — `valid && !validating`', () => {
+describe('form.meta.valid: `valid && !validating`', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -390,7 +390,7 @@ describe('form.meta.valid — `valid && !validating`', () => {
   })
 })
 
-describe('validate() reactive ref — pending + cancellation', () => {
+describe('validate() reactive ref: pending + cancellation', () => {
   const apps: App[] = []
   // validate()'s watcher is owned by this scope and disposed after each test,
   // so these reactive-ref characterizations never leak a watcher or emit the
@@ -410,7 +410,7 @@ describe('validate() reactive ref — pending + cancellation', () => {
     apps.push(app)
     const status = runScoped(scope, () => api.validate())
     expect(status.value.pending).toBe(true)
-    // Drain several microtask + Vue ticks — the async parse needs to
+    // Drain several microtask + Vue ticks: the async parse needs to
     // resolve and the watchEffect callback needs to re-enter.
     for (let i = 0; i < 8 && status.value.pending; i++) {
       await Promise.resolve()
@@ -422,7 +422,7 @@ describe('validate() reactive ref — pending + cancellation', () => {
   it('newer form mutations drop earlier in-flight validations', async () => {
     // If cancellation isn't wired, the older "taken@" result would
     // clobber the newer "alice@" result after it resolves. With the
-    // generation counter, only the newest run writes — the test
+    // generation counter, only the newest run writes: the test
     // confirms the settled status reflects the *latest* form value.
     let api!: UseFormReturn<typeof signupSchema>
     const { app } = mountForm((a) => (api = a))

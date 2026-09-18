@@ -5,31 +5,29 @@
  *
  * Yes, and that is why this file exists: the seeds surface through
  * `form.meta.valid` / `form.meta.errors` / `form.errors(path)` on the
- * very first render — a submit button bound to `meta.valid` renders
- * disabled on SSR first paint BECAUSE of the seed — even though the
+ * very first render: a submit button bound to `meta.valid` renders
+ * disabled on SSR first paint BECAUSE of the seed, even though the
  * per-field display gate keeps them out of the field UI
  * (`displayState` stays 'idle', `showErrors` false, until interaction).
  *
- * WHAT CHANGED, and it is a deliberate trade. A schema that mixes an
- * async refine with sync checks used to seed the sync half anyway: the
- * adapter rebuilt the entire schema with the async predicates removed
- * and parsed against that copy. The walker doing it was 206 lines and a
- * second, parallel understanding of every Zod kind — the shape this
- * codebase keeps finding drifted from the original with nothing to
- * notice. It is gone, and with it the construction seed for exactly
- * that mixed case: the verdict now arrives one async pass later, so on
- * SSR the submit button renders enabled and then disables.
+ * THE ONE DELIBERATE TRADE: a schema mixing an async refine with sync
+ * checks seeds NEITHER. Seeding the sync half means rebuilding the
+ * schema without its async predicates and parsing that copy, and such a
+ * walker is a second parallel understanding of every Zod kind, the shape
+ * this codebase keeps finding drifted from the original with nothing to
+ * notice. So that verdict arrives one async pass later, and on SSR the
+ * submit button renders enabled and then disables.
  *
- * Nothing else moved. An async-free schema still seeds at construction,
+ * Nothing else moves. An async-free schema still seeds at construction,
  * the display gate still hides seeds from the field UI, and the
- * post-mount async pass was already the source of truth for every
- * verdict in every case.
+ * post-mount async pass is the source of truth for every verdict in
+ * every case.
  *
  * The suite pins four facts:
  *  1. construction seeds sync-check violations found on the starting
  *     data, and the seed is meta-visible at first paint;
  *  2. a schema that ALSO carries an async refine defers its whole
- *     verdict to the async pass rather than seeding — the trade above,
+ *     verdict to the async pass rather than seeding, the trade above,
  *     pinned so it stays a decision;
  *  3. it converges on the same verdict once that pass lands;
  *  4. the per-field display gate still hides the seed from the field
@@ -90,7 +88,7 @@ const asyncFreeTwin = () =>
     code: z.string(),
   })
 
-describe('construction-time sync-check seeds — first-paint visibility', () => {
+describe('construction-time sync-check seeds: first-paint visibility', () => {
   it('seeds the sync violation and the seed is meta-visible', () => {
     const api = mount(asyncFreeTwin(), 'seed-sync')
     expect(api.meta.valid).toBe(false)
@@ -110,13 +108,13 @@ describe('construction-time sync-check seeds — first-paint visibility', () => 
     // But `meta.valid` is still false, and that is the part worth
     // knowing: a schema declaring async work is clamped invalid until
     // `firstValidationDone` whatever the seeds say. So the first-paint
-    // consequence the deletion was expected to have — a submit button
-    // bound to `meta.valid` rendering ENABLED on SSR and then disabling
-    // — does not happen. The async gate was already covering it, which
+    // consequence the deletion was expected to have: a submit button
+    // bound to `meta.valid` rendering ENABLED on SSR and then disabling,
+    // does not happen. The async gate was already covering it, which
     // means the strip walker's construction seed was buying a narrower
     // thing than it appeared to.
     expect(withAsync.meta.valid).toBe(false)
-    // Its async-free twin, same sync check, still seeds — so this is
+    // Its async-free twin, same sync check, still seeds: so this is
     // about the mixture, not about the check.
     const withoutAsync = mount(asyncFreeTwin(), 'seed-parity-sync')
     expect(withoutAsync.meta.valid).toBe(false)
@@ -139,7 +137,7 @@ describe('construction-time sync-check seeds — first-paint visibility', () => 
     const api = mount(asyncFreeTwin(), 'seed-gated')
     expect(api.fields('name')?.displayState).toBe('idle')
     expect(api.fields('name')?.showErrors).toBe(false)
-    // The same seed is simultaneously visible on the meta surface —
+    // The same seed is simultaneously visible on the meta surface,
     // that split is exactly why the seeds count as user-visible.
     expect(api.meta.valid).toBe(false)
   })

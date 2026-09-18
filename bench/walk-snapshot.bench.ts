@@ -1,17 +1,17 @@
 /**
- * P2 probe — repeated path-walks + blur-dedup snapshot clones.
+ * P2 probe, repeated path-walks + blur-dedup snapshot clones.
  *
  * The complexity ledger (PERF-ANALYSIS.md row P2) flags two suspected
  * "redundant O(D)/O(scope)" costs on the write / validation path:
  *
- *   1. GUARD WALK — the cross-variant DU write guard
+ *   1. GUARD WALK: the cross-variant DU write guard
  *      (create-form-store.ts:2093-2116) runs a per-ancestor loop on every
  *      write with `path.length >= 2`, calling
  *      `schema.getUnionDiscriminatorAtPath(ancestorPath)` + slicing the
  *      ancestor path at each step, EVEN for a schema with zero unions
  *      (where the lookup always returns undefined and the loop is a no-op).
  *      Same guard as ledger row T1.
- *   2. BLUR-DEDUP SNAPSHOT — every committed blur-mode validation deep-clones
+ *   2. BLUR-DEDUP SNAPSHOT: every committed blur-mode validation deep-clones
  *      its validation scope into `pathSnapshots` (create-form-store.ts:2693-2696)
  *      so a later blur can value-compare and skip a redundant revalidation.
  *
@@ -28,7 +28,7 @@
  * lookup for the guard and the REAL `structuralSnapshot` for the clone.
  *
  * ── Block 1: guard walk ──────────────────────────────────────────────────
- * `getUnionDiscriminatorAtPath` is CACHED (abstract-schema-factory.ts:677 —
+ * `getUnionDiscriminatorAtPath` is CACHED (abstract-schema-factory.ts:677,
  * a `canonicalizePath().key` Map lookup, itself cache-hit O(1)), so the hot
  * path (repeated writes to the same field) pays only D x (slice + two cached
  * Map hits) per write. Cells:
@@ -42,7 +42,7 @@
  * ── Block 2: blur-dedup snapshot ─────────────────────────────────────────
  * The clone scope = the VALIDATION scope. Under subtree-scope (CORE-P1a,
  * `hasContainerOrRootRefine() === false`) only the edited subtree is cloned;
- * under whole-form scope (a container/root refine present — the cross-field
+ * under whole-form scope (a container/root refine present: the cross-field
  * eligibility shape) the WHOLE form is cloned per blur commit. Cells sweep
  * field count F:
  *   snapshot whole-form F={5,50,500} -> the container-refine residual, O(F).
@@ -54,10 +54,10 @@
  * Read: the whole-form / subtree ratio is exactly what CORE-P1a already saves
  * a refine-free form. The residual whole-form clone is REQUIRED for the dedup
  * to stay byte-identical (the validated value must be stored to compare a
- * later blur against), so it is not a free bust — only a scope to narrow,
+ * later blur against), so it is not a free bust, only a scope to narrow,
  * which CORE-P1a already did.
  *
- * NOTE: no `old:`/`new:` cells, so scripts/check-bench.mjs skips this file —
+ * NOTE: no `old:`/`new:` cells, so scripts/check-bench.mjs skips this file,
  * these are absolute-ops probes for the dashboard, like matrix.bench.ts and
  * alloc-churn.bench.ts.
  */
@@ -81,7 +81,7 @@ function readSink(): unknown {
 // ── Block 1: guard walk ────────────────────────────────────────────────────
 
 describe('P2: cross-variant DU guard (per nested write, zero unions)', () => {
-  // A nested zero-union schema `a.b.c.d` (depth 4 — a realistic nested form;
+  // A nested zero-union schema `a.b.c.d` (depth 4: a realistic nested form;
   // the guard loop runs path.length-1 = 3 ancestor checks). Built through the
   // real adapter so `getUnionDiscriminatorAtPath` is the real cached method.
   const rawSchema = z.object({
@@ -123,7 +123,7 @@ describe('P2: cross-variant DU guard (per nested write, zero unions)', () => {
   bench('guard gated (has-any-DU init flag short-circuits)', () => {
     // A zero-union schema short-circuits before the per-ancestor loop; the
     // flag check is the entire per-write guard cost. The body models the work
-    // that WOULD run (never reached here — the flag is false).
+    // that WOULD run (never reached here: the flag is false).
     if (hasAnyDiscriminatedUnion && path.length >= 2) {
       for (let i = 0; i < path.length - 1; i++) blackbox(path.slice(0, i + 1))
     }
@@ -150,7 +150,7 @@ describe('P2: blur-dedup snapshot clone (per committed blur-mode validation)', (
   }
 
   // Subtree scope (CORE-P1a, refine-free form): a single-leaf write clones
-  // only the edited leaf. F-independent — this is what CORE-P1a saves the
+  // only the edited leaf. F-independent: this is what CORE-P1a saves the
   // common form down to.
   const leaf = 'v499'
   bench('snapshot subtree (leaf, CORE-P1a scope)', () => {

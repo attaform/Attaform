@@ -105,8 +105,8 @@ function makeForm(leafCount: number, depth: number): Record<string, unknown> {
  * Deeply clone and mutate one leaf to simulate a single keystroke.
  *
  * Descends through `level1 → level2 → … → levelN` greedily until it
- * reaches a parent node whose first child is NOT a `levelN` container
- * — the field-bearing parent. The previous hardcoded
+ * reaches a parent node whose first child is NOT a `levelN` container:
+ * the field-bearing parent. The previous hardcoded
  * `level1 → level2 → break` walker stopped one level early at depth ≥ 4
  * and ended up mutating a `levelN` key itself (clobbering the whole
  * leaves-bearing subtree with a primitive). That made the 500-leaf
@@ -217,7 +217,7 @@ describe('keystroke: 100-leaf form, single-leaf mutation', () => {
   // summary map, but current/previous don't change between iterations,
   // so after the first run the map converges to a stable steady-state.
   // Subsequent iterations still exercise the full algorithm (flatten,
-  // setDifference / setIntersection, persisted-keys rebuild) — big-O
+  // setDifference / setIntersection, persisted-keys rebuild), big-O
   // identical to the cold-start run. Cloning inside the bench inflated
   // the ratio gate, charging clone overhead to `old:` runs only.
   const summaryCopy = { ...summaryValues }

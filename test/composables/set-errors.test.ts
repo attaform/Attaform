@@ -9,7 +9,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import type { ErrorInput, ValidationError } from '../../src/runtime/types/types-api'
 
 /**
- * `form.setErrors` / `form.clearErrors` — the single surface for the
+ * `form.setErrors` / `form.clearErrors`: the single surface for the
  * manual error layer (server responses, optimistic UI, form banners).
  * Lenient input (`ErrorInput`): an `Error`, a partial object, or an
  * array of either; firm output (`ValidationError`, formKey always
@@ -224,11 +224,9 @@ function setErrorsContract(make: () => TestForm): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // zod-v3 adapter
-// -----------------------------------------------------------------------------
 
-describe('setErrors / clearErrors — zod-v3 adapter', () => {
+describe('setErrors / clearErrors: zod-v3 adapter', () => {
   const schema = zV3.object({ email: zV3.string(), name: zV3.string() })
   const make = (): TestForm =>
     mountWithApp(
@@ -242,11 +240,9 @@ describe('setErrors / clearErrors — zod-v3 adapter', () => {
   setErrorsContract(make)
 })
 
-// -----------------------------------------------------------------------------
 // zod-v4 adapter
-// -----------------------------------------------------------------------------
 
-describe('setErrors / clearErrors — zod-v4 adapter', () => {
+describe('setErrors / clearErrors: zod-v4 adapter', () => {
   const schema = zV4.object({ email: zV4.string(), name: zV4.string() })
   const make = (): TestForm =>
     mountWithApp(

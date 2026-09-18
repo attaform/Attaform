@@ -1,23 +1,22 @@
+/**
+ * Path primitives for advanced integrations. Attaform accepts a
+ * dotted-string path (`'user.email'`) at every public API; these
+ * primitives are exposed for an adapter author who needs to canonicalise
+ * a user-provided one.
+ */
 import { __DEV__ } from './dev'
 import { InvalidPathError } from './errors'
-
-/**
- * Path primitives for advanced integrations. The form library accepts
- * paths in dotted-string form (`'user.email'`) at every public API.
- * These primitives are exposed for adapter authors who need to
- * canonicalise user-provided paths.
- */
 
 declare const pathKeyBrand: unique symbol
 
 /**
- * Branded string identifier for a canonicalised path. Useful as a
- * `Map` key — two paths that resolve to the same canonical form
- * produce the same `PathKey`. Treat as opaque; don't try to parse.
+ * Branded string identifier for a canonicalised path, and a useful `Map`
+ * key: two paths resolving to the same canonical form produce the same
+ * `PathKey`. Treat it as opaque and do not parse it.
  */
 export type PathKey = string & { readonly [pathKeyBrand]: 'PathKey' }
 
-/** A single path segment — a property name or array index. */
+/** A single path segment: a property name, or an array index. */
 export type Segment = string | number
 /** A structured path as a read-only sequence of segments. */
 export type Path = readonly Segment[]
@@ -29,17 +28,16 @@ const INTEGER_SEGMENT = /^(?:0|[1-9]\d*)$/
  * The synthetic segment that asks a `z.set` what its members look
  * like.
  *
- * A set's members are not addressable — a member IS its own key, so no
- * address survives writing to one — but the coercion layer still has
- * to know what a member's type is before it can coerce one. It asks by
- * resolving this segment under the set's path.
+ * A set's members are not addressable, a member being its own key, so no
+ * address survives a write to one. The coercion layer still has to know a
+ * member's type before it can coerce one, and it asks by resolving this
+ * segment under the set's path.
  *
- * It lives in the reserved `__atta:` namespace (see
- * `RESERVED_KEY_PREFIX`) so no consumer path can spell it, which is
- * the whole point: a plain index used to serve this purpose, and
- * `tags.0` therefore resolved in the schema, appeared on `form.fields`
- * as a dead node, and cleared the write gate — where the numeric
- * rebuild turned a `Set` of three into an `Array` of one (#614).
+ * The segment MUST stay inside the reserved `__atta:` namespace (see
+ * `RESERVED_KEY_PREFIX`) so no consumer path can spell it. A plain index
+ * in this role makes `tags.0` resolve in the schema, appear on
+ * `form.fields` as a dead node, and clear the write gate, where the
+ * numeric rebuild turns a `Set` of three into an `Array` of one (#614).
  */
 export const SET_MEMBER_SEGMENT = '__atta:member'
 
@@ -75,9 +73,9 @@ function normalizeSegment(raw: Segment): Segment {
     }
     return raw
   }
-  // Integer-looking strings normalise to numbers so that dotted-form
-  // `'items.0.name'` and array-form `['items', 0, 'name']` yield the same
-  // canonical path (and PathKey).
+  // Integer-looking strings normalise to numbers, so dotted-form
+  // `'items.0.name'` and array-form `['items', 0, 'name']` yield one
+  // canonical path and one PathKey.
   if (INTEGER_SEGMENT.test(raw)) return Number(raw)
   return raw
 }
@@ -119,27 +117,24 @@ export function parseDottedPath(path: string): Segment[] {
 }
 
 /**
- * Bounded FIFO cache for canonicalizePath on dotted-string inputs.
- * Real forms re-canonicalise a small working-set of paths thousands
- * of times per session (every keystroke on a registered field, every
- * validate, every getValue), so a small cache amortises the parse +
- * stringify cost across repeat calls without pinning memory as apps
- * accumulate fields.
+ * Bounded FIFO cache for `canonicalizePath` on dotted-string inputs. A
+ * real form re-canonicalises a small working set thousands of times a
+ * session (every keystroke on a registered field, every validate, every
+ * getValue), so a small cache amortises the parse and stringify across
+ * repeats without pinning memory as an app accumulates fields.
  *
- * Eviction is FIFO (oldest insertion wins), not LRU. The 128-entry
- * cap is generous relative to a typical form's working set
- * (playground: ~15 paths; the entire test suite: 45 unique register
- * patterns) — overflow doesn't fire in practice. On the rare overflow
- * a re-canonicalisation hit is still O(segments) and lands back in
- * the cache. Bumping recency on every hit (`delete` + `set`) costs
- * two Map operations per cache hit, in the hottest read-side loop in
- * the library, with no observable benefit at this cap — so we don't.
+ * Eviction is FIFO, oldest insertion first, not LRU. 128 entries is
+ * generous against a typical working set (the playground holds ~15 paths,
+ * the whole test suite 45 unique register patterns), so overflow does not
+ * fire in practice, and when it does the re-canonicalisation is still
+ * O(segments) and lands back in the cache. Bumping recency per hit
+ * (`delete` + `set`) would cost two Map operations in the hottest
+ * read-side loop in Attaform for no observable benefit at this cap.
  *
- * Array inputs are not cached: callers in the runtime (unset-walker's
- * recursive `[...segments, i]`, devtools' inspector `payload.path.slice(...)`)
- * overwhelmingly pass freshly-allocated arrays per call, so a
- * WeakMap-keyed cache would miss on every call and pay the
- * lookup-then-set cost without benefit.
+ * Array inputs are not cached. The runtime's callers (unset-walker's
+ * recursive `[...segments, i]`, the devtools inspector's
+ * `payload.path.slice(...)`) pass a freshly allocated array per call, so a
+ * WeakMap-keyed cache would miss every time and still pay lookup-then-set.
  */
 const CANONICAL_STRING_CACHE_MAX = 128
 const canonicalStringCache = new Map<string, { segments: readonly Segment[]; key: PathKey }>()
@@ -151,18 +146,17 @@ const canonicalStringCache = new Map<string, { segments: readonly Segment[]; key
  * segments without `JSON.parse`. Callers reach this through
  * `segmentsForPathKey` below.
  *
- * The store-side data structures keyed by PathKey (form-store error
- * maps, blank-paths set, variant-memory map, persistence opt-in
- * registry) all source their keys from `canonicalizePath`, so reads
- * are dominantly cache hits. Cold paths (PathKeys round-tripped from
- * a persisted payload that came from disk) still hit a single
- * `JSON.parse` on first lookup, then warm the cache.
+ * Every store-side structure keyed by PathKey (the form-store error maps,
+ * the blank-paths set, the variant-memory map) sources its keys from
+ * `canonicalizePath`, so reads are dominantly cache hits. A cold key, one
+ * round-tripped through an SSR payload, pays a single `JSON.parse` on
+ * first lookup and then warms the cache.
  *
- * Bounded FIFO at 4096 entries — generous relative to a typical form's
- * working set (~tens to ~hundreds of paths per form) but small enough
- * that long-running multi-form apps don't accumulate unbounded
- * references. Eviction only fires on net-new entries; idempotent
- * overwrites (same key, same segments) don't count toward the cap.
+ * Bounded FIFO at 4096 entries: generous against a typical working set of
+ * tens to hundreds of paths per form, small enough that a long-running
+ * multi-form app accumulates no unbounded references. Eviction fires only
+ * on a net-new entry, an idempotent overwrite (same key, same segments)
+ * counting toward nothing.
  */
 const PATHKEY_TO_SEGMENTS_MAX = 4096
 const pathKeyToSegments = new Map<PathKey, readonly Segment[]>()
@@ -176,16 +170,15 @@ function rememberSegmentsForPathKey(key: PathKey, segments: readonly Segment[]):
 }
 
 /**
- * Recover the structured `Segment[]` for a `PathKey` produced by
- * `canonicalizePath`. O(1) on the hot path (cache hit); cold keys
- * fall back to `JSON.parse(key)` plus segment normalization, then
- * warm the cache so subsequent lookups hit.
+ * Recover the structured `Segment[]` for a `PathKey` that
+ * `canonicalizePath` produced. O(1) on a cache hit; a cold key falls back
+ * to `JSON.parse(key)` plus segment normalization and then warms the
+ * cache.
  *
- * Returns `null` for malformed PathKeys (non-JSON, non-array, or
- * containing values that aren't strings/numbers). Keys produced by
- * `canonicalizePath` never trip this — corrupt persistence payloads
- * (or test fixtures crafting raw strings) are the only realistic
- * sources.
+ * Returns `null` for a malformed PathKey: non-JSON, non-array, or holding
+ * something other than strings and numbers. A key from `canonicalizePath`
+ * never trips it, so the realistic sources are a corrupt SSR payload and
+ * a test fixture crafting raw strings.
  */
 export function segmentsForPathKey(key: PathKey): readonly Segment[] | null {
   const cached = pathKeyToSegments.get(key)
@@ -219,8 +212,8 @@ export function segmentsForPathKey(key: PathKey): readonly Segment[] | null {
  * // → same result
  * ```
  *
- * The returned `key` is suitable as a `Map`/`Set` key — equal paths
- * produce equal keys regardless of input form.
+ * The returned `key` works as a `Map` or `Set` key: equal paths produce
+ * equal keys whichever input form they arrived in.
  */
 export function canonicalizePath(input: string | Path): {
   segments: readonly Segment[]
@@ -229,8 +222,8 @@ export function canonicalizePath(input: string | Path): {
   if (typeof input === 'string') {
     const cached = canonicalStringCache.get(input)
     if (cached !== undefined) return cached
-    // `parseDottedPath` already normalises each segment; the previous
-    // `.map(normalizeSegment)` second pass was a no-op. We drop it here.
+    // `parseDottedPath` normalises each segment already, so no second
+    // `.map(normalizeSegment)` pass is needed.
     const segments: readonly Segment[] = parseDottedPath(input)
     const key = JSON.stringify(segments) as PathKey
     const entry = { segments, key }
@@ -248,10 +241,10 @@ export function canonicalizePath(input: string | Path): {
 /**
  * Canonical `{ segments, key }` for an already-array path: normalise each
  * segment (integer-looking → number) and mint the stable `JSON.stringify`
- * key, exactly as [[canonicalizePath]]'s array branch does (it delegates
- * here). Factored out so a hot caller that already holds a segment array
- * — the container field-state leaf walk — can produce a `PathKey` that
- * matches the one `originals` was seeded with WITHOUT routing through
+ * key, which is exactly what [[canonicalizePath]]'s array branch does, by
+ * delegating here. It is separate so a hot caller already holding a
+ * segment array, the container field-state leaf walk, can mint a `PathKey`
+ * matching the one `originals` was seeded with WITHOUT routing through
  * `canonicalizePath`, whose per-read call count a meta-budget test gate
  * watches.
  */
@@ -266,26 +259,23 @@ export function keyForSegments(input: Path): {
 }
 
 /**
- * Render a segment array as a dotted path string, matching the form
- * library's public-facing path notation (`'user.email'`,
- * `'items.0.name'`). The inverse of [[parseDottedPath]] for the
- * common case — segments that contain literal dots, leading zeros,
- * or array-index brackets round-trip ambiguously and shouldn't reach
- * this helper.
+ * Render a segment array as a dotted path string in Attaform's public path
+ * notation (`'user.email'`, `'items.0.name'`). The inverse of
+ * [[parseDottedPath]] for the common case: a segment carrying a literal
+ * dot, a leading zero or an array-index bracket round-trips ambiguously
+ * and should not reach this helper.
  *
- * Used at the I/O boundary where internal `PathKey` storage is
- * surfaced to consumers (the `form.blankPaths` view, the persisted
- * payload, the SSR snapshot).
+ * Used where internal `PathKey` storage surfaces to consumers, on the
+ * `form.blankPaths` view and in the SSR snapshot.
  */
 function segmentsToDotted(segments: Path): string {
   return segments.join('.')
 }
 
 /**
- * Convenience: resolve a `PathKey` back to its dotted public form.
- * Returns `null` for malformed keys (matches [[segmentsForPathKey]]'s
- * contract). The common path is a cache hit on `pathKeyToSegments`
- * plus a single `join('.')`.
+ * Resolve a `PathKey` back to its dotted public form, `null` for a
+ * malformed key as [[segmentsForPathKey]] does. The common path is a cache
+ * hit on `pathKeyToSegments` plus one `join('.')`.
  */
 export function pathKeyToDotted(key: PathKey): string | null {
   const segments = segmentsForPathKey(key)
@@ -294,29 +284,28 @@ export function pathKeyToDotted(key: PathKey): string | null {
 }
 
 /**
- * The root path — an empty segment tuple. Pass to APIs that accept a
- * `Path` to address the form value as a whole, and the home for
- * form-level (global) errors: root `.refine()` messages, hydration
- * failures, and `setErrors` entries with no path all live at `[]`. Aggregate
- * reads (`errors()`, `errors([])`, `meta.errors`) surface them alongside
- * field errors; `meta.ownErrors` returns the root bucket alone.
+ * The root path, an empty segment tuple. Pass it to any API taking a
+ * `Path` to address the form value whole. It is also where form-level
+ * errors live: a root `.refine()` message, a hydration failure, and a
+ * `setErrors` entry with no path all land at `[]`. The aggregate reads
+ * (`errors()`, `errors([])`, `meta.errors`) surface them alongside field
+ * errors, and `meta.ownErrors` returns the root bucket alone.
  *
- * The empty SEGMENT tuple `[]` is structurally unconstructible as a
- * field path, so it can never collide with a schema key, unlike the
- * empty STRING key `''` (path `['']`, key `'[""]'`), which is an
- * ordinary field address.
+ * The empty SEGMENT tuple `[]` is structurally unconstructible as a field
+ * path, so it can never collide with a schema key. The empty STRING key
+ * `''` (path `['']`, key `'[""]'`) is an ordinary field address.
  */
 export const ROOT_PATH: Path = Object.freeze([])
 /** Stable string key for the root path. */
 export const ROOT_PATH_KEY = '[]' as PathKey
 
 /**
- * `true` when `path` starts with every segment of `prefix` (in order).
- * The empty `prefix` matches every path — ROOT prefix is universal.
+ * `true` when `path` starts with every segment of `prefix`, in order. The
+ * empty `prefix` matches every path, the ROOT prefix being universal.
  *
- * Walks segments rather than `PathKey` strings because the data this
- * helper operates on (e.g. `meta.errors[].path`) carries segment
- * arrays directly.
+ * Walks segments rather than `PathKey` strings because the data it
+ * operates on (`meta.errors[].path`, for one) carries segment arrays
+ * directly.
  *
  * ```ts
  * isPathPrefix(['cargo'], ['cargo', 'items', 0, 'sku'])  // true
@@ -333,10 +322,11 @@ export function isPathPrefix(prefix: readonly Segment[], path: readonly Segment[
 }
 
 /**
- * `true` when two paths are structurally equal: same length and identical
- * segments in order. Numeric and string segments compare with `!==`, so `0`
- * and `'0'` are NOT equal — pass canonicalised paths (integer-looking segments
- * normalised to numbers, as [[canonicalizePath]] and the diff walker both do).
+ * `true` when two paths are structurally equal: same length, identical
+ * segments in order. Numeric and string segments compare with `!==`, so
+ * `0` and `'0'` are NOT equal. Pass canonicalised paths, with
+ * integer-looking segments normalised to numbers, as [[canonicalizePath]]
+ * and the diff walker both do.
  *
  * ```ts
  * pathsEqual(['rows', 0], ['rows', 0])   // true

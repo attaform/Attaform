@@ -102,11 +102,9 @@ describe('the arena cohort vs the page explaining it', () => {
     // chunk, so the page explains the split either way. What it must not
     // do is promise a figure the table is not rendering: `BenchArena.vue`
     // shows "+N deferred" only for a row with a non-zero async chunk.
-    // This assertion used to require that SOME row defer, which made a
-    // cohort where none does read as a docs defect. Attaform was the only
-    // row that ever had a deferred chunk, and deleting the last dynamic
-    // import from its build took it to zero, so the page has to account
-    // for a row with no badge rather than only for a row with one.
+    // So the assertion must not require that SOME row defers: no row in
+    // the cohort currently does, and a page-scope guard has to assert
+    // what the page claims rather than what the cohort happens to be.
     expect(page()).toContain('deferred')
     expect(
       /no deferred badge loads in one chunk/.test(page()),

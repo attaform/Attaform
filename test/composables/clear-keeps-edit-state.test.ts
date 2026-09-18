@@ -19,7 +19,7 @@
  * distinction between the two calls was ungated on the state half.
  *
  * The source agrees with the measurement: `clear` is documented as
- * "sugar over setValue(path, getEmptyValueAtPath(path)) — no separate
+ * "sugar over setValue(path, getEmptyValueAtPath(path)): no separate
  * bookkeeping", and an ordinary write has no reason to forget that the
  * user was in the field.
  */

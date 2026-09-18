@@ -6,10 +6,10 @@
  * `S` to one Zod major, so the projection is a direct read with no
  * dispatch in the type body.
  *
- * Hoisted out of `types-unified.ts` and `use-form.ts` so the two entry
- * points share one definition. Internal — consumer code never reaches
- * for these; the overloaded `useForm` already gives full inference at
- * call sites.
+ * They live here rather than in `types-unified.ts` or `use-form.ts` so
+ * the two entry points share one definition. Internal: the overloaded
+ * `useForm` already infers fully at a call site, so consumer code never
+ * reaches for them.
  */
 import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
@@ -21,16 +21,17 @@ import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/typ
 import type { GenericForm } from '../../types/types-core'
 
 /**
- * The schema's own input type, exactly as a consumer would reference it
- * (`z.input<S>`) — NOT routed through `GenericForm` / `UnwrapZodRoot`. This
- * is the reflexive escape arm `AcceptableDefaults` adds to the
- * `defaultValues` slot so a generic form wrapper forwarding `z.input<S>`
- * type-checks under a free `S` (#422). It must stay syntactically identical
- * to what the wrapper forwards: wrapping it in a conditional makes it a
- * deferred conditional that no longer matches the forwarded value under a
- * generic. Wrong-major schemas can't actually bind the slot — they are
- * rejected at the overload's `schema` constraint — so the raw input never
- * widens the slot for the wrong major.
+ * The schema's own input type exactly as a consumer would write it,
+ * `z.input<S>`, routed through neither `GenericForm` nor
+ * `UnwrapZodRoot`. It is the reflexive escape arm `AcceptableDefaults`
+ * adds to the `defaultValues` slot, so a generic form wrapper forwarding
+ * `z.input<S>` type-checks under a free `S` (#422).
+ *
+ * It MUST stay syntactically identical to what the wrapper forwards:
+ * wrapping it in a conditional makes it a deferred conditional, which
+ * stops matching the forwarded value under a generic. A wrong-major
+ * schema cannot bind the slot anyway, being rejected at the overload's
+ * `schema` constraint, so the raw input never widens it.
  */
 export type V4SchemaInput<S extends SupportedRootSchemaV4> = z.input<S>
 export type V3SchemaInput<S extends SupportedRootSchemaV3> = zV3.input<S>

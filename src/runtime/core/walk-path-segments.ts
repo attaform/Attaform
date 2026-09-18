@@ -1,5 +1,5 @@
 /**
- * Shared path walker — descends a dotted segment array through a Zod
+ * The shared path walker: it descends a dotted segment array through a Zod
  * schema tree and returns the sub-schemas reachable at that path.
  *
  * One body, two adapters: v3 and v4 each invoke `walkPathSegments`
@@ -11,7 +11,7 @@
  * `def.*` shape.
  *
  * Semantics (preserved verbatim from the prior per-adapter
- * implementations — characterised by `test/adapters/zod-v3/path-walker.test.ts`
+ * implementations, characterised by `test/adapters/zod-v3/path-walker.test.ts`
  * and `test/adapters/zod-v4/path-walker.test.ts`):
  *
  *  - Unions return multiple candidates (caller tries each).
@@ -28,7 +28,7 @@
  *  - `lazy` bumps the lazy counter; past the cap the walker returns
  *    `[]` so writes at recursive paths deeper than `maxRecursionDepth`
  *    fall back to a permissive type gate.
- *  - Intersection unions both sides' resolutions — callers try each
+ *  - Intersection unions both sides' resolutions, so callers try each
  *    candidate, matching parse-time semantics where a value must
  *    satisfy both.
  *  - Leaf kinds (string / number / boolean / literal / enum / etc.)
@@ -43,7 +43,7 @@
  *    `promise`, and the opaque leaves) return `[]`, which is the
  *    truthful answer: the schema declares no sub-paths there, so none
  *    are fabricated. No kind is refused at adapter construction any
- *    more (#607) — `[]` is the whole story.
+ *    more (#607), and `[]` is the whole story.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { SET_MEMBER_SEGMENT } from './paths'
@@ -124,7 +124,7 @@ export function walkPathSegments<Schema>(
     case 'success':
     case 'readonly':
     case 'catch': {
-      // `catch` peels like a wrapper — descend into the inner schema.
+      // `catch` peels like a wrapper, so descend into the inner schema.
       // The catch fallback only matters at parse time, not path lookup.
       const inner = intro.unwrapInner(schema)
       return inner === undefined
@@ -141,14 +141,14 @@ export function walkPathSegments<Schema>(
         : walkPathSegments(inner, segments, intro, maxDepth, lazyDepth)
     }
     case 'pipeline': {
-      // v3: `z.pipeline(...)` — peel to the input side.
+      // v3: `z.pipeline(...)`, peeled to the input side.
       const inner = intro.unwrapPipeIn(schema)
       return inner === undefined
         ? []
         : walkPathSegments(inner, segments, intro, maxDepth, lazyDepth)
     }
     case 'effects': {
-      // v3: `ZodEffects` (refine / transform / preprocess) — peel to
+      // v3: `ZodEffects` (refine / transform / preprocess), peeled to
       // the structural source schema. Path resolution lands on the
       // inner shape regardless of effect type.
       const inner = intro.unwrapEffectsSource(schema)
@@ -157,7 +157,7 @@ export function walkPathSegments<Schema>(
         : walkPathSegments(inner, segments, intro, maxDepth, lazyDepth)
     }
     case 'branded': {
-      // v3: `ZodBranded` — peel to the inner schema. Brands are
+      // v3: `ZodBranded`, peeled to the inner schema. Brands are
       // compile-time tags with no runtime structural impact.
       const inner = intro.unwrapBranded(schema)
       return inner === undefined
@@ -182,8 +182,8 @@ export function walkPathSegments<Schema>(
         right === undefined ? [] : walkPathSegments(right, segments, intro, maxDepth, lazyDepth)
       return [...leftResults, ...rightResults]
     }
-    // Leaves — can't descend further. Opaque leaves (`any` /
-    // `unknown` / `custom`) land here too and `[]` is the truthful
+    // Leaves, with nothing further to descend. An opaque leaf (`any` /
+    // `unknown` / `custom`) lands here too and `[]` is the truthful
     // answer: the schema declares no sub-paths under them, so none are
     // fabricated. `symbol` / `function` / `promise` hold a value
     // without declaring anything inside it and land here for the same

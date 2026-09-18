@@ -15,16 +15,16 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * (deep) and calls `form.setValue((v) => ({ ...v, delivery: v.pickup }))`
  * inside the handler.
  *
- * Pre-fix bug: `walkUnsetSentinels` (in the setValue pipeline) deep-cloned
- * every nested object/array unconditionally, even when no unset substitution
- * happened. So the new whole-form value always had a fresh `pickup`
- * reference; Vue's deep watch saw pickup as changed; the handler re-fired;
- * the handler called setValue again; ∞. Browser tab freeze.
+ * `walkUnsetSentinels` in the setValue pipeline returns the original
+ * input reference when no descendant changed, matching the
+ * reference-stable contract `mergeStructural` already holds, so the
+ * watch sees `pickup` as reference-equal across the setValue and stops
+ * firing.
  *
- * Fix: walkUnsetSentinels now returns the original input reference when no
- * descendant changed (matching the reference-stable contract that
- * `mergeStructural` already provided). The watch sees pickup as
- * reference-equal across the setValue and stops firing.
+ * Deep-cloning every nested object and array unconditionally, even with
+ * no unset substitution, gives the new whole-form value a fresh `pickup`
+ * reference every time: the deep watch sees it as changed, the handler
+ * re-fires, calls setValue again, and the tab freezes.
  */
 
 const schema = z.object({
@@ -80,7 +80,7 @@ describe('whole-form setValue from inside a deep watch', () => {
         // Bound the runaway: if the loop reappears, fail the test
         // before the browser would freeze rather than time out.
         if (handlerFires > 50) {
-          throw new Error('infinite loop detected — handler fired >50 times')
+          throw new Error('infinite loop detected: handler fired >50 times')
         }
         api.setValue((v) => ({ ...v, delivery: v.pickup }))
       },
@@ -110,9 +110,9 @@ describe('whole-form setValue from inside a deep watch', () => {
       () => {
         handlerFires++
         if (handlerFires > 50) {
-          throw new Error('infinite loop detected — handler fired >50 times')
+          throw new Error('infinite loop detected: handler fired >50 times')
         }
-        // Path-form setValue at the sibling — does this loop?
+        // Path-form setValue at the sibling, does this loop?
         api.setValue('delivery', { ...api.values.pickup })
       },
       { deep: true }

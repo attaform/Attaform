@@ -9,8 +9,8 @@ import { makeMounter as makeMounterShared, waitUntil } from '../utils/form-harne
 /**
  * The slim-primitive write contract.
  *
- * Writes — programmatic `form.setValue` and DOM-driven assigner
- * writes — must satisfy the *slim primitive type* at the path:
+ * Writes, programmatic `form.setValue` and DOM-driven assigner
+ * writes, must satisfy the *slim primitive type* at the path:
  *   - `z.string().email()` slim is `string`
  *   - `z.enum(['a','b'])` slim is `string`
  *   - `z.literal('on')` slim is `string`
@@ -19,7 +19,7 @@ import { makeMounter as makeMounterShared, waitUntil } from '../utils/form-harne
  *   - etc.
  *
  * Refinement-level constraints (`.email()`, `.min(N)`, enum membership,
- * literal equality, regex) DO NOT gate writes — they surface via
+ * literal equality, regex) DO NOT gate writes: they surface via
  * field-level validation. The contract: writes are loose at the
  * primitive level, validation tightens at the refinement level.
  *
@@ -28,7 +28,7 @@ import { makeMounter as makeMounterShared, waitUntil } from '../utils/form-harne
  * `false`; the form value at the path is unchanged.
  */
 
-// Local typed wrapper around the shared harness — this file's tests
+// Local typed wrapper around the shared harness: this file's tests
 // access useForm<S>'s typed return (e.g. `api.setValue`'s typed
 // `path` parameter) so we narrow back from the harness's `any` here.
 function makeMounter<S extends z.ZodObject>(schema: S) {
@@ -38,7 +38,7 @@ function makeMounter<S extends z.ZodObject>(schema: S) {
   }
 }
 
-describe('slim-primitive write gate — accepted writes (slim type matches)', () => {
+describe('slim-primitive write gate: accepted writes (slim type matches)', () => {
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -90,7 +90,7 @@ describe('slim-primitive write gate — accepted writes (slim type matches)', ()
 
     expect(setVal('field', true)).toBe(false)
     await waitUntil(() => (api.values.field === 42 ? true : null))
-    // Still 42 — the boolean write was rejected.
+    // Still 42: the boolean write was rejected.
     expect(api.values.field).toBe(42)
   })
 
@@ -115,7 +115,7 @@ describe('slim-primitive write gate — accepted writes (slim type matches)', ()
   })
 })
 
-describe('slim-primitive write gate — rejected writes (wrong primitive)', () => {
+describe('slim-primitive write gate: rejected writes (wrong primitive)', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -228,7 +228,7 @@ describe('slim-primitive write gate — rejected writes (wrong primitive)', () =
   })
 })
 
-describe('slim-primitive write gate — subtree writes', () => {
+describe('slim-primitive write gate: subtree writes', () => {
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -305,7 +305,7 @@ describe('slim-primitive write gate — subtree writes', () => {
   })
 })
 
-describe('slim-primitive write gate — non-form-key permissive shapes', () => {
+describe('slim-primitive write gate: non-form-key permissive shapes', () => {
   const apps: App[] = []
   afterEach(async () => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -344,7 +344,7 @@ describe('slim-primitive write gate — non-form-key permissive shapes', () => {
  * creates a bogus `address.salary` slot in the form on first
  * keystroke, breaking the structural-completeness invariant.
  */
-describe('slim-primitive write gate — unknown schema paths', () => {
+describe('slim-primitive write gate: unknown schema paths', () => {
   const apps: App[] = []
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -367,7 +367,7 @@ describe('slim-primitive write gate — unknown schema paths', () => {
     const ok = (api.setValue as (path: string, value: unknown) => boolean)('address.salary', 'abc')
     await waitUntil(() => (JSON.stringify(api.values()) === JSON.stringify(before) ? true : null))
     expect(ok).toBe(false)
-    // Form value unchanged — no `address.salary` slot created.
+    // Form value unchanged: no `address.salary` slot created.
     expect(api.values()).toEqual(before)
   })
 

@@ -1,22 +1,22 @@
 /**
- * The unified Zod binding — the one schema binding shared by the two
- * entries that default to Zod: `attaform/zod` and the bare `attaform`
+ * The unified Zod binding: the one schema binding shared by the two
+ * entries that default to Zod, `attaform/zod` and the bare `attaform`
  * barrel. Pairs with `_shared-exports.ts` (the schema-agnostic core):
  * an entry that wants the Zod-default surface is exactly
  * `export * from './_shared-exports'` + `export * from './_zod-binding'`.
  *
  * What lives here (everything that is Zod-specific but major-agnostic):
- * - `useForm` — the runtime dispatcher that inspects the schema's shape
+ * - `useForm`, the runtime dispatcher that inspects the schema's shape
  *   and routes to the v3 or v4 adapter. Build-time plugins rewrite the
  *   `attaform/zod` specifier to a single major so the dispatcher and the
  *   unused adapter tree-shake away; the runtime path is the no-plugin
  *   fallback.
- * - `fieldMeta` / `withMeta` — backed by a shared cross-adapter store so
- *   writes are visible at lookup whichever adapter runs; `withMeta`
- *   runtime-branches on schema shape for the right cloning strategy.
- * - `FieldMetaPayload` — the augmentable metadata interface, kept
- *   adjacent to `fieldMeta` / `withMeta`.
- * - The `useForm` projection types (`UseFormConfig` / `UseFormReturn`
+ * - `fieldMeta` and `withMeta`, backed by a shared cross-adapter store
+ *   so a write is visible at lookup whichever adapter runs; `withMeta`
+ *   branches at runtime on schema shape for the right cloning strategy.
+ * - `FieldMetaPayload`, the augmentable metadata interface, kept beside
+ *   `fieldMeta` and `withMeta`.
+ * - The `useForm` projection types (`UseFormConfig`, `UseFormReturn`
  *   and their per-major variants) and the v4 `PathInput` / `PathOutput`
  *   helpers.
  *

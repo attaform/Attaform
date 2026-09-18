@@ -1,3 +1,16 @@
+/**
+ * The Zod v4 adapter: `AbstractSchema` implemented against Zod v4's
+ * public surface. Internal `def.*` access is quarantined to
+ * `introspect.ts` and the modules beside it (default-values,
+ * path-walker, discriminator, errors), leaving this file as the wiring
+ * between them and the `AbstractSchema` contract.
+ *
+ * It holds parity with the v3 adapter on three fronts:
+ * `getDefaultValues`' validate-then-fix loop, delegated to
+ * `default-values.ts`, with a DU-aware first-option fallback for
+ * invalid_type issues; `getSchemasAtPath`' DU-aware path walk; and
+ * `validateAtPath`'s per-branch parse with aggregated errors.
+ */
 import type { z } from 'zod'
 import type {
   AbstractSchema,
@@ -44,42 +57,23 @@ import { slimPrimitivesOf } from './slim-primitives'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
- * Zod v4 adapter — implements `AbstractSchema` against Zod v4's public
- * surface. Internal (`def.*`) access is quarantined to introspect.ts and
- * the co-located modules (default-values, strip, path-walker, discriminator,
- * errors). This file is the wiring layer between those modules and the
- * framework's AbstractSchema contract.
+ * Peel `.optional()` and `.nullable()` off a leaf ONLY when the inner
+ * type is structurally fillable: an object, array, tuple, record, union,
+ * intersection, or a peelable wrapper resolving to one. Peeling exposes
+ * the inner shape's defaults, which is what lets a partial write through
+ * an optional sub-schema fill them in: `setValue('profile', { name: 'X'
+ * })` against `{ profile: z.object({...}).optional() }`.
  *
- * Feature parity with the v3 adapter:
- * - getDefaultValues: validate-then-fix loop (delegated to
- *   default-values.ts); discriminated-union-aware first-option
- *   fallback for invalid_type issues.
- * - getSchemasAtPath: discriminated-union-aware path walker.
- * - validateAtPath: per-union-branch parse with aggregated errors.
- */
-
-/**
- * Peel `.optional()` / `.nullable()` wrappers off a leaf schema ONLY
- * when the inner type is structurally fillable (object, array, tuple,
- * record, discriminated/plain union, intersection — or itself a
- * peelable wrapper that resolves to one of those). Peeling exposes
- * the inner shape's default so consumer-supplied partial writes
- * through optional sub-schemas (`{ profile: z.object({...}).optional() }`,
- * `setValue('profile', { name: 'X' })`) get the inner shape's
- * structural defaults filled in.
+ * Over a PRIMITIVE inner the wrapper IS the meaningful schema:
+ * `optional` says missing is allowed, `nullable` says null is. Peeling
+ * an optional string to its inner would default the leaf to `''`, and
+ * `mergeStructural` would then write `notes: ''` rather than `notes:
+ * undefined` while filling sibling keys on the parent, overwriting the
+ * optional's "absent" intent with a non-empty marker.
  *
- * For PRIMITIVE inner (ZodString, ZodNumber, ZodBoolean, ZodLiteral,
- * etc.), the wrapper IS the meaningful schema — `optional` means
- * "missing is allowed", `nullable` means "null is allowed". Peeling
- * an optional string to its inner string would default the leaf to
- * `''` and cause mergeStructural to write `notes: ''` instead of
- * `notes: undefined` when filling sibling keys at the parent object
- * — the runtime would silently overwrite the optional's "absent"
- * intent with a non-empty marker.
- *
- * `.default(x)` is left intact at every level so deriveDefault
- * returns the explicit default value. Bounded iteration cap as a
- * runaway guard for pathological wrappers.
+ * `.default(x)` stays intact at every level so `deriveDefault` returns
+ * the explicit value. The iteration is bounded against a pathological
+ * wrapper chain.
  */
 function unwrapStructuralWrappers(schema: z.ZodType): z.ZodType {
   let current: z.ZodType = schema
@@ -95,26 +89,23 @@ function unwrapStructuralWrappers(schema: z.ZodType): z.ZodType {
 }
 
 /**
- * The root of a form has to be able to hold keys, because a form IS a
- * set of addressable fields. `z.object({ … })` is the fixed-shape
- * case, `z.record(K, V)` the open dictionary, and
- * `z.discriminatedUnion(disc, [...])` the variant form whose active
- * branch lifts its keys into one surface. Everything else, a bare
- * `z.string()` most obviously, has nothing to address.
+ * A form root has to hold keys, a form being a set of addressable
+ * fields. `z.object({ ... })` is the fixed-shape case, `z.record(K, V)`
+ * the open dictionary, and `z.discriminatedUnion(disc, [...])` the
+ * variant form whose active branch lifts its keys into one surface.
+ * Everything else, a bare `z.string()` most obviously, has nothing to
+ * address.
  *
- * This is the one place the adapter refuses a schema, and it is not
- * the enumeration the deleted kind audit was: it rejects on the
- * absence of the single property the form engine requires, not on a
- * list of kinds someone remembered to write down. Every kind stays
- * welcome UNDER a key.
+ * This is the ONE place the adapter refuses a schema, and it refuses on
+ * the absence of that single property rather than on a list of kinds
+ * someone remembered to write down. Every kind stays welcome under a
+ * key.
  *
  * `SupportedRootSchema` says the same thing in the type system, so a
  * TypeScript consumer meets it at the call site. This is the runtime
- * half, for JavaScript consumers and for a schema that reaches
- * `useForm` through a generic that erased the constraint. Without it
- * v4 accepted `z.string()` and built a form whose entire value was
- * `''`, while v3 had rejected the same schema with a legible message
- * since it shipped.
+ * half, for a JavaScript consumer and for a schema reaching `useForm`
+ * through a generic that erased the constraint. Without it, `z.string()`
+ * builds a form whose entire value is `''`.
  */
 function assertKeyedRoot(rootSchema: z.ZodType): void {
   const kind = kindOf(peelAllWrappers(rootSchema))
@@ -128,15 +119,13 @@ function assertKeyedRoot(rootSchema: z.ZodType): void {
 }
 
 /**
- * Peel every transparent wrapper (optional / nullable / default /
- * readonly / catch / pipe / lazy) off `schema`. Stops on the first
- * non-wrapper kind. Used by `arrayShapeAtPath` for shape
- * introspection where we want the inner kind regardless of what the
- * default-value semantic is — different from
- * `unwrapStructuralWrappers`, which preserves `.default()` so the
- * runtime fill returns the explicit default.
- *
- * Bounded iteration cap as a runaway guard for pathological wrappers.
+ * Peel EVERY transparent wrapper (optional, nullable, default, readonly,
+ * catch, pipe, lazy) off `schema`, stopping at the first non-wrapper
+ * kind. `arrayShapeAtPath` wants the inner kind whatever the
+ * default-value semantic is, which is what separates this from
+ * `unwrapStructuralWrappers`, where `.default()` survives so the runtime
+ * fill returns the explicit value. Bounded against a pathological
+ * wrapper chain.
  */
 function peelAllWrappers(schema: z.ZodType): z.ZodType {
   let current: z.ZodType = schema
@@ -165,14 +154,13 @@ function peelAllWrappers(schema: z.ZodType): z.ZodType {
 }
 
 /**
- * Kinds for which mergeStructural can recurse to fill missing keys
- * or pad missing positions. Primitive leaves (string / number / etc.)
- * and opaque non-recursable wrappers fall outside this set, so
- * peeling Optional / Nullable around them would lose information
- * (the wrapper's "absent / null" semantic) without enabling any fill.
+ * The kinds `mergeStructural` can recurse into to fill a missing key or
+ * pad a missing position. A primitive leaf or an opaque wrapper falls
+ * outside, so peeling Optional or Nullable around one would drop the
+ * wrapper's absent-or-null semantic and enable no fill in exchange.
  *
- * Wrappers themselves count as structural — `unwrapStructuralWrappers`
- * recurses to re-check their inner kind.
+ * A wrapper counts as structural itself; `unwrapStructuralWrappers`
+ * recurses to re-check its inner kind.
  */
 const STRUCTURAL_KINDS: ReadonlySet<ReturnType<typeof kindOf>> = new Set([
   'object',
@@ -198,20 +186,19 @@ function isStructuralKind(kind: ReturnType<typeof kindOf>): boolean {
 const MAX_REQUIRED_DEPTH = 64
 
 /**
- * `true` if the leaf is required — `false` if any wrapper layer admits
- * "empty" via `.optional()`, `.nullable()`, `.default(N)`, or
- * `.catch(N)`. See `AbstractSchema.isRequiredAtPath` for the full
- * semantic specification (union → permissive, intersection → strict,
- * readonly/pipe/lazy → transparent peel).
+ * `true` when the leaf is required, `false` when any wrapper layer
+ * admits empty through `.optional()`, `.nullable()`, `.default(N)` or
+ * `.catch(N)`. `AbstractSchema.isRequiredAtPath` carries the full
+ * semantics: a union is permissive, an intersection strict, and
+ * readonly, pipe and lazy peel transparently.
  */
 function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
   if (depth > MAX_REQUIRED_DEPTH) return true
   const kind = kindOf(schema)
-  // Direct "schema accepts empty" wrappers and bare empty-marker leaves —
-  // short-circuit. `z.undefined()` / `z.null()` / `z.void()` inside a
-  // union (`z.union([z.number(), z.undefined()])`) are how schema authors
-  // express "this field can be absent" without a wrapper, so they count
-  // as not-required here.
+  // The wrappers that accept empty outright, plus the bare empty-marker
+  // leaves: `z.undefined()`, `z.null()` and `z.void()` inside a union,
+  // as in `z.union([z.number(), z.undefined()])`, are how an author says
+  // a field may be absent without reaching for a wrapper.
   if (
     kind === 'optional' ||
     kind === 'nullable' ||
@@ -223,13 +210,13 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
   ) {
     return false
   }
-  // Transparent wrappers — peel and re-check.
+  // Transparent wrappers: peel and re-check.
   if (kind === 'readonly') {
     const inner = unwrapInner(schema)
     return inner === undefined ? true : isLeafRequired(inner, depth + 1)
   }
   if (kind === 'pipe') {
-    // Use the input side: blank is a write-time concern.
+    // The input side, blank being a write-time concern.
     const inner = unwrapPipe(schema)
     return inner === undefined ? true : isLeafRequired(inner, depth + 1)
   }
@@ -237,16 +224,16 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
     const inner = unwrapLazy(schema)
     return inner === undefined ? true : isLeafRequired(inner, depth + 1)
   }
-  // Union — required only if EVERY branch is required (any permissive
-  // branch makes the union permissive at parse time).
+  // Required only if EVERY branch is: one permissive branch makes the
+  // union permissive at parse time.
   if (kind === 'union' || kind === 'discriminated-union') {
     const options =
       kind === 'discriminated-union' ? getDiscriminatedOptions(schema) : getUnionOptions(schema)
     if (options.length === 0) return true
     return options.every((opt) => isLeafRequired(opt as z.ZodType, depth + 1))
   }
-  // Intersection — required if EITHER side is required (a parse must
-  // satisfy both; the strict side governs).
+  // Required if EITHER side is: a parse has to satisfy both, so the
+  // strict side governs.
   if (kind === 'intersection') {
     const left = getIntersectionLeft(schema)
     const right = getIntersectionRight(schema)
@@ -254,30 +241,26 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
     const rightReq = right === undefined ? true : isLeafRequired(right, depth + 1)
     return leftReq || rightReq
   }
-  // Direct primitive leaf or unsupported kind — required by default.
+  // Primitive leaf or unsupported kind: required.
   return true
 }
 
 /**
- * Wrap a Zod v4 `ZodObject` schema in an `AbstractSchema` factory.
+ * Wrap a Zod v4 schema in an `AbstractSchema` factory.
  *
- * Most consumers never call this directly — `useForm` from
- * `attaform/zod` does the wrapping automatically. Reach for
- * it when you need an adapter outside of `useForm` (e.g. validating
- * data with the same library used elsewhere in the form runtime, or
- * exposing the adapter to a custom integration).
+ * `useForm` from `attaform/zod` does this for you, so reach for it to
+ * use the adapter outside `useForm`: validating data with the same
+ * library the form runtime uses, or handing the adapter to a custom
+ * integration. The factory it returns takes per-form
+ * `SchemaFactoryOptions`, and the adapter closure bakes them into every
+ * downstream walk, so `maxRecursionDepth` can be lifted for one form
+ * alone.
  *
- * The returned factory accepts per-form `SchemaFactoryOptions` (notably
- * `maxRecursionDepth`); the adapter closure bakes them into every
- * downstream walk so a per-form override can lift the cap for that
- * form alone.
- *
- * Throws if the schema isn't Zod v4, or if its root is not a shape
- * that can hold keys. No kind is refused anywhere BELOW the root: a
- * leaf the walkers have no case for is carried opaquely rather than
- * rejected, so a schema a newer Zod can parse is one Attaform can
- * mount. Recursive `z.lazy(...)` is supported — the runtime walks
- * bound their descent via `maxRecursionDepth`.
+ * Throws if the schema is not Zod v4, or if its root cannot hold keys.
+ * No kind is refused anywhere BELOW the root: a leaf the walkers have no
+ * case for is carried opaquely rather than rejected, so a schema a newer
+ * Zod can parse is one Attaform can mount. Recursive `z.lazy(...)`
+ * works, its descent bounded by `maxRecursionDepth`.
  */
 export function zodV4Adapter<
   FormSchema extends SupportedRootSchema,
@@ -308,11 +291,10 @@ const sharedV4Schemas = createSharedSchemaStore()
 
 /**
  * Build the v4 `AbstractSchemaServices` instance. The services are
- * stateless — every method receives the schema it acts on plus the
- * factory-supplied `formKey` / `maxRecursionDepth`. The function is
- * generic in `Form` / `GetValueFormType` so the typed methods
- * (`runGetDefaults` / `makeSubSchema`) propagate the form
- * shape correctly.
+ * stateless: every method takes the schema it acts on plus the
+ * factory-supplied `formKey` and `maxRecursionDepth`. Generic in `Form`
+ * and `GetValueFormType` so `runGetDefaults` and `makeSubSchema`
+ * propagate the form shape.
  */
 function buildV4Services<
   Form extends GenericForm,
@@ -321,9 +303,9 @@ function buildV4Services<
   return {
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
-    // v4 doesn't pre-strip for the slim-mode walk — its path walker
-    // already peels every transparent wrapper inline, so the slim and
-    // unstripped walks coincide.
+    // No pre-strip for the slim-mode walk: the path walker peels every
+    // transparent wrapper inline, so the slim and unstripped walks
+    // coincide.
     getNestedSchemasInSlimMode: (schema, path, maxRecursionDepth) =>
       getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
     slimPrimitivesOf: (schema, maxRecursionDepth) => slimPrimitivesOf(schema, maxRecursionDepth),
@@ -355,26 +337,20 @@ function buildV4Services<
   }
 }
 
-// `runGetDefaultsV4` infers its target shape from a single schema
-// argument; this alias lets the service signature compose without the
-// adapter having to repeat the ZodObject constraint inline.
+// `runGetDefaultsV4` infers its target shape from one schema argument,
+// and this alias lets the service signature compose without repeating
+// the ZodObject constraint inline.
 type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
 
 /**
- * v4's construction-time `getDefaultValues` flow. Wraps the slim
- * default-value derivation (`getDefaultValuesFromZodSchema`) with a
- * parse against the real schema that surfaces refinement errors at
- * construction, with two pre-flight gates:
+ * v4's construction-time `getDefaultValues` flow: wrap the slim
+ * derivation in `getDefaultValuesFromZodSchema` with a parse against the
+ * REAL schema, so refinement errors surface at construction.
  *
- *   1. Async transforms (`z.preprocess(async fn, T)`) cannot be
- *      stripped — the transform's output shape is load-bearing for
- *      the inner schema's input. Skip the construction parse; the
- *      post-mount async pass picks up verdicts via `safeParseAsync`.
- *
- *   2. Async refines CAN be stripped (the predicate is detachable
- *      from the schema's shape). Strip them up front so the sync
- *      parse runs cleanly; sync-refinement seeds on supplied defaults
- *      still surface.
+ * A schema carrying async work of any kind skips that parse and leaves
+ * every verdict to the post-mount `safeParseAsync` pass. See the gate
+ * below for why the async-refine half is handled the same way as the
+ * async-transform half.
  */
 function runGetDefaultsV4<Form>(
   rootSchema: z.ZodType & { _output: Form },
@@ -388,25 +364,19 @@ function runGetDefaultsV4<Form>(
     maxRecursionDepth,
   })
 
-  // A schema carrying async work of any kind skips the construction
-  // parse. An async TRANSFORM always did: its output shape is
+  // Async work of ANY kind skips the construction parse, refine and
+  // transform alike. A transform has no choice: its output shape is
   // load-bearing for the inner schema's input, so there is nothing sound
-  // to parse against. An async REFINE used to be handled by rebuilding
-  // the whole schema with the async predicates stripped out, purely so
-  // the SYNC checks beside them could still seed at construction.
+  // to parse against. A refine could in principle be stripped out so the
+  // sync checks beside it still seed, but only by carrying a second,
+  // parallel understanding of every Zod kind, which drifts from the
+  // original with nothing to notice.
   //
-  // That walker was 206 lines and a second, parallel understanding of
-  // every Zod kind — a shape this codebase has been retiring wherever it
-  // appears, because the copy drifts from the original and nothing
-  // notices. It bought one thing: a schema with an async refine seeded
-  // its sync violations at first paint, exactly as an async-free twin
-  // did. Without it, those seeds arrive one async pass later instead of
-  // at construction, which on SSR means a submit button bound to
-  // `meta.valid` renders enabled and then disables.
-  //
-  // The post-mount async pass remains the source of truth for every
-  // verdict either way; what changed is only how early the sync half of
-  // them appears, and only for schemas that mix the two.
+  // The cost of not doing that is timing alone, and only on a schema
+  // mixing sync and async: its sync violations seed one async pass later
+  // than an async-free twin's, so on SSR a submit button bound to
+  // `meta.valid` renders enabled and then disables. The post-mount pass
+  // is the source of truth for every verdict either way.
   if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) {
     return { data, errors: undefined, success: true }
   }
@@ -414,12 +384,11 @@ function runGetDefaultsV4<Form>(
   try {
     const parseResult = rootSchema.safeParse(data) as z.ZodSafeParseResult<Form>
     if (parseResult.success) {
-      // Storage holds the pre-transform `z.input` view, so we return
-      // the original `data` (already filled by
-      // `getDefaultValuesFromZodSchema`) rather than `parseResult.data`
-      // (the post-transform `z.output`). For schemas without
-      // `.transform()` the two coincide; for schemas with one the
-      // storage stays the honest input view that `form.values` reflects.
+      // Storage holds the pre-transform `z.input` view, so return the
+      // original `data` rather than `parseResult.data`, which is the
+      // post-transform `z.output`. The two coincide without a
+      // `.transform()`; with one, storage stays the honest input view
+      // that `form.values` reflects.
       return { data, errors: undefined, success: true }
     }
     return {
@@ -428,22 +397,19 @@ function runGetDefaultsV4<Form>(
       success: false,
     }
   } catch {
-    // Defensive floor: the strip walker covers every ZodKind, but a
-    // future Zod construct or a user-defined sync refine that itself
-    // throws would land here. Mount cleanly; the post-mount async
-    // pass is the source of truth for any verdict this code path
-    // can't surface.
+    // Defensive floor for a future Zod construct, or a user sync refine
+    // that throws. Mount clean; the post-mount async pass is the source
+    // of truth for any verdict this path cannot surface.
     return { data, errors: undefined, success: true }
   }
 }
 
 /**
- * Build the 5-method sub-schema stub that v4 returns from
- * `getSchemasAtPath`. Mirrors the shape consumers expect
- * (`needsAsyncValidation`, `getDefaultValues`,
- * `getSchemasAtPath: () => []`, `validateAtPath`) without re-walking
- * through the full factory — sub-schemas in the runtime are only
- * queried for `needsAsyncValidation`, so the stub is observationally
+ * The sub-schema stub v4 returns from `getSchemasAtPath`. It carries the
+ * shape consumers expect (`needsAsyncValidation`, `getDefaultValues`,
+ * `getSchemasAtPath: () => []`, `validateAtPath`) without re-walking the
+ * full factory. The runtime only ever asks a sub-schema for
+ * `needsAsyncValidation`, so the stub is observationally
  * interchangeable with the recursive shape v3 returns.
  */
 function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
@@ -459,9 +425,9 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
     }),
     getSchemasAtPath: () => [],
     validateAtPath: async (data: unknown) => {
-      // safeParseAsync accepts both sync and async refinements — sync
-      // check perf is a microtask slower than safeParse but we trade
-      // that for the ability to express .refine(async).
+      // `safeParseAsync` accepts sync and async refinements alike. A
+      // sync check costs a microtask more than `safeParse` would, which
+      // buys the ability to express `.refine(async)`.
       const result = await schema.safeParseAsync(data)
       if (result.success) {
         return {
@@ -480,27 +446,26 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
 }
 
 /**
- * Resolve the field metadata for the schema node at `path`. Reads
- * the `fieldMeta` registry on the resolved Zod schema and applies
- * the precedence rules in `getFieldMetaAtPath`'s docblock:
+ * Resolve the field metadata at `path`, reading the `fieldMeta` registry
+ * on the resolved schema under the precedence `getFieldMetaAtPath`
+ * documents:
  *
- *   - label: registry → humanize(lastSegment)
- *   - description: registry → schema.description (.describe()) → undefined
- *   - placeholder: registry → undefined
- *   - meta: registry payload (frozen) — empty object when absent
+ *   - label: registry, else `humanize(lastSegment)`
+ *   - description: registry, else `.describe()`, else undefined
+ *   - placeholder: registry, else undefined
+ *   - meta: the frozen registry payload, `{}` when absent
  *
- * Returns the empty resolution when the path doesn't resolve in the
- * schema. DU branches: first candidate wins (matches the existing
- * first-success precedent in `getDefaultAtPath` / `validateAtPath`).
+ * A path that does not resolve gives the empty resolution. Across DU
+ * branches the first candidate wins, as in `getDefaultAtPath` and
+ * `validateAtPath`.
  *
- * For shared schemas registered at multiple paths (the canonical
- * `addressSchema.register(fieldMeta, A); addressSchema.register(fieldMeta, B)`
- * footgun), the path-resolver builds a per-rootSchema path → payload
- * map by walking the schema tree once, counting per-schema
- * occurrences and pairing them with the registration list in
- * declaration order. Object literals evaluate left-to-right, so
- * registration order matches tree-walk order, and the mapping pairs
- * correctly.
+ * One schema instance registered at several paths, the canonical
+ * `addressSchema.register(fieldMeta, A); addressSchema.register(fieldMeta,
+ * B)`, goes through a per-rootSchema path-to-payload map built by
+ * walking the tree once, counting per-schema occurrences and pairing
+ * them with the registration list in declaration order. Object literals
+ * evaluate left to right, so registration order matches tree-walk order
+ * and the pairing holds.
  */
 function resolveFieldMetaAtPath(
   rootSchema: z.ZodType,
@@ -521,13 +486,12 @@ function resolveFieldMetaAtPath(
       meta: Object.freeze({}),
     }
   }
-  // Path-keyed payload map (built once per rootSchema) disambiguates
-  // shared schemas. Falls back to the schema-keyed registry for paths
-  // not visited by the walker (e.g. dynamic discriminated-union
-  // sub-paths the walker can't statically enumerate). The walk itself
-  // lives behind the store's builder slot — installed by the
-  // registration surfaces (`withMeta` / `fieldMeta.add`), absent (and
-  // the map with it) when the consumer never registers metadata.
+  // Built once per rootSchema, and what disambiguates a shared schema; a
+  // path the walker never visits, a dynamic DU sub-path it cannot
+  // statically enumerate say, falls back to the schema-keyed registry.
+  // The walk sits behind the store's builder slot, installed by
+  // `withMeta` and `fieldMeta.add`, so a consumer who registers no
+  // metadata gets neither the walk nor the map.
   const pathMap = buildFieldMetaPathMap(rootSchema, {
     intro: V4_INTROSPECTOR,
     peelAllWrappers,

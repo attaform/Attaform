@@ -10,11 +10,11 @@ import { deriveDefault } from '../../../src/runtime/adapters/zod-v4/default-valu
  * sub-paths) rather than refused, so a schema a newer Zod can parse is
  * a schema Attaform can mount.
  *
- * Behaviour of each formerly-refused kind, end to end through a real
- * form and against both majors, lives in
- * `test/adapters/every-zod-kind.test.ts`. This file pins construction.
+ * Per-kind behaviour, end to end through a real form and against both
+ * majors, lives in `test/adapters/every-zod-kind.test.ts`. This file
+ * pins construction.
  */
-describe('zod-v4 adapter — construction accepts every kind', () => {
+describe('zod-v4 adapter: construction accepts every kind', () => {
   it.each([
     ['z.promise', () => z.object({ pending: z.promise(z.number()) })],
     ['z.templateLiteral', () => z.object({ greeting: z.templateLiteral(['hello ', z.string()]) })],
@@ -41,13 +41,13 @@ describe('zod-v4 adapter — construction accepts every kind', () => {
     expect(() => zodV4Adapter(make())('test', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
-  it('recursive z.lazy() mounts without throwing — adapter walks cap descent via maxRecursionDepth', () => {
+  it('recursive z.lazy() mounts without throwing: adapter walks cap descent via maxRecursionDepth', () => {
     // Classic self-referential: getter resolves back to the same lazy.
     // Pre-B2 this threw at construction; post-B2 the adapter constructs
     // and the runtime walks cap their descent via `maxRecursionDepth`.
     //
     // Caveat: a pathological `z.lazy(() => self)` schema with NO
-    // terminal structure cannot be parsed by Zod itself — calling
+    // terminal structure cannot be parsed by Zod itself, calling
     // `safeParse` on the slim schema after our walks cap still chains
     // through a long lazy stack that Zod's parser can't unwind. Our
     // contract is "construction doesn't throw"; running the schema
@@ -67,7 +67,7 @@ describe('zod-v4 adapter — construction accepts every kind', () => {
   })
 })
 
-describe('zod-v4 adapter — supported variants of lazy/intersection/catch', () => {
+describe('zod-v4 adapter: supported variants of lazy/intersection/catch', () => {
   it('non-recursive z.lazy(() => z.object(...)) works', () => {
     const inner = z.object({ x: z.number() })
     const schema = z.object({ wrap: z.lazy(() => inner) })
@@ -114,10 +114,10 @@ describe('zod-v4 adapter — supported variants of lazy/intersection/catch', () 
   })
 })
 
-describe('zod-v4 adapter — deriveDefault per kind', () => {
+describe('zod-v4 adapter: deriveDefault per kind', () => {
   it('returns the kind blank for map and template-literal', () => {
     // `new Map()` is as honest a blank as `[]` is for an array, and a
-    // template literal parses strings so `''` is its blank — the
+    // template literal parses strings so `''` is its blank: the
     // pattern is a refinement-level concern the blank walker ignores,
     // exactly as it ignores `z.string().min(5)`.
     expect(deriveDefault(z.map(z.string(), z.number()), false, 64)).toEqual(new Map())
@@ -126,14 +126,14 @@ describe('zod-v4 adapter — deriveDefault per kind', () => {
 
   it('returns undefined for the kinds with no canonical empty member', () => {
     // There is no empty Promise, no empty function, and `Symbol()`
-    // mints a fresh value per call — seeding one would make the blank
+    // mints a fresh value per call, seeding one would make the blank
     // non-deterministic. `undefined` leaves the slot genuinely absent.
     expect(deriveDefault(z.promise(z.string()), false, 64)).toBeUndefined()
     expect(deriveDefault(z.symbol(), false, 64)).toBeUndefined()
     expect(deriveDefault(z.function(), false, 64)).toBeUndefined()
   })
 
-  it('returns undefined on opaque leaves — no shape is declared to derive from', () => {
+  it('returns undefined on opaque leaves: no shape is declared to derive from', () => {
     // `custom` is the kind `z.instanceof(X)` and `z.custom<T>()` both
     // compile to (#542); `undefined` is its real answer, not a
     // fallback, exactly as for `z.unknown()`.

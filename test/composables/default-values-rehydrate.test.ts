@@ -21,7 +21,7 @@ import { waitUntil } from '../utils/form-harness'
  *    to maintain their own loader).
  *  - Throws synchronously if the form was constructed with a
  *    plain-value `defaultValues` (no factory to invoke).
- *  - Leaves dirty/touched/submit state alone — chain `form.reset()`
+ *  - Leaves dirty/touched/submit state alone, chain `form.reset()`
  *    for a clean baseline.
  */
 
@@ -137,7 +137,7 @@ describe('form.rehydrate', () => {
     // (`field.validating === true` keeps the error in the store; the
     // UX gate decides whether to surface it). Without SWR, pressing
     // Rehydrate would flicker the error UI to empty for the duration
-    // of the retry — confusing.
+    // of the retry, confusing.
     let resolveSecond!: (value: Defaults) => void
     let calls = 0
     const factory = (): Promise<Defaults> => {
@@ -152,7 +152,7 @@ describe('form.rehydrate', () => {
     await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.hydrateError?.message).toBe('first-attempt failed')
 
-    // Kick off the retry but don't await — the factory hangs on
+    // Kick off the retry but don't await: the factory hangs on
     // `resolveSecond` so we can inspect the in-flight state.
     const inFlight = api.rehydrate()
     expect(api.hydrating).toBe(true)

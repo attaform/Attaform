@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
  * the published `dist/*.mjs` jiti shims) MUST be configured on
  * BOTH the Vite side (browser) AND the Nitro side (SSR).
  *
- * Background — the dist/jiti staleness story:
+ * Background: the dist/jiti staleness story:
  *
  *   `unbuild --stub` ships `dist/*.mjs` as jiti shims whose body
  *   is `await jiti.import('/app/src/<entry>.ts')`. The shim runs
@@ -37,7 +37,7 @@ import { describe, expect, it } from 'vitest'
  * Removing or shrinking either set drops us back into the dist/
  * jiti staleness window. A behavioural test (boot Nitro, render
  * a demo, check the hydrated state matches the latest `src/`)
- * would be preferred — but @nuxt/test-utils' setup tangles with
+ * would be preferred, but @nuxt/test-utils' setup tangles with
  * the docs site's full prerender + content collection chain,
  * which is unrelated to this regression. The source-string check
  * is the standing diagnostic: a contributor removing one side
@@ -68,7 +68,7 @@ describe('docs-site config: source-alias symmetry between Vite and Nitro', () =>
   it('Nitro alias block exists and uses the same subpaths', () => {
     // The Nitro alias block must exist and reference each source path.
     // We assert that both halves of the config contain each `src/*.ts`
-    // string by counting occurrences — every entry should appear at
+    // string by counting occurrences: every entry should appear at
     // least twice (once for Vite, once for Nitro).
     for (const subpath of subpaths) {
       const occurrences = source.split(`'${subpath}'`).length - 1

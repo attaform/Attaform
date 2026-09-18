@@ -3,7 +3,7 @@
 // Repro for spike 16h: `<select multiple v-register>` Cmd+click flow.
 //
 // Scenario:
-//   - Default value `['red', 'blue']` — red and blue selected on mount.
+//   - Default value `['red', 'blue']`, red and blue selected on mount.
 //   - User Cmd+clicks (Mac) / Ctrl+clicks (Win) Green to add it.
 //   - Form correctly updates to `['red', 'green', 'blue']`.
 //   - DOM should now show red, green, blue all selected.
@@ -24,13 +24,13 @@ import { waitUntil } from '../utils/form-harness'
 
 const schema = z.object({
   colors: z.array(z.string()),
-  // Sibling field — typed-into after the select interaction to force
+  // Sibling field, typed-into after the select interaction to force
   // an additional reactive re-render across the form, exercising the
   // select directive's `updated` hook with `_assigning === false`.
   note: z.string(),
 })
 
-describe('<select multiple v-register> — Cmd+click adds selection', () => {
+describe('<select multiple v-register>: Cmd+click adds selection', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -66,7 +66,7 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
             withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [
               [vRegister, rvNote],
             ]),
-            // JSON readout — same pattern as the spike. Reactively
+            // JSON readout, same pattern as the spike. Reactively
             // re-renders on every keystroke or selection change.
             h('pre', null, JSON.stringify(api.values.colors)),
           ])
@@ -96,7 +96,7 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
     expect(yellow.selected).toBe(false)
 
     // User Cmd+clicks Green. In a multi-select, Cmd+click toggles the
-    // individual option without touching the others — the resulting
+    // individual option without touching the others: the resulting
     // DOM state is "red + green + blue selected, yellow not". JSDOM
     // doesn't model the modifier key; we mimic the post-click DOM
     // state by directly flipping `green.selected` while leaving red/blue
@@ -112,7 +112,7 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
     // Form state landed correctly.
     expect(handle.api.values.colors).toEqual(['red', 'green', 'blue'])
 
-    // DOM must still reflect the model — nothing should have stripped
+    // DOM must still reflect the model, nothing should have stripped
     // the `selected` attribute from any of the three.
     expect(red.selected).toBe(true)
     expect(green.selected).toBe(true)
@@ -146,14 +146,14 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
     // directive's `updated` hook fires with `_assigning === false`. If
     // that hook unconditionally re-applies `setSelected` against the
     // (still-unchanged) model, it RESETS the option the user just
-    // toggled — the browser then sees no net selection change, doesn't
+    // toggled: the browser then sees no net selection change, doesn't
     // fire `change`, and the model never updates.
     //
     // The bug surfaces only when the model is genuinely identity-
     // unchanged across the click sequence (no write yet) AND a
     // sibling triggers a re-render in that window. The fix: skip
     // `setSelected` from `updated` when the model hasn't changed since
-    // the last application — mirroring the spirit of `setChecked`'s
+    // the last application, mirroring the spirit of `setChecked`'s
     // `originalValue === oldValue` short-circuit.
     const handle: { api?: UseFormReturn<typeof schema> } = {}
 
@@ -181,7 +181,7 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
             withDirectives(h('input', { type: 'text', 'data-field': 'note' }), [
               [vRegister, rvNote],
             ]),
-            // Reactive read of `colors` — re-renders the parent on
+            // Reactive read of `colors`, re-renders the parent on
             // every mutation, including model writes from the change
             // handler. Mirrors the JSON readout used in the spike.
             h('pre', null, JSON.stringify(api.values.colors)),
@@ -206,7 +206,7 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
       HTMLOptionElement,
     ]
 
-    // Step 1: simulate the browser's native `mousedown` handling — the
+    // Step 1: simulate the browser's native `mousedown` handling: the
     // user Cmd+clicked Green, browser added it to the selection. DOM
     // now has red+green+blue selected; model is still ['red','blue']
     // (change has NOT fired yet).
@@ -221,7 +221,7 @@ describe('<select multiple v-register> — Cmd+click adds selection', () => {
     // directive's `updated` hook on the select.
     //
     // EXPECTATION: the directive must NOT re-apply `setSelected` from
-    // a stale model — `green.selected` must remain `true` so the
+    // a stale model, `green.selected` must remain `true` so the
     // browser's subsequent `change` event sees a real selection
     // change and writes ['red','green','blue'] to the model.
     note.value = 'x'

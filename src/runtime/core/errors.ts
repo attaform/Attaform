@@ -27,14 +27,14 @@ export class AttaformError extends Error {
 }
 
 /**
- * Thrown when a path string is malformed — typically a dotted path
+ * Thrown when a path string is malformed, typically a dotted path
  * with empty segments (e.g. `'a..b'`, leading or trailing dots).
  * Use array form (`['a', 'b']`) for keys that contain literal dots.
  */
 export class InvalidPathError extends AttaformError {}
 
 /**
- * Thrown when `useForm` receives an invalid configuration — most often
+ * Thrown when `useForm` receives an invalid configuration, most often
  * a schema passed directly as the first argument, or no argument at
  * all. The configuration is an options bag; the schema is one of
  * several fields, even when it's the only one in use.
@@ -57,7 +57,7 @@ export class InvalidUseFormConfigError extends AttaformError {
     super(
       __DEV__
         ? '[attaform] useForm received an invalid configuration (a schema directly, no argument, ' +
-            'or no `schema` field). Pass it as `useForm({ schema })` — the schema is one of several ' +
+            'or no `schema` field). Pass it as `useForm({ schema })`: the schema is one of several ' +
             'configuration options. See https://attaform.dev/docs/reading-the-form/the-form for the full ' +
             'configuration shape.'
         : '[attaform] AF04 attaform.dev/e/af04'
@@ -81,7 +81,7 @@ export class SubmitErrorHandlerError extends AttaformError {}
  *
  * `handleSubmit` routes everything its `onSubmit` / `onError` callbacks
  * throw through here before parking it on `form.meta.submitError`, so
- * that slot is always a clean `Error | null` rather than `unknown` —
+ * that slot is always a clean `Error | null` rather than `unknown`, so
  * consumers can read `.message` and `.cause` without a type guard.
  */
 export function toError(value: unknown): Error {
@@ -98,7 +98,7 @@ export function toError(value: unknown): Error {
  * `{ message?, path?, code?, data? }`) into a firm `ValidationError`.
  * A missing or empty `message` coerces to `"Unknown error"` and a
  * missing or empty `code` to `defaultCode`, so the result is always
- * well-formed — library code never throws into the consumer app over a
+ * well-formed: Attaform never throws into the consumer app over a
  * malformed error input.
  *
  * `scope` pins the path: pass the canonical segments for a path-scoped
@@ -148,8 +148,8 @@ export function normalizeErrorInputs(
  * Thrown when an `attaform` API needs the registry attached to a Vue
  * app but it isn't there yet. Component-level entry points (`useForm`,
  * `injectForm`, `useRegister`) lazy-install the registry on first use,
- * so this error is mostly reached by SSR helpers — `renderAttaformState`
- * and `hydrateAttaformState` — which run outside a setup context and
+ * so this error is mostly reached by the SSR helpers `renderAttaformState`
+ * and `hydrateAttaformState`, which run outside a setup context and
  * have no current instance to install against.
  *
  * Fix: add `app.use(createAttaform())` (or `app.use(createAttaform({
@@ -174,7 +174,7 @@ export class RegistryNotInstalledError extends AttaformError {
 
 /**
  * Thrown when `useForm` / `injectForm` is called outside of a
- * Vue `setup()` function — typically from an event handler, watcher,
+ * Vue `setup()` function, typically from an event handler, watcher,
  * or async callback that runs after mount.
  *
  * Fix: move the call into `setup()`, or trigger it from a child
@@ -202,7 +202,7 @@ export class ReservedFormKeyError extends AttaformError {
     super(
       __DEV__
         ? `[attaform] Form key "${key}" uses the reserved "__atta:" namespace. ` +
-            `Use a different prefix — "__atta:" is for library-internal synthetic keys ` +
+            `Use a different prefix: "__atta:" is for library-internal synthetic keys ` +
             `(anonymous useForm() calls without an explicit key).`
         : `[attaform] AF05 attaform.dev/e/af05 "${key}"`
     )

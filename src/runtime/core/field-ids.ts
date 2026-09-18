@@ -48,7 +48,7 @@ export function fieldIdToken(formInstanceId: string, pathKey: PathKey): string {
 /**
  * The id surface for one field: its own `id` plus the satellite ids a
  * consumer wires to error and description elements. Pure function of
- * `(formInstanceId, formKey, pathKey)` — stable for a path across a
+ * `(formInstanceId, formKey, pathKey)`: stable for a path across a
  * form's lifetime, structurally unique across mounts.
  */
 export type FieldIdentity = {

@@ -3,19 +3,14 @@ import { z } from 'zod'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
 
 /**
- * v4 mirror of `test/adapters/zod-v3/required-discriminator-parity.test.ts`.
- * Same four cluster scenarios across the same public adapter surface. v4
- * already passes D9, D10, and D12 at the time the v3 cluster was
- * written; the catch-peel scenario in D11 is investigated empirically
- * here — if it fails, the v4 side has the same gap and the fix lands
- * symmetrically.
+ * The v4 half of `test/adapters/zod-v3/required-discriminator-parity.test.ts`,
+ * which carries the six rules. Same scenarios across the same public
+ * adapter surface, so a divergence shows up as one side going red.
  *
- * The lazy-parity block is the anchor for the v3 fix: v4's
- * `isLeafRequired` already peels `ZodLazy`, so these cases pass
- * unchanged and prove the v3 side now matches. The preprocess-parity
- * block is the same kind of anchor: v4 already treats `z.preprocess` as
- * an opaque leaf (it desugars to a pipe whose input is a transform), so
- * these cases pass unchanged and pin the behavior v3 now matches.
+ * The lazy and preprocess blocks are the anchors the v3 side is measured
+ * against: v4's `isLeafRequired` peels `ZodLazy`, and v4 treats
+ * `z.preprocess` as an opaque leaf because it desugars to a pipe whose
+ * input is a transform.
  */
 describe('zod v4: required + discriminator parity', () => {
   describe('z.void() is not required', () => {

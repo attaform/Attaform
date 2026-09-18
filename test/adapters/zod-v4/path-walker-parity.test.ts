@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
 
 /**
- * v4 mirror of `test/adapters/zod-v3/path-walker.test.ts` — same scenarios
+ * v4 mirror of `test/adapters/zod-v3/path-walker.test.ts`, same scenarios
  * across the same public adapter surface. v4 already resolves these paths
  * correctly; this file pins the reference so the v3 unification in Phase 8
  * lands as proven parity (dual-green = the gap closed).

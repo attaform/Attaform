@@ -3,9 +3,9 @@
  * Callable surface proxies survive downleveled optional chaining.
  *
  * `form.fields(path)?.x` / `form.errors(path)?.x` is the documented
- * call-form idiom. A transpiler that downlevels optional chaining —
+ * call-form idiom. A transpiler that downlevels optional chaining,
  * sucrase (what the docs playground and `@vue/repl` strip TS with), or
- * any bundler targeting below ES2020 — compiles it into a helper that
+ * any bundler targeting below ES2020, compiles it into a helper that
  * READS `.call` off the surface and invokes the result to call the
  * surface. Without the root invoke shims, that documented pattern
  * throws `target.call is not a function`. The shims answer `call` /
@@ -58,7 +58,7 @@ const adapters = [
   },
 ] as const
 
-// Faithful copy of sucrase's `_optionalChain` helper — the exact runtime
+// Faithful copy of sucrase's `_optionalChain` helper: the exact runtime
 // shape the playground emits when it downlevels `surface(path)?.x`. Its
 // `call` step reads `value.call` off the surface, which is what threw
 // pre-shim.
@@ -89,7 +89,7 @@ const access = (key: string) => (o: unknown) => (o as Record<string, unknown>)[k
 const callPath = (path: string) => (f: unknown) => (f as (p: string) => unknown)(path)
 
 describe.each(adapters)(
-  'callable surface × downleveled optional chaining — $name',
+  'callable surface × downleveled optional chaining: $name',
   ({ mount, mountPlain }) => {
     it('form.fields(path)?.x survives the sucrase _optionalChain helper', () => {
       const { api, app } = mountPlain()
@@ -112,7 +112,7 @@ describe.each(adapters)(
       const { api, app } = mountPlain()
       const direct = api.errors('email')
       const viaChain = optionalChain([api, 'access', access('errors'), 'call', callPath('email')])
-      // Same terminal both ways — the downleveled `.call` never throws.
+      // Same terminal both ways: the downleveled `.call` never throws.
       expect(viaChain).toStrictEqual(direct)
       app.unmount()
     })

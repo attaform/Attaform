@@ -2,28 +2,28 @@ import aliasPlugin from '@rollup/plugin-alias'
 import type { BuildConfig } from 'unbuild'
 import { defineBuildConfig } from 'unbuild'
 
-// Two flavors of the runtime ship in one package (size-teardown P1a):
+// Two flavors of the runtime ship in one package:
 //
-//   dist/*          prod flavor — `__DEV__` resolved to `false` at package
-//                   build, so every dev-only branch, warning string, and
-//                   diagnostic module is stripped BEFORE publish. Consumer
-//                   bundlers that fail to fold a cross-module const (Rollup
-//                   and webpack without scope-hoisted const-chasing, and
-//                   esbuild's tree-shake-before-fold ordering for functions
-//                   only called from dead branches) previously shipped
-//                   ~2.5-4.4 kB gz of dev code to production; a literal
-//                   `false` at build time closes that class entirely.
-//   dist/dev/*      dev flavor — `__DEV__` resolved to `true`: the full
-//                   diagnostic surface, unconditionally. Served through the
+//   dist/*          prod. `__DEV__` resolves to `false` at package build, so
+//                   every dev-only branch, warning string and diagnostic
+//                   module is stripped BEFORE publish. A consumer bundler
+//                   that cannot fold a cross-module const otherwise ships
+//                   2.5 to 4.4 kB gz of dev code to production (Rollup and
+//                   webpack without scope-hoisted const-chasing; esbuild's
+//                   tree-shake-before-fold ordering for a function called
+//                   only from a dead branch). A literal `false` at build
+//                   time closes that class entirely.
+//   dist/dev/*      dev. `__DEV__` resolves to `true`: the full diagnostic
+//                   surface, unconditionally. Served through the
 //                   `development` export condition (Vite dev, webpack
-//                   development mode, Nitro dev). No declarations: the
-//                   `types` condition always resolves the prod-path .d.mts.
+//                   development mode, Nitro dev). No declarations, since
+//                   the `types` condition always resolves the prod .d.mts.
 //
-// The prod flavor keeps today's paths, so tooling that bypasses the exports
-// map degrades to prod — the safe direction. Bundlers that ignore the
-// `development` condition serve prod in dev (diagnostics silently absent,
-// same as the CDN path today); Node SSR without conditions resolves prod
-// (diagnostics-only loss). Both are accepted degradations, not bugs.
+// The prod flavor keeps the unprefixed paths, so tooling that bypasses the
+// exports map degrades toward prod, which is the safe direction. A bundler
+// ignoring the `development` condition serves prod in dev, and Node SSR
+// without conditions resolves prod. Both lose diagnostics only, and both
+// are accepted degradations rather than bugs.
 //
 // Node-only tooling entries (nuxt, vite, rollup, esbuild, webpack, rspack,
 // transforms) are single-flavor: they run at consumer build time, import
@@ -64,7 +64,7 @@ const TOOLING_ENTRIES = [
  * and esbuild's `define` only substitutes free identifiers, so a define
  * cannot reach the bound import. Dropping the import line and inlining the
  * literal makes the dead branches visible to Rollup's tree-shaker at parse
- * time — including the function-only-called-from-a-dead-branch shape that
+ * time, including the function-only-called-from-a-dead-branch shape that
  * survives a consumer-side define-fold.
  *
  * Runs before the esbuild transform (prepended plugin), so it sees raw TS.
@@ -104,13 +104,12 @@ function devFlagStripPlugin(flag: boolean) {
  *
  * Alias half: the source imports `from 'zod-v3'` (our pnpm-alias dev
  * install for zod@3) but published bundles need `from 'zod'` so consumers
- * can install zod@3 themselves. @rollup/plugin-alias does the rewrite —
- * but rollup calls `external(id)` BEFORE the resolveId chain runs, and
- * unbuild's default external warns "Implicitly bundling zod-v3" before
- * plugin-alias has a chance. The wrapper marks `zod-v3` explicitly
- * *not*-external (lets resolveId run → plugin-alias rewrites →
- * post-resolve external sees 'zod' and marks it external) and silences
- * the implicit-bundling warning for the specific zod-v3 case.
+ * can install zod@3 themselves. @rollup/plugin-alias does the rewrite, but
+ * rollup calls `external(id)` BEFORE the resolveId chain runs, so unbuild's
+ * default external warns "Implicitly bundling zod-v3" first. The wrapper
+ * marks `zod-v3` explicitly not-external, which lets resolveId run so
+ * plugin-alias can rewrite it, after which post-resolve external sees
+ * 'zod' and marks that external.
  */
 function rollupOptionsHook(devFlag: boolean): NonNullable<BuildConfig['hooks']> {
   return {
@@ -159,28 +158,21 @@ const SHARED_EXTERNALS = [
   'vue',
   'zod',
   'typescript',
-  /lodash-es.*/,
 ]
 
 const SHARED_ROLLUP: NonNullable<BuildConfig['rollup']> = {
-  // ESM-only. Nothing resolves the CJS tree: Node >=22 and every
-  // bundler read the import conditions, and Nuxt loads the module
-  // through jiti. The package.json exports map carries no require
-  // condition (dropped in the same commit as this flag).
+  // ESM-only. Nothing resolves the CJS tree: Node >=22 and every bundler
+  // read the import conditions, and Nuxt loads the module through jiti.
+  // The package.json exports map carries no require condition.
   emitCJS: false,
-  // `hoistTransitiveImports: false` stops Rollup from emitting bare
-  // `import './shared/chunk.mjs'` statements into an entry for chunks
-  // that the entry only reaches transitively (through another shared
-  // chunk it directly imports). With `"sideEffects": false` in the
-  // package.json, those defensive bare imports conflict — consumer
-  // bundlers correctly drop them (they have no named imports and no
-  // declared side effects), emitting an "Ignoring this import"
-  // warning for every occurrence. The transitive chunks still load
-  // because the directly-imported chunk's own imports pull them in.
-  // Turning off hoisting means no redundant bare imports and no
-  // warnings, at the cost of a marginal extra network roundtrip for
-  // consumers who load our `.mjs` directly without a bundler (a
-  // non-goal for a library published to npm).
+  // Stops Rollup emitting a bare `import './shared/chunk.mjs'` into an
+  // entry for a chunk the entry reaches only transitively. Those defensive
+  // imports conflict with `"sideEffects": false` in package.json: a
+  // consumer bundler correctly drops them, since they have no named
+  // imports and no declared side effects, and warns "Ignoring this import"
+  // for each one. The transitive chunks still load, pulled in by the
+  // directly-imported chunk's own imports. The cost is one extra network
+  // roundtrip for a consumer loading the `.mjs` with no bundler at all.
   output: {
     hoistTransitiveImports: false,
   },
@@ -193,16 +185,12 @@ const SHARED_ROLLUP: NonNullable<BuildConfig['rollup']> = {
   esbuild: {
     format: 'esm',
     target: 'es2020',
-    // Libraries should NOT minify for npm consumers:
-    //   - Consumer bundlers (Vite, Webpack, Rollup+Terser) minify in
-    //     production mode. Upstream minification saves no bytes.
-    //   - Minified output produces useless stack traces
-    //     (single-letter identifiers) and hostile `cd node_modules`
-    //     debugging for anyone investigating a bug in our code.
-    //   - Tarball gzip compression closes most of the on-disk delta
-    //     between minified and readable output.
-    // Tree-shaking stays on — it drops unreachable code without
-    // mangling what remains.
+    // A published library should not minify. The consumer's bundler
+    // minifies in production mode anyway, so it saves no shipped bytes;
+    // single-letter identifiers make stack traces and `cd node_modules`
+    // debugging hostile; and tarball gzip closes most of the on-disk
+    // delta. Tree-shaking stays on, since it drops unreachable code
+    // without mangling what remains.
     minify: false,
     // No sourcemaps in the published package: the shipped .mjs is
     // readable unminified source, so a map adds nothing to consumer
@@ -223,22 +211,19 @@ export default defineBuildConfig([
       ...RUNTIME_ENTRIES,
       ...TOOLING_ENTRIES,
       // `.vue` files for the Nuxt DevTools overlay panel. Rollup builds
-      // .ts entries; the consumer's Vite + @vitejs/plugin-vue compiles
-      // the raw `.vue` source at consumer build time when the iframe HTML
-      // (served by `attaform/vite`'s middleware) imports
-      // `attaform/devtools-panel`. Dev-only — production builds never
-      // load the panel.
+      // the .ts entries; the raw `.vue` source is compiled by the
+      // consumer's Vite and @vitejs/plugin-vue when the iframe HTML served
+      // by `attaform/vite`'s middleware imports `attaform/devtools-panel`.
+      // Dev-only, so a production build never loads the panel.
       //
-      // Directional contract: `input` is read-only — mkdist NEVER writes
-      // back to `src/runtime/components/`. Every artifact (the lossy
-      // `.vue` post-transform output AND the Volar-emitted `.d.vue.ts` /
-      // `.vue.d.ts` declaration stubs) lands in `outDir`. If those stubs
-      // ever materialise inside `input/`, the regression is in whatever
-      // wrote them (a Volar emit-on-save misconfig in the editor, a
-      // stale `vue-tsc` invocation without `--noEmit`, a manual file
-      // copy), not in this config. `test/source-shape.test.ts` is the
-      // standing tripwire that catches the corruption regardless of
-      // writer.
+      // Directional contract: `input` is read-only. mkdist never writes
+      // back into `src/runtime/components/`, and every artifact (the lossy
+      // `.vue` post-transform output and the Volar-emitted `.d.vue.ts` /
+      // `.vue.d.ts` stubs alike) lands in `outDir`. A stub materialising
+      // inside `input/` is a fault in whatever wrote it, not in this
+      // config: a Volar emit-on-save misconfiguration, a `vue-tsc` run
+      // without `--noEmit`, a manual copy. `test/source-shape.test.ts` is
+      // the standing tripwire, whoever the writer turns out to be.
       {
         builder: 'mkdist',
         input: './src/runtime/components/',

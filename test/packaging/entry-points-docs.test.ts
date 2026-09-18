@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
  * lookup, and its frontmatter states a count. The four bundler plugins
  * (`attaform/rollup`, `/esbuild`, `/webpack`, `/rspack`) had no section
  * of their own, only a line inside the Vite one saying "the same plugin
- * ships for other bundlers" — which is the part that was wrong. The
+ * ships for other bundlers": which is the part that was wrong. The
  * Vite plugin binds `v-register` and marks SSR state; the other four do
  * only the Zod-adapter rewrite, because the template work is
  * `@vitejs/plugin-vue`-specific. A consumer who read that line shipped a
@@ -59,7 +59,7 @@ describe('the exports map vs the entry-point reference', () => {
   it('the toolkit import block lists every shared value export', () => {
     // "Every entry re-exports the same schema-agnostic core, so this set
     // is identical whether you import it from `attaform`, `attaform/zod`,
-    // or `attaform/abstract`" — the block below that sentence listed 31
+    // or `attaform/abstract`": the block below that sentence listed 31
     // of 38. Among the seven missing was `gate`, which the same page
     // names as a Nuxt auto-import two sections earlier, so the page told
     // a reader the symbol exists and not where it comes from.

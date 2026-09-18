@@ -6,22 +6,22 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 
 /**
- * Regression test for #422 — wrapping `useForm` in a generic helper that
- * forwards a schema-derived `defaultValues`. Before the fix this tripped
- * TS2589 ("excessively deep") / TS2769 ("no overload matches") because the
- * `defaultValues` slot was a `DefaultValuesInput` conditional cascade that
- * TS cannot relate to a free schema type parameter `S`.
+ * #422: wrapping `useForm` in a generic helper that forwards a
+ * schema-derived `defaultValues`. The `AcceptableDefaults` slot carries
+ * the schema's own input (`z.input<S>`) as a reflexive escape arm, so a
+ * forwarded `z.input<S>` is assignable even under a generic, while the
+ * arm stays redundant at concrete call sites and leaves per-field
+ * checking and the intentional `defaultValues` widening alone.
  *
- * The `AcceptableDefaults` slot now carries the schema's own input
- * (`z.input<S>`) as a reflexive escape arm: a forwarded `z.input<S>` is
- * assignable to it even under a generic, while the arm is redundant at
- * concrete call sites (so per-field checking and the intentional
- * `defaultValues` widening are unchanged). Covered for all three entries
- * and both Zod majors. `_neverInvoked` wrappers exercise call-site
- * inference without a Vue app context.
+ * A plain `DefaultValuesInput` conditional cascade trips TS2589
+ * ("excessively deep") or TS2769 ("no overload matches") instead, because
+ * TS cannot relate the cascade to a free schema type parameter `S`.
+ *
+ * Covered for all three entries and both Zod majors; the `_neverInvoked`
+ * wrappers exercise call-site inference without a Vue app context.
  */
 
-describe('#422 — generic form wrappers forwarding defaultValues', () => {
+describe('#422: generic form wrappers forwarding defaultValues', () => {
   it('compiles a generic wrapper over the unified entry (v4 schema)', () => {
     function _neverInvoked() {
       function makeForm<S extends z.ZodObject<z.ZodRawShape>>(
@@ -109,7 +109,7 @@ describe('#422 — generic form wrappers forwarding defaultValues', () => {
 
   it('preserves the intentional defaultValues widening (input shape, not parsed)', () => {
     function _neverInvoked() {
-      // z.email() input is `string`; an invalid-but-string default is accepted —
+      // z.email() input is `string`; an invalid-but-string default is accepted,
       // defaultValues reflects an in-progress form, sharp types land at submit.
       useFormV4({
         schema: z.object({ email: z.email() }),

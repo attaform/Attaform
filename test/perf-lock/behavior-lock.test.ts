@@ -5,12 +5,12 @@
 // core) are provably behavior-preserving.
 //
 // Three layered locks per scenario:
-//   1. Cross-adapter parity — the two independent implementations (zod v3
+//   1. Cross-adapter parity: the two independent implementations (zod v3
 //      and v4) must produce the identical normalized surface, checkpoint
 //      for checkpoint. Catches adapter-specific drift.
-//   2. Named invariants — sanity that the script exercised real state
+//   2. Named invariants, sanity that the script exercised real state
 //      transitions (guards against a vacuous all-empty capture).
-//   3. Golden master — freezes the full adapter-agnostic surface, catching
+//   3. Golden master, freezes the full adapter-agnostic surface, catching
 //      a shared-core change that moves BOTH adapters identically (which
 //      parity alone cannot see). This is the load-bearing refactor lock.
 import { afterEach, describe, expect, it } from 'vitest'
@@ -74,7 +74,7 @@ async function runScenario(
   return { app, checkpoints }
 }
 
-describe('behavior-lock — observable surface frozen across the matrix', () => {
+describe('behavior-lock: observable surface frozen across the matrix', () => {
   const mounted: App[] = []
   afterEach(() => {
     while (mounted.length > 0) mounted.pop()?.unmount()
@@ -94,7 +94,7 @@ describe('behavior-lock — observable surface frozen across the matrix', () => 
         expect(v3.checkpoints[i]?.capture).toEqual(v4.checkpoints[i]?.capture)
       }
 
-      // (2) Named invariants — prove the script moved real state.
+      // (2) Named invariants, prove the script moved real state.
       const byLabel = new Map(v4.checkpoints.map((c) => [c.label, c.capture]))
       const initial = byLabel.get('initial') as any
       const afterReset = byLabel.get('after-reset') as any

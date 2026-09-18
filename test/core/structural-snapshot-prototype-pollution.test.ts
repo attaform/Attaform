@@ -3,13 +3,12 @@
  *
  * `structuralSnapshot` is the deep-clone helper that produces the
  * `prev` argument for `form.setValue((prev) => next)` callbacks. The
- * input is the live form value, which — after the proto-less
- * `setAtPath` swap — can legitimately carry `__proto__` /
- * `constructor` / `prototype` as own properties on prototype-less
- * containers. Pre-fix the snapshot copied into a plain `{}`, and a
- * `__proto__` own property at the source would route through the
- * destination's inherited `[[Set]]` accessor instead of landing as
- * an own property — pollution.
+ * input is the live form value, which can legitimately carry
+ * `__proto__`, `constructor` or `prototype` as own properties on
+ * prototype-less containers. Copying into a plain `{}` routes a
+ * `__proto__` own property at the source through the destination's
+ * inherited `[[Set]]` accessor instead of landing it as an own
+ * property, which is pollution.
  *
  * Allocating the snapshot containers via `Object.create(null)`
  * mirrors `setAtPath`'s allocator and keeps the shape parity: the
@@ -43,11 +42,11 @@ describe('structuralSnapshot proto-less containers', () => {
 
     const snap = structuralSnapshot(source) as Record<string, unknown>
 
-    // Negative invariant — Object.prototype is unchanged.
+    // Negative invariant, Object.prototype is unchanged.
     const probe: Record<string, unknown> = {}
     expect(probe[SENTINEL]).toBeUndefined()
 
-    // Positive roundtrip — the snapshot carries the own-property
+    // Positive roundtrip: the snapshot carries the own-property
     // value through verbatim.
     const snapProtoSlot = snap['__proto__'] as Record<string, unknown>
     expect(snapProtoSlot).toBeDefined()

@@ -12,8 +12,8 @@ import { isShadowedKey, safeOwnRead } from '../../src/runtime/core/safe-assign'
  * Prototype-shadowed key names (`__proto__`, `hasOwnProperty`,
  * `toString`, …) must be treated as ordinary data keys everywhere: they
  * round-trip through storage, read back the stored value on every
- * surface, serialise faithfully, and — for `__proto__` / `constructor`
- * — never reach `Object.prototype`. The hazard is twofold: `target[key]`
+ * surface, serialise faithfully, and, for `__proto__` / `constructor`,
+ * never reach `Object.prototype`. The hazard is twofold: `target[key]`
  * / `key in target` leak the inherited member when no own slot exists,
  * and Vue additionally shims `hasOwnProperty` on every reactive proxy.
  */
@@ -37,7 +37,7 @@ afterEach(() => {
   }
 })
 
-describe('shadowed-key safety — path-walker primitives', () => {
+describe('shadowed-key safety: path-walker primitives', () => {
   it('isShadowedKey flags exactly the Object.prototype member names', () => {
     for (const k of SHADOWED) expect(isShadowedKey(k)).toBe(true)
     for (const k of ['email', 'city', 'wrap', '0', 'tags', 'value', 'dirty']) {
@@ -76,10 +76,10 @@ describe('shadowed-key safety — path-walker primitives', () => {
   })
 })
 
-describe('shadowed-key safety — no prototype pollution', () => {
+describe('shadowed-key safety: no prototype pollution', () => {
   it('a __proto__ write lands as own data, never on Object.prototype', () => {
     const tree = setAtPath({}, ['evil', '__proto__'], { polluted: true })
-    // Own data property at the literal key — not the prototype.
+    // Own data property at the literal key: not the prototype.
     expect(getAtPath(tree, ['evil', '__proto__'])).toEqual({ polluted: true })
     const fresh: Record<string, unknown> = {}
     expect(fresh['polluted']).toBeUndefined()
@@ -111,7 +111,7 @@ describe('shadowed-key safety — no prototype pollution', () => {
   })
 })
 
-describe('shadowed-key safety — live form surfaces', () => {
+describe('shadowed-key safety: live form surfaces', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

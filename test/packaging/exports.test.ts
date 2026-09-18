@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /*
- * Sanity-checks on the built dist/. Skipped when dist doesn't exist yet —
+ * Sanity-checks on the built dist/. Skipped when dist doesn't exist yet,
  * this test runs meaningfully after `pnpm prepack` (or during CI release).
  * Scope: verify every package.json exports subpath resolves to an artifact
  * that was actually produced.
@@ -25,7 +25,7 @@ const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf-8')) as
  * older branches) drops jiti-wrapped stubs into dist/ so the playground
  * can resolve the module without a real build. Those stubs re-export
  * from source via jiti and don't reflect the final published shape.
- * Skip the packaging asserts in that case — `pnpm prepack` (or
+ * Skip the packaging asserts in that case, `pnpm prepack` (or
  * `pnpm check:size` which runs it) produces the real build.
  *
  * Two stub formats exist in the wild:
@@ -72,7 +72,7 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
   })
 
   for (const [subpath, entry] of Object.entries(pkg.exports)) {
-    it(`subpath "${subpath}" — every declared artifact exists`, () => {
+    it(`subpath "${subpath}": every declared artifact exists`, () => {
       // A direct string target (e.g. "./package.json": "./package.json")
       // resolves as-is. Guard it explicitly: `Object.entries` on a string
       // walks its characters, which would check `existsSync('p')` and fail.
@@ -203,7 +203,7 @@ describe.skipIf(!existsSync(distDir) || !isRealBuild)('packaging: package.json e
     // So both adapters are decoupled from whichever Zod the consumer
     // hoists, which is the property worth having. A flip to `true` means
     // something started constructing schema nodes rather than reading
-    // them — worth a look rather than a silent pass.
+    // them, worth a look rather than a silent pass.
     expect(closureContainsZodImport(join(distDir, 'zod-v4.mjs'))).toBe(false)
   })
 

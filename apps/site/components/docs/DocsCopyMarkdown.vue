@@ -29,7 +29,7 @@
       if (resetTimer) clearTimeout(resetTimer)
       resetTimer = setTimeout(() => (copied.value = false), 1500)
     } catch {
-      // Silent fallback — see comment above.
+      // Silent fallback, see comment above.
     }
   }
 

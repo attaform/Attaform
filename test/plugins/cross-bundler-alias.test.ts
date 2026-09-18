@@ -21,7 +21,7 @@ import {
  * Cross-bundler `attaform/zod` adapter-rewrite plugins (Block E).
  *
  * Each plugin is exercised against its bundler's hook in ISOLATION with a
- * stub context — no real bundler is spun up, so the suite needs no extra
+ * stub context: no real bundler is spun up, so the suite needs no extra
  * bundler devDeps (webpack / rspack aren't installed, per the zero-dep
  * rule; esbuild is only transitively present). The stubs mirror the
  * minimal hook surface each plugin touches and assert the one thing the
@@ -117,7 +117,7 @@ describe('shared zod-major detection', () => {
 describe('rewritable-specifier matcher', () => {
   // The single place the plugins decide WHICH specifiers collapse to one
   // adapter. `REWRITABLE_ZOD_SPECIFIER_FILTER` doubles as esbuild's Go RE2
-  // `onResolve` filter and, via `.test()`, as `isRewritableZodSpecifier` —
+  // `onResolve` filter and, via `.test()`, as `isRewritableZodSpecifier`,
   // the string check the other plugins call. This table pins the
   // exact-match discipline: rewrite the bare barrel + `attaform/zod`, never
   // swallow a pinned adapter (`attaform/zod-v3|v4`) or a build-tool subpath
@@ -160,7 +160,7 @@ describe('rewritable-specifier matcher', () => {
 
   it('keeps the esbuild filter regex and the string predicate in lockstep', () => {
     // Drift here means esbuild's onResolve fires on a different set than
-    // the other plugins' string check — one bundler would rewrite an
+    // the other plugins' string check: one bundler would rewrite an
     // import another leaves alone.
     for (const source of [...rewritable, ...passThrough]) {
       expect(REWRITABLE_ZOD_SPECIFIER_FILTER.test(source), source).toBe(
@@ -184,7 +184,7 @@ interface RollupResolveCtx {
 // without a real resolver.
 const rollupCtx = (): RollupResolveCtx => ({ resolve: async (id) => ({ id, external: false }) })
 
-describe('attaform/rollup — resolveId rewrite', () => {
+describe('attaform/rollup: resolveId rewrite', () => {
   it('rewrites attaform/zod to the v4 subpath when zod@4 is installed', async () => {
     const plugin = rollupAttaform({ root: zodV4Root })
     plugin.buildStart()
@@ -266,7 +266,7 @@ function makeEsbuildBuild(): {
   return { build, getCallback: () => cb, getFilter: () => filter }
 }
 
-describe('attaform/esbuild — onResolve rewrite', () => {
+describe('attaform/esbuild: onResolve rewrite', () => {
   it('re-resolves attaform/zod through the v4 subpath when zod@4 is installed', async () => {
     const { build, getCallback } = makeEsbuildBuild()
     esbuildAttaform({ root: zodV4Root }).setup(build)
@@ -284,7 +284,7 @@ describe('attaform/esbuild — onResolve rewrite', () => {
   it('registers exactly the shared rewritable-specifier filter (admits the bare barrel)', () => {
     // esbuild gates which imports reach the callback via the `filter`
     // regex, not a per-call string check, so the plugin must hand it the
-    // same tested matcher the other plugins use — otherwise bare `attaform`
+    // same tested matcher the other plugins use, otherwise bare `attaform`
     // never reaches the rewrite here.
     const { build, getFilter } = makeEsbuildBuild()
     esbuildAttaform({ root: zodV4Root }).setup(build)
@@ -355,7 +355,7 @@ const webpackFamily: ReadonlyArray<readonly [string, typeof webpackAttaform]> = 
   ['attaform/rspack', rspackAttaform],
 ]
 
-describe.each(webpackFamily)('%s — beforeResolve rewrite', (tag, factory) => {
+describe.each(webpackFamily)('%s: beforeResolve rewrite', (tag, factory) => {
   it('rewrites the attaform/zod request to the v4 subpath when zod@4 is installed', () => {
     const { compiler, getBeforeResolve } = makeWebpackCompiler(zodV4Root)
     factory({ root: zodV4Root }).apply(compiler)

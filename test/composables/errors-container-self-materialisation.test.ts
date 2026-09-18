@@ -15,7 +15,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *   - `form.errors.<container>['']` resolves to the container-self
  *     error array (cross-field refines, server-side container marks).
  *   - `JSON.stringify(form.errors.<container>)` materialises as
- *     `{ '': [...], <descendant keys>: [...] }` — both surfaces visible.
+ *     `{ '': [...], <descendant keys>: [...] }`, both surfaces visible.
  *   - The root `''` slot (form-level errors, root refines, setErrors)
  *     is the same convention generalised down to every container depth.
  *   - Schemas that legitimately declare a field named `''` share the
@@ -59,7 +59,7 @@ function mount<Schema extends z.ZodObject>(
   return captured as UseFormReturnV4<Schema>
 }
 
-describe('form.errors — container-self materialisation under "" sentinel', () => {
+describe('form.errors: container-self materialisation under "" sentinel', () => {
   it('container refine + descendant leaf both surface in container sub-tree', () => {
     const schema = z.object({
       profile: z.object({
@@ -145,7 +145,7 @@ describe('form.errors — container-self materialisation under "" sentinel', () 
     expect(form.meta.ownErrors).toEqual([
       expect.objectContaining({ message: 'whole-form bad', path: [] }),
     ])
-    // `errors['']` reads the literal '' field — empty, never the global bucket.
+    // `errors['']` reads the literal '' field, empty, never the global bucket.
     const rootSelf = (form.errors as unknown as { ['']?: readonly { message: string }[] })['']
     expect(rootSelf ?? []).toEqual([])
   })

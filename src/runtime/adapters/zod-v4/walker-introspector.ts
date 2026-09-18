@@ -1,7 +1,7 @@
 /**
  * Module-level `SchemaIntrospector<z.ZodType>` instance for the v4
- * adapter. The instance is stateless — every method receives a schema
- * and reads its `def.*` shape via the introspect-module accessors.
+ * adapter. Stateless: every method takes a schema and reads its `def.*`
+ * shape through the introspect-module accessors.
  *
  * Hosted in its own file so the per-walker modules (`path-walker.ts`,
  * `slim-primitives.ts`, `default-values.ts`) can import it without

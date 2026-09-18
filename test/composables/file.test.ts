@@ -15,11 +15,10 @@ import { waitUntil } from '../utils/form-harness'
  * storage shape: `File | null` (single) or `File[]` (multiple). Blank
  * paths are marked through `setValueWithInternalPath`'s `{ blank:
  * true }` meta so required-file fields surface "No value supplied"
- * via `derivedBlankErrors`. Persistence is carved out at
- * `syncPersistOptIn` — file paths never enter `optedInPaths`.
+ * via `derivedBlankErrors`.
  *
  * Tests use `z.file().nullable()` (v4 native). The directive itself is
- * DOM-driven, not schema-driven — v3's `z.instanceof(File)` flows
+ * DOM-driven, not schema-driven, v3's `z.instanceof(File)` flows
  * through the same code paths.
  */
 
@@ -57,7 +56,7 @@ function makeFile(name = 'photo.png', size = 1024, type = 'image/png'): File {
   return new File([buf], name, { type })
 }
 
-describe('<input type="file" v-register> — single file', () => {
+describe('<input type="file" v-register>: single file', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -228,7 +227,7 @@ describe('<input type="file" multiple v-register>', () => {
   })
 })
 
-describe('<input type="file" v-register> — required-file error', () => {
+describe('<input type="file" v-register>: required-file error', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -264,7 +263,7 @@ describe('<input type="file" v-register> — required-file error', () => {
   })
 })
 
-describe('<input type="file" v-register> — programmatic clear', () => {
+describe('<input type="file" v-register>: programmatic clear', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -310,7 +309,7 @@ describe('<input type="file" v-register> — programmatic clear', () => {
   })
 })
 
-describe('<input type="file" v-register> — listener cleanup', () => {
+describe('<input type="file" v-register>: listener cleanup', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -352,7 +351,7 @@ describe('<input type="file" v-register> — listener cleanup', () => {
 })
 
 // Restore the platform localStorage for the file-suite block that
-// touched it — sibling suites observing jsdom's default get a clean
+// touched it, sibling suites observing jsdom's default get a clean
 // slate.
 afterAll(() => {
   localStorage.clear()

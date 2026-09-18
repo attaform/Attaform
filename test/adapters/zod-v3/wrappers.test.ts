@@ -3,26 +3,26 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * Wrapper-handling regressions for the v3 adapter — bounded peel
+ * Wrapper-handling regressions for the v3 adapter, bounded peel
  * recursion, transparent peel for newer wrapper kinds, and
  * ZodCatch fallback preservation.
  *
- * The adapter is the pre-rewrite implementation; these tests guard
- * the unwrap helpers (`unwrapDefault`, `_stripRefinements`,
+ * These guard the unwrap helpers (`getCatchDefault`,
  * `unwrapToDiscriminatedUnion`, `peelV3Wrappers`) against pathological
- * input that previously caused a stack overflow or hang.
+ * input: each peel is bounded at `MAX_UNWRAP_STEPS` rather than
+ * recursing on whatever the consumer nested.
  */
 
-describe('zod v3 adapter — bounded wrapper recursion', () => {
+describe('zod v3 adapter: bounded wrapper recursion', () => {
   it('does not stack-overflow on a long .refine() chain', () => {
     let schema: z.ZodTypeAny = z.string()
     for (let i = 0; i < 500; i++) {
       schema = schema.refine(() => true)
     }
     const root = z.object({ field: schema })
-    // Each layer of `.refine()` produces a ZodEffects wrapper. Pre-fix
-    // these recursed unbounded through `unwrapDefault` and
-    // `_stripRefinements`; with a 64-step cap we now bail conservatively.
+    // Each `.refine()` layer produces a ZodEffects wrapper, and the peel
+    // bails conservatively at the 64-step cap rather than recursing
+    // through all 500.
     const adapter = zodAdapter(root)('f', { maxRecursionDepth: 64 })
     expect(() => adapter.getDefaultValues({ useDefaultSchemaValues: true })).not.toThrow()
   })
@@ -60,7 +60,7 @@ describe('zod v3 adapter — bounded wrapper recursion', () => {
   })
 })
 
-describe('zod v3 adapter — transparent wrapper kinds', () => {
+describe('zod v3 adapter: transparent wrapper kinds', () => {
   it('produces a default for a ZodReadonly leaf', () => {
     const schema = z.object({
       handle: z.string().readonly(),
@@ -128,7 +128,7 @@ describe('zod v3 adapter — transparent wrapper kinds', () => {
   })
 })
 
-describe('zod v3 adapter — ZodCatch fallback', () => {
+describe('zod v3 adapter: ZodCatch fallback', () => {
   it('produces the caught fallback as the construction-time default', () => {
     const schema = z.object({
       handle: z.string().catch('anonymous'),
@@ -161,7 +161,7 @@ describe('zod v3 adapter — ZodCatch fallback', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const result = adapter.getDefaultValues({ useDefaultSchemaValues: false })
     // Aligned with v4 (size-teardown P7): `useDefaultSchemaValues:
-    // false` means "show the leaf empty" — `.catch()` is a
+    // false` means "show the leaf empty", `.catch()` is a
     // default-like wrapper, so the inner leaf's bare empty wins.
     expect((result.data as { handle: string }).handle).toBe('')
   })
@@ -180,7 +180,7 @@ describe('zod v3 adapter — ZodCatch fallback', () => {
   })
 })
 
-describe('zod v3 adapter — symbol-segment coercion in ValidationError.path', () => {
+describe('zod v3 adapter: symbol-segment coercion in ValidationError.path', () => {
   it('coerces a Symbol path segment to a string at validateAtPath', async () => {
     const symbolKey = Symbol('weird')
     // A custom check that emits a Symbol path segment. v3 issue paths
@@ -190,7 +190,7 @@ describe('zod v3 adapter — symbol-segment coercion in ValidationError.path', (
       handle: z.string().superRefine((value, ctx) => {
         if (value.length === 0) {
           ctx.addIssue({
-            // Using `as never` to pass the Symbol past the type check —
+            // Using `as never` to pass the Symbol past the type check,
             // this mimics what a misbehaving custom check would do.
             path: [symbolKey as never],
             code: z.ZodIssueCode.custom,

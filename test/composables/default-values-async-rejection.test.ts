@@ -10,12 +10,12 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Function-form `defaultValues` — factory rejection path.
+ * Function-form `defaultValues`, factory rejection path.
  *
  * When a factory throws or its promise rejects, the form keeps its
  * schema slim defaults and surfaces the error on `form.hydrateError`.
  * `hydrating` still flips to `false` (the load attempt is done,
- * even if it failed). The form remains fully functional — consumers
+ * even if it failed). The form remains fully functional, consumers
  * can show an error banner, offer a retry button, and let users
  * proceed manually.
  */
@@ -44,7 +44,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('useForm — function-form defaultValues, rejection path', () => {
+describe('useForm: function-form defaultValues, rejection path', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -96,7 +96,7 @@ describe('useForm — function-form defaultValues, rejection path', () => {
   it('mirrors the hydrateError entry onto form.meta.errors', async () => {
     // The single `ValidationError` ({ code: 'atta:hydration-failed' })
     // is shared between `form.hydrateError` and the form-level entry in
-    // `form.meta.errors` — same shape, same surface, regardless of mount
+    // `form.meta.errors`, same shape, same surface, regardless of mount
     // path (CSR or SSR-rehydrated).
     const { app, api } = mountForm(schema, () => Promise.reject(new Error('csr fetch failed')))
     apps.push(app)

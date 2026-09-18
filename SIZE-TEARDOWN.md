@@ -1,5 +1,13 @@
 # Attaform Size Teardown
 
+**CLOSED. Read section 12 first.** The program this report proposed ran to completion on
+2026-08-24 and shipped as PR #561. Sections 1 through 11 are the audit as written on
+2026-08-23, in the future tense, and they are kept because the measurements and the
+do-not-do list in section 7 are still the reason those levers stay shut. The targets in
+them are not current: section 1 budgets 25,960 B gz, the program landed at 33,004, and
+section 12 records why every gap traces to a measured refusal. Anything about the eager
+number since then belongs to the efficiency program (#643), not to this report.
+
 Analysis-only report. Branch `experiment/size-teardown` (identical to `main` @ `fb532ad9`,
 v0.27.6), 2026-08-23. Produced by a 24-agent audit (14 subsystem analysts, 3 architects,
 6 adversarial verifiers, 1 judge) plus direct measurement; every load-bearing byte claim
@@ -95,6 +103,8 @@ that happens to sit in a foldable shape, so CI cannot see the leak.
 
 Eleven workstreams, each independently landable, each re-baselining the eager ratchet on
 merge (the standing ratchet number is the only authority; ledger arithmetic never is).
+The per-workstream figures below are the pre-program estimates; what each one actually
+delivered is in `plans/size-teardown/00-program.md`.
 Delivered bytes are verifier-adjusted, deduplicated, against the minimal-v4 metric.
 
 | #   | workstream                                                                                                                                       | eager gz                        | depends on                           |

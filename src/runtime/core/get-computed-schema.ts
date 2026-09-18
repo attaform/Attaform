@@ -4,7 +4,7 @@ import type { GenericForm } from '../types/types-core'
 /**
  * Accept schema as either a direct value or a factory function
  * `(key, options) => schema`. The factory form is documented but
- * rarely used — it exists for schemas that want to embed the formKey
+ * rarely used, and exists for a schema that wants to embed the formKey
  * or the resolved per-form options (e.g. `maxRecursionDepth`) into
  * their adapter instance.
  */

@@ -1,21 +1,19 @@
 // @vitest-environment jsdom
 /**
- * PASS2-9 — `fieldValidationCounts` (the per-path in-flight async-
- * validation counter that backs `field.validating`) was not relocated
- * across array structural mutations alongside the other path-keyed
- * maps. An async validation that landed mid-`move` left the spinner
- * on the OLD outer index (now occupied by a different element) until
- * the next validation pass overwrote the entry — visible flicker on a
- * row that wasn't actually validating.
+ * PASS2-9: `fieldValidationCounts`, the per-path in-flight counter
+ * behind `field.validating`, relocates across array structural
+ * mutations alongside the other path-keyed maps. It rides the
+ * `migrateMapSubtree` sweep in `migrateArrayElementState`, the same way
+ * `fields`, `originals` and `userErrors` do. Left behind, an async
+ * validation landing mid-`move` strands the spinner on the OLD outer
+ * index, now holding a different element, until the next pass overwrites
+ * the entry: visible flicker on a row that is not validating.
  *
- * The fix plugs `fieldValidationCounts` into the existing
- * `migrateMapSubtree` sweep in `migrateArrayElementState`, mirroring
- * the treatment of `fields` / `originals` / `userErrors`. We pin it
- * by reading the FormStore directly via `inject(kFormContext)`,
- * seeding the counter at a pre-mutation index, replaying the array
- * move, and asserting the entry follows the element. Going through
- * the real async-validation pipeline would couple the test to
- * scheduler timing the migration semantics don't depend on.
+ * Pinned by reading the FormStore directly through `inject(kFormContext)`,
+ * seeding the counter at a pre-mutation index, replaying the move and
+ * asserting the entry follows the element. Driving the real
+ * async-validation pipeline would couple the test to scheduler timing
+ * the migration semantics do not depend on.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, inject, type App } from 'vue'
@@ -38,7 +36,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3, schema: schemaV3 },
 ] as const
 
-describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm, schema }) => {
+describe.each(adapters)('fieldValidationCounts migration: $name', ({ useForm, schema }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -55,7 +53,7 @@ describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm,
     const Root = defineComponent({
       setup() {
         // Anonymous useForm (no `key`) so the FormStore is provided as
-        // `kFormContext` to descendants — see use-abstract-form.ts:493.
+        // `kFormContext` to descendants, see use-abstract-form.ts.
         // `useForm` is parameterised across adapters via `describe.each`;
         // TS sees the v3-or-v4 union and can't reconcile the signatures,
         // so a loose call cast is the right tool here.
@@ -113,7 +111,7 @@ describe.each(adapters)('fieldValidationCounts migration — $name', ({ useForm,
     form.remove('tags', 0)
 
     // Pre-op `tags.0` ('a', counter=1) is vacated and dropped. Pre-op
-    // `tags.1` ('b', no counter) shifts to index 0 — no counter to migrate.
+    // `tags.1` ('b', no counter) shifts to index 0: no counter to migrate.
     // Pre-op `tags.2` ('c', counter=2) shifts to index 1.
     expect(store.fieldValidationCounts.has(key(['tags', 0]))).toBe(false)
     expect(store.fieldValidationCounts.get(key(['tags', 1]))).toBe(2)

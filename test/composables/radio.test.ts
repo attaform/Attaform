@@ -11,7 +11,7 @@ import { waitUntil } from '../utils/form-harness'
 /**
  * `<input type="radio" v-register>` end-to-end coverage.
  *
- * Radio model is always SCALAR — the option-value of the currently
+ * Radio model is always SCALAR: the option-value of the currently
  * checked radio. Every radio in a group shares one register binding
  * and carries a distinct `value="..."`. The directive reflects model
  * changes onto `el.checked` and writes the selected option-value back
@@ -26,7 +26,7 @@ function dispatchChange(el: HTMLInputElement): void {
   el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-describe('<input type="radio" v-register> — single-group selection', () => {
+describe('<input type="radio" v-register>: single-group selection', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -44,7 +44,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
         const form = useForm({
           schema,
           key: 'radio-select',
-          // z.enum's slim default is the first member ('free') — opt
+          // z.enum's slim default is the first member ('free'), opt
           // into 'pro' as the construction-time selection so the test
           // exercises a real user choice rather than the implicit default.
           defaultValues: { tier: 'pro' },
@@ -82,7 +82,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
     expect(ent.checked).toBe(false)
     expect(captured.api.values.tier).toBe('pro')
 
-    // User selects `enterprise` — fire the change handler. (Setting
+    // User selects `enterprise`, fire the change handler. (Setting
     // .checked = true on a radio doesn't auto-uncheck siblings in
     // jsdom; we do that manually to mirror real browser behavior.)
     free.checked = false
@@ -144,7 +144,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
   it('reflects programmatic setValue on the radio elements (re-render path)', async () => {
     // The model→DOM direction requires either the compile-time
     // input-text-area-transform's synthesized `:checked` binding
-    // (production path — Vue tracks the binding and patches `el.checked`
+    // (production path, Vue tracks the binding and patches `el.checked`
     // on every reactive update) OR a parent re-render that fires the
     // directive's `beforeUpdate` hook. This raw-`h()` test covers the
     // latter: include the form's value in the render function so a
@@ -164,7 +164,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
         return () =>
           h('div', [
             // Read tierRef so the parent re-renders on form-state
-            // change — mirrors what a real template does when it
+            // change, mirrors what a real template does when it
             // renders any reactive form-derived value.
             h('span', { class: 'tier-label' }, String(tierRef.value)),
             withDirectives(h('input', { type: 'radio', value: 'free', class: 'free' }), [
@@ -196,7 +196,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
   })
 
   it('mounts with NO radio checked when the model matches no option-value', async () => {
-    // Out-of-enum default — slim-gate-incompatible with strict zod
+    // Out-of-enum default, slim-gate-incompatible with strict zod
     // parsing but the slim primitive (string) accepts it. The radio
     // group should leave every option unchecked rather than picking
     // an arbitrary one.
@@ -235,7 +235,7 @@ describe('<input type="radio" v-register> — single-group selection', () => {
   })
 })
 
-describe('<input type="radio" v-register> — hydration with static value attribute', () => {
+describe('<input type="radio" v-register>: hydration with static value attribute', () => {
   let app: App | undefined
 
   afterEach(() => {
@@ -306,7 +306,7 @@ describe('<input type="radio" v-register> — hydration with static value attrib
   })
 })
 
-describe('<input type="radio" v-register> — slim-gate interactions', () => {
+describe('<input type="radio" v-register>: slim-gate interactions', () => {
   let app: App | undefined
   let warnSpy: ReturnType<typeof vi.spyOn>
 

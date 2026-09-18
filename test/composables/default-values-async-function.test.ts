@@ -9,7 +9,7 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Function-form `defaultValues` — both sync and async factories.
+ * Function-form `defaultValues`, both sync and async factories.
  *
  * Lazy-activation contract: the factory fires the first time
  * something reaches for the form's reactive state (`form.values`,
@@ -46,7 +46,7 @@ function mountForm<Schema extends z.ZodObject>(
   return { app, api: handle.api as ApiFor<Schema> }
 }
 
-describe('useForm — function-form defaultValues', () => {
+describe('useForm: function-form defaultValues', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -73,7 +73,7 @@ describe('useForm — function-form defaultValues', () => {
     }
     const { app, api } = mountForm(schema, factory)
     apps.push(app)
-    // Microtask not yet flushed — factory has been queued but not
+    // Microtask not yet flushed, factory has been queued but not
     // necessarily invoked. We assert behavior at the post-flush state.
     await waitUntil(() => (api.hydrating === false ? true : null))
     expect(calls).toBe(1)
@@ -98,7 +98,7 @@ describe('useForm — function-form defaultValues', () => {
   })
 
   it('partial async resolution overlays onto schema slim defaults', async () => {
-    // Factory returns only `email` — `name` should keep its schema
+    // Factory returns only `email`, `name` should keep its schema
     // slim default (empty string for z.string()).
     const { app, api } = mountForm(schema, () => Promise.resolve({ email: 'partial@example.com' }))
     apps.push(app)

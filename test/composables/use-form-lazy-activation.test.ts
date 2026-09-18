@@ -52,7 +52,7 @@ function mountInert(factoryBody: () => Promise<Shape>): {
         defaultValues: counter,
       })
       captured.api = form as unknown as CapturedForm
-      // Template renders no form state — keeps the form dormant unless
+      // Template renders no form state, keeps the form dormant unless
       // the test body explicitly touches it.
       return () => h('div')
     },
@@ -64,7 +64,7 @@ function mountInert(factoryBody: () => Promise<Shape>): {
   return { app, api: captured.api as CapturedForm, calls }
 }
 
-describe('useForm — lazy activation', () => {
+describe('useForm: lazy activation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

@@ -111,7 +111,7 @@ const ADAPTERS = [
   },
 ] as const
 
-describe.each(ADAPTERS)('opaque leaves — $name', (adapter) => {
+describe.each(ADAPTERS)('opaque leaves: $name', (adapter) => {
   // ── 1. the construction gate ──────────────────────────────────────
 
   it('mounts a schema whose leaf is z.instanceof(File)', () => {
@@ -183,10 +183,10 @@ describe.each(ADAPTERS)('opaque leaves — $name', (adapter) => {
     const { api } = makeMounter(adapter.useForm, schema, { defaultValues: { [path]: [] } })()
     const file = mkFile()
 
-    // The gate used to accept the array at `files`, then descend and
-    // check `files.0` against a schema that declares no such path. The
-    // empty accept set there reads as "this path is not in your
-    // schema", and the whole write no-oped.
+    // The gate checks the array at `files` and stops there. Descending
+    // to `files.0` asks about a path the schema does not declare, whose
+    // empty accept set reads as "not in your schema" and no-ops the
+    // whole write.
     const warns = withWarnings(() => api.setValue(path, [file]))
 
     expect(api.values[path]).toHaveLength(1)

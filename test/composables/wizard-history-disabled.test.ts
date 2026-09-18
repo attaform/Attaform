@@ -13,8 +13,8 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * drawers where a fresh history entry per step would be surprising.
  *
  * Setting either side to `false` independently is also valid:
- *   - `persist: false` alone — read external state, do not write back.
- *   - `restore: false` alone — write internal state out, do not seed.
+ *   - `persist: false` alone, read external state, do not write back.
+ *   - `restore: false` alone, write internal state out, do not seed.
  */
 
 const ORIGINAL_URL = 'http://localhost:3000/wizard'
@@ -37,7 +37,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — restore: false + persist: false', () => {
+describe('useWizard with restore: false + persist: false', () => {
   const apps: App[] = []
 
   beforeEach(() => {

@@ -53,7 +53,7 @@ const form = { register: (p) => p }
   <input v-register="form.register('email')" />
 </template>`
 
-describe('directive-delivery rewrite — compiled shapes', () => {
+describe('directive-delivery rewrite: compiled shapes', () => {
   it('rewrites the client compile (dev and prod) and appends one import', () => {
     for (const prod of [false, true]) {
       const compiled = compileClient(SETUP_SFC, { prod })
@@ -115,7 +115,7 @@ const form = { register: (p) => p }
   })
 })
 
-describe('directive-delivery rewrite — scope rules', () => {
+describe('directive-delivery rewrite: scope rules', () => {
   it('handles the dev template virtual-module id (query after .vue)', () => {
     const code = `const _directive_register = ${CALL}\n`
     const out = rewriteDirectiveDelivery(code, '/app/src/Comp.vue?vue&type=template&id=abc&lang.js')

@@ -7,7 +7,7 @@
  * carry a wall of `https://localhost:3000/_nuxt/...` noise.
  *
  * Returns `undefined` on engines that don't expose `.stack` or when
- * parsing fails — callers should degrade to a generic message rather
+ * parsing fails, so a caller degrades to a generic message rather
  * than printing nothing.
  *
  * Click-through navigation isn't sacrificed: `console.warn` already
@@ -61,11 +61,11 @@ export function captureUserCallSite(): string | undefined {
  * 1-to-1 per character). For a script-setup `useForm()` call the
  * column is meaningful; for a template-inlined `register(...)` it
  * lands somewhere mid-compiled-blob and is actively misleading. The
- * uniform `path:line` format avoids that asymmetry — line is enough
+ * uniform `path:line` format avoids that asymmetry: the line is enough
  * to navigate, the editor lands on the right region either way.
  *
  * If the frame doesn't match the trailing `…:line:col` shape at all,
- * the original trimmed frame is returned unchanged — better to
+ * the original trimmed frame is returned unchanged; better to
  * surface something than nothing.
  */
 function shortenSourceFrame(frame: string): string {

@@ -41,7 +41,7 @@ on:
 
 # Workflow-level default: zero scopes. The `analysis` job declares the
 # exact scopes it needs (security-events: write, id-token: write,
-# contents: read, actions: read). Pedantic least-privilege — narrower
+# contents: read, actions: read). Pedantic least-privilege: narrower
 # than the previous `read-all`, which granted read on every scope
 # regardless of whether the job consumed them.
 permissions: {}

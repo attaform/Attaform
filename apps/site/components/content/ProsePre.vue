@@ -1,7 +1,7 @@
 <script setup lang="ts">
   // Override of `@nuxtjs/mdc`'s default `ProsePre`. Wraps the
   // Shiki-highlighted block in a relative container so a `<UiCopyButton>`
-  // can float in the top-right corner of every code block — same
+  // can float in the top-right corner of every code block, same
   // affordance every prose ```code``` block now ships with, no
   // per-page wiring required.
   //

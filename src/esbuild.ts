@@ -1,5 +1,5 @@
 /**
- * `attaform/esbuild` — esbuild plugin that rewrites `attaform` and
+ * `attaform/esbuild`, the esbuild plugin that rewrites `attaform` and
  * `attaform/zod` imports to the single matching adapter subpath
  * (`attaform/zod-v3` or `attaform/zod-v4`) at build time, based on the
  * consumer's installed Zod major. Without it, esbuild ships both adapters
@@ -17,16 +17,12 @@
  *     plugins: [attaform()],
  *   })
  *
- * This plugin only does the adapter rewrite. The Vue SFC `v-register`
- * transforms that `attaform/vite` wires (load-bearing for SSR initial
- * render) are `@vitejs/plugin-vue`-specific and do not transfer; a
- * non-Vite consumer that needs them wires `attaform/transforms` into
- * their Vue compiler separately. The `v-register` directive itself is
- * also delivered by the Vite plugin's compile-time binding, so outside
- * that pipeline register it once per app:
- *
- *   import { installVRegister } from 'attaform/directive'
- *   installVRegister(app)
+ * The adapter rewrite is all this plugin does. Two things
+ * `attaform/vite` also provides do NOT transfer, because both are
+ * `@vitejs/plugin-vue`-specific: wire `attaform/transforms` into your
+ * Vue compiler for the SSR-critical template transforms, and register
+ * the directive once per app with `installVRegister(app)` from
+ * `attaform/directive`.
  *
  * Zero-dep: the plugin imports nothing from `esbuild` (the bundler injects
  * its plugin API at the consumer's build); the structural types below are
@@ -87,6 +83,17 @@ export interface AttaformEsbuildPlugin {
   setup(build: EsbuildPluginBuild): void
 }
 
+/**
+ * esbuild plugin that resolves `attaform` and `attaform/zod` to the one
+ * adapter subpath matching the installed Zod major, so the build ships a
+ * single adapter instead of both.
+ *
+ * ```js
+ * import { attaform } from 'attaform/esbuild'
+ *
+ * await build({ entryPoints: ['src/main.ts'], bundle: true, plugins: [attaform()] })
+ * ```
+ */
 export function attaform(options: AttaformEsbuildPluginOptions = {}): AttaformEsbuildPlugin {
   const resolveZodAlias = options.resolveZodAlias !== false
   const warnState = { warned: false }

@@ -91,7 +91,7 @@ const hooks = vRegister as unknown as {
   created?: (el: HTMLElement, binding: DirectiveBinding, vnode: VNode, prev: unknown) => void
 }
 
-describe('directive — blank on numeric clear', () => {
+describe('directive: blank on numeric clear', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -190,7 +190,7 @@ describe('directive — blank on numeric clear', () => {
     input.value = ''
     input.dispatchEvent(new Event('input'))
 
-    // String inputs send '' through the regular assigner — no auto-mark.
+    // String inputs send '' through the regular assigner: no auto-mark.
     // The DOM doesn't tell us "user typed empty" vs "user hasn't typed",
     // so the dev opts in to blank via the unset symbol if
     // they want that semantic.
@@ -199,7 +199,7 @@ describe('directive — blank on numeric clear', () => {
   })
 })
 
-describe('directive — `.number` × text-input beforeinput filter', () => {
+describe('directive: `.number` × text-input beforeinput filter', () => {
   let removalSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -300,7 +300,7 @@ describe('directive — `.number` × text-input beforeinput filter', () => {
 
     hooks.created?.(input, makeBinding(value, {}), makeVNode({ type: 'number' }), null)
 
-    // Even non-numeric input should not be prevented — the directive's
+    // Even non-numeric input should not be prevented: the directive's
     // beforeinput filter is gated on `vnode.props.type !== 'number'`.
     const ev = new InputEvent('beforeinput', {
       data: 'a',
@@ -342,7 +342,7 @@ describe('directive — `.number` × text-input beforeinput filter', () => {
       cancelable: true,
     })
     input.dispatchEvent(ev)
-    // insertCompositionText is not in the blocklist — IME input flows
+    // insertCompositionText is not in the blocklist, IME input flows
     // through unimpeded; the compositionend handler sorts the final
     // value out.
     expect(ev.defaultPrevented).toBe(false)
@@ -413,7 +413,7 @@ describe('directive — `.number` × text-input beforeinput filter', () => {
 
     hooks.created?.(input, makeBinding(value, { number: true }), makeVNode({}), null)
 
-    // Second `e` after `1e` must be rejected — `1ee3` isn't valid.
+    // Second `e` after `1e` must be rejected, `1ee3` isn't valid.
     input.value = '1e'
     input.setSelectionRange(2, 2)
     const ev = new InputEvent('beforeinput', {
@@ -424,7 +424,7 @@ describe('directive — `.number` × text-input beforeinput filter', () => {
     input.dispatchEvent(ev)
     expect(ev.defaultPrevented).toBe(true)
 
-    // `1e3e` — `e` after digit-in-exponent — also rejected.
+    // `1e3e`, `e` after digit-in-exponent, also rejected.
     input.value = '1e3'
     input.setSelectionRange(3, 3)
     const ev2 = new InputEvent('beforeinput', {
@@ -456,7 +456,7 @@ describe('directive — `.number` × text-input beforeinput filter', () => {
   })
 })
 
-describe('directive — `.number` blur cleanup (16d regression: lone period)', () => {
+describe('directive: `.number` blur cleanup (16d regression: lone period)', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -466,7 +466,7 @@ describe('directive — `.number` blur cleanup (16d regression: lone period)', (
     // the DOM because `looseToNumber('.')` returns the original
     // string, and the change-normalizer wrote that string back via
     // `el.value = '.'`. Native `<input type="number">` clears `.`
-    // on blur — the `.number` text input now matches.
+    // on blur: the `.number` text input now matches.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -533,7 +533,7 @@ describe('directive — `.number` blur cleanup (16d regression: lone period)', (
 
   it('commits `1e3` to canonical `1000` on blur for a `.number` text input', () => {
     // Scientific-notation input was unblocked at the beforeinput
-    // layer — verify the blur normalizer takes the cast representation
+    // layer, verify the blur normalizer takes the cast representation
     // (`String(1000)` is `'1000'`, NOT `'1e3'`).
     const input = document.createElement('input')
     input.type = 'text'
@@ -549,7 +549,7 @@ describe('directive — `.number` blur cleanup (16d regression: lone period)', (
 
   it('clears the DOM under `.lazy.number` when blur leaves a lone period', () => {
     // The lazy variant uses the `change` event for the input
-    // listener AND the blur normalizer — both fire on blur. Order:
+    // listener AND the blur normalizer, both fire on blur. Order:
     // listener-1 markBlank's, listener-2 cleans the DOM.
     const input = document.createElement('input')
     input.type = 'text'
@@ -565,7 +565,7 @@ describe('directive — `.number` blur cleanup (16d regression: lone period)', (
   })
 })
 
-describe('directive — `.number` real-time storage updates with mid-typing DOM preservation', () => {
+describe('directive: `.number` real-time storage updates with mid-typing DOM preservation', () => {
   // Storage commits on every keystroke that parses to a number;
   // `lastTypedForm` keeps Vue's `:value` patch from yanking the DOM
   // away from the user's caret. Blur clears `lastTypedForm` so the
@@ -625,7 +625,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
     // from `3e4` to `30000`, the user's `5` lands in the wrong
     // place. With `lastTypedForm`, `displayValue` returns the
     // typed form for the patch, so the DOM equals what's already
-    // there — Vue's idempotent set leaves the cursor alone.
+    // there, Vue's idempotent set leaves the cursor alone.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -643,7 +643,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
   it('blur clears the typed form and normalizes the DOM to `String(storage)`', () => {
     // Per design: post-blur display matches storage (honest). The
     // user types `1e2`, storage holds 100, DOM shows `1e2` while
-    // typing — but on blur the DOM patches to `100`.
+    // typing, but on blur the DOM patches to `100`.
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
@@ -688,7 +688,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
 
     input.value = 'xyz'
     input.dispatchEvent(new Event('input'))
-    // No deferral — the keystroke listener marks immediately.
+    // No deferral: the keystroke listener marks immediately.
     expect(markBlank).toHaveBeenCalledTimes(1)
     expect(value.lastTypedForm.value).toBeNull()
   })
@@ -719,7 +719,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
 
   it('`.lazy.number` writes on blur and clears typed form via the change normalizer', () => {
     // Lazy mode wires the input listener to `change`, so the
-    // commit-and-clear cycle happens entirely on blur — the input
+    // commit-and-clear cycle happens entirely on blur: the input
     // listener writes storage AND records the typed form, the
     // change normalizer immediately clears it and normalizes DOM.
     const input = document.createElement('input')
@@ -737,7 +737,7 @@ describe('directive — `.number` real-time storage updates with mid-typing DOM 
   })
 })
 
-describe('directive — `.number` overflow (Infinity) refusal', () => {
+describe('directive: `.number` overflow (Infinity) refusal', () => {
   // `parseFloat('1e309')` is `Infinity`. `typeof Infinity === 'number'`,
   // so without an explicit guard the slim-primitive gate accepts it
   // and storage holds `Infinity`. Downstream chaos:
@@ -767,7 +767,7 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
     expect(setValue).toHaveBeenLastCalledWith(1e308)
     setValue.mockClear()
 
-    // Push past Number.MAX_VALUE — parseFloat returns Infinity.
+    // Push past Number.MAX_VALUE, parseFloat returns Infinity.
     input.value = '1e309'
     input.dispatchEvent(new Event('input'))
     // Storage refuses the Infinity write.
@@ -819,7 +819,7 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
   })
 
   it('still accepts the largest finite Number (`1.7976931348623157e308` ≈ Number.MAX_VALUE)', () => {
-    // Sanity: the snap-back is gated on Number.isFinite — values at
+    // Sanity: the snap-back is gated on Number.isFinite, values at
     // or below MAX_VALUE pass through unchanged.
     const input = document.createElement('input')
     input.type = 'text'
@@ -834,19 +834,17 @@ describe('directive — `.number` overflow (Infinity) refusal', () => {
   })
 })
 
-describe('directive — `<input type="number">` mid-typing badInput is not a clear', () => {
-  // 16e regression: typing `1e` into `<input type="number">` blanked
-  // the visible field. The browser exposes `el.value === ''` for
-  // malformed mid-edit input (because `1e` isn't a complete scientific
-  // notation literal) even though `1e` is still visible in the DOM.
-  // Pre-fix the directive's input listener saw the empty value and
-  // fired `markBlank`, which made `displayValue` recompute
-  // to `''`; Vue's `:value` patch then yanked the user's typed `1e`
-  // away. The fix uses `validity.badInput` to distinguish a real
-  // user-clear (`badInput === false`) from a transient mid-edit
-  // (`badInput === true`). The check is benign for `.number` text
-  // inputs (which use a `beforeinput` regex filter upstream — `el.value`
-  // never blanks unexpectedly there, so `badInput` stays `false`).
+describe('directive: `<input type="number">` mid-typing badInput is not a clear', () => {
+  // 16e: `validity.badInput` tells a real user-clear
+  // (`badInput === false`) from a transient mid-edit
+  // (`badInput === true`). A browser reports `el.value === ''` for
+  // malformed mid-edit input, since `1e` is not a complete scientific
+  // notation literal, even while `1e` is visible in the DOM. Treating
+  // that as empty fires `markBlank`, `displayValue` recomputes to `''`,
+  // and Vue's `:value` patch yanks the typed `1e` away. The check is
+  // benign for `.number` text inputs, whose upstream `beforeinput` regex
+  // filter means `el.value` never blanks unexpectedly and `badInput`
+  // stays false.
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -872,7 +870,7 @@ describe('directive — `<input type="number">` mid-typing badInput is not a cle
 
     hooks.created?.(input, makeBinding(value, {}), makeVNode({ type: 'number' }), null)
 
-    // User typed `1e` — browser shows it in DOM but blanks el.value
+    // User typed `1e`, browser shows it in DOM but blanks el.value
     // and flags badInput. The directive must NOT markBlank.
     input.value = ''
     withBadInput(input, true)
@@ -880,7 +878,7 @@ describe('directive — `<input type="number">` mid-typing badInput is not a cle
 
     expect(markBlank).not.toHaveBeenCalled()
     expect(setValue).not.toHaveBeenCalled()
-    // lastTypedForm untouched — display continues to track storage.
+    // lastTypedForm untouched, display continues to track storage.
     expect(value.lastTypedForm.value).toBeNull()
   })
 
@@ -917,14 +915,14 @@ describe('directive — `<input type="number">` mid-typing badInput is not a cle
     expect(setValue).toHaveBeenLastCalledWith(1)
 
     setValue.mockClear()
-    // `1e` — browser blanks el.value, sets badInput.
+    // `1e`, browser blanks el.value, sets badInput.
     input.value = ''
     withBadInput(input, true)
     input.dispatchEvent(new Event('input'))
-    // No write — storage stays at 1.
+    // No write, storage stays at 1.
     expect(setValue).not.toHaveBeenCalled()
 
-    // `1e2` — browser un-blanks el.value, badInput clears.
+    // `1e2`, browser un-blanks el.value, badInput clears.
     input.value = '1e2'
     withBadInput(input, false)
     input.dispatchEvent(new Event('input'))

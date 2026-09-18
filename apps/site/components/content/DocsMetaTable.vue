@@ -5,25 +5,25 @@
   //
   // The five page types (option, return method/prop, module,
   // directive/binding, reference) vary in *which* labels they expose,
-  // but the rendering is uniform — editorial variation belongs in
+  // but the rendering is uniform, editorial variation belongs in
   // frontmatter, not the component.
   //
   // Two access patterns:
   //
-  //   1. Plain `<DocsMetaTable />` inside markdown — auto-reads
+  //   1. Plain `<DocsMetaTable />` inside markdown, auto-reads
   //      `meta:` from the page frontmatter via the `docsPageMeta`
   //      injection provided by `pages/docs/[...slug].vue`. Recommended:
   //      keeps the markdown body uncluttered.
   //
-  //   2. `<DocsMetaTable :rows="[...]" />` — explicit override. Used
+  //   2. `<DocsMetaTable :rows="[...]" />`, explicit override. Used
   //      when the meta rows are computed (rare) or when rendering
   //      outside the docs-page injection context.
   //
   // `kind` controls value rendering:
   //   - 'text' (default): plain prose
-  //   - 'code': monospace chip — for signatures, default values, enum
+  //   - 'code': monospace chip, for signatures, default values, enum
   //             members, type identifiers
-  //   - 'link': hyperlink — values pointing at related docs or
+  //   - 'link': hyperlink, values pointing at related docs or
   //             external references
   import { computed, inject, type Ref } from 'vue'
 

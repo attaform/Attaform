@@ -13,12 +13,9 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * defaults against this de-checked slim schema and never surfaces a
  * "min(1) violated by []" verdict at construction.
  *
- * v4 sidesteps the issue by parsing against the real schema (or
- * `stripAsyncChecks(real)` when async refines exist) and routing
- * rebuilds through `carryChecks` (`strip.ts:52-70`), so the container
- * check survives every walk path.
- *
- * Dual-green after the fix is the parity proof.
+ * v4 sidesteps the issue by parsing against the real schema instead of
+ * a rebuild, so no container check is ever dropped on the way. v3 has to
+ * carry them across explicitly, and dual-green is the parity proof.
  */
 describe('zod v3: getDefaultValues surfaces container .min / .max / .length on defaults (D3)', () => {
   it('z.array(z.string()).min(1) with [] defaults seeds the min-violation error', () => {

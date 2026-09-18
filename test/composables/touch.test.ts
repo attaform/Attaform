@@ -8,7 +8,7 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * `form.touch(path?)` — programmatic mark-as-interacted.
+ * `form.touch(path?)`, programmatic mark-as-interacted.
  *
  * The maintainer's gap: when a field is populated programmatically
  * (file import, paste, autofill), there's no ergonomic way to mark
@@ -71,11 +71,9 @@ function asTouchable<F>(form: F): F & FormWithTouch {
   return form as unknown as F & FormWithTouch
 }
 
-// -----------------------------------------------------------------------------
 // v3 adapter
-// -----------------------------------------------------------------------------
 
-describe('form.touch — zod-v3 adapter', () => {
+describe('form.touch: zod-v3 adapter', () => {
   const schema = zV3.object({
     email: zV3.string().min(1),
     profile: zV3.object({
@@ -102,7 +100,7 @@ describe('form.touch — zod-v3 adapter', () => {
     expect(form.fields('email').touched).toBe(true)
   })
 
-  it('idempotent — touching twice keeps touched=true', async () => {
+  it('idempotent: touching twice keeps touched=true', async () => {
     const form = asTouchable(makeForm())
     form.touch('email')
     await nextTick()
@@ -166,18 +164,16 @@ describe('form.touch — zod-v3 adapter', () => {
     const baseline = runs
     form.touch('profile')
     await nextTick()
-    // Vue may run the computed once (re-evaluation) — anything more
+    // Vue may run the computed once (re-evaluation), anything more
     // means we're firing per-leaf instead of batching.
     expect(watcher.value).toBe(true)
     expect(runs - baseline).toBeLessThanOrEqual(2)
   })
 })
 
-// -----------------------------------------------------------------------------
 // v4 adapter
-// -----------------------------------------------------------------------------
 
-describe('form.touch — zod-v4 adapter', () => {
+describe('form.touch: zod-v4 adapter', () => {
   const schema = zV4.object({
     email: zV4.string().min(1),
     profile: zV4.object({

@@ -17,7 +17,7 @@ import type { PathKey } from '../../src/runtime/core/paths'
  * the engine injects `now`, threads the previous `DisplayMachine`, and
  * supplies `validatingSince` (the streak anchor). Because every input
  * is explicit, the show-delay / min-visible behaviour is testable without
- * a clock or a mounted form — that is the backbone these tests pin down.
+ * a clock or a mounted form: that is the backbone these tests pin down.
  * Integration coverage (a real form, real timers) lives in
  * `display-state.test.ts`.
  */
@@ -61,7 +61,7 @@ function ctx(over: Partial<DisplayCtx> = {}): DisplayCtx {
   }
 }
 
-describe('default reducer — settled verdict (validatingSince: null)', () => {
+describe('default reducer: settled verdict (validatingSince: null)', () => {
   // The gate / error / earned-success / container matrix. With nothing in
   // flight the reducer collapses to the documented heuristic, and `now`
   // never changes the answer (the SSR-equivalence guarantee).
@@ -182,7 +182,7 @@ describe('default reducer — settled verdict (validatingSince: null)', () => {
   })
 })
 
-describe('default reducer — the reveal gate governs the spinner', () => {
+describe('default reducer: the reveal gate governs the spinner', () => {
   it('gate closed + validating past show-delay stays idle (no spinner mid-first-entry)', () => {
     // No submit, not blurred-after-interaction: the gate is closed. Even a
     // slow validation must not surface a spinner before the user engages,
@@ -211,7 +211,7 @@ describe('default reducer — the reveal gate governs the spinner', () => {
     // At first paint the gate is closed (submissionAttempts=0, not yet
     // blurred-after-interaction), so a mid-validation field renders idle
     // regardless of `now`. The server (now=0) and the client's first render
-    // (now=Date.now()) therefore agree — no hydration mismatch on the display
+    // (now=Date.now()) therefore agree: no hydration mismatch on the display
     // projection. Locks the load-bearing constraint that the gate stays closed
     // through SSR / first client render.
     const validatingClosed = ctx({
@@ -223,7 +223,7 @@ describe('default reducer — the reveal gate governs the spinner', () => {
   })
 })
 
-describe('default reducer — show-delay window', () => {
+describe('default reducer: show-delay window', () => {
   const gatedError = field({ errors: [ownError], blurredAfterInteraction: true })
 
   it('fast validation holds the prior verdict and schedules a review at the window edge', () => {
@@ -232,15 +232,15 @@ describe('default reducer — show-delay window', () => {
       prev,
       ctx({ field: gatedError, validatingSince: 1000, now: 1000 })
     )
-    // Held — no spinner — and the engine is told to look again at +showDelay.
+    // Held, no spinner, and the engine is told to look again at +showDelay.
     expect(next.display).toBe('error')
     expect(next.reviewAt).toBe(1000 + showDelay)
     expect(next.pendingShownAt).toBeUndefined()
   })
 
   it('holds a headless (focused: null) success through the window (no blur signal)', () => {
-    // A re-validation with no focus to act on — a programmatic / cross-field run
-    // on a field with no bound element — keeps the full show-delay: the prior
+    // A re-validation with no focus to act on: a programmatic / cross-field run
+    // on a field with no bound element, keeps the full show-delay: the prior
     // `success` is held (not recomputed to idle), exactly as for a focused edit.
     const prev: DisplayMachine = { display: 'success' }
     const inFlight = field({ valid: false, blurredAfterInteraction: true, focused: null })
@@ -255,8 +255,8 @@ describe('default reducer — show-delay window', () => {
   it('focus-out collapses the window to the settle grace (holds briefly, reviews at the grace edge)', () => {
     // The instant the user focuses out, the show-delay (which exists to swallow
     // the spinner during typing) collapses to a brief settle grace. The prior
-    // verdict is still held for that grace — a fast validation settling inside
-    // it resolves to its real verdict with no spinner — but the review is now
+    // verdict is still held for that grace: a fast validation settling inside
+    // it resolves to its real verdict with no spinner, but the review is now
     // scheduled at the grace edge, not the far show-delay edge.
     const prev: DisplayMachine = { display: 'success' }
     const blurred = field({ valid: false, blurredAfterInteraction: true, focused: false })
@@ -270,7 +270,7 @@ describe('default reducer — show-delay window', () => {
 
   it('focus-out past the settle grace, still validating → pending at once', () => {
     // The grace elapsed and the validation is still in flight: it outlived the
-    // grace, so it is genuinely async — surface the spinner now rather than
+    // grace, so it is genuinely async, surface the spinner now rather than
     // waiting out the rest of a window the user has left.
     const prev: DisplayMachine = { display: 'success' }
     const blurred = field({ valid: false, blurredAfterInteraction: true, focused: false })
@@ -287,7 +287,7 @@ describe('default reducer — show-delay window', () => {
     // Editing a valid field re-validates it; inside the show-delay window the
     // in-flight field reads `valid: false` only because a check is running, so
     // the reducer holds the prior `success` rather than recomputing idle. The
-    // window holds every prior verdict uniformly — focus is not special — so a
+    // window holds every prior verdict uniformly, focus is not special, so a
     // value edited toward another still-valid value never flickers
     // success → idle → success; it goes success → pending → success.
     const prev: DisplayMachine = { display: 'success' }
@@ -319,7 +319,7 @@ describe('default reducer — show-delay window', () => {
     // Live report: a filled, valid (success) field, re-focused and edited to
     // another still-valid value, flashed `idle` before the spinner. The window
     // must hold the prior `success`, so the only transitions a slow
-    // re-validation produces are success → pending → success — no idle frame.
+    // re-validation produces are success → pending → success: no idle frame.
     const editing = field({
       valid: false,
       blurredAfterInteraction: true,
@@ -341,7 +341,7 @@ describe('default reducer — show-delay window', () => {
     )
     expect(pastWindow.display).toBe('pending')
 
-    // 3. Settles valid past min-visible: success — never having shown idle.
+    // 3. Settles valid past min-visible: success, never having shown idle.
     const settled = field({
       valid: true,
       blurredAfterInteraction: true,
@@ -366,7 +366,7 @@ describe('default reducer — show-delay window', () => {
   })
 })
 
-describe('default reducer — slow validation surfaces pending', () => {
+describe('default reducer: slow validation surfaces pending', () => {
   it('past the show-delay, still validating → pending, anchored now, held for min-visible', () => {
     const prev: DisplayMachine = { display: 'error' }
     const now = 1000 + showDelay
@@ -396,12 +396,12 @@ describe('default reducer — slow validation surfaces pending', () => {
     expect(next.display).toBe('pending')
     expect(next.pendingShownAt).toBe(2000)
     // No reviewAt: the next move comes from the run settling (reactive),
-    // not from a timer — so the engine schedules nothing and can't busy-loop.
+    // not from a timer: so the engine schedules nothing and can't busy-loop.
     expect(next.reviewAt).toBeUndefined()
   })
 })
 
-describe('default reducer — min-visible hold', () => {
+describe('default reducer: min-visible hold', () => {
   it('settled but inside min-visible → still pending', () => {
     const prev = PENDING_AT(2000)
     const next = defaultDisplayState(
@@ -432,7 +432,7 @@ describe('default reducer — min-visible hold', () => {
   })
 })
 
-describe('default reducer — cross-episode continuity', () => {
+describe('default reducer: cross-episode continuity', () => {
   it('a new validation starting mid-spinner keeps the spinner anchored (no flicker)', () => {
     const prev = PENDING_AT(2000)
     // A fresh streak opened at 2050, while the spinner from 2000 is still up.
@@ -494,20 +494,19 @@ describe('createDisplayEngine', () => {
     })
 
     it('re-arms a still-future deadline it already fired for', () => {
-      // Regression: the forward-progress guard used to refuse any deadline
-      // equal to the one just fired, on the premise that legitimate timing
-      // always advances a deadline. The min-visible hold breaks that
-      // premise by design: while a spinner is inside its window the reducer
+      // The forward-progress guard must accept a deadline equal to the
+      // one just fired. "Legitimate timing always advances a deadline" is
+      // false by design here: inside its window the min-visible hold
       // re-emits `pendingShownAt + minVisible`, the SAME instant on every
-      // pass. A timer that fired a fraction early left the reducer
-      // re-emitting that deadline while the guard still held it, so the
-      // engine cleared the timer and armed nothing. The field then held
-      // `'pending'` forever, showing `aria-busy="true"` over a validation
-      // that had already finished and committed its error.
+      // pass. A guard refusing it drops the re-emit of a timer that fired
+      // a fraction early, so the engine clears the timer, arms nothing,
+      // and the field holds `'pending'` forever, showing
+      // `aria-busy="true"` over a validation that already committed its
+      // error.
       //
-      // This is the `docs-demos-smoke > async-refinements` flake. It is
-      // spelled out against the engine rather than the demo because the
-      // demo only reaches it at ~2-3% per mount.
+      // This is the `docs-demos-smoke > async-refinements` flake, spelled
+      // out against the engine rather than the demo because the demo only
+      // reaches it at ~2-3% per mount.
       const engine = createDisplayEngine(false)
       // A reducer that pins one fixed future deadline, which is what the
       // min-visible hold looks like from the engine's side.
@@ -590,12 +589,13 @@ describe('createDisplayEngine', () => {
   })
 })
 
-describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () => {
-  // `getDisplayState` is consumer-overridable; a custom predicate can return a
-  // pathological `reviewAt` (bad arithmetic → NaN/Infinity, a unit slip → a
-  // huge value, a fixed/past timestamp). The try/catch in field-state-api only
-  // covers THROWS — a bad RETURN value must not reach setTimeout and spin the
-  // engine. None of these arise from the library default.
+describe('createDisplayEngine: untrusted reducer reviewAt (robustness)', () => {
+  // The engine resolves through a `GetDisplayState` reducer, and a
+  // reducer can return a pathological `reviewAt`: NaN or Infinity from
+  // bad arithmetic, a huge value from a unit slip, a fixed or past
+  // timestamp. field-state-api's try/catch covers only THROWS, so a bad
+  // RETURN value must not reach setTimeout and spin the engine. The
+  // library's own reducer produces none of these.
   const KEY = 'x' as PathKey
   const gated = () => field({ blurredAfterInteraction: true })
 
@@ -636,9 +636,8 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
   })
 
   it('reviews a pending machine the reducer gave no deadline at all', () => {
-    // The structural guarantee, stated directly. `getDisplayState` is a
-    // consumer-overridable extension point, and the library's own reducer
-    // returns no `reviewAt` on its in-flight branch, so "the next
+    // The structural guarantee, stated directly: the library's own
+    // reducer returns no `reviewAt` on its in-flight branch, so "the next
     // re-evaluation comes from a reactive change" cannot be the only way
     // out of a spinner.
     const engine = createDisplayEngine(false)
@@ -679,14 +678,14 @@ describe('createDisplayEngine — untrusted reducer reviewAt (robustness)', () =
     const farFuture: GetDisplayState = (_p, c) => ({ display: 'pending', reviewAt: c.now + 1e15 })
     engine.resolve(KEY, ctx({ field: gated(), validatingSince: 0, now: 0 }), farFuture)
     expect(engine.hasTimer?.()).toBe(true)
-    // A normal advance must NOT fire it — an un-clamped 1e15 ms would overflow
+    // A normal advance must NOT fire it: an un-clamped 1e15 ms would overflow
     // a 32-bit setTimeout and fire almost immediately, then re-arm and loop.
     vi.advanceTimersByTime(10_000)
     expect(engine.hasTimer?.()).toBe(true)
     engine.dispose()
   })
 
-  it('refuses to re-arm for the exact deadline it just fired — no fire loop', () => {
+  it('refuses to re-arm for the exact deadline it just fired: no fire loop', () => {
     const engine = createDisplayEngine(false)
     let calls = 0
     // A misbehaving predicate that re-emits the same past deadline forever.

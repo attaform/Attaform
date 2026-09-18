@@ -59,7 +59,7 @@ describe('default-values hydration skips history', () => {
     apps.push(app)
     await waitUntil(() => (api.hydrating === false ? true : null))
     expect(api.values.email).toBe('a@b.c')
-    // Despite the apply that just landed, history must remain clean —
+    // Despite the apply that just landed, history must remain clean,
     // undo would otherwise expose the transient slim-default state.
     expect(api.history.canUndo).toBe(false)
   })

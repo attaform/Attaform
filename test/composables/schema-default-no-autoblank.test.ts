@@ -11,10 +11,10 @@ import { waitUntil } from '../utils/form-harness'
 type AnyFormReturn = UseFormReturnType<Record<string, unknown>>
 
 /**
- * Regression — the auto-mark side-channel must NOT fire for numeric
+ * Regression: the auto-mark side-channel must NOT fire for numeric
  * leaves whose schema-declared default is non-empty.
  *
- * The /docs/schemas/defaults demo's panel 1 ("bare — schema defaults
+ * The /docs/schemas/defaults demo's panel 1 ("bare, schema defaults
  * only") wires `z.number().default(10)` with no `defaultValues`. The
  * intent: storage holds `10`, the `<input type="number">` renders
  * `"10"`, the user sees the schema author's prefill. Observed bug:
@@ -25,7 +25,7 @@ type AnyFormReturn = UseFormReturnType<Record<string, unknown>>
  * slim subtree at root comes from `getDefaultAtPath([])`, which
  * honors `.default(10)` and returns `{ count: 10, … }`. The walker
  * saw `count: 10` (numeric), auto-marked it, and the display path
- * collapsed to `''` — even though the schema author explicitly asked
+ * collapsed to `''`, even though the schema author explicitly asked
  * for `10` as the starting value.
  *
  * The auto-mark side-channel exists for one reason: `<input
@@ -34,7 +34,7 @@ type AnyFormReturn = UseFormReturnType<Record<string, unknown>>
  * to distinguish "user supplied nothing" from "user typed 0". That
  * divergence only exists for the slim primitives (`0` / `0n`); any
  * other numeric value (including the schema's declared default) has
- * no divergence — the input can render `10` as `"10"` natively.
+ * no divergence: the input can render `10` as `"10"` natively.
  *
  * The contract this test pins: auto-mark fires for `value === 0 ||
  * value === 0n`, and ONLY for those. Schema authors who declare a
@@ -42,7 +42,7 @@ type AnyFormReturn = UseFormReturnType<Record<string, unknown>>
  * field renders their value.
  */
 
-describe('bare useForm + z.number().default(10) — no auto-mark, input renders 10', () => {
+describe('bare useForm + z.number().default(10): no auto-mark, input renders 10', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -107,7 +107,7 @@ describe('bare useForm + z.number().default(10) — no auto-mark, input renders 
     expect(form.blankPaths.value.has('count')).toBe(false)
   })
 
-  it('storage = 0 (the slim) DOES auto-mark — bare z.number() with no .default()', async () => {
+  it('storage = 0 (the slim) DOES auto-mark: bare z.number() with no .default()', async () => {
     // Anchor the other side of the contract. With no .default(),
     // storage holds the slim 0 and the side-channel kicks in:
     // the path is in blankPaths and the input renders "".

@@ -35,8 +35,8 @@ import { awaitSettle, waitUntil } from '../utils/form-harness'
  * host and injects the value channel. The directive supplies the rich
  * FieldState: at `mounted` it discovers the real inner control and registers
  * it (connected + focus/blur + the aria / scroll-to-error target), telling a
- * `useRegister` wrapper (Case A — inner control self-registered) apart from a
- * third-party component (Case B — nothing registered yet).
+ * `useRegister` wrapper (Case A, inner control self-registered) apart from a
+ * third-party component (Case B, nothing registered yet).
  *
  * Two test surfaces:
  *   - store-level, driving the directive hooks against a real FormStore for
@@ -52,9 +52,7 @@ function elementCount(state: ReturnType<typeof createFormStore<F>>, path: string
   return state.domBinding.value?.elements.get(canonicalizePath(path).key)?.elements.size ?? 0
 }
 
-// ---------------------------------------------------------------------------
 // Store-level: drive the directive hooks directly against a real FormStore.
-// ---------------------------------------------------------------------------
 
 describe('v-register component host: element discovery (store-level)', () => {
   // The directive's `mounted` schedules a deferred dev-warn via `nextTick`;
@@ -118,7 +116,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     return el
   }
 
-  it('latches the single inner control — connected true, exactly one element registered', () => {
+  it('latches the single inner control: connected true, exactly one element registered', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     const inner = input({ type: 'text' })
@@ -130,7 +128,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
-  it('excludes a type=hidden mirror — latches the visible control', () => {
+  it('excludes a type=hidden mirror: latches the visible control', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     const mirror = input({ type: 'hidden' })
@@ -145,7 +143,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
-  it('excludes an aria-hidden (tabindex=-1) mirror — latches the visible control', () => {
+  it('excludes an aria-hidden (tabindex=-1) mirror: latches the visible control', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     // The reka-ui PinInput / BubbleInput pattern: a sr-only mirror input carries
@@ -162,7 +160,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     expect(state.getFieldRecord(['email'])?.connected).toBe(true)
   })
 
-  it('excludes a tabindex=-1 mirror that lacks aria-hidden — latches the visible control', () => {
+  it('excludes a tabindex=-1 mirror that lacks aria-hidden: latches the visible control', () => {
     const { state, register } = makeForm()
     const rv = register(['email'])
     // The reka-ui Combobox BubbleInput uses data-hidden, not aria-hidden, so
@@ -451,11 +449,9 @@ describe('v-register component host: element discovery (store-level)', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
 // Integration: mount a real component tree with the modifier injected through
 // withDirectives' 4-tuple (dir, value, arg, modifiers), proving the
 // compile-time signal reaches binding.modifiers and the branch fires.
-// ---------------------------------------------------------------------------
 
 const schema = z.object({ email: z.string(), name: z.string() })
 type Api = UseFormReturn<typeof schema>
@@ -585,7 +581,7 @@ describe('v-register component host: integration (modifier plumbed through)', ()
     expect(m.api.fields.email.blurred).toBe(true)
   })
 
-  it('does NOT fire the "is a no-op" warn — a value-binding host is not a no-op', async () => {
+  it('does NOT fire the "is a no-op" warn: a value-binding host is not a no-op', async () => {
     m = await mountHost(DivWrappedInput)
     expect(m.warnings.filter((w) => w.includes('is a no-op')).length).toBe(0)
   })
@@ -659,7 +655,6 @@ describe('v-register component host: integration (modifier plumbed through)', ()
   })
 })
 
-// ---------------------------------------------------------------------------
 // Phase 3: autoAria on the latched control. The host root's own setupAria (the
 // `created` hook) no-ops on a non-interactive wrapper, so the directive manages
 // aria on the discovered inner control instead, seeding the authored-attr locks
@@ -667,7 +662,6 @@ describe('v-register component host: integration (modifier plumbed through)', ()
 // element). Case A (useRegister wrapper) is untouched: its inner control's own
 // directive already manages aria, and activateComponentHost steps aside before
 // the latch.
-// ---------------------------------------------------------------------------
 
 const ariaSchema = z.object({ email: z.string().min(1), note: z.string().optional() })
 type AriaApi = UseFormReturn<typeof ariaSchema>
@@ -759,7 +753,7 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
     expect(m.inner().getAttribute('aria-describedby')).toBe(m.api.fields.email.aria.errorId)
   })
 
-  it('watches display state live — a failed submit flips aria-invalid post-mount', async () => {
+  it('watches display state live: a failed submit flips aria-invalid post-mount', async () => {
     m = await mountAriaHost(DivWrappedInput)
     // Gate closed pre-interaction: nothing surfaced on the control.
     expect(m.inner().hasAttribute('aria-invalid')).toBe(false)
@@ -804,14 +798,12 @@ describe('v-register component host: autoAria on the latched control (Phase 3)',
   })
 })
 
-// ---------------------------------------------------------------------------
 // Container-path binding: a composite host bound directly to a CONTAINER path
 // (array / object) records its connect / focus state on the container's OWN
 // field record. The aggregate walk visits strict descendants only, so it must
 // also fold the container's own record in -- the same own-path case the file
 // directive hits. Dot access stays the subtree graph; the aggregate is the
 // call form `form.fields(path)`.
-// ---------------------------------------------------------------------------
 
 const containerHostSchema = z.object({ tags: z.array(z.string()) })
 type ContainerApi = UseFormReturn<typeof containerHostSchema>

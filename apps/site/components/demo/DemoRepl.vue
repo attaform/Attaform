@@ -8,7 +8,7 @@
   //   1. Reserve the editor's footprint at SSR time. The wrapper
   //      ships server-side at the consumer-supplied `height`, with
   //      an editor-shaped skeleton inside. The page lays out at the
-  //      final dimensions before any client JS runs — no shift on
+  //      final dimensions before any client JS runs: no shift on
   //      hydration, no shift when the heavy editor swaps in.
   //
   //   2. Defer-mount + route-leave-guard the actual `<DemoReplEditor>`
@@ -28,7 +28,7 @@
       height?: string
       // Overrides the editor's seed source. Forwarded to
       // `<DemoReplEditor>`. Undefined means "use the default shipment
-      // demo" — the original homepage + freeform-playground behaviour.
+      // demo": the original homepage + freeform-playground behaviour.
       initialSource?: string
       // Multi-file seed: `{ 'src/App.vue': '<source>', 'src/Foo.vue': ... }`.
       // Wins over `initialSource` when both are provided. The editor
@@ -191,7 +191,7 @@
 
 <style>
   /* @vue/repl's default compile-error overlay (.msg.err) is alarm-red
-     and instant — every keystroke that lands on incomplete TS flashes
+     and instant: every keystroke that lands on incomplete TS flashes
      a giant red panel across the bottom of the iframe. For a demo on a
      marketing page that's hostile UX. Two changes:
 
@@ -199,7 +199,7 @@
         get a chance to flash before the next character makes it valid
         again. Genuine "I left it broken" errors still surface, just
         without the strobe effect.
-     2. Tone the palette down — a small bottom strip with a left
+     2. Tone the palette down: a small bottom strip with a left
         accent bar instead of the full-width alarmscape, so when it
         does show it reads as feedback rather than failure. */
   .demo-repl .msg.err {
@@ -231,7 +231,7 @@
   /* @vue/repl renders the lone "preview" tab as <span>preview</span>
      and uppercases it via `text-transform: uppercase`. Overriding to
      `capitalize` rerenders "preview" as "Preview" without touching
-     the layout — keeps the active-tab underline (a `border-bottom`
+     the layout: keeps the active-tab underline (a `border-bottom`
      on the button, sized off the span's content width) intact. */
   .demo-repl .tab-buttons button > span {
     text-transform: capitalize;
@@ -244,7 +244,7 @@
      false` to suppress the BUTTONS, but the wrapping `<div>` still
      renders (empty, just two `<!---->` placeholders). The wrapper is
      `position: absolute` so it stays in the layout and visually
-     occludes the bottom-right corner of the editor pane — overlapping
+     occludes the bottom-right corner of the editor pane: overlapping
      the code area and intercepting clicks meant for the editor.
      Hiding the empty wrapper restores the corner without affecting
      anything else (the underlying buttons are already gone via the

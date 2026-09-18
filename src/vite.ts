@@ -1,39 +1,12 @@
 /**
- * `attaform/vite` — Vite plugin that wires the compile-time node
- * transforms with @vitejs/plugin-vue, binds `v-register` into each
- * compiled template that uses it (so no app-level directive
- * registration exists or is needed), AND rewrites `attaform` and
- * `attaform/zod` imports to either `attaform/zod-v3` or `attaform/zod-v4`
- * at build time, based on the consumer's installed Zod major. The result
- * is one Zod adapter shipped per bundle, with no manual subpath choice.
+ * `attaform/vite`, the Vite plugin. See {@link attaform} for what it
+ * does and how to register it.
  *
- * Usage (bare Vue 3 consumers):
- *
- *   // vite.config.ts
- *   import vue from '@vitejs/plugin-vue'
- *   import { attaform } from 'attaform/vite'
- *
- *   export default defineConfig({
- *     plugins: [vue(), attaform()],
- *   })
- *
- * The transforms inject `:value`, `:checked`, and `:selected` bindings
- * into elements that use the `v-register` directive — load-bearing for
- * SSR initial-render correctness. Omitting this plugin under CSR is
- * tolerable (one-frame flash on mount); omitting it under SSR produces
- * visibly wrong initial HTML.
- *
- * The `resolveZodAlias` option (default `true`) controls the build-time
- * rewrite of `attaform` / `attaform/zod`. Set to `false` if your project
- * intentionally mixes Zod versions or has a non-standard Zod resolution;
- * the unified entry's runtime dispatch covers that case at the cost of
- * bundling both adapters.
- *
- * Implementation note: this plugin mutates @vitejs/plugin-vue's options
- * via the documented but somewhat informal `api.options` surface used
- * by VueUse, Vite PWA, and other Vue ecosystem plugins. If you're
- * using a custom Vue plugin wrapper, fall back to `attaform/transforms`
- * and wire them yourself.
+ * It mutates @vitejs/plugin-vue's options through the documented but
+ * somewhat informal `api.options` surface that VueUse, Vite PWA and
+ * other Vue ecosystem plugins also use. Behind a custom Vue plugin
+ * wrapper, fall back to `attaform/transforms` and wire the transforms
+ * yourself.
  */
 import type { Plugin } from 'vite'
 import { isRewritableZodSpecifier, resolveZodAliasTarget } from './core/detect-zod-major'
@@ -50,8 +23,8 @@ export interface AttaformVitePluginOptions {
   /**
    * Rewrite `attaform` and `attaform/zod` imports at build time to
    * either `attaform/zod-v3` or `attaform/zod-v4`, based on the
-   * consumer's installed Zod major. Default `true` — produces a leaner
-   * bundle for the common case of one Zod version per project.
+   * consumer's installed Zod major. Default `true`, which produces a
+   * leaner bundle for the common case of one Zod version per project.
    *
    * Set to `false` to fall through to the unified entry's runtime
    * dispatch. Useful when:
@@ -76,12 +49,10 @@ interface VitePluginVueApi {
 }
 
 /**
- * Vite plugin that wires the form library's compile-time template
- * transforms into `@vitejs/plugin-vue`, binds the `v-register`
- * directive into each compiled template that uses it, and rewrites the
- * bare `attaform` barrel and the unified `attaform/zod` import to the
- * matching adapter subpath. Required for SSR and for hydration
- * accuracy under bare Vue 3.
+ * Vite plugin that wires Attaform's compile-time template transforms
+ * into `@vitejs/plugin-vue`, binds `v-register` into each compiled
+ * template that uses it, and rewrites the bare `attaform` barrel and
+ * the unified `attaform/zod` import to the matching adapter subpath.
  *
  * ```ts
  * // vite.config.ts
@@ -93,14 +64,20 @@ interface VitePluginVueApi {
  * })
  * ```
  *
- * Place the call after `vue()` in the plugins array. Nuxt projects
- * don't need this — `attaform/nuxt` handles it.
+ * Place the call after `vue()`. Nuxt projects do not need it;
+ * `attaform/nuxt` handles this.
  *
- * Returns a two-plugin array (Vite flattens nested plugin arrays): the
- * main pre-plugin above, plus a post-plugin that rewrites each compiled
- * SFC's `resolveDirective("register")` to a static import from
- * `attaform/directive`. The rewrite is why no app-level directive
- * registration exists or is needed here — see
+ * The transforms inject `:value`, `:checked` and `:selected` onto
+ * elements using `v-register`, which is load-bearing for SSR
+ * initial-render correctness. Omitting the plugin under CSR costs a
+ * one-frame flash on mount; omitting it under SSR produces visibly
+ * wrong initial HTML.
+ *
+ * Returns a two-plugin array, since Vite flattens nested plugin arrays:
+ * the main pre-plugin, plus a post-plugin rewriting each compiled SFC's
+ * `resolveDirective("register")` to a static import from
+ * `attaform/directive`. That rewrite is why no app-level directive
+ * registration is needed here; see
  * `runtime/lib/core/transforms/directive-delivery-transform.ts` for the
  * mechanism and its scope.
  */
@@ -117,7 +94,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
     enforce: 'pre',
     configResolved(resolved) {
       const vuePlugin = resolved.plugins.find((p) => p.name === 'vite:vue')
-      // Two distinct failure modes — separate error messages so the
+      // Two distinct failure modes get separate error messages, so the
       // consumer's fix is unambiguous:
       //   1. plugin not in the plugins array → install + register vue()
       //   2. plugin found but version-incompatible (no `api.options`) →
@@ -141,26 +118,13 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
       const existing = api.options.template.compilerOptions.nodeTransforms ?? []
       // Idempotent install: if a previous attaform() invocation
       // (vite + nuxt module + manual `plugins: [attaform()]`) has
-      // already pushed our transforms, skip — re-pushing would double
+      // already pushed our transforms, skip. Re-pushing would double
       // every binding the AST emits, breaking the IIFE-wrapping
       // invariants downstream transforms depend on. We detect the
       // sentinel via reference equality; user-supplied transforms with
       // the same name don't collide.
       if (!existing.includes(vRegisterPreambleTransform as unknown)) {
-        // Two ordering constraints:
-        //   1. redundantBindingWarnTransform MUST come before
-        //      componentBridgeTransform and inputTextAreaNodeTransform. It
-        //      reads the author's props to warn about a redundant :value /
-        //      :checked / :selected beside v-register; those two transforms
-        //      strip and re-inject that channel, so anything after them sees
-        //      the injected props, not what the author wrote.
-        //   2. vRegisterPreambleTransform MUST come before
-        //      vRegisterHintTransform — the preamble's pre-order captures each
-        //      `v-register` expression in its raw (un-wrapped) form, and the
-        //      hint then mutates the same directive's `exp` to wrap it.
-        //      Reversing the order would have the preamble pick up an
-        //      already-wrapped IIFE, double-wrapping it when injected at the
-        //      root.
+        // This order is load-bearing; see `attaform/transforms` for why.
         api.options.template.compilerOptions.nodeTransforms = [
           ...existing,
           redundantBindingWarnTransform,
@@ -184,19 +148,17 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
       )
     },
     configureServer(server) {
-      // Dev-only middleware that serves the Nuxt DevTools overlay panel's
-      // iframe HTML at `/_attaform_devtools`. The middleware lives at the
-      // Vite layer so the route is intercepted BEFORE vue-router sees it —
-      // crucial for consumers using `app.vue`-only (no `pages/` directory).
-      // Earlier prototypes injected a Nuxt page via `extendPages`, which
-      // implicitly activates Nuxt's pages mode and broke app.vue-only
-      // setups by stranding `/` without a NuxtPage host.
+      // Dev-only middleware serving the Nuxt DevTools overlay panel's
+      // iframe HTML at `/_attaform_devtools`. It must stay at the Vite
+      // layer so the route is intercepted BEFORE vue-router sees it:
+      // injecting a Nuxt page via `extendPages` instead would implicitly
+      // activate pages mode and strand `/` without a NuxtPage host in
+      // app.vue-only setups.
       //
-      // The HTML pulls Vue + the panel component via bare specifiers;
-      // `transformIndexHtml` rewrites them through Vite's resolver so the
-      // browser-side `<script type="module">` runs cleanly. Production
-      // builds skip the middleware entirely — `configureServer` only
-      // fires for the dev server.
+      // The HTML pulls Vue and the panel component via bare specifiers;
+      // `transformIndexHtml` rewrites them through Vite's resolver so
+      // the browser-side module runs cleanly. `configureServer` only
+      // fires for the dev server, so production skips all of this.
       server.middlewares.use(
         '/_attaform_devtools',
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -250,7 +212,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
 
       // The panel runs inside Nuxt DevTools' overlay iframe, which itself
       // is nested in the consumer's main page. \`window.parent\` only
-      // crosses one frame boundary — the overlay UI — which doesn't have
+      // crosses one frame boundary (the overlay UI), which doesn't have
       // the bridge attached. The bridge lives on the consumer's main
       // page, which sits at the top of the frame hierarchy. Walk the
       // chain checking each ancestor frame so the same code works whether
@@ -307,7 +269,7 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
     },
     async resolveId(source, importer) {
       // Intercept the bare `attaform` barrel AND the explicit
-      // `attaform/zod` — both carry the runtime dispatcher, so both
+      // `attaform/zod`: both carry the runtime dispatcher, so both
       // collapse to the one detected adapter. The pinned subpaths
       // (`attaform/zod-v3`, `attaform/zod-v4`) pass through unchanged:
       // that's the documented escape hatch for power users who want a
@@ -316,12 +278,13 @@ export function attaform(options: AttaformVitePluginOptions = {}): Plugin[] {
       if (aliasTarget === null) return null
       if (!isRewritableZodSpecifier(source)) return null
       // Returning the bare specifier directly would freeze it as the
-      // resolved id — Vite then ships `/@id/attaform/zod-v4` to the
-      // browser and 404s because no plugin loads that virtual URL.
+      // resolved id, and Vite would then ship `/@id/attaform/zod-v4` to
+      // the browser and 404, since no plugin loads that virtual URL.
       // Re-run the new specifier through the resolver chain so the
       // matching subpath export lands as a real file path.
-      // `skipSelf: true` is defensive — our filter rejects the rewritten
-      // target anyway, but keeps the hook reentrant under future edits.
+      // `skipSelf: true` is defensive: the filter rejects the rewritten
+      // target anyway, but it keeps the hook reentrant under later
+      // edits.
       return this.resolve(aliasTarget, importer, { skipSelf: true })
     },
     transform(code, id) {

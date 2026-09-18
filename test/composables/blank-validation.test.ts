@@ -40,7 +40,7 @@ function setupForm<F extends z.ZodObject<Record<string, z.ZodType>>>(schema: F) 
   return { app, form: captured }
 }
 
-describe('handleSubmit — required-empty raises a synthesised error', () => {
+describe('handleSubmit: required-empty raises a synthesised error', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -55,7 +55,7 @@ describe('handleSubmit — required-empty raises a synthesised error', () => {
     const { app, form } = setupForm(schema)
     apps.push(app)
 
-    // Mark income as blank via the RegisterValue back-door — the
+    // Mark income as blank via the RegisterValue back-door: the
     // register binding exposes setValueWithInternalPath, which is
     // what the directive calls when the user clears a numeric input.
     const binding = form.register('income') as unknown as {
@@ -199,7 +199,7 @@ describe('handleSubmit — required-empty raises a synthesised error', () => {
   })
 })
 
-describe('parse({ commit: true }) — surfaces required-empty errors', () => {
+describe('parse({ commit: true }): surfaces required-empty errors', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -240,7 +240,7 @@ describe('parse({ commit: true }) — surfaces required-empty errors', () => {
     incomeBinding.setValueWithInternalPath(0, { blank: true })
     nameBinding.setValueWithInternalPath('', { blank: true })
 
-    // Validate just the income subtree — the name's required-empty
+    // Validate just the income subtree: the name's required-empty
     // error should NOT contribute (different path scope).
     const result = await form.parse('income', { commit: true })
     expect(result.success).toBe(false)

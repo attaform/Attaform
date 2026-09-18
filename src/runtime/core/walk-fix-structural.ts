@@ -1,20 +1,21 @@
 /**
- * The DU-aware structural fix walk (size-teardown sign-off 7) — the
- * construction-time replacement for the deleted slim-schema rebuild.
+ * The DU-aware structural fix walk (size-teardown sign-off 7): the
+ * construction-time pass that makes a consumer's `defaultValues` tree
+ * structurally conform to the schema.
  * Descends merged default DATA alongside the schema via the adapter's
  * `SchemaIntrospector`; v3 and v4 dispatch through this one body.
  *
  *  1. Schema-side input normalizers (`z.coerce.X()`, `z.preprocess`)
- *     accept raw consumer writes verbatim — their whole subtree passes
+ *     accept raw consumer writes verbatim, so their whole subtree passes
  *     through untouched (the no-write-mutation contract).
  *  2. A value whose slim-primitive kind is outside the node's accept
- *     set is replaced wholesale with the node's derived default —
+ *     set is replaced wholesale with the node's derived default;
  *     discriminated unions derive the variant the VALUE selects when
  *     its discriminator is usable, first option otherwise.
  *  3. A matching container recurses per child. Object recursion visits
  *     every DECLARED key (a constraint that set a declared key to a
- *     mismatched value — `undefined` included — gets that key's
- *     default filled in); undeclared keys are left alone. DU recursion
+ *     mismatched value, `undefined` included, gets that key's default
+ *     filled in); undeclared keys are left alone. DU recursion
  *     first removes keys foreign to the selected variant (the
  *     variant-memory / reshape machinery treats present keys as the
  *     active variant's state, so first-variant residue from the
@@ -23,7 +24,7 @@
  *
  * No schema is rebuilt and nothing parses, so user refinements and
  * transforms can never fire during construction, and refinement-level
- * violations are invisible by design — the adapter's construction
+ * violations are invisible by design, since the adapter's construction
  * parse owns surfacing those.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
@@ -48,7 +49,7 @@ export type FixStructuralResult<Form> = {
   /**
    * `false` when some structural mismatch could not be fixed (an
    * unsupported kind deriving `undefined`, say) and the partially-
-   * fixed tree shipped anyway — better than a mount-time exception.
+   * fixed tree shipped anyway, which beats a mount-time exception.
    */
   success: boolean
 }
@@ -128,7 +129,7 @@ function fixNode<Schema>(
     case 'pipe':
     case 'pipeline': {
       // Preprocess-shaped pipes returned above; a `.transform()` pipe
-      // stores its source on the IN side — fix structure against it.
+      // stores its source on the IN side, so fix structure against it.
       const pipeIn = intro.unwrapPipeIn(schema)
       if (pipeIn === undefined || intro.kindOf(pipeIn) === 'transform') return value
       return fixNode(pipeIn, value, ctx, lazyDepth)
@@ -218,7 +219,7 @@ function fixNode<Schema>(
  * Replacement value for a structural mismatch at `schema`.
  * Discriminated unions are VALUE-directed: when the offending value
  * already carries the union's discriminator key and it selects a
- * declared variant, the fix derives THAT variant's default —
+ * declared variant, the fix derives THAT variant's default;
  * first-option is only the fallback for values that select nothing.
  */
 function deriveFixValue<Schema>(schema: Schema, value: unknown, ctx: FixContext<Schema>): unknown {
@@ -237,7 +238,7 @@ function deriveFixValue<Schema>(schema: Schema, value: unknown, ctx: FixContext<
 /**
  * Resolve the DU variant the value itself selects: the option whose
  * discriminator literal includes `value[discriminatorKey]`. Returns
- * `undefined` when the value carries no usable discriminator — the
+ * `undefined` when the value carries no usable discriminator, where the
  * caller falls back to the first option.
  */
 function selectVariantByValue<Schema>(

@@ -6,7 +6,7 @@
  * its canonical path AND the exact `Set<SlimPrimitiveKind>` we know
  * the schema accepts there. Tests assert against the manifest, NOT
  * against `adapter.getSlimPrimitiveTypesAtPath`, because the latter
- * is one of the things under test — using it as the oracle would
+ * is one of the things under test, using it as the oracle would
  * make the test pass even if both adapter and gate drifted in
  * lockstep.
  *
@@ -57,7 +57,7 @@ const objectKey = fc
  * Each entry's `acceptSet` is the schema's slim-kind contract,
  * computed from the constructor we picked. They MUST match the
  * adapters' `getSlimPrimitiveTypesAtPath` output for the same
- * schema — the manifest sanity property catches drift.
+ * schema: the manifest sanity property catches drift.
  */
 function leafBuilders(z: ZNs): fc.Arbitrary<{
   schema: unknown
@@ -71,7 +71,7 @@ function leafBuilders(z: ZNs): fc.Arbitrary<{
     fc.constant({ schema: z.date(), acceptSet: new Set<SlimPrimitiveKind>(['date']) }),
     // .optional() / .nullable() add 'undefined' / 'null' to the inner
     // accept set. Per the AbstractSchema contract docs at
-    // src/runtime/types/types-api.ts:251-253.
+    // src/runtime/types/types-api.ts.
     fc.constant({
       schema: z.string().optional(),
       acceptSet: new Set<SlimPrimitiveKind>(['string', 'undefined']),
@@ -125,7 +125,7 @@ type Node = {
 }
 
 function buildNode(z: ZNs, depth: number): fc.Arbitrary<Node> {
-  // Leaves at any depth — and at depth 0 they're the only option.
+  // Leaves at any depth, and at depth 0 they're the only option.
   const leafNode = fc.oneof(...leafBuilders(z)).map<Node>((leaf) => ({
     schema: leaf.schema,
     entries: [{ path: [], acceptSet: leaf.acceptSet }],
@@ -182,10 +182,10 @@ export function buildSchemaWithManifest(z: ZNs, depth: number): fc.Arbitrary<Sch
 }
 
 /**
- * Comparable slim-primitive kinds — the ones whose values can be
+ * Comparable slim-primitive kinds: the ones whose values can be
  * deep-equal-compared via `expect(...).toEqual(...)`. Excludes
  * `'symbol'` / `'function'` (incomparable) and `'object'` /
- * `'array'` / `'map'` / `'set'` (compound — out of v1 scope, the
+ * `'array'` / `'map'` / `'set'` (compound, out of v1 scope, the
  * gate's leaf-write semantic is what we're testing).
  */
 export const COMPARABLE_KINDS = [

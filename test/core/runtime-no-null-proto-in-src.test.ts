@@ -1,5 +1,5 @@
 /**
- * Standing diagnostic for issue #314 — `Object.create(null)` must not
+ * Standing diagnostic for issue #314, `Object.create(null)` must not
  * reappear inside `src/runtime/` as a defensive idiom.
  *
  * The prototype-pollution hardening that landed in PRs #308-310 used
@@ -10,15 +10,14 @@
  * `@pinia/nuxt`'s payload reducer, which 500s every SSR page with a
  * form when both modules are installed).
  *
- * The fix swapped every container to a regular `{}` plus a `safeAssign`
- * helper (`Object.defineProperty` for the `__proto__` key) and
- * `safeOwnRead` / `safeOwnHas` for untrusted-key reads. After the
- * sweep, the runtime contains no `Object.create(null)` calls.
+ * Every container is a regular `{}` instead, with a `safeAssign` helper
+ * (`Object.defineProperty` for the `__proto__` key) and `safeOwnRead` /
+ * `safeOwnHas` for untrusted-key reads, so the runtime holds no
+ * `Object.create(null)` call at all.
  *
- * This test fails any PR that reintroduces the idiom — a contributor
- * tempted to "tighten the defense" by reaching back for null-prototype
- * gets caught at CI, and the failure message links to this docblock
- * so the rationale travels with the gate.
+ * This test fails any PR that reaches back for the idiom to "tighten the
+ * defense", and its failure message links here so the rationale travels
+ * with the gate.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'

@@ -93,12 +93,12 @@ describe('zod v4 adapter', () => {
 
     describe('an async sibling defers the whole construction verdict', () => {
       it('seeds nothing when an async refine exists, sync violations included', () => {
-        // Mixed schema: word's sync refine fails on ''. It used to seed
-        // anyway, because the adapter rebuilt the schema without its
-        // async predicates and parsed the copy. That walker is gone, so
-        // both verdicts now arrive together on the post-mount pass.
-        // Mirrored in `zod-v3/async-contract-parity.test.ts`, which is
-        // the point: one answer per schema, not one per major.
+        // A mixed schema: word's sync refine fails on ''. Both verdicts
+        // arrive together on the post-mount pass, rather than the sync
+        // one seeding early off a copy of the schema with its async
+        // predicates removed. Mirrored in
+        // `zod-v3/async-contract-parity.test.ts`, which is the point:
+        // one answer per schema, not one per major.
         const schema = z.object({
           word: z.string().refine((v) => v.length > 0, 'word required'),
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
@@ -217,8 +217,8 @@ describe('zod v4 adapter', () => {
     })
 
     it('distinguishes a literal-dot key from a sibling pair', async () => {
-      // The structured path `['user.name']` — a top-level key containing
-      // a literal `.` — must NOT collide with `['user', 'name']`. Before
+      // The structured path `['user.name']`: a top-level key containing
+      // a literal `.`, must NOT collide with `['user', 'name']`. Before
       // the AbstractSchema widening both collapsed to the same dotted
       // string and the walker resolved whichever branch was first. We
       // probe each resolved sub-schema with data the OTHER branch would

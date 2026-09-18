@@ -5,7 +5,7 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
 
 /**
  * Compile a template through @vue/compiler-core with both the preamble
- * AND the hint transform registered (in canonical order — preamble
+ * AND the hint transform registered (in canonical order, preamble
  * first), then assert against the generated render code string.
  */
 function compileWithTransforms(template: string): string {
@@ -89,7 +89,7 @@ describe('vRegisterPreambleTransform', () => {
          </div>`
       )
       // No data-atta-pre-mark emitted because the only v-register is on
-      // an iterated element — its path expression references the loop
+      // an iterated element, its path expression references the loop
       // local `i`, which isn't in scope at root level. Hoisting it
       // would produce a runtime ReferenceError.
       expect(code).not.toContain('data-atta-pre-mark')
@@ -127,7 +127,7 @@ describe('vRegisterPreambleTransform', () => {
     })
 
     it('does not inject when the only root content is text', () => {
-      // No element to host the preamble — bail silently rather than
+      // No element to host the preamble, bail silently rather than
       // synthesizing a wrapper element.
       const code = compileWithTransforms(`hello world`)
       expect(code).not.toContain('data-atta-pre-mark')
@@ -146,7 +146,7 @@ describe('vRegisterPreambleTransform', () => {
       // dynamic prop names in its PROPS patch flag too (e.g.
       // `["data-atta-pre-mark"]`), so the literal appears at least
       // twice in compiled output regardless. We instead count
-      // `markConnectedOptimistically` invocations — exactly one per
+      // `markConnectedOptimistically` invocations, exactly one per
       // collected binding when idempotent.
       const result = baseCompile(`<div><input v-register="form.register('email')" /></div>`, {
         nodeTransforms: [vRegisterPreambleTransform, vRegisterPreambleTransform],

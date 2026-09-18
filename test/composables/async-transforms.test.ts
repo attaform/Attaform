@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Commit 6 — async register transforms regression battery (plan items 1–9).
+// Commit 6, async register transforms regression battery (plan items 1–9).
 //
 // `register('path', { transforms })` stays byte-for-byte synchronous until a
 // transform returns a thenable; from there the write defers, commits the
@@ -71,7 +71,7 @@ const adapters = [
   { name: 'v3', useForm: useFormV3 as AnyUseForm, z: zV3 as unknown as typeof zV4 },
 ] as const
 
-describe.each(adapters)('async register transforms — $name', ({ useForm, z }) => {
+describe.each(adapters)('async register transforms: $name', ({ useForm, z }) => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -119,7 +119,7 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
       transforms: [(v: unknown) => String(v).trim(), (v: unknown) => String(v).toUpperCase()],
     })
     dispatchInput(input, '  hello  ')
-    // Read in the SAME tick — no await. A sync chain must never defer.
+    // Read in the SAME tick: no await. A sync chain must never defer.
     expect(api.values.field).toBe('HELLO')
     expect(api.fields('field').transforming).toBe(false)
     expect(api.fields('field').transformError).toBe(null)
@@ -134,8 +134,8 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
       transforms: [transform],
     })
 
-    dispatchInput(input, 'slow') // call 0 — the older request
-    dispatchInput(input, 'fast') // call 1 — the latest request
+    dispatchInput(input, 'slow') // call 0: the older request
+    dispatchInput(input, 'fast') // call 1: the latest request
     await waitUntil(() => (calls.length === 2 ? true : null))
 
     // The latest request resolves FIRST; the older one resolves later. The
@@ -158,8 +158,8 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
       transforms: [transform],
     })
 
-    dispatchInput(input, 'older') // call 0 — would resolve
-    dispatchInput(input, 'newer') // call 1 — the latest, rejects
+    dispatchInput(input, 'older') // call 0, would resolve
+    dispatchInput(input, 'newer') // call 1: the latest, rejects
     await waitUntil(() => (calls.length === 2 ? true : null))
 
     calls[1]?.reject(new Error('normalize failed'))
@@ -188,7 +188,7 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
     api.reset()
     expect(api.fields('field').transforming).toBe(false)
 
-    calls[0]?.resolve('LATE') // resolves after the cancel — must not write
+    calls[0]?.resolve('LATE') // resolves after the cancel, must not write
     await wait(0)
 
     expect(api.values.field).toBe('seed')
@@ -244,7 +244,7 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
       const { api, input } = mount({
         schema: z.object({ field: z.string() }),
         defaultValues: { field: 'seed' },
-        // Reject straight off — the directive's `.then(_, onRejected)` arm
+        // Reject straight off: the directive's `.then(_, onRejected)` arm
         // owns the rejection, so it can never escape as unhandled.
         transforms: [() => Promise.reject(new Error('reject-now'))],
       })
@@ -321,7 +321,7 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
     })
 
     dispatchInput(input, 'go')
-    // Submit IMMEDIATELY — without first awaiting settleTransforms. The drain
+    // Submit IMMEDIATELY, without first awaiting settleTransforms. The drain
     // inside handleSubmit is the correctness net.
     let submitted: { field?: string } | undefined
     await api.handleSubmit((data: { field?: string }) => {
@@ -348,7 +348,7 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
     dispatchInput(input, 'second')
     await waitUntil(() => (calls.length === 2 ? true : null))
 
-    // The first run was superseded — its signal aborts so a signal-aware
+    // The first run was superseded, its signal aborts so a signal-aware
     // transform can cancel its own I/O. The live run's signal stays open.
     expect(calls[0]?.signal?.aborted).toBe(true)
     expect(calls[1]?.signal?.aborted).toBe(false)
@@ -360,7 +360,7 @@ describe.each(adapters)('async register transforms — $name', ({ useForm, z }) 
   })
 
   // Surface guard: the three transform keys must reach BOTH proxy access
-  // forms — the call form `fields('field')` and the dot form `fields.field`.
+  // forms: the call form `fields('field')` and the dot form `fields.field`.
   // (Regression: commit 3 added them to the leaf base + types but not the
   // proxy's FIELD_STATE_KEYS allowlist, so both forms read `undefined`.)
   it('exposes transforming / busy / transformError on both fields(path) and fields.path', async () => {

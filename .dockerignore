@@ -20,5 +20,5 @@ coverage
 .git
 .DS_Store
 
-# Plan / memory state — per-developer, not container-relevant
+# Plan / memory state: per-developer, not container-relevant
 .claude

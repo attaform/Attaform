@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { Menu, X } from 'lucide-vue-next'
 
-  // Below lg, the desktop sidebar is hidden — without this drawer,
+  // Below lg, the desktop sidebar is hidden, without this drawer,
   // mobile readers have no way to jump between docs pages once
   // they've left the /docs index. Click the trigger → drawer slides
   // in from the left with the same docsNavigation the desktop
@@ -15,7 +15,7 @@
   // through the template compiler at type time).
   const sections = docsNavigation
 
-  // Close when route changes — the drawer's whole job is to be a
+  // Close when route changes: the drawer's whole job is to be a
   // route picker, so once a link is clicked we want the drawer
   // dismissed immediately instead of needing a second tap.
   watch(
@@ -49,7 +49,7 @@
 
 <template>
   <div class="lg:hidden">
-    <!-- Trigger — uses the same `secondary` button language as the
+    <!-- Trigger: uses the same `secondary` button language as the
          marketing CTAs (border + bg + shadow-xs) so it reads as a
          deliberate affordance rather than a plain link. -->
     <button

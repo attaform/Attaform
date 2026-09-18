@@ -7,14 +7,14 @@
  * overload or the impl signature, depending on whether the type
  * argument is a concrete schema, a generic, or a constraint).
  *
- * The helpers dispatch ONCE per use site via a binary conditional —
- * no stacking, no amplification across the return type. Equivalent
- * to writing `ReturnType<typeof useForm<S>>` but cache-stable across
+ * The helpers dispatch ONCE per use site through a binary conditional,
+ * so nothing stacks and nothing amplifies across the return type.
+ * Equivalent to `ReturnType<typeof useForm<S>>`, but cache-stable across
  * call patterns.
  *
- * Per `inference-first DX`, these helpers are test- and
- * internal-facing. Consumer code shouldn't reach for them — the
- * overloaded `useForm` already gives full inference at call sites.
+ * They are test- and internal-facing. Consumer code has no reason to
+ * reach for them: the overloaded `useForm` already infers fully at the
+ * call site.
  */
 import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
@@ -32,10 +32,10 @@ import type { SupportedRootSchema as SupportedRootSchemaV3 } from '../zod-v3/typ
 import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from './types-projections'
 
 /**
- * Direct V4 projection — no major-dispatch. Use when the schema's
- * Zod major is known statically (typical for V4 generic helpers like
- * `function setup<S extends z.ZodObject>(s: S)`). TS simplifies the
- * helper cleanly under generic constraints because no conditional
+ * Direct V4 projection, with no major dispatch. Use it when the schema's
+ * Zod major is statically known, the usual case for a V4 generic helper
+ * like `function setup<S extends z.ZodObject>(s: S)`. TS simplifies it
+ * cleanly under a generic constraint because no conditional
  * is present.
  */
 export type UseFormReturnV4<
@@ -58,8 +58,8 @@ export type UseFormConfigV4<Schema extends z.ZodObject, K extends FormKey = Form
 > & { schema: Schema } & ValidateOnConfig
 
 /**
- * Direct V3 projection — no major-dispatch. Use when the schema's
- * Zod major is known statically.
+ * Direct V3 projection, with no major dispatch. Use it when the schema's
+ * Zod major is statically known.
  */
 export type UseFormReturnV3<
   Schema extends zV3.ZodObject<zV3.ZodRawShape>,
@@ -91,12 +91,11 @@ export type UseFormConfigV3<
  * discriminated-union root all resolve here exactly as the runtime
  * `useForm` overloads accept them.
  *
- * Replaces `ReturnType<typeof useForm<Schema, K>>` in test code with
- * concrete schemas. For generic helpers (`<S extends z.ZodObject>`),
- * use `UseFormReturnV4<S>` directly — TS doesn't simplify
- * conditional types under generic constraints, so the dispatch in
- * this helper stays deferred and TS can't prove return-type
- * compatibility.
+ * Replaces `ReturnType<typeof useForm<Schema, K>>` in test code holding
+ * concrete schemas. In a generic helper, `<S extends z.ZodObject>`, reach
+ * for `UseFormReturnV4<S>` instead: TS does not simplify a conditional
+ * under a generic constraint, so this helper's dispatch stays deferred
+ * and return-type compatibility cannot be proven.
  */
 export type UseFormReturn<
   Schema,
@@ -109,7 +108,7 @@ export type UseFormReturn<
 
 /**
  * The configuration parameter shape of `useForm` for a given Zod
- * schema. Mirrors `UseFormReturn`'s dispatch — replaces
+ * schema. Same dispatch as `UseFormReturn`; it replaces
  * `Parameters<typeof useForm<Schema, K>>[0]` in test code.
  */
 export type UseFormConfig<

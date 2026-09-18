@@ -14,7 +14,7 @@ import { ROOT_PATH_KEY } from '../../src/runtime/core/paths'
  *
  * The slot names below come from `ROOT_PATH_KEY` rather than a literal.
  * `PathKey` is opaque by contract, and pinning its spelling here made
- * this file the thing that had to change when the encoding did — while
+ * this file the thing that had to change when the encoding did, while
  * the boundary it actually guards is between two DIFFERENT keys, not
  * between two particular strings.
  *
@@ -184,11 +184,9 @@ function imperativeConflationTests(makeValidForm: () => ConflationForm): void {
   })
 }
 
-// -----------------------------------------------------------------------------
 // zod-v3 adapter
-// -----------------------------------------------------------------------------
 
-describe('root [] vs literal "" conflation — zod-v3 adapter', () => {
+describe('root [] vs literal "" conflation: zod-v3 adapter', () => {
   const schema = zV3
     .object({
       '': zV3.string().min(1, 'empty-key required'),
@@ -211,11 +209,9 @@ describe('root [] vs literal "" conflation — zod-v3 adapter', () => {
   imperativeConflationTests(() => make({ '': 'ok', name: 'fine' }))
 })
 
-// -----------------------------------------------------------------------------
 // zod-v4 adapter
-// -----------------------------------------------------------------------------
 
-describe('root [] vs literal "" conflation — zod-v4 adapter', () => {
+describe('root [] vs literal "" conflation: zod-v4 adapter', () => {
   const schema = zV4
     .object({
       '': zV4.string().min(1, 'empty-key required'),

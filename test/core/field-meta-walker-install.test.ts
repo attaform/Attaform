@@ -45,7 +45,7 @@ function mountWithApp<T>(setup: () => T): T {
   return captured
 }
 
-describe('field-meta walk uninstalled — no registration surface imported', () => {
+describe('field-meta walk uninstalled: no registration surface imported', () => {
   it('Zod 4: label humanizes, description reads .describe(), meta is empty', () => {
     const schema = zV4.object({
       firstName: zV4.string().describe('Given name'),
@@ -76,7 +76,7 @@ describe('field-meta walk installs on the first registration', () => {
     // Two registrations on the SAME schema instance: the schema-keyed
     // single-slot store holds only the LAST payload, so resolving
     // 'pickup' to 'Pickup address' is possible only through the
-    // path-keyed walk — proving `fieldMeta.add` (via Zod's
+    // path-keyed walk, proving `fieldMeta.add` (via Zod's
     // `.register`) installed it.
     const { fieldMeta } = await import('../../src/runtime/adapters/zod-v4/field-meta')
     const addressSchema = zV4.object({ street: zV4.string() })

@@ -10,14 +10,14 @@ import { buildZodRootObjectArbitrary } from '../../utils/zod-arbitraries'
  * has three layers of containers below the root ZodObject) to keep runs
  * cheap while still exercising every wrapper / container combination.
  *
- * numRuns defaults to fast-check's 100 — the schema arbitrary is a
+ * numRuns defaults to fast-check's 100: the schema arbitrary is a
  * reasonable mix of leaves vs. containers, so 100 samples exercise each
  * shape. If these tests become a pain point in CI wall-time, drop to 50.
  */
 
 const arbRootSchema = buildZodRootObjectArbitrary(z, 3, (inner) => z.record(z.string(), inner))
 
-describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
+describe('zod v4 adapter: fuzz over arbitrary supported schemas', () => {
   test.prop([arbRootSchema])('adapter construction never throws on supported schemas', (schema) => {
     expect(() => zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
@@ -29,7 +29,7 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
     })
     expect(result.success).toBe(true)
     // After `success === true`, the result type narrows so `.data` is
-    // present by construction — assert on shape instead of mere
+    // present by construction, assert on shape instead of mere
     // existence.
     expect(typeof result.data).toBe('object')
   })
@@ -40,7 +40,7 @@ describe('zod v4 adapter — fuzz over arbitrary supported schemas', () => {
       // Lax mode round-trip: the shape the adapter derives for defaults
       // must validate against the slimmed (refinement-stripped) schema.
       // Since the arbitrary doesn't produce refinements, this reduces to
-      // "does the shape match the shape" — any failure is a bug in the
+      // "does the shape match the shape", any failure is a bug in the
       // default-values derivation.
       const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
       const initial = adapter.getDefaultValues({

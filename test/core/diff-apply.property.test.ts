@@ -36,7 +36,7 @@ function collect(oldValue: unknown, newValue: unknown): Patch[] {
   return patches
 }
 
-describe('diff-apply — properties', () => {
+describe('diff-apply: properties', () => {
   test.prop([arbForm])('identity: diff(x, x) emits no patches', (x) => {
     expect(collect(x, x)).toEqual([])
   })

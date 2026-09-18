@@ -31,7 +31,7 @@ function mountWizardHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — tryNext', () => {
+describe('useWizard: tryNext', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

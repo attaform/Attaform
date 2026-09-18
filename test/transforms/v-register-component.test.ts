@@ -42,13 +42,13 @@ function compileWith(template: string, transforms: NodeTransformList): string {
   return baseCompile(template, { nodeTransforms: transforms, mode: 'module' }).code
 }
 
-describe('v-register on Vue components — AST behaviour', () => {
-  describe('vRegisterHintTransform — wraps component bindings (works ✓)', () => {
+describe('v-register on Vue components: AST behaviour', () => {
+  describe('vRegisterHintTransform: wraps component bindings (works ✓)', () => {
     it('wraps <MyInput v-register="form.register(\'email\')">', () => {
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         vRegisterHintTransform,
       ])
-      // Same wrapper as native input — the transform doesn't filter by tag.
+      // Same wrapper as native input: the transform doesn't filter by tag.
       expect(code).toContain('markConnectedOptimistically')
       expect(code).toMatch(/_ctx\.form\.register\(['"]email['"]\)/)
     })
@@ -67,7 +67,7 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('vRegisterPreambleTransform — captures component bindings (works ✓)', () => {
+  describe('vRegisterPreambleTransform: captures component bindings (works ✓)', () => {
     it('hoists a component binding into :data-atta-pre-mark on the first root element', () => {
       const code = compileWith(
         `<div>
@@ -106,12 +106,12 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('inputTextAreaNodeTransform — early-returns on components (works ✓)', () => {
+  describe('inputTextAreaNodeTransform: early-returns on components (works ✓)', () => {
     it('emits no synthetic :value binding when only this transform runs', () => {
-      // The transform's tag check is `node.tag === 'input' || 'textarea'`
-      // — component tags are NEITHER. Result: this transform contributes
+      // The transform's tag check is `node.tag === 'input' || 'textarea'`,
+      // component tags are NEITHER. Result: this transform contributes
       // nothing for a component. (componentBridgeTransform DOES fire on
-      // components — see the next describe block.)
+      // components, see the next describe block.)
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         inputTextAreaNodeTransform,
       ])
@@ -130,18 +130,18 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
   })
 
-  describe('componentBridgeTransform — fires on EVERY component with v-register (value channel: v-model for plain hosts, :value for select-like)', () => {
+  describe('componentBridgeTransform: fires on EVERY component with v-register (value channel: v-model for plain hosts, :value for select-like)', () => {
     it('injects the v-model pair (modelValue/hostModelValue + onUpdate:modelValue/setValueFromHost) + registerValue on a plain component host', () => {
       // The transform's branch `node.tagType === ElementTypes.COMPONENT`
-      // makes ANY component with v-register a transform target — even
+      // makes ANY component with v-register a transform target, even
       // ones whose name has nothing to do with selecting (`<MyInput>`,
       // `<MyTextField>`, `<MyDatePicker>`). A plain input host (no projected
       // <option>s) speaks the standard Vue v-model contract: the transform
-      // injects `modelValue` (reading hostModelValue — the typed model value,
+      // injects `modelValue` (reading hostModelValue: the typed model value,
       // undefined for a blank path) and `onUpdate:modelValue` (routing through
       // setValueFromHost, which writes the value and marks interacted), plus
       // the `registerValue` bridge a wrapper's useRegister reads. It does NOT
-      // inject the select-style `:value`/displayValue bind — that's reserved
+      // inject the select-style `:value`/displayValue bind: that's reserved
       // for select-like hosts (see the slotted-<option> test below).
       const code = compileWith(`<MyInput v-register="form.register('email')" />`, [
         componentBridgeTransform,
@@ -155,7 +155,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       expect(code).not.toContain('displayValue')
     })
 
-    it('recurses into slot children — option-tagged slot content gets :selected (#394)', () => {
+    it('recurses into slot children: option-tagged slot content gets :selected (#394)', () => {
       // #394: a `v-register` on a component wrapper projects its <option>s as
       // parent-authored slot content, which is still present in the host's
       // node.children at transform time. Those options now receive the same
@@ -221,7 +221,7 @@ describe('v-register on Vue components — AST behaviour', () => {
       // predicate; either way the v-model pair + `:registerValue` props
       // injected here are the bridge `useRegister()` reads. Web
       // Components without a Vue component definition see them as DOM
-      // attributes — the documented assignKey escape hatch covers
+      // attributes: the documented assignKey escape hatch covers
       // that case.
       const code = compileWith(`<my-input v-register="reg" />`, [componentBridgeTransform])
       expect(code).toContain('hostModelValue')
@@ -231,20 +231,19 @@ describe('v-register on Vue components — AST behaviour', () => {
     })
 
     it('`<form v-register>` does NOT hit the component branch (NATIVE_FORM_TAGS guard)', () => {
-      // Native form-shell tags (form, fieldset, label, button, etc.)
-      // are excluded from the kebab-case extension via the
-      // NATIVE_FORM_TAGS allow-list. They have no hyphen anyway, so
-      // the new gate's `hasHyphen` check would already short-circuit;
-      // the explicit guard documents the conservative stance and
-      // catches a hypothetical `<form-something v-register>` future
-      // mistake.
+      // Native form-shell tags (form, fieldset, label, button and the
+      // rest) are excluded from the kebab-case extension by the
+      // NATIVE_FORM_TAGS deny-list. Carrying no hyphen, they already
+      // fail the gate's `node.tag.includes('-')` test; the explicit
+      // guard states the conservative stance and covers a hypothetical
+      // `<form-something v-register>`.
       const code = compileWith(`<form v-register="reg" />`, [componentBridgeTransform])
       expect(code).not.toContain('displayValue')
       expect(code).not.toContain('registerValue:')
     })
   })
 
-  describe('full pipeline — interaction across transforms', () => {
+  describe('full pipeline: interaction across transforms', () => {
     it('compiles a component-bound v-register without throwing', () => {
       // Smoke test: the canonical pipeline order doesn't blow up on a
       // component-only template.
@@ -299,14 +298,14 @@ describe('v-register on Vue components — AST behaviour', () => {
       expect(code).toMatch(/_ctx\.form\.register\(['"]email['"]\)/)
       expect(code).toMatch(/_ctx\.form\.register\(['"]name['"]\)/)
       // Component gets a registerValue prop; native input does NOT
-      // (only one `registerValue:` occurrence — the component's).
+      // (only one `registerValue:` occurrence: the component's).
       const regValueHits = code.match(/registerValue:/g)?.length ?? 0
       expect(regValueHits).toBe(1)
     })
 
     it('dynamic-path register call on a component (template-literal) compiles cleanly', () => {
       // The path expression references a setup-scoped `prefix`. The
-      // transform doesn't introspect the expression — it forwards as-is.
+      // transform doesn't introspect the expression: it forwards as-is.
       const code = compileFull('<MyInput v-register="form.register(`${prefix}.email`)" />')
       expect(code).toContain('markConnectedOptimistically')
       expect(code).toContain('hostModelValue')

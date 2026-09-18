@@ -20,7 +20,7 @@ up: down  ## Stop any prior stack, regen the playground type bundle, start the d
 down:  ## Stop and remove the dev container (named node_modules volumes persist for fast restarts)
 	docker compose down
 
-clean:  ## Stop the container AND remove its named volumes — first `make up` after this re-seeds node_modules from the image
+clean:  ## Stop the container AND remove its named volumes: first `make up` after this re-seeds node_modules from the image
 	docker compose down -v
 
 clean-orphans:  ## One-time fix: prune dangling Docker volumes left by the old anonymous-volume layout (frees GBs from /var/lib/docker)
@@ -42,14 +42,14 @@ shell:  ## Drop into an interactive shell inside the container
 # --- pnpm scripts (run inside the container) ---
 
 # `node_modules/` is intentionally split between two filesystems
-# (named volumes in docker-compose.yml — `attaform_root_node_modules`
+# (named volumes in docker-compose.yml: `attaform_root_node_modules`
 # and `attaform_site_node_modules`): the container has Linux binaries
 # for the dev server, the host has macOS binaries for editor LSP
 # tooling (vtsls, ESLint, Volar, etc.). Both must be kept in lockstep
 # so a host-side LSP can resolve workspace deps that the container-
 # side install registered. The single `pnpm-lock.yaml` is bind-
 # mounted, so the host install picks up whatever the container's
-# `--force` install resolved — no drift.
+# `--force` install resolved: no drift.
 install:  ## Force-refresh deps (container + host) and run dev:prepare (lib stub + Nuxt types)
 	docker compose exec attaform pnpm install --force
 	pnpm install
@@ -81,7 +81,7 @@ check:  ## Lint + format check + typecheck
 # zero-runtime-deps posture intact. Runs in-container like the rest, so it
 # shares the dev env (and a future coverage variant path-matches without
 # a host/container remap).
-fallow:  ## Run fallow code-intelligence (unused code, dupes, complexity) — non-gating
+fallow:  ## Run fallow code-intelligence (unused code, dupes, complexity): non-gating
 	docker compose exec attaform pnpm fallow
 
 typecheck:  ## TypeScript check
@@ -93,14 +93,14 @@ publish-prep:  ## Build the module for publishing
 watch:  ## Rebuild dist on every src change (for consumer-side iteration via pnpm link)
 	docker compose exec -e CI=true -e SHELL=/bin/sh attaform pnpm prepack:watch
 
-watch-bg:  ## Detached watcher (PID tracked in /tmp/attaform-watch.pid) — used by attaform' make link-attaform
+watch-bg:  ## Detached watcher (PID tracked in /tmp/attaform-watch.pid): used by attaform' make link-attaform
 	@# Idempotent: if a live watcher's already tracked in the pidfile, no-op.
-	@# Same /proc/$PID/cmdline check as `unwatch` — guards against a stale
+	@# Same /proc/$PID/cmdline check as `unwatch`: guards against a stale
 	@# pidfile pointing at a recycled PID.
 	@docker compose exec -e CI=true -e SHELL=/bin/sh -d attaform sh -c 'if [ -f /tmp/attaform-watch.pid ]; then PID=$$(cat /tmp/attaform-watch.pid); if [ -f /proc/$$PID/cmdline ] && tr "\0" " " < /proc/$$PID/cmdline | grep -q "prepack:watch"; then exit 0; fi; fi; pnpm prepack:watch > /tmp/attaform-watch.log 2>&1 & echo $$! > /tmp/attaform-watch.pid'
 
 unwatch:  ## Stop the background watcher started by watch-bg
-	@# Validate the stored PID via /proc/$PID/cmdline before killing — guards
+	@# Validate the stored PID via /proc/$PID/cmdline before killing: guards
 	@# against PID reuse if the watcher already exited. `pkill -P PID` kills
 	@# the children (chokidar) by parent-PID, so it doesn't take a regex and
 	@# can't self-match. `kill PID` then takes out the pnpm parent.

@@ -9,7 +9,7 @@
  * exactly when the element is just about to enter the visual focus
  * zone (rootMargin of -10% on top + bottom).
  *
- * The observer is shared per Nuxt app instance — one IO handles every
+ * The observer is shared per Nuxt app instance: one IO handles every
  * `[data-reveal]` element on the page. Cheaper than spawning one IO
  * per element, and the observer is disposed on app unmount. `once: true`
  * semantics: each element disconnects after firing, so re-scrolling
@@ -34,7 +34,7 @@ export function useReveal() {
   }
   const key = '$revealObserver' as const
 
-  // Single observer per Nuxt app — store on nuxtApp so it survives
+  // Single observer per Nuxt app, store on nuxtApp so it survives
   // navigation but is GC'd with the app.
   if (!(key in nuxt) && import.meta.client) {
     const state: RevealState = {

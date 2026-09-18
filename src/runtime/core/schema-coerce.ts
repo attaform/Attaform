@@ -3,19 +3,19 @@
  * directive layer. When the slim schema declares a numeric or
  * boolean type at a path, the directive coerces incoming string
  * values (`'25'` → `25`, `'true'` → `true`) before the slim-primitive
- * gate sees the write — making the schema authoritative for storage
+ * gate sees the write, making the schema authoritative for storage
  * shape and freeing consumers from sprinkling `.number` modifiers
  * across templates.
  *
  * Two rules ship: string→number and string→boolean. `useForm({ coerce:
  * false })` turns them off form-wide, which is the whole of the
- * consumer surface — the rules themselves are library code, so nothing
- * here has to defend against a caller's transform throwing or
+ * consumer surface. The rules themselves are Attaform's own code, so
+ * nothing here has to defend against a caller's transform throwing or
  * returning the wrong runtime type.
  *
  * Coercion applies ONLY to user-typed DOM values flowing through
  * the directive's assigner. Programmatic writes (`form.setValue`,
- * `setValueWithInternalPath`) bypass coercion — they're authoritative
+ * `setValueWithInternalPath`) bypass coercion, being authoritative
  * writes whose strict typing is on the caller. This mirrors the
  * `transforms` pipeline's user-input-only contract.
  */
@@ -39,12 +39,12 @@ export function resolveCoerceEnabled(config: boolean | undefined): boolean {
  * Slim primitive set of one MEMBER of the container at `segments`, or
  * `undefined` when `segments` holds no member-bearing container.
  *
- * An array's members live at real sub-paths, so index 0 answers for
- * all of them. A set's do not: its members are their own keys, so
- * `tags.0` is not a path and asking for one used to hand this layer a
- * resolution the rest of the runtime then treated as a real field
- * (#614). `SET_MEMBER_SEGMENT` asks the same question in a spelling no
- * consumer path can collide with.
+ * An array's members live at real sub-paths, so index 0 answers for all
+ * of them. A set's do not: its members are their own keys, so `tags.0` is
+ * not a path, and asking for one hands this layer a resolution the rest of
+ * the runtime then treats as a real field (#614). `SET_MEMBER_SEGMENT`
+ * asks the same question in a spelling no consumer path can collide
+ * with.
  */
 function memberSlimTypes(
   schema: AbstractSchema<unknown, unknown>,
@@ -62,7 +62,7 @@ function memberSlimTypes(
  * Build the per-register coerce closure. The closure captures the
  * resolved `accepted` set, so the per-event hot path doesn't re-walk
  * the schema on every keystroke. Returns `IDENTITY` when coerce is
- * disabled — zero allocation for the common case.
+ * disabled, so the common case allocates nothing.
  */
 export function buildCoerceFn(
   schema: AbstractSchema<unknown, unknown>,
@@ -80,7 +80,7 @@ export function buildCoerceFn(
  * isn't a container (scalar paths use `buildCoerceFn` exclusively).
  *
  * Why this is separate from `buildCoerceFn`: the path-level closure
- * handles the WRITE path correctly — given a container value, it
+ * handles the WRITE path correctly: given a container value it
  * iterates and coerces each element internally. But the directive's
  * READ-side comparisons (`setChecked` array/Set branches,
  * `setSelected` multi-select) compare a SCALAR DOM-side value (the
@@ -104,7 +104,7 @@ export function buildElementCoerceFn(
 
 /**
  * Pick the unambiguous coercion target for an accept set. Returns
- * the target kind only when it's the SOLE coercible kind — if the
+ * the target kind only when it is the SOLE coercible kind. If the
  * path admits both `string` and `number`, the schema explicitly
  * accepts either, so silent retyping is wrong (passthrough).
  */

@@ -14,7 +14,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * The suppression filter applies to the FIRST case only: the runtime
  * doesn't run validation against state the consumer never authored.
  * The SECOND case is the consumer saying "yes, undefined is the
- * starting value, run it through preprocess like any other input" —
+ * starting value, run it through preprocess like any other input",
  * and the filter must leave that verdict alone so the configured
  * starting state gets validated.
  *
@@ -112,7 +112,7 @@ describe('preprocess suppression discriminator: runtime undefined vs consumer-su
 
     expect(api.values.url).toBeUndefined()
     // The `.default(undefined as never)` cast widens the union so
-    // form.errors.url surfaces as `ValidationError[] | undefined` —
+    // form.errors.url surfaces as `ValidationError[] | undefined`,
     // narrow at the read site (the runtime behaviour, not the type,
     // is what this probe pins).
     const errs = api.errors.url ?? []
@@ -152,7 +152,7 @@ describe('defaultValues semantics: explicit undefined is a distinct signal from 
 
     await nextTick()
 
-    // The consumer named the path with an explicit `undefined` — a
+    // The consumer named the path with an explicit `undefined`: a
     // signal distinct from "key absent." Storage honors the override.
     expect(api.values.count).toBeUndefined()
   })

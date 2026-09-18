@@ -13,9 +13,8 @@
  * they were deleted along with `AbstractSchema.fingerprint()`, so the
  * enumeration bug they carried went with them.)
  *
- * The fix in each case is the same shape: test whether the value is a
- * plain record, rather than asking whether it is one of the things we
- * thought of.
+ * Each walker asks whether the value is a plain record, rather than
+ * whether it is one of the things someone thought of.
  */
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -80,7 +79,7 @@ describe('the unset walker carries non-plain values through whole', () => {
     const read = (out.cleanedValues as { user: { name: string; age: number } }).user
     expect(read.name).toBe('ada')
     // `age` was unspecified, so the walker synthesised it from the
-    // schema and marked it blank — proof the descent still happens.
+    // schema and marked it blank, proof the descent still happens.
     expect(read.age).toBe(0)
     expect(out.paths).toContain(canonicalizePath(['user', 'age']).key)
   })

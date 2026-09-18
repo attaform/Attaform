@@ -113,7 +113,7 @@ describe('hydrateAttaformState', () => {
     })
     // Client form value matches what the server wrote.
     expect(rehydratedState.form.value.email).toBe('server-edited@x')
-    // Originals still derive from the schema — so pristine/dirty works client-side.
+    // Originals still derive from the schema: so pristine/dirty works client-side.
     expect(originalAt(rehydratedState, ['email'])).toBe('')
     expect(pristineAt(rehydratedState, ['email'])).toBe(false)
   })

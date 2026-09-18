@@ -78,7 +78,7 @@
 
   // Shiki's `codeToHast` returns the syntax-highlight AST. Pairing
   // it with `<AppHighlighted />` lets us render through Vue's normal
-  // vnode pipeline instead of `v-html` — same visual result, no
+  // vnode pipeline instead of `v-html`, same visual result, no
   // raw-HTML directive, full SSR support.
   const highlight = (source: string, lang: 'vue' | 'ts') =>
     codeToHast(source, {
@@ -107,7 +107,7 @@
   const registerLineTwoTree = registerLineTree('lineTwo')
   const registerLineThreeTree = registerLineTree('lineThree')
 
-  // Schema.org SoftwareApplication entry — the canonical structured-
+  // Schema.org SoftwareApplication entry: the canonical structured-
   // data shape for a developer library / dev-tool. Eligible for
   // Google's software rich card (the side panel that shows name,
   // category, rating, license, and a screenshot when present). Even
@@ -124,7 +124,7 @@
       description: 'A type-safe, Zod-first form library for Vue 3 and Nuxt.',
       url: 'https://attaform.dev',
       author: { '@type': 'Person', name: 'Oswald Chisala' },
-      // MIT-licensed and free — surface the price-zero offer so the
+      // MIT-licensed and free, surface the price-zero offer so the
       // SoftwareApplication node validates against Google's required
       // properties (name, description, applicationCategory, offers).
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
@@ -192,7 +192,7 @@
          enters via a four-step stagger (eyebrow → heading → lede →
          CTAs); reduced-motion users see it pop instantly. -->
     <section class="relative isolate overflow-hidden border-b border-border">
-      <!-- Dot-grid layer — sits beneath the glow. We paint the
+      <!-- Dot-grid layer: sits beneath the glow. We paint the
            gradient inline (rather than the `bg-dot-grid` utility)
            so the dots use `--color-border-strong` (gray-300, one
            step darker than the utility's `--color-border`); against
@@ -213,7 +213,7 @@
         "
         aria-hidden="true"
       />
-      <!-- Accent-soft glow — top-anchored radial fade. Lighter in dark
+      <!-- Accent-soft glow: top-anchored radial fade. Lighter in dark
            mode where the tint risks reading as muddy. -->
       <div
         class="absolute inset-0 -z-10 bg-glow-hero opacity-90 dark:opacity-70"
@@ -254,7 +254,7 @@
                English value prop in one line, with the high-intent
                phrase "form library for Vue 3 and Nuxt" near the top of
                the document outline. The next section's "Why Attaform"
-               H2 is its own heading lower down — having two H2s on the
+               H2 is its own heading lower down: having two H2s on the
                page is fine; document-outline tools just thread them
                sequentially. -->
           <h2
@@ -287,7 +287,7 @@
             </UiButton>
           </div>
 
-          <!-- Trust strip — small dot-separated facts about runtime
+          <!-- Trust strip: small dot-separated facts about runtime
                surface. Shows breadth ("works with multiple Vues, Zods,
                and bundlers") without paragraphs of marketing prose. -->
           <ul
@@ -523,14 +523,14 @@
         <div
           class="relative overflow-hidden rounded-2xl border border-border-strong bg-bg shadow-2xl"
         >
-          <!-- Hairline accent strip at the top edge — same depth cue
+          <!-- Hairline accent strip at the top edge: same depth cue
                as a real card but more "this is the marquee piece" than
                the standard border. -->
           <div
             class="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-accent to-transparent"
             aria-hidden="true"
           />
-          <!-- Demo chrome — mirrors the inline `<DocsDemo>` header on
+          <!-- Demo chrome: mirrors the inline `<DocsDemo>` header on
                docs pages: a tiny label on the left and an "Open in
                playground" affordance on the right, so a reader who
                wants to fork the homepage's seed can do so without
@@ -589,7 +589,7 @@
     </section>
 
     <!-- ─── Bottom CTA ───────────────────────────────────────────
-         Centered close — gives the page a definite "end" rather
+         Centered close: gives the page a definite "end" rather
          than dribbling into the footer. Leads with the install
          command itself so a reader who scrolled the whole page can
          act in one click without scrolling back to find a docs
@@ -618,10 +618,10 @@
 </template>
 
 <style scoped>
-  /* Hero stagger — every `.reveal-step` runs the same fade-up keyframe
+  /* Hero stagger: every `.reveal-step` runs the same fade-up keyframe
      (defined in `tailwind.css`) and consumes a per-element delay set
      inline as `--reveal-step-delay`. Single curve, four offsets means
-     every line eases into the same shape — the cascade reads as
+     every line eases into the same shape: the cascade reads as
      deliberate composition, not animation-soup. */
   .reveal-step {
     animation: reveal-fade-up var(--duration-deliberate) var(--ease-out-quart) both;

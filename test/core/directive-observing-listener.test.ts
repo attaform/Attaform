@@ -11,7 +11,7 @@
  *
  * The compatibility rests on ORDER, and the order is not incidental.
  * `vRegister` attaches its listeners in the `created` hook, which Vue
- * runs before it applies the element's props — so the directive's
+ * runs before it applies the element's props: so the directive's
  * listener is registered first, fires first, and has written the field
  * by the time the author's handler is invoked. An author reading
  * `form.values.<path>` from `@change` therefore sees the new value, not

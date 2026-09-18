@@ -9,7 +9,7 @@
  * **Gating.** Pings only when `VERCEL_ENV === 'production'` AND the
  * deploy isn't a preview branch (`VERCEL_GIT_COMMIT_REF` matches the
  * production branch). Vercel preview deploys, local builds, and CI
- * all hit the no-op path — neither the script nor the build fails,
+ * all hit the no-op path, neither the script nor the build fails,
  * we just don't ping. There is intentionally no force override; the
  * production gate is the single source of truth for "this is a
  * deploy that should hit the IndexNow endpoint."
@@ -17,11 +17,11 @@
  * **Dry run.** `INDEXNOW_DRY_RUN=1` parses the sitemap and prints
  * the payload that would have been posted, without hitting the
  * network. Use this from a local build to validate the URL list
- * end-to-end — it never reaches the production gate.
+ * end-to-end: it never reaches the production gate.
  *
  * **Fail-soft.** A transient IndexNow outage, a network blip, or a
  * 4xx from the API never fails the build. The script logs and
- * exits 0 — IndexNow is best-effort and the next deploy retries.
+ * exits 0, IndexNow is best-effort and the next deploy retries.
  *
  * **Key.** The endpoint validates the request by fetching
  * `keyLocation` and matching the body against `key`. We host the
@@ -50,7 +50,7 @@ async function main() {
 
   // Hard production gate. Dry-run still parses + prints, but exits
   // before any network call. Anything else (preview, local, CI) is
-  // a no-op — there is intentionally no override flag.
+  // a no-op: there is intentionally no override flag.
   if (!isVercelProduction && !isDryRun) {
     console.log(
       `[indexnow] skipped (VERCEL_ENV=${process.env.VERCEL_ENV ?? 'undefined'}; production deploy required)`
@@ -67,7 +67,7 @@ async function main() {
   }
 
   // The sitemap is small (one entry per public page), regex
-  // extraction is enough — no XML parser dependency. Each candidate is
+  // extraction is enough: no XML parser dependency. Each candidate is
   // parsed via `new URL` and asserted against the production HOST so a
   // sneaky entry like `https://attaform.dev.evil.com/` (which
   // satisfies a byte-prefix check) gets rejected. Closes CodeQL alert
@@ -96,7 +96,7 @@ async function main() {
   }
 
   if (process.env.INDEXNOW_DRY_RUN === '1') {
-    console.log(`[indexnow] dry run — payload (${urls.length} URLs):`)
+    console.log(`[indexnow] dry run: payload (${urls.length} URLs):`)
     console.log(JSON.stringify(payload, null, 2))
     return
   }
@@ -115,7 +115,7 @@ async function main() {
     return
   }
 
-  // 200 / 202 are both success per IndexNow spec — 200 means
+  // 200 / 202 are both success per IndexNow spec, 200 means
   // accepted, 202 means accepted but URLs are still being processed.
   if (response.ok) {
     console.log(`[indexnow] OK (${response.status})`)
@@ -123,10 +123,10 @@ async function main() {
   }
 
   const body = await response.text().catch(() => '<failed to read body>')
-  console.warn(`[indexnow] non-OK response: ${response.status} ${response.statusText} — ${body}`)
+  console.warn(`[indexnow] non-OK response: ${response.status} ${response.statusText}: ${body}`)
 }
 
 main().catch((error) => {
-  // Final safety net — never fail the build.
+  // Final safety net, never fail the build.
   console.warn(`[indexnow] unexpected error, continuing: ${error?.stack ?? error}`)
 })

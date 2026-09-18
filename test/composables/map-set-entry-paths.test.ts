@@ -4,7 +4,7 @@
  *
  * A map entry is a real path: `scores.ann` reads and writes on every
  * surface, which is what the records docs teach and what makes a map
- * worth choosing over a record. A set member is not, and cannot be —
+ * worth choosing over a record. A set member is not, and cannot be,
  * a member IS its own key, so no address survives writing to one.
  *
  * Both halves were broken in the same way and in opposite directions.

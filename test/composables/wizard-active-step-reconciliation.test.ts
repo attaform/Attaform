@@ -35,7 +35,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — active-step forward-continuity when a slot drops', () => {
+describe('useWizard: active-step forward-continuity when a slot drops', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

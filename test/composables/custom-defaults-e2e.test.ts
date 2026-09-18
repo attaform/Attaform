@@ -19,7 +19,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  *      `setValue('field', cb)` hands the consumer the `.default(x)`
  *      value (not the natural falsy primitive default).
  *   3. Sparse-array fill: writing past length pads each slot with the
- *      schema element default — including any `.default(x)` values
+ *      schema element default, including any `.default(x)` values
  *      nested inside the element shape.
  *
  * Catches regressions where Phase-2 / Phase-3 plumbing accidentally
@@ -57,21 +57,21 @@ describe('custom .default() values flow through the consumer surface', () => {
   })
 
   describe('form construction picks .default() over natural falsy', () => {
-    it('string with .default("user") produces "user" — not ""', () => {
+    it('string with .default("user") produces "user", not ""', () => {
       const schema = z.object({ role: z.string().default('user') })
       const { app, form } = harness(schema)
       apps.push(app)
       expect(form.values.role).toBe('user')
     })
 
-    it('number with .default(5) produces 5 — not 0', () => {
+    it('number with .default(5) produces 5, not 0', () => {
       const schema = z.object({ count: z.number().default(5) })
       const { app, form } = harness(schema)
       apps.push(app)
       expect(form.values.count).toBe(5)
     })
 
-    it('boolean with .default(true) produces true — not false', () => {
+    it('boolean with .default(true) produces true, not false', () => {
       const schema = z.object({ active: z.boolean().default(true) })
       const { app, form } = harness(schema)
       apps.push(app)
@@ -97,7 +97,7 @@ describe('custom .default() values flow through the consumer surface', () => {
       const schema = z.object({
         prefs: z.object({
           theme: z.string().default('dark'),
-          // No .default — natural ''.
+          // No .default, natural ''.
           locale: z.string(),
         }),
       })
@@ -124,7 +124,7 @@ describe('custom .default() values flow through the consumer surface', () => {
       const { app, form } = harness(schema)
       apps.push(app)
       // The array is empty at construction, but a synthetic write past
-      // length should pad with the element default — `.default('untitled')`
+      // length should pad with the element default, `.default('untitled')`
       // for title.
       form.setValue('posts.2', { title: 'real', views: 100 })
       expect(form.values.posts).toEqual([
@@ -157,7 +157,7 @@ describe('custom .default() values flow through the consumer surface', () => {
 
       // prev was auto-defaulted from getDefaultAtPath(['prefs']),
       // which peels the .optional() and returns the inner shape's
-      // structural default — including the `.default('dark')` /
+      // structural default, including the `.default('dark')` /
       // `.default('comfortable')` values rather than `''`.
       expect(receivedPrev).toEqual({ theme: 'dark', density: 'comfortable' })
       // Final value carries the consumer's override, defaults survive.
@@ -185,7 +185,7 @@ describe('custom .default() values flow through the consumer surface', () => {
         return { ...prev, title: 'first' }
       })
 
-      // The element default is `{ title: 'untitled', views: 0 }` —
+      // The element default is `{ title: 'untitled', views: 0 }`,
       // verifies the .default('untitled') survives the path-form
       // auto-default path (vs. natural empty string '').
       expect(receivedPrev).toEqual({ title: 'untitled', views: 0 })
@@ -229,7 +229,7 @@ describe('custom .default() values flow through the consumer surface', () => {
       expect(form.values.coords).toEqual([7, 13, 99])
 
       // Now mutate: setValue at position 2 should leave 0,1 as their
-      // existing defaults (no fill needed — they're already populated).
+      // existing defaults (no fill needed: they're already populated).
       form.setValue('coords.2', 42)
       expect(form.values.coords).toEqual([7, 13, 42])
     })

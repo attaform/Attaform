@@ -50,7 +50,7 @@ function mount() {
 
 describe('reset: 100-leaf object form', () => {
   const form = mount()
-  // Dirty every leaf before each run so reset has real work to do —
+  // Dirty every leaf before each run so reset has real work to do,
   // leaving the form pristine would make reset a near-no-op.
   bench(
     'reset() — full baseline rebuild',

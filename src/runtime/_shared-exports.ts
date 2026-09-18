@@ -1,5 +1,5 @@
 /**
- * Re-export barrel for everything schema-agnostic — the surface every
+ * Re-export barrel for everything schema-agnostic: the surface every
  * public entry file ships verbatim. Two bands live here:
  *
  * 1. The composable surface: the wizard orchestrator, the per-field
@@ -11,8 +11,8 @@
  *    classes, the display-state reducer, and all schema-agnostic
  *    public types.
  *
- * Every public entry file — `attaform`, `attaform/zod`,
- * `attaform/zod-v3`, `attaform/zod-v4`, and `attaform/abstract` — does
+ * Every public entry file (`attaform`, `attaform/zod`,
+ * `attaform/zod-v3`, `attaform/zod-v4` and `attaform/abstract`) does
  * `export *` from this module. Routing the whole schema-agnostic
  * surface through one source is what makes each entry self-sufficient:
  * the barrel and the zod entries no longer diverge on core (they carry
@@ -22,7 +22,7 @@
  * Tree-shaking: `sideEffects: false` in package.json + the per-entry
  * Rollup builds keep the barrel from defeating per-entry pruning. A
  * consumer importing only `useForm` from `attaform/zod-v4` still gets
- * a bundle that includes nothing else from this barrel — the unused
+ * a bundle carrying nothing else from this barrel, because the unused
  * names are eliminated at build time. The standing gate is the set of
  * `import:` tripwires in `.size-limit.js` (the `{ useForm } only`,
  * `{ injectForm } only`, `{ useRegister } only`, and
@@ -31,27 +31,25 @@
  * single-import regression; these can.
  *
  * Names that stay per-entry (do NOT add them here):
- * - `useForm` — different source per entry (unified dispatcher /
- *   v3-typed / v4-typed), and `useAbstractForm` on `attaform/abstract`.
- * - `fieldMeta`, `withMeta`, `FieldMetaPayload` — adapter-specific
- *   re-exports per entry (Zod major matters for `withMeta`'s cloning
- *   strategy).
+ * - `useForm`, whose source differs per entry (unified dispatcher,
+ *   v3-typed, v4-typed), and `useAbstractForm` on `attaform/abstract`.
+ * - `fieldMeta`, `withMeta` and `FieldMetaPayload`, re-exported per
+ *   entry because the Zod major decides `withMeta`'s cloning strategy.
  * - Adapter-specific symbols (`zodAdapter`, `assertZodVersion`,
- *   `kindOf`, `ZodKind`, etc.) and per-adapter types — they diverge
- *   between v3 and v4.
- * - `useForm`-adjacent projection types (`UseFormConfig`,
- *   `UseFormReturn`, and the per-major variants) — different per entry
- *   for the same divergence reason. The shared BASE types
- *   (`UseFormConfiguration`, `UseFormReturnType`) that those
- *   projections are built from live here.
- * - `AbstractSchema` — the multi-schema-lib surface, exclusive to
+ *   `kindOf`, `ZodKind`) and per-adapter types, which diverge between
+ *   v3 and v4.
+ * - The `useForm`-adjacent projection types (`UseFormConfig`,
+ *   `UseFormReturn` and their per-major variants), per entry for the
+ *   same reason. The BASE types they are built from
+ *   (`UseFormConfiguration`, `UseFormReturnType`) do live here.
+ * - `AbstractSchema`, the multi-schema-lib surface exclusive to
  *   `attaform/abstract`.
  */
 
 // Re-export for nested components that want to reach the nearest
 // ancestor form (or an arbitrary form by key) without prop-threading.
-// The consumer supplies the `Form` generic — see the composable's
-// docblock for the type-erasure reasoning.
+// The consumer supplies the `Form` generic; the composable's docblock
+// carries the type-erasure reasoning.
 export { injectForm } from './composables/use-form-context'
 
 // Ambient bridge for components that wrap a single field and want to
@@ -97,9 +95,9 @@ export type {
 // codes use whatever prefix the consumer picks (`api:`, `auth:`, etc.).
 export { AttaformErrorCode } from './core/error-codes'
 
-// The `unset` sentinel — pass in `defaultValues`, `setValue`, or `reset`
-// to mark a primitive leaf as displayed-empty while storage holds the
-// slim default. See `src/runtime/core/unset.ts` for the full docblock.
+// The `unset` sentinel. Pass it in `defaultValues`, `setValue` or
+// `reset` to mark a primitive leaf displayed-empty while storage holds
+// the slim default; `src/runtime/core/unset.ts` has the full docblock.
 export { unset, isUnset } from './core/unset'
 export type { Unset } from './core/unset'
 
@@ -122,8 +120,8 @@ export { escapeForInlineScript } from './core/serialize-script'
 export { vRegister, assignKey } from './core/directive'
 export { isRegisterValue } from './core/register-protocol'
 
-// Path primitives — exposed for consumers writing custom adapters that
-// need to canonicalise user-provided paths.
+// Path primitives, exposed for a consumer writing a custom adapter that
+// has to canonicalise user-provided paths.
 export {
   canonicalizePath,
   isPathPrefix,
@@ -140,10 +138,10 @@ export type { Path, PathKey, Segment } from './core/paths'
 export { DEVTOOLS_WINDOW_KEY } from './core/devtools-shared'
 export type { AttaformDevtoolsBridge } from './core/devtools-shared'
 
-// Error classes — every library-emitted error extends `AttaformError`, so
-// consumers can write a single polymorphic catch (`catch (e) { if (e
-// instanceof AttaformError) ... }`) instead of OR-chaining instanceof
-// checks for each subclass.
+// Error classes. Every Attaform-emitted error extends `AttaformError`,
+// so a consumer writes one polymorphic catch
+// (`catch (e) { if (e instanceof AttaformError) ... }`) rather than
+// OR-chaining an instanceof check per subclass.
 export {
   AttaformError,
   InvalidPathError,
@@ -155,7 +153,7 @@ export {
 } from './core/errors'
 
 // Schema-agnostic public types. `AbstractSchema` and `FieldMetaPayload`
-// are deliberately NOT here — see the per-entry note in the docblock.
+// are deliberately NOT here; the docblock's per-entry note says why.
 export type {
   CustomDirectiveRegisterAssignerFn,
   DisplayState,

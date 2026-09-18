@@ -15,7 +15,7 @@ import { waitUntil } from '../utils/form-harness'
  * but on the client every async `defaultValues` factory fires once at
  * construction.
  *
- * Activation is idempotent — navigating to a step whose factory has
+ * Activation is idempotent, navigating to a step whose factory has
  * already resolved does not re-fire it. `form.rehydrate()` is the
  * explicit re-fire escape hatch.
  */
@@ -39,7 +39,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — eager activation lifecycle', () => {
+describe('useWizard: eager activation lifecycle', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

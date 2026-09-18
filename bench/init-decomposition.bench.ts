@@ -18,12 +18,12 @@
  *             seeds `originals` (the dirty baseline) AND `pathOrdinals` in
  *             schema-declaration order in ONE pass (create-form-store.ts:1814).
  *             pathOrdinals drives form.meta.errors SORT order, so deferring this
- *             walk would reorder meta.errors (observable) — non-deferrable
+ *             walk would reorder meta.errors (observable), non-deferrable
  *             without a separate O(F) ordinal walk (no net win).
  *   baseline  getEmptyValueAtPath([])                          DEFERRABLE
  *             the blank value tree fed to walkAuthoredFromSchemaDiff to derive
  *             `authoredPaths`, which is consumed ONLY by filterAuthoredErrors
- *             (create-form-store.ts:2701) — at field-VALIDATION time, never at
+ *             (create-form-store.ts:2701), at field-VALIDATION time, never at
  *             mount. Construction-time validation is gated to async-strict,
  *             non-SSR schemas (:1904), so for the common sync form the FIRST
  *             filterAuthoredErrors call is the first keystroke. authoredPaths
@@ -32,10 +32,10 @@
  * DEFERRAL CEILING (what lazy-authoredPaths could remove from the sync init
  * path) = baseline + walkAuthoredFromSchemaDiff. That walk is module-local (not
  * exported), but it is an O(F) two-tree diff bounded by the `walk` cell, so
- * ceiling <= baseline + walk — both measured. Read that against the eager total
+ * ceiling <= baseline + walk, both measured. Read that against the eager total
  * (parse + clone + walk + baseline) for the deferrable FRACTION of init. A
  * `defaultValues` argument (not passed here) adds mergeStructural +
- * walkAuthoredFromConstraints, both O(defaultValues) and proportional — they do
+ * walkAuthoredFromConstraints, both O(defaultValues) and proportional: they do
  * not move the fraction. See PERF-ANALYSIS.md "P4".
  */
 

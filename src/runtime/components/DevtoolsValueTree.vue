@@ -100,7 +100,7 @@
     // Array indices arrive as stringified numbers from `Object.entries` /
     // `array.map`. Coerce back to numbers when the parent is an array
     // so `canonicalizePath` on the consumer side gets a structured Path
-    // with the right shape — `["users", 0, "name"]`, not
+    // with the right shape, `["users", 0, "name"]`, not
     // `["users", "0", "name"]`.
     if (type.value === 'array') return [...path.value, Number(rawKey)]
     return [...path.value, rawKey]
@@ -159,7 +159,7 @@
 
   // Selection (Field-state inspector hook). Canonical key uses JSON-
   // serialised path-array form so two arrays with the same shape produce
-  // the same string — direct equality check.
+  // the same string, direct equality check.
   const ownKey = computed(() => JSON.stringify(path.value))
   const isSelected = computed(
     () =>

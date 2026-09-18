@@ -2,21 +2,18 @@
 /**
  * Strict-mode write-trap consistency gate for PASS2-4.
  *
- * `form.fields` (container + leaf-view) and the `form.fields(path)`
- * call-terminal each had `set/delete: () => false`, which throws
- * `TypeError` under strict mode (every ESM module and `<script setup>`
- * block). The library documents "writes warn and noop" — the contract
- * `form.values` / `wizard.statuses` already honored. This gate pins the
- * three drifted proxies onto the same contract:
+ * Attaform documents "writes warn and noop", the contract `form.values`
+ * and `wizard.statuses` hold. This gate pins `form.fields` (container
+ * and leaf-view) and the `form.fields(path)` call-terminal onto it too:
  *
- *   - **no throw** from `form.fields.X = …`, `delete form.fields.X`,
- *     `form.fields.email.value = …`, `form.fields('email').value = …`,
- *     `form.errors.tags[0] = …`, on either adapter.
+ *   - **no throw** from `form.fields.X = ...`, `delete form.fields.X`,
+ *     `form.fields.email.value = ...`, `form.fields('email').value = ...`
+ *     or `form.errors.tags[0] = ...`, on either adapter.
  *   - **dev warn** fires once per call.
  *
- * Pre-fix the strict-mode `TypeError` rejects the `not.toThrow`
- * assertions and the warn never lands because the throw escapes first.
- * Post-fix both succeed.
+ * A trap of `set/delete: () => false` throws `TypeError` under strict
+ * mode, which every ESM module and `<script setup>` block is: the throw
+ * escapes before the warn can land.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z as zV4 } from 'zod'
@@ -45,7 +42,7 @@ const adapters = [
   },
 ] as const
 
-describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
+describe.each(adapters)('proxy write traps: $name', ({ mount }) => {
   let warnings: string[]
   let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -60,7 +57,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     warnSpy.mockRestore()
   })
 
-  // PASS2-4 — surface-proxy container path: `form.fields.X = …` / `delete form.fields.X`
+  // PASS2-4, surface-proxy container path: `form.fields.X = …` / `delete form.fields.X`
   it('form.fields container set + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const fields = api.fields as Record<string, unknown>
@@ -74,7 +71,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-4 — leaf-view path: `form.fields.email.value = …` / `delete form.fields.email.value`
+  // PASS2-4, leaf-view path: `form.fields.email.value = …` / `delete form.fields.email.value`
   it('form.fields.<leaf>.value assign + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const leaf = api.fields.email as Record<string, unknown>
@@ -88,7 +85,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-4 — call-form terminal: `form.fields('email').value = …`
+  // PASS2-4, call-form terminal: `form.fields('email').value = …`
   it('form.fields(path) terminal assign + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const terminal = api.fields('email') as Record<string, unknown>
@@ -102,9 +99,8 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-4 — form.errors container path mirrors form.fields. The
-  // errors surface goes through the same `containerProxyAt` factory
-  // and inherits the fix automatically.
+  // form.errors container paths mirror form.fields: both surfaces are
+  // minted by the same `containerCache` factory in `callable-tree.ts`.
   it('form.errors container set + delete do not throw and warn in dev', () => {
     const { api, app } = mount()
     const errors = api.errors as Record<string, unknown>
@@ -118,7 +114,7 @@ describe.each(adapters)('proxy write traps — $name', ({ mount }) => {
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-12 — defineProperty on `form.values` claimed success silently;
+  // PASS2-12, defineProperty on `form.values` claimed success silently;
   // pin the honest signal so a consumer probing the proxy with
   // `Object.defineProperty` sees the warn at dev time.
   it('Object.defineProperty on form.values warns in dev', () => {

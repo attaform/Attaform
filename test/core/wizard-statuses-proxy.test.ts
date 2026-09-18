@@ -114,13 +114,13 @@ describe('buildWizardStatusesProxy', () => {
     try {
       ;(proxy as unknown as { a: FormStatus }).a = pending
     } catch {
-      // strict-mode environments may throw — fine either way
+      // strict-mode environments may throw, fine either way
     }
     warnSpy.mockRestore()
     expect(warnings.some((w) => w.includes('read-only'))).toBe(true)
   })
 
-  // PASS2-12 — defineProperty used to silently `return true`, claiming
+  // PASS2-12, defineProperty used to silently `return true`, claiming
   // success while no property landed. The honest signal is a dev warn
   // (and still `return true` so strict callers don't throw).
   it('warns when Object.defineProperty probes the proxy', () => {

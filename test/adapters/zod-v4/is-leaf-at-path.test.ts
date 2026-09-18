@@ -10,7 +10,7 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
  * `object`, `array`, `map`, `set`).
  */
 
-describe('zod v4: isLeafAtPath — primitives are leaves', () => {
+describe('zod v4: isLeafAtPath: primitives are leaves', () => {
   it('returns true for primitive leaves', () => {
     const schema = z.object({
       name: z.string(),
@@ -25,7 +25,7 @@ describe('zod v4: isLeafAtPath — primitives are leaves', () => {
     expect(adapter.isLeafAtPath(['big'])).toBe(true)
   })
 
-  it('returns true for Date (Date is a leaf — never drilled into)', () => {
+  it('returns true for Date (Date is a leaf, never drilled into)', () => {
     const schema = z.object({ created: z.date() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     expect(adapter.isLeafAtPath(['created'])).toBe(true)
@@ -44,7 +44,7 @@ describe('zod v4: isLeafAtPath — primitives are leaves', () => {
   })
 })
 
-describe('zod v4: isLeafAtPath — wrappers are transparent', () => {
+describe('zod v4: isLeafAtPath: wrappers are transparent', () => {
   it('returns true for .optional() over a primitive', () => {
     const schema = z.object({ note: z.string().optional() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -64,7 +64,7 @@ describe('zod v4: isLeafAtPath — wrappers are transparent', () => {
   })
 })
 
-describe('zod v4: isLeafAtPath — containers descend', () => {
+describe('zod v4: isLeafAtPath: containers descend', () => {
   it('returns false for object containers', () => {
     const schema = z.object({
       address: z.object({ city: z.string(), zip: z.string() }),
@@ -108,7 +108,7 @@ describe('zod v4: isLeafAtPath — containers descend', () => {
   })
 })
 
-describe('zod v4: isLeafAtPath — discriminated unions', () => {
+describe('zod v4: isLeafAtPath: discriminated unions', () => {
   const schema = z.object({
     notify: z.discriminatedUnion('channel', [
       z.object({ channel: z.literal('email'), address: z.string() }),
@@ -154,7 +154,7 @@ describe('zod v4: isLeafAtPath — discriminated unions', () => {
   })
 })
 
-describe('zod v4: isLeafAtPath — non-existent paths', () => {
+describe('zod v4: isLeafAtPath: non-existent paths', () => {
   it('returns false for unknown paths (descend permissively)', () => {
     const schema = z.object({ name: z.string() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -163,7 +163,7 @@ describe('zod v4: isLeafAtPath — non-existent paths', () => {
   })
 })
 
-describe('zod v4: isLeafAtPath — cache behaviour', () => {
+describe('zod v4: isLeafAtPath: cache behaviour', () => {
   it('memoises so the second call skips the slim-primitive walk', () => {
     const schema = z.object({ email: z.string(), address: z.object({ city: z.string() }) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -176,7 +176,7 @@ describe('zod v4: isLeafAtPath — cache behaviour', () => {
     expect(adapter.isLeafAtPath(['email'])).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)
     expect(adapter.isLeafAtPath(['email'])).toBe(true)
-    expect(spy).toHaveBeenCalledTimes(1) // cache hit — no extra walk
+    expect(spy).toHaveBeenCalledTimes(1) // cache hit: no extra walk
 
     // Different path → cold miss → spy advances by one.
     expect(adapter.isLeafAtPath(['address'])).toBe(false)
@@ -192,13 +192,13 @@ describe('zod v4: isLeafAtPath — cache behaviour', () => {
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
     const spy = vi.spyOn(adapter, 'getSlimPrimitiveTypesAtPath')
 
-    // Array-form first — populates the cache under the canonical key.
+    // Array-form first, populates the cache under the canonical key.
     expect(adapter.isLeafAtPath(['users', 0, 'name'])).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)
 
     // Repeated array-form must hit the cache (canonicalises to the
     // same key). If the cache key changed shape between calls the
-    // spy would advance — which is exactly the regression the title
+    // spy would advance: which is exactly the regression the title
     // claims this test prevents.
     expect(adapter.isLeafAtPath(['users', 0, 'name'])).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)

@@ -9,12 +9,12 @@ import { fakeSchema } from '../utils/fake-schema'
 
 /*
  * End-to-end proof that `attaform` works under bare Vue 3 + SSR
- * via `@vue/server-renderer` — no Nuxt involved. Exercises the full round
+ * via `@vue/server-renderer`: no Nuxt involved. Exercises the full round
  * trip: server creates app, useForm sets some state, render HTML,
  * serialize, hydrate on a fresh "client" app, confirm the reconstructed
  * state matches.
  *
- * Companion to test/core/serialize.test.ts — that file covers the
+ * Companion to test/core/serialize.test.ts: that file covers the
  * serialize helpers in isolation; this file proves they compose with
  * @vue/server-renderer's real rendering pipeline.
  */
@@ -64,7 +64,7 @@ describe('bare-Vue SSR round-trip', () => {
       JSON.parse(serialised) as ReturnType<typeof renderAttaformState>
     )
 
-    // Render the client app — during setup, useForm should pick up the
+    // Render the client app, during setup, useForm should pick up the
     // hydrated state rather than re-initialising from schema defaults.
     const clientHtml = await renderToString(clientApp)
     expect(clientHtml).toContain('server-edited@x')

@@ -1,34 +1,33 @@
 /**
  * Field-metadata write/read API for the unified `attaform/zod` entry.
  *
- * Storage is shared with both adapters via `field-meta-store` — a
- * payload written here is visible to whichever adapter the unified
- * `useForm` dispatches to at runtime, regardless of Zod major. No
+ * Storage is shared with both adapters through `core/field-meta-store`,
+ * so a payload written here is visible to whichever adapter the unified
+ * `useForm` dispatches to at runtime, whatever the Zod major. No
  * `zod` runtime import; the type-only `import type` is erased at
  * build, so `attaform/zod` carries no `z.registry` reference even
  * when consumed by a Zod 3 project without the Vite plugin alias.
  *
- * The native v4 chain `schema.register(fieldMeta, payload)` continues
- * to work — Zod 4's `.register()` only calls `.add(this, payload)`
- * structurally, satisfied by the shared store.
+ * The native v4 chain `schema.register(fieldMeta, payload)` works too:
+ * Zod 4's `.register()` only calls `.add(this, payload)` structurally,
+ * which the shared store satisfies.
  */
 import type { z } from 'zod'
 import type { FieldMetaPayload } from '../../core/field-meta'
 import { getFieldMetaForSchema } from '../../core/field-meta-store'
 import { installingFieldMetaStore } from '../../core/walk-field-meta'
 
-// Zod v4's `$ZodRegistry` class isn't surfaced under the `z` namespace
-// of the classic external entry, but `z.registry()` returns one — so
-// `ReturnType<typeof z.registry<T>>` resolves to the registry type
-// without needing a direct import. The `import type` keeps the
-// reference type-only; nothing about `z.registry` lands in the bundle.
+// `$ZodRegistry` is not surfaced under the classic external entry's `z`
+// namespace, but `z.registry()` returns one, so `ReturnType<typeof
+// z.registry<T>>` names the registry type without a direct import. The
+// `import type` keeps it type-only, so no `z.registry` reaches the
+// bundle.
 type ZodFieldMetaRegistry = ReturnType<typeof z.registry<FieldMetaPayload>>
 
 /**
- * The shared registry every Attaform-aware Zod schema can register
- * field metadata against, regardless of major. Same instance the v3
- * and v4 adapter entries expose — write in one place, read from
- * any.
+ * The shared registry an Attaform-aware Zod schema registers field
+ * metadata against, whatever its major. The same instance the v3 and v4
+ * adapter entries expose: write in one place, read from any.
  *
  * Cast to Zod 4's `$ZodRegistry<FieldMetaPayload>` so the native
  * `schema.register(fieldMeta, payload)` chain type-checks for v4
@@ -48,8 +47,7 @@ export const fieldMeta = installingFieldMetaStore as unknown as ZodFieldMetaRegi
  * keys on schema reference, so cloning prevents last-write-wins
  * collisions for sub-schemas reused at multiple paths).
  *
- * Works on both Zod 3 and Zod 4 schemas — branches on the runtime
- * shape of the schema:
+ * Works on a Zod 3 or a Zod 4 schema, branching on runtime shape:
  * - Zod 4 schemas expose a public `.clone()` method; we call it.
  * - Zod 3 schemas don't, so we reconstruct via
  *   `new schema.constructor(schema._def)`.

@@ -1,7 +1,7 @@
 /**
- * T4 GATE HARNESS #2 — error-map BOOKKEEPING equivalence under the decomposition.
+ * T4 GATE HARNESS #2, error-map BOOKKEEPING equivalence under the decomposition.
  *
- * STATUS: T4 was SCOPED OUT — a measured-and-scoped non-action (2026-06-09; see
+ * STATUS: T4 was SCOPED OUT: a measured-and-scoped non-action (2026-06-09; see
  * PERF-ANALYSIS.md "T4"). This harness stays as reproducible EVIDENCE + a standing
  * guard, not as a gate for unshipped runtime code.
  *
@@ -17,11 +17,11 @@
  *   - refines-only pass: re-run all container/root refines, then reapply their
  *     issues (which can land at ANY path).
  *
- * The real mutator (`create-form-store.ts:2985 applySchemaErrorsForSubtree`) clears
+ * The real mutator (`create-form-store.ts applySchemaErrorsForSubtree`) clears
  * by PATH SCOPE: it deletes existing `schemaErrors` keys under the scope path that
  * the new pass doesn't rewrite, then sets the new ones. The hazard the second
  * obligation must rule out: a container refine can emit an issue to a path that
- * ALREADY holds a leaf error — `confirmPassword` carrying both its own `.min` leaf
+ * ALREADY holds a leaf error, `confirmPassword` carrying both its own `.min` leaf
  * error AND the cross-field match-refine error. A refines-only pass that scope-clears
  * root to reapply refine issues would CLOBBER the co-located leaf error; a leaf pass
  * that scope-clears its subtree would clobber a co-located refine error. Scope-based
@@ -29,10 +29,10 @@
  *
  * ── What this harness pins (both adapters) ────────────────────────────────────
  *
- * 1. EQUIVALENCE: an ORIGIN-CHANNELED decomposition — leaf issues maintained by
+ * 1. EQUIVALENCE: an ORIGIN-CHANNELED decomposition, leaf issues maintained by
  *    subtree scope-clear (incremental), refine issues held in a SEPARATE channel
  *    wholesale-replaced each keystroke (the refines-only pass always yields the
- *    complete current refine verdict), merged leaf-THEN-refine on read —
+ *    complete current refine verdict), merged leaf-THEN-refine on read,
  *    reconstructs the whole-form map path-by-path, across adversarial edit
  *    SEQUENCES (errors appearing, disappearing, and colliding at one path).
  * 2. NECESSITY: the naive SINGLE-channel decomposition (both passes scope-clear into
@@ -50,7 +50,7 @@
  *
  * Scope note: this models the bookkeeping SEMANTICS of the real mutator (group by
  * each issue's own key, scope-clear stale keys under the pass path, merged read)
- * with simple dotted keys + a form-level bucket for root-refine issues — not its
+ * with simple dotted keys + a form-level bucket for root-refine issues: not its
  * exact `PathKey` encoding. When the runtime decomposition lands, harnesses #1 + #2
  * become its standing spec and the real scheduler is validated against them.
  */
@@ -153,7 +153,7 @@ function variants(z: Z, spec: Node): Variants {
 
 // ── Issues, keys, and the abstract schemaErrors map ───────────────────────────
 // A root-refine issue has an empty path; the real store reroutes it to a
-// form-level bucket (create-form-store.ts:2986). Model that with a sentinel key.
+// form-level bucket (create-form-store.ts). Model that with a sentinel key.
 
 const FORM_KEY = '<form>' // storage key for an empty-path (root-refine) issue
 const ROOT_SCOPE = '<root>' // a clear/replace scope covering EVERY key (real path === [])
@@ -176,7 +176,7 @@ function issueId(i: Issue): string {
 /**
  * A key falls under a scope. ROOT_SCOPE covers EVERY key (the real path === []
  * sweep, where `isPathKeyUnder(anyKey, [])` is true); a dotted scope covers itself
- * and its descendants. The form bucket is just a normal key — only ROOT_SCOPE or an
+ * and its descendants. The form bucket is just a normal key, only ROOT_SCOPE or an
  * exact match reaches it.
  */
 function isUnder(key: string, scope: string): boolean {
@@ -224,11 +224,11 @@ function normMultiset(m: Map<string, Issue[]>): string {
 }
 
 /**
- * The real `applySchemaErrorsForSubtree` (create-form-store.ts:2985) semantics:
+ * The real `applySchemaErrorsForSubtree` (create-form-store.ts) semantics:
  * group `incoming` by each issue's own key; the scope's parent key is dropped only
  * if the new pass doesn't rewrite it; descendant keys under the scope the new pass
  * doesn't rewrite are deleted; the rest are set. For ROOT_SCOPE the parent is the
- * form bucket and every other key is a descendant — i.e. the whole map is replaced.
+ * form bucket and every other key is a descendant, i.e. the whole map is replaced.
  */
 function scopeReplace(map: Map<string, Issue[]>, scope: string, incoming: Issue[]): void {
   const grouped = groupByKey(incoming)
@@ -275,7 +275,7 @@ class SingleChannel {
   edit(v: Variants, data: unknown, editedKey: string): void {
     const under = leafIssues(v, data).filter((i) => isUnder(i.key, editedKey))
     scopeReplace(this.map, editedKey, under) // leaf pass
-    // refine pass: refines emit anywhere, so the only honest scope is ROOT — which
+    // refine pass: refines emit anywhere, so the only honest scope is ROOT: which
     // sweeps every co-located leaf error the new refine verdict doesn't rewrite.
     scopeReplace(this.map, ROOT_SCOPE, refineDelta(v, data))
   }
@@ -369,7 +369,7 @@ describe('T4 error-map bookkeeping equivalence (origin-channeled decomposition)'
 // collision, not an artefact of a poor scope choice. At confirmPassword the map must
 // hold [min (leaf), match (refine)]. The refines-only pass only knows [match]; with a
 // single map it can either drop min (scope-clears root, as modelled here) or, with a
-// targeted clear of the refine key, still overwrite the whole [min, match] array —
+// targeted clear of the refine key, still overwrite the whole [min, match] array,
 // either way min is lost. Only separating origins holds both. The channeled model
 // does. A future change that makes the naive strategy stop diverging flips the first
 // expectation (and would mean the collision stopped being reachable).
@@ -426,7 +426,7 @@ function lcg(seed: number): () => number {
   }
 }
 
-describe('bookkeeping equivalence — seeded fuzz edit sequences (both adapters)', () => {
+describe('bookkeeping equivalence: seeded fuzz edit sequences (both adapters)', () => {
   const spec = obj({ a: L.min(3), b: L.min(3), c: L.str(), d: L.abortingMin(2) }, [
     eqRefine('a', 'b', 'a==b', ['b']),
     { type: 'refine', fn: (o: any) => o?.c !== o?.a, message: 'c!=a', path: ['c'] },

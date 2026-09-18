@@ -85,7 +85,7 @@
       const at = row.text.toLowerCase().indexOf(q)
       if (!visibleMatch && at === -1) continue
       // An excerpt renders only when the row itself doesn't show why
-      // it matched — a hit inside the page body.
+      // it matched: a hit inside the page body.
       out.push({
         row,
         excerpt: !visibleMatch && at >= 0 ? buildExcerpt(row.text, at, q.length) : null,

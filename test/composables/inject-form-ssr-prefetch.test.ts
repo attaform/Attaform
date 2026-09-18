@@ -27,7 +27,7 @@ import { renderAttaformState } from '../../src/runtime/core/serialize'
  * Net behaviour: a parent that constructs `useForm({ key })` without
  * reading it itself stays dormant on the server (no factory). A
  * descendant that calls `injectForm({ key, __ssrAccessed: true })`
- * is what causes the factory to fire — and it fires once across all
+ * is what causes the factory to fire, and it fires once across all
  * descendants thanks to the shared activation promise.
  */
 
@@ -67,7 +67,7 @@ describe('injectForm SSR prefetch coordination', () => {
     expect(entry?.[1].form).toMatchObject({ email: 'server@example.com', name: 'Ada' })
   })
 
-  it('descendant without __ssrAccessed does not enqueue — parent stays dormant', async () => {
+  it('descendant without __ssrAccessed does not enqueue: parent stays dormant', async () => {
     let calls = 0
     const Child = defineComponent({
       setup() {
@@ -96,7 +96,7 @@ describe('injectForm SSR prefetch coordination', () => {
     expect(entry?.[1].form).toEqual({ email: '', name: '' })
   })
 
-  it('string-form injectForm("key") preserved — no SSR mark, no enqueue', async () => {
+  it('string-form injectForm("key") preserved: no SSR mark, no enqueue', async () => {
     let calls = 0
     const Child = defineComponent({
       setup() {
@@ -155,10 +155,10 @@ describe('injectForm SSR prefetch coordination', () => {
   })
 })
 
-describe('injectForm signature — type-level union', () => {
+describe('injectForm signature: type-level union', () => {
   it('accepts FormKey string shortcut as before', () => {
     expect(typeof injectForm).toBe('function')
-    // The string-form preserves shape — no runtime assertion possible
+    // The string-form preserves shape: no runtime assertion possible
     // outside a setup scope without mounting, but type-only callers
     // remain valid: `injectForm<F>('key')`. This case is exercised by
     // the runtime tests above.
@@ -166,7 +166,7 @@ describe('injectForm signature — type-level union', () => {
 
   it('accepts options object form', () => {
     expect(typeof injectForm).toBe('function')
-    // Same — runtime exercised above.
+    // Same, runtime exercised above.
   })
 })
 

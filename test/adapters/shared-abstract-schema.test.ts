@@ -74,7 +74,7 @@ function instance(schema: object, build: (s: object) => unknown, key: string, de
   return factory(key, { maxRecursionDepth: depth })
 }
 
-describe.each(adapters)('shared AbstractSchema — $name', ({ schema, build, fresh, other }) => {
+describe.each(adapters)('shared AbstractSchema: $name', ({ schema, build, fresh, other }) => {
   it('hands two forms on one schema the same instance', () => {
     // Different keys, different adapter-factory calls: the shared thing
     // is keyed on the SCHEMA, not on either of those.
@@ -114,9 +114,9 @@ describe.each(adapters)('shared AbstractSchema — $name', ({ schema, build, fre
 describe('the per-path memo bound', () => {
   // The size half of the same contract, on the helper itself: what the
   // case above cannot see from outside is whether the memo GREW. It is
-  // the sharing that makes this load-bearing. A memo of invented record
-  // keys used to die with its form; it now lives as long as the schema,
-  // which for a module-level schema is the life of the process.
+  // the sharing that makes this load-bearing: a memo of invented record
+  // keys lives as long as the SCHEMA, not the form, which for a
+  // module-level schema is the life of the process.
   it('never grows past the cap', () => {
     const memo = new Map<PathKey, number>()
     for (let i = 0; i < MEMO_CAP * 3; i++) {
@@ -139,7 +139,7 @@ describe('the per-path memo bound', () => {
 })
 
 describe.skipIf(!hasGc).each(adapters)(
-  'shared AbstractSchema releases with its schema — $name',
+  'shared AbstractSchema releases with its schema: $name',
   ({ build, fresh }) => {
     /** Force collection hard enough for a WeakRef to clear. */
     async function collect(): Promise<void> {

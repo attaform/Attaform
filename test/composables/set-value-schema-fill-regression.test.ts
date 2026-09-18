@@ -8,7 +8,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
  * Regression spec: every write through setValue must leave the form
- * **structurally complete** — every slot, intermediate and leaf, is the
+ * **structurally complete**: every slot, intermediate and leaf, is the
  * shape the slim schema (objects/arrays/primitives without refines)
  * requires. Refine-level violations remain a validation concern and
  * surface through fieldErrors; structural correctness is a runtime
@@ -17,10 +17,10 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Today's gaps surfaced by these tests:
  *
  * 1. Sparse array writes leave intermediate slots `undefined` (lib
- *    fills, but with the wrong content — `null` / `undefined` rather
+ *    fills, but with the wrong content, `null` / `undefined` rather
  *    than the schema element default).
  * 2. Path-form callback `prev` is `undefined` when the slot doesn't
- *    exist yet — should be the schema element default.
+ *    exist yet, should be the schema element default.
  * 3. Object writes through a missing intermediate object create that
  *    object as the minimum needed to land the write (`{ name: 'X' }`
  *    only) instead of populating the full default and overriding.
@@ -33,7 +33,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * Mindset (per design discussion): consumers using the API correctly
  * write to existing slots or use `append` for ordered insert. The
  * "write to people.21 against an empty array" path is a misuse, but the
- * lib still produces schema-complete data when it happens — that's the
+ * lib still produces schema-complete data when it happens: that's the
  * structural-correctness invariant.
  */
 
@@ -66,7 +66,7 @@ function harness(initialPeople: Form['people']) {
   return { app, form: captured }
 }
 
-describe('setValue — intermediate array slots fill with schema element defaults', () => {
+describe('setValue: intermediate array slots fill with schema element defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -78,7 +78,7 @@ describe('setValue — intermediate array slots fill with schema element default
 
     form.setValue('people.5', { name: 'Carol', age: 30 })
 
-    // Indices 0..4 should be schema element defaults — { name: '', age: 0 } —
+    // Indices 0..4 should be schema element defaults, { name: '', age: 0 },
     // NOT null. Index 5 is the consumer's write.
     expect(form.values.people).toEqual([
       { name: '', age: 0 },
@@ -127,7 +127,7 @@ describe('setValue — intermediate array slots fill with schema element default
   })
 })
 
-describe('setValue — path-form callback `prev` is the schema element default when the slot is missing', () => {
+describe('setValue: path-form callback `prev` is the schema element default when the slot is missing', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -196,14 +196,14 @@ describe('setValue — path-form callback `prev` is the schema element default w
 /**
  * Object-intermediate gaps. Same theme: when a deep write traverses
  * through a missing object, the lib must populate that object with the
- * schema default — not just create the minimum sub-tree needed to land
+ * schema default: not just create the minimum sub-tree needed to land
  * the leaf.
  */
 
 const profileSchema = z.object({
   user: z.object({
     // `.optional()` prevents construction-time `getDefaultValues` from
-    // pre-populating profile — the gap genuinely exists at runtime, so
+    // pre-populating profile: the gap genuinely exists at runtime, so
     // setValue's intermediate-fill behaviour is what's under test here.
     profile: z
       .object({
@@ -235,7 +235,7 @@ function profileHarness(initial: Partial<ProfileForm['user']>) {
   return { app, form: captured }
 }
 
-describe('setValue — intermediate object gaps fill with schema defaults', () => {
+describe('setValue: intermediate object gaps fill with schema defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -267,7 +267,7 @@ describe('setValue — intermediate object gaps fill with schema defaults', () =
       return { ...prev, name: 'Bob' }
     })
 
-    // prev is the whole profile default — every required field present.
+    // prev is the whole profile default: every required field present.
     expect(receivedPrev).toEqual({ name: '', age: 0, bio: '' })
     // Result is a structurally-complete profile.
     expect(form.values.user.profile).toEqual({
@@ -285,7 +285,7 @@ describe('setValue — intermediate object gaps fill with schema defaults', () =
  * missing required fields with schema defaults rather than write the
  * partial as-is.
  *
- * This is the most opinionated of the three areas — the consumer
+ * This is the most opinionated of the three areas: the consumer
  * explicitly typed a value with a missing field, and we're saying the
  * lib auto-completes it. Worth landing if structural-completeness is a
  * non-negotiable invariant; revisit if the surprise factor outweighs
@@ -330,7 +330,7 @@ function addressHarness(initialPeople: AddressForm['address']['people']) {
   return { app, form: captured }
 }
 
-describe('setValue — combined: object + array intermediate fill via callback', () => {
+describe('setValue: combined: object + array intermediate fill via callback', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -346,7 +346,7 @@ describe('setValue — combined: object + array intermediate fill via callback',
       return { ...person, name: 'ed' }
     })
 
-    // The callback received the schema element default — populated, not undefined.
+    // The callback received the schema element default, populated, not undefined.
     expect(receivedPrev).toEqual({ name: '', age: 0 })
 
     // The whole address subtree is structurally correct: street preserved
@@ -366,17 +366,17 @@ describe('setValue — combined: object + array intermediate fill via callback',
 })
 
 /**
- * Deep cascade — three levels of intermediate fill in one write:
+ * Deep cascade, three levels of intermediate fill in one write:
  * `object → array → object → array → object → leaf`. The original
  * implementation got the OUTERMOST array fill right (people[0..1])
- * but lost sibling fields on the slot at the cascading boundary —
+ * but lost sibling fields on the slot at the cascading boundary,
  * people[2] was emitted as `{ addresses: [...] }` (no name / age)
  * because the array branch failed to fill arr[head] before recursing
  * past the existing length, and the next level built a fresh `{}`
  * populated only by the keys the path actually touched.
  *
  * Same bug at the inner array boundary: addresses[3] landed as
- * `{ street: 'X' }` only — `city` dropped.
+ * `{ street: 'X' }` only, `city` dropped.
  *
  * Regression: every slot the path traverses is structurally complete,
  * end-to-end, regardless of cascade depth.
@@ -418,7 +418,7 @@ function cascadeHarness() {
   return { app, form: captured }
 }
 
-describe('setValue — deep cascade fills every traversed slot completely', () => {
+describe('setValue: deep cascade fills every traversed slot completely', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -430,15 +430,15 @@ describe('setValue — deep cascade fills every traversed slot completely', () =
 
     form.setValue('people.2.addresses.3.street', 'Diagonal Drive')
 
-    // people[0..1] are full Person defaults (each with empty addresses
-    // — the inner array's natural default).
+    // people[0..1] are full Person defaults (each with empty addresses:
+    // the inner array's natural default).
     // people[2] is a Person populated through addresses[3]: the array
     // branch pre-fills the slot with the schema element default before
     // recursing, so name/age survive even though the path only writes
     // through addresses.
     // addresses[0..2] are full Address defaults.
     // addresses[3] is a structurally complete Address with the
-    // consumer's `street` overlaid — `city` was filled from the schema
+    // consumer's `street` overlaid, `city` was filled from the schema
     // element default, NOT dropped just because the path didn't name
     // it.
     expect(form.values.people).toEqual([
@@ -468,7 +468,7 @@ describe('setValue — deep cascade fills every traversed slot completely', () =
     })
 
     // Path-form callback prev is auto-defaulted from
-    // schema.getDefaultAtPath(['people', 2, 'addresses', 3]) — the
+    // schema.getDefaultAtPath(['people', 2, 'addresses', 3]): the
     // inner Address default. notes is optional → omitted.
     expect(receivedPrev).toEqual({ street: '', city: '' })
 
@@ -496,7 +496,7 @@ describe('setValue — deep cascade fills every traversed slot completely', () =
     form.setValue('people.2.addresses.3.street', 'First')
     form.setValue('people.2.addresses.3.street', 'Second')
 
-    // Second write should only touch the leaf — every intermediate
+    // Second write should only touch the leaf: every intermediate
     // already exists, no fill triggers, and the value lands cleanly.
     const people = form.values.people
     expect(people).toHaveLength(3)
@@ -509,7 +509,7 @@ describe('setValue — deep cascade fills every traversed slot completely', () =
  * Tuples (positional arrays). Same structural-completeness invariant
  * as regular arrays: writing past the current length must fill the
  * intermediate positions with the schema-prescribed defaults for those
- * positions — and tuples have *position-specific* defaults (each slot
+ * positions, and tuples have *position-specific* defaults (each slot
  * is its own type), so the fill is per-position, not a single element
  * default reused.
  */
@@ -538,7 +538,7 @@ function tupleHarness(initial: TupleForm['coords']) {
   return { app, form: captured }
 }
 
-describe('setValue — tuple intermediate positions fill with schema position defaults', () => {
+describe('setValue: tuple intermediate positions fill with schema position defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -558,12 +558,12 @@ describe('setValue — tuple intermediate positions fill with schema position de
 
 /**
  * Reset confirmation. `reset()` should produce a structurally-complete
- * state per the schema — the same invariant. Probably already works
+ * state per the schema: the same invariant. Probably already works
  * today (reset rebuilds via `getDefaultValues`), but worth pinning so
  * any future churn that bypasses the schema-default pipeline regresses
  * a test rather than slipping through.
  */
-describe('reset / resetField — structural completeness preserved', () => {
+describe('reset / resetField: structural completeness preserved', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -577,11 +577,11 @@ describe('reset / resetField — structural completeness preserved', () => {
     apps.push(app)
 
     // Mutate into a state that may be schema-incomplete (depending on
-    // how the regression fix above lands — currently this leaves
+    // how the regression fix above lands, currently this leaves
     // intermediate undefineds).
     form.setValue('people.5', { name: 'Carol', age: 30 })
 
-    // Reset should wipe back to the original defaults — no leftover
+    // Reset should wipe back to the original defaults: no leftover
     // schema-incomplete shape from the prior write.
     form.reset()
 
@@ -608,7 +608,7 @@ describe('reset / resetField — structural completeness preserved', () => {
   })
 })
 
-describe('setValue — partial value writes are filled with schema defaults', () => {
+describe('setValue: partial value writes are filled with schema defaults', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

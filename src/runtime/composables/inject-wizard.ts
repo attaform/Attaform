@@ -6,49 +6,31 @@ import { kAttaformAncestorWizard, useRegistry } from '../core/registry'
 import type { UseWizardReturnType } from '../types/types-wizard'
 import { ambientWizardProvideHistory } from './use-wizard'
 
-/**
- * Options accepted by `injectWizard` when passing an object instead of
- * a bare key string. Mirrors `injectForm`'s `InjectFormInput` shape so
- * the two composables present an identical call surface.
- */
+/** Options accepted by `injectWizard` in place of a bare key string. */
 export type InjectWizardInput = {
   readonly key?: string | undefined
 }
 
 /**
- * Access an existing wizard handle from a descendant component without
- * passing it through props. Counterpart to `useWizard` — `useWizard`
- * creates and provides; `injectWizard` looks up via Vue's inject
- * mechanism or the per-app registry.
- *
- * Three ways to call it:
+ * Reach an existing wizard from a descendant component without threading
+ * it through props. The counterpart to `useWizard`: `useWizard` creates
+ * and provides, `injectWizard` looks up.
  *
  * ```ts
- * // Reach the nearest ancestor's useWizard call (ambient).
+ * // The nearest ancestor's useWizard call.
  * const wizard = injectWizard()
  *
- * // Reach a specific wizard by its key — works from anywhere in the app.
+ * // A specific wizard by key, from anywhere in the app.
  * const signup = injectWizard('signup-wizard')
- *
- * // Object form (equivalent; convenient for spread).
- * const signup = injectWizard({ key: 'signup-wizard' })
  * ```
  *
- * Resolution rules (no-key form):
- *  - Closest ambient ancestor wins via `provide(kAttaformAncestorWizard)`.
- *  - Only anonymous (no-`key`) `useWizard()` calls fill the ambient
- *    slot. Descendants of a keyed wizard must address it explicitly
- *    via `injectWizard('the-key')`. Mirrors `useForm`'s ambient gate.
+ * A keyed call is a registry lookup, independent of component-tree
+ * position, and reaches any wizard built with `useWizard({ steps, key
+ * })`. A no-key call takes the closest ambient ancestor; only an
+ * anonymous `useWizard()` fills that slot, so a keyed wizard has to be
+ * addressed by its key, exactly as on the form side.
  *
- * Resolution rules (keyed form): registry lookup by string key,
- * independent of component-tree position. The wizard must have been
- * constructed with `useWizard({ steps, key })` to be reachable.
- *
- * Returns `null` when no matching wizard exists (no ambient ancestor,
- * or the named key isn't registered yet). A dev-mode warning points at
- * the call site, lists the registered keys, and flags the mount-timing
- * case (a wizard created by a child or sibling isn't registered until
- * its own setup runs). Always narrow before using:
+ * Returns `null` when nothing matches, so narrow before use:
  *
  * ```ts
  * const wizard = injectWizard('signup')
@@ -56,19 +38,17 @@ export type InjectWizardInput = {
  * wizard.next()
  * ```
  *
- * Consumer ref-counting: keyed lookups pin the wizard handle in the
- * registry for this component's lifetime, so the handle survives even
- * if the parent `useWizard` component unmounts before the child does.
- * Once every consumer disposes, the registry evicts the entry on the
- * next microtask. Ambient lookups don't ref-count — the parent
- * `useWizard`'s scope owns the lifetime.
+ * A keyed miss warns in dev with the registered keys and the call site.
+ * A keyed lookup also pins the handle for this component's lifetime, so
+ * it outlives a parent `useWizard` that unmounts first, and the registry
+ * evicts the entry a microtask after the last consumer disposes. An
+ * ambient lookup does not pin: the parent's scope owns that lifetime.
  */
 export function injectWizard(input?: string | InjectWizardInput): UseWizardReturnType | null {
   const key: string | undefined = typeof input === 'string' ? input : input?.key
 
-  // Lazy-install mirrors `injectForm`: if no plugin was installed,
-  // surface the friendlier "no wizard registered" warn instead of the
-  // raw `RegistryNotInstalledError`.
+  // As in `injectForm`: without this, no installed plugin surfaces as a
+  // raw `RegistryNotInstalledError` instead of "no wizard registered".
   const instance = getCurrentInstance()
   if (instance !== null) ensureAttaformInstalled(instance.appContext.app)
   const registry = useRegistry()
@@ -83,9 +63,8 @@ export function injectWizard(input?: string | InjectWizardInput): UseWizardRetur
       )
       return null
     }
-    // Ref-count this consumer so the handle survives until every
-    // injectWizard caller has unmounted, even if the parent useWizard
-    // tears down first. Mirrors the form's trackConsumer pattern.
+    // Keeps the handle alive until every `injectWizard` caller has
+    // unmounted, even when the parent `useWizard` tears down first.
     if (getCurrentScope() !== undefined) {
       const release = registry.trackWizardConsumer(key)
       onScopeDispose(release)
@@ -93,9 +72,8 @@ export function injectWizard(input?: string | InjectWizardInput): UseWizardRetur
     return handle
   }
 
-  // Ambient miss is opportunistic; descendants narrow on `null` and
-  // degrade rather than getting a warn each render. Keyed misses still
-  // warn (typo signal). Mirrors `injectForm`.
+  // An ambient miss is opportunistic, so it stays silent and descendants
+  // narrow on `null`. A keyed miss warns, being a typo signal.
   const ambient = inject(kAttaformAncestorWizard, null)
   if (ambient === null) return null
   warnIfAmbientWizardProviderHadDuplicates()
@@ -109,10 +87,9 @@ function availableKeysHint(wizards: Map<string, UseWizardReturnType>): string | 
 }
 
 /**
- * SSR-suppressed dev warn — matches `injectForm`'s `warnMiss` so the
- * same miss isn't logged twice when Nuxt's `dev:ssr-logs` hook forwards
- * server warnings to the browser console alongside the client-side
- * warn.
+ * Skipped on SSR, as in `injectForm`: Nuxt's `dev:ssr-logs` hook
+ * forwards server warns to the browser console, where the client pass is
+ * already warning, so the same miss would print twice.
  */
 function warnMiss(detail: string, ssr: boolean, hint?: string): void {
   if (!__DEV__ || ssr) return
@@ -129,14 +106,12 @@ function warnMiss(detail: string, ssr: boolean, hint?: string): void {
 }
 
 /**
- * Walk up from the current component to the nearest ancestor that
- * registered an anonymous-wizard ambient provide. If that ancestor
- * recorded more than one anonymous `useWizard()` call, a descendant
- * reaching for the ambient slot only sees the last one, so warn once
- * per consumer that genuinely collides. Mirrors
- * `warnIfAmbientProviderHadDuplicates` on the form side. Keyed
- * `useWizard()` calls do not appear here, since they do not fill the
- * ambient slot.
+ * Walk up to the nearest ancestor holding an anonymous-wizard ambient
+ * provide. An ancestor with more than one anonymous `useWizard()` call
+ * only ever hands a descendant the last of them, so warn once per
+ * consumer that genuinely collides. Keyed calls never appear, since they
+ * do not fill the slot. `warnIfAmbientProviderHadDuplicates` is the form
+ * side of the same check.
  */
 function warnIfAmbientWizardProviderHadDuplicates(): void {
   if (!__DEV__ || ambientWizardProvideHistory === null) return

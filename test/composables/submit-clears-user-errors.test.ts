@@ -10,8 +10,8 @@ import { waitUntil } from '../utils/form-harness'
 
 /**
  * A fresh `handleSubmit` attempt clears user-set errors
- * (`setErrors` / `setErrors`) at ENTRY — before validation,
- * before the consumer's callback — so every attempt starts from a clean
+ * (`setErrors` / `setErrors`) at ENTRY, before validation,
+ * before the consumer's callback: so every attempt starts from a clean
  * user-error slate. This mirrors `submitError`, which already nulls at
  * entry; together they make a submit a "reset the error surface, then
  * repopulate it" event.
@@ -23,8 +23,8 @@ import { waitUntil } from '../utils/form-harness'
  * fails differently or fails client validation.
  *
  * The clear is unconditional (no opt-out) and total (form-level AND
- * field-level). Errors set DURING the callback survive — they land after
- * the entry-clear — and persist until the next attempt.
+ * field-level). Errors set DURING the callback survive: they land after
+ * the entry-clear, and persist until the next attempt.
  */
 
 const schema = z.object({
@@ -78,7 +78,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
     })(new Event('submit'))
     expect(formLevel(api.meta.errors)).toHaveLength(1)
 
-    // Attempt 2 succeeds and sets nothing — the stale error must be gone.
+    // Attempt 2 succeeds and sets nothing: the stale error must be gone.
     await api.handleSubmit(() => {})(new Event('submit'))
     await waitUntil(() => formLevel(api.meta.errors).length === 0)
     expect(formLevel(api.meta.errors)).toHaveLength(0)
@@ -98,7 +98,7 @@ describe('handleSubmit clears user-set errors at entry', () => {
     expect(atPath(api.meta.errors, 'email')).toHaveLength(1)
     expect(atPath(api.meta.errors, 'password')).toHaveLength(1)
 
-    // Attempt 2: server rejects only email — the stale password error
+    // Attempt 2: server rejects only email: the stale password error
     // must not linger.
     await api.handleSubmit(() => {
       api.setErrors([{ path: ['email'], message: 'email taken', code: 'api:validation' }])

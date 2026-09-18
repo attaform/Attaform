@@ -67,9 +67,9 @@ describe('createAttaform', () => {
     expect(getRegistryFromApp(a)).not.toBe(getRegistryFromApp(b))
   })
 
-  // D1 — installing twice on the same app is a no-op (idempotent).
-  // Pre-fix, the second install overwrote `app._attaform`, orphaning
-  // every form the first registry had built.
+  // D1: installing twice on the same app is idempotent. A second
+  // install that overwrote `app._attaform` would orphan every form the
+  // first registry built.
   it('a second install on the same app is a no-op and warns in dev', () => {
     const app = createApp({ render: () => null })
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -80,7 +80,7 @@ describe('createAttaform', () => {
       // only catches identical plugin objects).
       app.use(createAttaform())
       const secondRegistry = getRegistryFromApp(app)
-      // Same registry — no overwrite.
+      // Same registry: no overwrite.
       expect(secondRegistry).toBe(firstRegistry)
       // Single dev warning fired.
       const matched = warnSpy.mock.calls.filter((c: unknown[]) =>

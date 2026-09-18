@@ -4,9 +4,9 @@
  * registry's SSR serialization helpers. Replaces the old split of
  * register.ts (client-only) + register-stub.ts (server-only).
  *
- * Runs on BOTH server and client — Vue's SSR renderer is a natural no-op
- * for directive lifecycle hooks, so the same plugin works on both sides
- * without a stub.
+ * Runs on BOTH server and client: Vue's SSR renderer is already a no-op
+ * for directive lifecycle hooks, so one plugin covers both sides with no
+ * stub.
  */
 import { defineNuxtPlugin, useRoute, useRuntimeConfig } from 'nuxt/app'
 import { DEVTOOLS_WINDOW_KEY } from '../core/devtools-shared'
@@ -39,8 +39,8 @@ export default defineNuxtPlugin({
     // Bridge `useWizard`'s active-step resolution to the Nuxt route so
     // deep-links hydrate without flicker. On the server, `useRoute()`
     // reads the incoming request URL; on the client, it reads the live
-    // route — so server and client compute the same initial step and
-    // Vue's hydration walks a matching tree. Without this bridge, the
+    // route. Both compute the same initial step, so Vue's hydration
+    // walks a matching tree. Without this bridge, the
     // wizard would fall back to its first step on the server while the
     // client reads the URL, producing the deep-link mismatch cascade.
     // Consumers can still pass `options.restore` explicitly to override;
@@ -71,7 +71,7 @@ export default defineNuxtPlugin({
       // Dev-only: attach the registry to window so the Nuxt DevTools overlay
       // panel (which runs in an iframe at /_attaform_devtools) can reach it
       // via `window.parent.__attaform_devtools__`. The bridge holds a live
-      // reference to the registry — Vue's reactivity flows across the
+      // reference to the registry, and Vue's reactivity flows across the
       // same-origin iframe boundary, so the panel re-renders on every form
       // mutation without an explicit push channel. `import.meta.dev` is
       // statically replaced by Nuxt at build time, so this whole branch is

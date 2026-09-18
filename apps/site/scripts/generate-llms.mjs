@@ -39,7 +39,7 @@ const FIX = process.argv.includes('--fix')
 
 // Docs directories excluded from both the index and the full-text dump: not
 // part of the product's public reading surface. `e` is the AF## error-code
-// reference — served from /e (not /docs), so the /docs-route mapping here
+// reference, served from /e (not /docs), so the /docs-route mapping here
 // doesn't apply to it.
 const EXCLUDED_DIRS = new Set(['scorecard', 'e'])
 

@@ -16,7 +16,7 @@
   <div class="relative isolate overflow-hidden">
     <!-- Ambient dot-grid. Custom radial-gradient (rather than the
          `bg-dot-grid` utility) so the dots paint in
-         `--color-border-strong` (gray-300) — one step darker than
+         `--color-border-strong` (gray-300): one step darker than
          the default border color, the difference between "barely
          there" and "actually visible." Top-anchored mask fades the
          texture out before the editor starts. -->

@@ -86,7 +86,7 @@
   // twin for inspection.
   "duplicates": {
     "ignore": ["test/**", "bench/**", "scripts/**", "apps/site/**"],
-    // Strip import blocks from clone detection — sorted import lists
+    // Strip import blocks from clone detection: sorted import lists
     // look alike everywhere and aren't copy-paste worth refactoring.
     "ignoreImports": true
   },

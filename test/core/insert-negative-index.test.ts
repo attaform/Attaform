@@ -1,21 +1,17 @@
 // @vitest-environment jsdom
 /**
- * PASS2-6 — the typed `insert` helper recorded `op.index` against the
- * POST-splice length, not the pre-splice length. For a negative
- * `index` argument, JS `splice` normalises against PRE-splice length
- * (e.g. `-1` on length-2 → position 1), but the recorded
- * `arrayOp.index` was the SAME `index` clamped to `[0, postLen]`,
- * yielding `0` for the negative case. Downstream consumers
- * (variant-memory eviction, `arrayIdentity.applyOp`, `remapForOp`)
- * then operated on the wrong slot — variant memory was cleared at
- * index 0 (where nothing happened), and the identity-token list got
- * its splice at index 0 (clobbering the unchanged head element's
- * token instead of the actual new arrival's slot).
+ * PASS2-6: the typed `insert` helper computes its insertion index BEFORE
+ * the splice, under JS's negative-index normalisation, and passes that
+ * same index to both `splice` and the recorded `arrayOp`, so per-element
+ * state and tokens follow the actual permutation.
  *
- * The fix computes the insertion index BEFORE splice using JS's
- * negative-index normalisation, then passes the same index to both
- * `splice` and the recorded `arrayOp`. Per-element state and tokens
- * now follow the actual permutation.
+ * Recording `op.index` against the POST-splice length diverges on a
+ * negative argument: `splice` normalises `-1` on a length-2 array to
+ * position 1, while an index clamped to `[0, postLen]` yields 0. Every
+ * downstream consumer then works the wrong slot, so variant memory is
+ * cleared at index 0 where nothing happened, and the identity-token list
+ * splices at index 0, clobbering the unchanged head element's token
+ * rather than the new arrival's.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { z as zV4 } from 'zod'
@@ -33,7 +29,7 @@ const adapters = [
   { name: 'v3', mount: makeMounter(useFormV3, schemaV3, { defaultValues: defaults }) },
 ] as const
 
-describe.each(adapters)('insert negative index — $name', ({ mount }) => {
+describe.each(adapters)('insert negative index: $name', ({ mount }) => {
   const apps: ReturnType<typeof mount>['app'][] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -65,7 +61,7 @@ describe.each(adapters)('insert negative index — $name', ({ mount }) => {
     expect(form.fields('tags.2').key).toBe(bToken)
   })
 
-  it("touched state on 'a' survives an insert(-1) — its index didn't change", () => {
+  it("touched state on 'a' survives an insert(-1): its index didn't change", () => {
     const form = mountOne()
     form.touch('tags.0')
     expect(form.fields('tags.0').touched).toBe(true)

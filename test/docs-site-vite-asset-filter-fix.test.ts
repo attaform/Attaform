@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
  * `Maximum call stack size exceeded` from
  * `EnvironmentPluginContainer.transform`. Visible as `Internal server
  * error` + a 404 on the prebundle URL on the first `/play/<slug>`
- * load — the Monaco editor never mounts.
+ * load: the Monaco editor never mounts.
  *
  * Captured via filter-trace instrumentation as
  * `[filter-trace] THREW plugin=vite:asset-import-meta-url`.
@@ -36,7 +36,7 @@ import { describe, expect, it } from 'vitest'
  *
  * This test pins the wiring at the source-string layer (mirrors the
  * other `docs-site-*` tests). A behavioural reproduction would need
- * a full headless browser run — overkill for the regression we're
+ * a full headless browser run, overkill for the regression we're
  * guarding here.
  */
 

@@ -7,13 +7,13 @@ import type { UseFormReturnType } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 
 /**
- * Runtime coverage for Phase 8.2 — form-level `dirty` / `valid`
+ * Runtime coverage for Phase 8.2, form-level `dirty` / `valid`
  * computed aggregates. Type-level coverage lives in
  * test/composables/type-inference.test.ts.
  *
  * The aggregates are thin wrappers around existing reactive stores
  * (`state.originals` for dirty comparisons, `state.schemaErrors` +
- * `state.userErrors` for the validity check) — the tests pin their
+ * `state.userErrors` for the validity check): the tests pin their
  * semantics so a future refactor of those stores can't silently break
  * the aggregates.
  */
@@ -48,7 +48,7 @@ function harness(initial?: Partial<SignupForm>) {
   return { app, form: captured }
 }
 
-describe('useForm — dirty / valid form-level aggregates', () => {
+describe('useForm: dirty / valid form-level aggregates', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -93,7 +93,7 @@ describe('useForm — dirty / valid form-level aggregates', () => {
     expect(form.meta.valid).toBe(true)
   })
 
-  it('dirty and valid are independent — dirty-but-valid is a real state', async () => {
+  it('dirty and valid are independent: dirty-but-valid is a real state', async () => {
     const { app, form } = harness()
     apps.push(app)
     form.setValue('email', 'a@b')

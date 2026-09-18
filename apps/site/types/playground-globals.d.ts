@@ -9,17 +9,17 @@
 //
 // Two declaration surfaces, kept in lock-step:
 //
-//   1. THIS FILE — read by vue-tsc on the build server. Picked up
+//   1. THIS FILE, read by vue-tsc on the build server. Picked up
 //      automatically from `apps/site/types/` via Nuxt's tsconfig
 //      include.
-//   2. `apps/site/components/demo/DemoReplEditor.client.vue` —
+//   2. `apps/site/components/demo/DemoReplEditor.client.vue`,
 //      defines `TOAST_AMBIENT_DTS` and injects it into Volar's
 //      in-Monaco TS service via `store.addFile(new File(...))`. The
 //      in-iframe type universe is separate from vue-tsc's, so the
 //      same shape needs to be expressed in both places.
 //
 // Demos call `toast('…')` / `toast.success('…', { description: … })`
-// without an import — same shape real Vue apps wire up via a toast
+// without an import, same shape real Vue apps wire up via a toast
 // plugin or composable. A demo can be lifted into real app code
 // with `import { toast } from 'vue-sonner'` and every call site
 // keeps working because our type matches vue-sonner's accepted
@@ -37,7 +37,7 @@ declare global {
    * The callable arm admits Attaform's `ValuesSurface` (the type of
    * `form.values`). `form.values` is a callable readonly proxy that
    * carries a `toJSON()` hook, so `JSON.stringify` walks straight
-   * through to the underlying form data — no special casing on the
+   * through to the underlying form data: no special casing on the
    * caller's side. Naked functions without `toJSON` render as
    * `[function]` rather than poisoning the output.
    */

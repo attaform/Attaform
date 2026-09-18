@@ -35,9 +35,9 @@ import type {
 import type { DeepPartial, DefaultValuesInput, GenericForm, WriteShape } from '../types/types-core'
 
 /**
- * Schema-agnostic `useForm`. Accepts any object that implements
- * `AbstractSchema` — useful when integrating a custom schema
- * adapter or a third-party validation library.
+ * Schema-agnostic `useForm`, accepting anything that implements
+ * `AbstractSchema`. Reach for it when integrating a custom adapter or a
+ * validation library Attaform ships no adapter for.
  *
  * ```ts
  * import { useForm } from 'attaform'
@@ -48,14 +48,10 @@ import type { DeepPartial, DefaultValuesInput, GenericForm, WriteShape } from '.
  * })
  * ```
  *
- * Most consumers prefer a typed entry point that wraps the underlying
- * library's schema with the matching adapter automatically; see the
- * subpath documentation for the available adapters.
- *
- * Returns the same form API as the typed entry points; see
- * `UseFormReturnType` for the full surface.
+ * The return is the same form the typed entry points hand back; see
+ * `UseFormReturnType`. Most consumers want one of those instead, since
+ * they attach the matching adapter for you.
  */
-
 export function useAbstractForm<
   Form extends GenericForm,
   GetValueFormType extends GenericForm = Form,
@@ -70,21 +66,17 @@ export function useAbstractForm<
     K
   >,
   /**
-   * Internal escape hatch for callers that already hold a registry
-   * reference and need to construct a form outside Vue's setup context
-   * (e.g. the wizard's lazy noop builder, which runs inside a
-   * `computed` re-eval). Passing this skips the strict `useRegistry()`
-   * call; everything else (FormStore allocation, registry presence,
-   * consumer ref-counting via `onScopeDispose`) goes through the same
-   * path eager calls follow. Not part of the public surface.
+   * Internal escape hatch for a caller that already holds a registry and
+   * has to build a form outside Vue's setup context, such as the
+   * wizard's lazy noop builder running inside a `computed` re-eval. It
+   * skips the strict `useRegistry()` call and nothing else. Not public.
    */
   options?: { readonly registry?: AttaformRegistry }
 ): UseFormReturnType<Form, GetValueFormType, ReadForm, K> {
-  // Foot-gun guard: catches `useForm()` (no args), `useForm(null)`,
-  // `useForm(rawSchema)` (any schema-like object passed as the first
-  // argument — its `.schema` field is undefined), and the explicit
-  // `useForm({ schema: undefined })` case. Throws synchronously
-  // before any downstream code reads `configuration.schema`.
+  // Catches `useForm()`, `useForm(null)`, `useForm(rawSchema)` (a schema
+  // passed directly, so `.schema` is undefined) and an explicit
+  // `useForm({ schema: undefined })`, all before anything downstream
+  // reads `configuration.schema`.
   if (
     configuration === undefined ||
     configuration === null ||
@@ -95,35 +87,30 @@ export function useAbstractForm<
 
   const key = resolveFormKey(configuration.key)
 
-  // One FormStore per (app, formKey). Multiple useForm calls with the same
-  // key resolve to the same instance — that's the shared-store semantic
-  // for forms that explicitly opt in to a stable key.
+  // One FormStore per (app, formKey), so every `useForm` call sharing a
+  // key shares the store. That is the whole point of opting into one.
   //
-  // Lazy-install: if the consumer hasn't called `createAttaform()`,
-  // attach the registry now. Idempotent — explicit installs (Nuxt
-  // module, manual `app.use(createAttaform())`) win when
-  // they ran first. The strict `useRegistry()` below still throws
-  // `OutsideSetupError` when called outside setup; the lazy install
-  // only ever fires when an instance is available.
+  // Attach the registry if the consumer never called `createAttaform()`.
+  // Idempotent, and an explicit install (Nuxt module, manual
+  // `app.use(...)`) that ran first wins. `useRegistry()` below still
+  // throws `OutsideSetupError` outside setup.
   const instance = getCurrentInstance()
   if (instance !== null) ensureAttaformInstalled(instance.appContext.app)
   const registry = options?.registry ?? useRegistry()
 
-  // Materialise the `defaultValues` trichotomy (`T | (() => T) |
-  // (() => Promise<T>)`) up front — `walkUnsetSentinels` inside
-  // `buildFreshState` expects a plain `DeepPartial<...>`, not a function. Sync inputs use
-  // their value as-is; function inputs swap to `undefined` so the form
-  // constructs against the schema's slim defaults, and the factory
-  // settles into `state.applyFormReplacement` once it resolves (wired
-  // below).
+  // `walkUnsetSentinels` inside `buildFreshState` wants a plain
+  // `DeepPartial<...>`, so collapse the `T | (() => T) | (() =>
+  // Promise<T>)` trichotomy first. A sync input is used as-is; a
+  // function swaps to `undefined` so the form constructs against the
+  // schema's slim defaults, and the factory settles into
+  // `state.applyFormReplacement` once it resolves (wired below).
   const resolvedDefaults = resolveTrichotomy<
     | DefaultValuesInput<Form>
     | undefined
     | (() => DefaultValuesInput<Form> | Promise<DefaultValuesInput<Form>>)
   >(configuration.defaultValues)
-  // Build the materialised override conditionally — exactOptionalPropertyTypes
-  // refuses explicit `undefined` on the optional field, so we omit it
-  // when the resolved value is undefined.
+  // `exactOptionalPropertyTypes` refuses an explicit `undefined` on the
+  // optional field, so omit the key rather than set it undefined.
   const materialisedDefaults: DefaultValuesInput<Form> | undefined =
     resolvedDefaults.kind === 'sync'
       ? (resolvedDefaults.value as DefaultValuesInput<Form> | undefined)
@@ -149,13 +136,12 @@ export function useAbstractForm<
         DefaultValuesInput<Form>
       >)
 
-  // Resolve the schema (accepts either an AbstractSchema or a factory).
-  // Preserve both generics — dropping `GetValueFormType` here would make
-  // `state.schema.getSchemasAtPath(...)` return `AbstractSchema<_, Form>[]`
-  // for consumers whose schema intentionally produces a different runtime
-  // shape (e.g. an adapter that narrows via a transform). The factory
-  // receives the per-form options (`maxRecursionDepth`) so the adapter
-  // can bake them into its walk closures.
+  // Accepts an AbstractSchema or a factory, and MUST preserve both
+  // generics: dropping `GetValueFormType` would make
+  // `state.schema.getSchemasAtPath(...)` hand back
+  // `AbstractSchema<_, Form>[]` for any schema whose runtime shape
+  // deliberately differs, such as an adapter that narrows via a
+  // transform.
   const existing = registry.forms.get(key) as FormStore<Form, GetValueFormType> | undefined
   // A second `useForm({ key })` on a live store drops its own schema in
   // favour of the first caller's wiring, so resolving one is pure
@@ -169,23 +155,20 @@ export function useAbstractForm<
         })
       : existing.schema
   if (__DEV__ && existing !== undefined) {
-    // Two `useForm({ key })` calls resolve to one FormStore by design;
-    // the second call's schema is then dropped in favour of the first's
-    // wiring. That's a silent footgun when the two call sites are
-    // unrelated and only happen to agree on a key, so a dev build
-    // surfaces the divergence. The diagnostics live in a dev-only module
-    // imported behind this `__DEV__` gate: a production build folds the
-    // gate away and drops the whole module, so none of the warning code
-    // ships (see `dev-key-collision-warnings.ts`).
+    // Sharing one store means the second call's schema is dropped for
+    // the first's wiring, which is silent and wrong when the two call
+    // sites are unrelated and only happen to agree on a key. The
+    // diagnostics sit in `core/dev-key-collision-warnings.ts` behind
+    // this gate, so a production build folds the gate away and drops the
+    // whole module.
     void import('../core/dev-key-collision-warnings').then((m) => {
       void m.warnOnSchemaFingerprintMismatch(key, existing.schema, resolvedSchema)
     })
   }
-  // Capture whether a hydration payload is waiting for this key BEFORE
-  // `buildFreshState` consumes it. We use this flag to skip re-firing
-  // an async-defaults factory on the client: the server already
-  // resolved it and the resolved values rode the payload, so the
-  // factory call would just double-fetch.
+  // Read BEFORE `buildFreshState` consumes it. It is what lets the
+  // client skip re-firing an async-defaults factory: the server already
+  // resolved it and the values rode the payload, so firing again would
+  // double-fetch.
   const hadPendingHydration = registry.pendingHydration.has(key)
 
   const state: FormStore<Form, GetValueFormType> =
@@ -197,18 +180,14 @@ export function useAbstractForm<
       registry
     )
 
-  // Wire function-form `defaultValues` once per FormStore. Sync inputs
-  // already applied at construction; async inputs stay dormant until
-  // the first reactive interaction calls `state.activate()` through
-  // the public API surface. Subsequent `useForm({ key })` calls that
-  // resolve to the same store observe the in-flight state via
-  // `state.hydrating` rather than re-firing.
+  // Once per FormStore. Sync inputs applied at construction; async ones
+  // stay dormant until the first reactive interaction reaches
+  // `state.activate()`. A later `useForm({ key })` landing on the same
+  // store watches `state.hydrating` instead of re-firing.
   if (existing !== undefined) {
-    // Reusing a live store — its `defaultsResolved` already reflects
-    // the first caller's effective state. Don't overwrite it.
+    // A live store's `defaultsResolved` already carries the first
+    // caller's effective state. Leave it alone.
   } else if (resolvedDefaults.kind === 'sync') {
-    // Sync defaults applied during `buildFreshState`; the form is
-    // immediately usable.
     state.defaultsResolved.value = true
   }
   if (existing === undefined && resolvedDefaults.kind === 'async') {
@@ -216,32 +195,26 @@ export function useAbstractForm<
       DefaultValuesInput<Form> | Promise<DefaultValuesInput<Form>>
     state.defaultValuesFactory.value = factory
     if (hadPendingHydration) {
-      // Server already resolved the factory; client just consumed the
-      // payload at `buildFreshState`. Skip the re-fetch, and adopt the
-      // payload as the defaults: it IS the effective default state, and
-      // the store has to be told so, or the client half of an SSR'd
-      // async form behaves as if its defaults never arrived. That was
-      // the third surface of #576: `dirty` read true the moment the
-      // page hydrated, and `form.reset()` discarded the server-fetched
-      // resource for schema-slim values. This is the client-side
-      // counterpart of the `adoptResolvedDefaults` call the factory
-      // path makes; here the payload already sits in form storage, so
-      // it is read back rather than re-derived.
+      // The payload IS the effective default state, and the store has to
+      // be told so. Without it the client half of an SSR'd async form
+      // behaves as though its defaults never arrived: `dirty` reads true
+      // the moment the page hydrates, and `form.reset()` throws away the
+      // server-fetched resource for schema-slim values (#576). Same
+      // `adoptResolvedDefaults` call the factory path makes, except the
+      // payload already sits in form storage, so it is read back rather
+      // than re-derived.
       state.adoptResolvedDefaults(toRaw(state.form.value))
       state.hydrating.value = false
       state.defaultsResolved.value = true
     } else if (registry.ssr) {
-      // Server side: factory dispatch is coordinated through the
-      // registry's SSR prefetch queue. `onServerPrefetch` is registered
-      // unconditionally; it drains the queue by calling
-      // `state.activate()` only when this form's key is enqueued (and
-      // not skipped). The positive triggers that enqueue: explicit
-      // `form.activate()` in setup, the wizard's current-step
-      // auto-mark, the Phase 3 compile-time `__ssrAccessed` injection,
-      // or any gated reactive read during setup (which routes through
-      // `state.activate()`). A form that nobody touched stays dormant
-      // — the factory does not run, and the payload serialises the
-      // schema's slim defaults.
+      // Server side, dispatch is coordinated through the registry's
+      // prefetch queue. `onServerPrefetch` registers unconditionally and
+      // calls `state.activate()` only for a key that is enqueued and not
+      // skipped. Four things enqueue: an explicit `form.activate()` in
+      // setup, the wizard's current-step auto-mark, the compile-time
+      // `__ssrAccessed` injection, and any gated reactive read during
+      // setup. A form nobody touched stays dormant, so the factory never
+      // runs and the payload serialises the schema's slim defaults.
       if (configuration.__ssrAccessed === true) {
         registry.enqueuePrefetch(key)
       }
@@ -250,85 +223,70 @@ export function useAbstractForm<
         return state.activate()
       })
     }
-    // CSR: factory stays dormant until the first reactive interaction
-    // calls `state.activate()` through the public API surface. The
-    // microtask defer that used to fire here is gone — lazy-by-default
-    // is the new contract.
+    // On the client the factory stays dormant until the first reactive
+    // interaction reaches `state.activate()`. Lazy by default.
   }
 
-  // Ref-count this consumer. When the component's effect scope tears down,
-  // release the count; the registry evicts the FormStore once the last
-  // consumer disposes. Guarded on `getCurrentScope()` so callers without an
-  // effect-scope context (defensive — setup() always provides one) don't
-  // leak a pinned consumer. See registry.trackConsumer for the counter.
+  // The registry evicts the FormStore once the last consumer disposes.
+  // Guarded on `getCurrentScope()` so a caller with no effect scope
+  // cannot leak a pinned consumer; `setup()` always provides one, so
+  // this is defence in depth. Counter semantics on
+  // `registry.trackConsumer`.
   if (getCurrentScope() !== undefined) {
     const releaseConsumer = registry.trackConsumer(key)
     onScopeDispose(releaseConsumer)
   }
 
-  // Wire history (opt-in). The plugin object carries the runtime —
-  // `historyPlugin()` from `attaform/history` rides the consumer's own
-  // import, so the core never links the history internals; `attach`
-  // subscribes it to this store synchronously, before any mutation can
-  // slip past unrecorded. Fresh-state-only — attaching twice would
-  // double-push snapshots. Cache the module on the FormStore so
-  // subsequent `useForm` / `injectForm` calls for the same key retrieve
-  // the SAME instance, keeping `canUndo` / `canRedo` / `historySize` /
-  // `undo` / `redo` consistent across mount order.
+  // The plugin object carries the runtime: `historyPlugin()` rides the
+  // consumer's own `attaform/history` import, so the core never links
+  // the history internals. `attach` subscribes synchronously, before any
+  // mutation can slip past unrecorded. Fresh state only, since attaching
+  // twice would double-push snapshots. Caching on the FormStore is what
+  // keeps `canUndo` / `canRedo` / `historySize` / `undo` / `redo`
+  // agreeing across mount order for every consumer of the same key.
   if (existing === undefined && materialisedConfiguration.history !== undefined) {
     const historyModule = materialisedConfiguration.history.attach(state)
     state.modules.set(HISTORY_MODULE_KEY, historyModule)
     state.registerCleanup(() => historyModule.dispose())
   }
 
-  // Provide the FormStore to descendants via `kFormContext` so
-  // `injectForm()` can resolve it without prop-threading.
+  // ONLY an anonymous `useForm()` fills the ambient slot. A keyed form
+  // is addressable as `injectForm<F>(key)` and stays out of the ambient
+  // context, which keeps the two resolution modes distinct: a descendant
+  // of a keyed-only parent calling `injectForm<F>()` gets "no ambient
+  // form", and that is the right answer, since the form has a name.
   //
-  // ONLY anonymous `useForm()` calls fill the ambient slot. Keyed forms
-  // are explicitly addressable via `injectForm<F>(key)` and don't
-  // pollute the ambient context — keeping the two resolution modes
-  // semantically distinct. A descendant of a keyed-only parent that
-  // calls `injectForm<F>()` (no key) gets the "no ambient form"
-  // throw, which is the right error: the form has a name; address it.
-  //
-  // Ambient mode is still "last-provide wins" among siblings: if two
-  // anonymous `useForm()` calls run in the same component, the second
-  // overwrites the first and descendants only see the second. We record
-  // the per-instance history of ANONYMOUS provides here (silently) so
-  // that a descendant's `injectForm<F>()` call can walk up, detect
-  // the collision, and warn lazily. Recording is skipped on SSR so the
-  // client-side warn fires once, not once-per-render-pass.
+  // Among siblings the last provide wins, so two anonymous calls in one
+  // component leave descendants seeing only the second. Recording the
+  // per-instance history here (silently) is what lets a descendant's
+  // `injectForm<F>()` walk up and warn lazily. Skipped on SSR so the
+  // warn fires once rather than once per render pass.
   if (configuration.key === undefined) {
     recordAmbientProvide(registry.ssr)
     provide(kFormContext, state as FormStore<GenericForm>)
   }
 
-  // Per-`useForm()`-call instance ID. Distinct from `state.formKey`:
-  // the key identifies a SHARED FormStore (so two `useForm({ key:
-  // 'signup' })` calls return the same store), while `formInstanceId`
-  // identifies THIS specific callsite — important for `focusFirstError`
-  // / `scrollToFirstError` to scope to the elements THIS caller's
-  // `v-register` directives bound to. SSR-safe via Vue 3.5+'s
-  // `useId()`. Outside Vue setup (tests, ad-hoc composable use) we
-  // fall back to a module-local counter — uniqueness is what matters,
-  // and tests don't share form-instance state across mounts anyway.
+  // Distinct from `state.formKey`: the key names a SHARED store, while
+  // this names THIS call site, which is what scopes `focusFirstError`
+  // and `scrollToFirstError` to the elements this caller's `v-register`
+  // directives bound. `useId()` keeps it SSR-stable; outside setup a
+  // module-local counter is enough, since uniqueness is all that is
+  // being asked of it.
   const formInstanceId =
     getCurrentInstance() !== null ? useId() : `atta:form-instance:${formInstanceCounter++}`
-  // Provided so descendants reaching via `injectForm()` inherit this ID
-  // and their locally-registered elements tag against the same instance.
-  // Sibling `useForm()` calls (different tree positions) provide their
-  // own IDs and stay isolated.
+  // Descendants reaching in through `injectForm()` inherit this id, so
+  // their locally-registered elements tag against the same instance.
+  // Sibling `useForm()` calls provide their own and stay isolated.
   if (getCurrentInstance() !== null) {
     provide(kFormInstanceId, formInstanceId)
   }
 
-  // Per-instance config lifts: each `useForm()` callsite carries its
-  // own `validateOn` / `debounceMs` / `coerce` /
-  // `rememberVariants`. These thread through `buildFormApi` into
-  // register's coerce closure, the field-state predicate, and store
-  // writes' WriteMeta — so two `useForm({ key })` calls (modal + main)
-  // can validate on different cadences and surface errors with
-  // different visibility rules even though they share a FormStore.
+  // Each call site carries its own `validateOn` / `debounceMs` /
+  // `coerce` / `rememberVariants`, threaded through `buildFormApi` into
+  // register's coerce closure, the field-state predicate and the
+  // WriteMeta on store writes. So a modal and a main form sharing one
+  // FormStore can still validate on different cadences and reveal errors
+  // under different rules.
   const apiOptions: Parameters<typeof buildFormApi<Form, GetValueFormType>>[2] = pickDefined({
     focusOnInvalidSubmit: materialisedConfiguration.focusOnInvalidSubmit,
     history: state.modules.get(HISTORY_MODULE_KEY) as HistoryModule | undefined,
@@ -337,19 +295,16 @@ export function useAbstractForm<
     coerce: materialisedConfiguration.coerce,
     rememberVariants: materialisedConfiguration.rememberVariants,
   })
-  // `buildFormApi` returns the schema-agnostic shape (`ReadForm = Form`);
-  // adapter callers compute the richer `ReadForm` (zod-v4's
-  // `StorageShape<Schema>`) and assert it through the public return
-  // type — at runtime the same proxies serve both views.
+  // `buildFormApi` returns the schema-agnostic shape (`ReadForm =
+  // Form`); an adapter caller computes the richer `ReadForm`, such as
+  // zod-v4's `StorageShape<Schema>`, and asserts it through the public
+  // return type. The same proxies serve both views at runtime.
   const api = buildFormApi<Form, GetValueFormType>(state, formInstanceId, apiOptions)
 
   return api as unknown as UseFormReturnType<Form, GetValueFormType, ReadForm, K>
 }
 
-/**
- * Shared key for the per-state history module cache. Exported would be
- * over-sharing — the only callers are this file and `injectForm`.
- */
+/** Key for the per-state history module cache, shared with `injectForm`. */
 const HISTORY_MODULE_KEY = 'history'
 
 function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
@@ -360,33 +315,26 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
 ): FormStore<F, G> {
   const pending = registry.pendingHydration.get(key)
   if (pending !== undefined) registry.pendingHydration.delete(key)
-  // Pre-pass: replace every `unset` sentinel in defaultValues with the
-  // schema's slim default and collect the corresponding path keys.
-  // Also auto-marks every primitive leaf the consumer did NOT cover —
-  // a freshly opened form has no user input yet, so unspecified leaves
-  // are logically blank. Devs opt a leaf out by supplying a non-`unset`
-  // value for it. The walker mirrors `DefaultValuesShape<T>`'s
-  // recursion; runtime landing of `unset` at a non-primitive leaf
-  // produces a dev-warn (TS catches this at compile time but plain-JS
-  // consumers bypass).
+  // Replaces every `unset` sentinel with the schema's slim default and
+  // collects the path keys. It also auto-marks every primitive leaf the
+  // consumer did NOT cover, because a freshly opened form has had no
+  // user input, so an unspecified leaf is logically blank; supplying any
+  // non-`unset` value opts a leaf out. TypeScript rejects `unset` at a
+  // non-primitive leaf, and a plain-JS consumer who gets there anyway
+  // gets a dev warn.
   const walked = walkUnsetSentinels(
     configuration.defaultValues,
     schema as unknown as AbstractSchema<GenericForm, GenericForm>
   )
-  // Hydration precedence: when a hydration payload is present its
-  // `blankPaths` field is the authoritative truth. We still
-  // run the walker to scrub `unset` symbols out of `defaultValues` (so
-  // they never reach storage), but discard the discovered paths in
-  // favour of the hydrated set. Without this, a server-rendered form
-  // with no blank paths would gain ones the client's
-  // construction-time defaults invented.
+  // A hydration payload's `blankPaths` is authoritative. The walker
+  // still runs, to scrub `unset` symbols before they can reach storage,
+  // but its discovered paths are dropped in favour of the hydrated set.
+  // Otherwise a server-rendered form with no blank paths would acquire
+  // the ones the client's construction-time defaults invented.
   //
-  // The walker emits opaque `PathKey` strings (canonicalised JSON
-  // segment arrays). The rest of the runtime — `setValueAtPath`, DU
-  // reshape, hydration apply, history snapshots —
-  // keys `blankPaths` by the same PathKey form, so we pass
-  // `walked.paths` straight through to `createFormStore` without
-  // reformatting at this boundary.
+  // `walked.paths` passes through unreformatted because the walker emits
+  // the same opaque `PathKey` strings that `setValueAtPath`, DU reshape,
+  // hydration apply and history snapshots all key `blankPaths` by.
   let initialBlankPaths: ReadonlyArray<PathKey> | undefined
   if (pending === undefined) {
     initialBlankPaths = walked.paths
@@ -405,12 +353,10 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       coerce: configuration.coerce,
       initialBlankPaths,
     }),
-    // Server-only: bind the SSR prefetch coordination handles. `enqueue`
-    // records intent on every `state.activate()` so a wizard skip-list
-    // override or a future transform mark has a consistent set to diff
-    // against; `shouldFire` lets the activate path bail when the
-    // wizard explicitly skipped this key — even an explicit
-    // `form.activate()` defers to the wizard's render-efficiency
+    // Server only. `enqueue` records intent on every `state.activate()`
+    // so a wizard skip-list override has a consistent set to diff
+    // against; `shouldFire` lets the activate path bail on a key the
+    // wizard skipped. Even an explicit `form.activate()` defers to that
     // skip-list on the server.
     ...(registry.ssr
       ? {
@@ -424,11 +370,9 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
       : {}),
   }
   const state = createFormStore<F, G>(createOptions)
-  // Storage type is FormStore<GenericForm>; the lookup above narrows
-  // back to the caller's (F, G) via the `existing as FormStore<Form,
-  // GetValueFormType>` cast. The registry Map is intentionally
-  // generic-erased — the alternative (parameterising the Map) would
-  // force every internal caller to carry both generics.
+  // The registry Map is deliberately generic-erased; parameterising it
+  // would force every internal caller to carry both generics. The lookup
+  // above narrows back to the caller's (F, G).
   ;(registry.forms as Map<FormKey, FormStore<GenericForm>>).set(
     key,
     state as unknown as FormStore<GenericForm>
@@ -437,50 +381,39 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
 }
 
 /**
- * Module-local counter for the "no Vue instance in scope" fallback
- * (tests, raw composable calls outside setup). Collisions with
- * user-supplied keys are avoided by the reserved `__atta:anon:` prefix
- * (consumer keys starting with `__atta:` are rejected at construction).
- * Inside
- * setup — the common path — `useId()` produces a tree-position-stable
- * id that matches across SSR hydration, so two mounts of the same
- * component tree resolve to the same anonymous key and hydration
- * works without user bookkeeping.
+ * Feeds the anonymous key when there is no Vue instance in scope, which
+ * means tests and raw composable calls. It cannot collide with a
+ * consumer key, since those are rejected under the reserved `__atta:`
+ * prefix. In setup, the common path, `useId()` supplies a
+ * tree-position-stable id that matches across SSR hydration, so two
+ * mounts of one component tree land on the same anonymous key.
  */
 let anonCounter = 0
 
-/**
- * Module-local counter for `formInstanceId` allocation outside Vue
- * setup (tests, ad-hoc composable usage). The setup-context path uses
- * `useId()` for SSR-stable IDs; this counter is the test-only fallback.
- */
+/** Allocates `formInstanceId` outside setup; in setup, `useId()` does. */
 let formInstanceCounter = 0
 
 /**
- * One entry per ANONYMOUS `useForm()` call that landed in a
- * component's ambient provide slot. Keyed forms aren't recorded —
- * they don't fill the ambient slot in the first place. `source` is
- * the best-effort user call site (first non-attaform frame off
- * `new Error().stack`) — printed in the collision warning so the
- * author can navigate to each offending call site.
+ * One entry per ANONYMOUS `useForm()` call that landed in a component's
+ * ambient provide slot; a keyed form never fills that slot, so it is
+ * never recorded. `source` is the best-effort user call site, the first
+ * non-attaform frame off `new Error().stack`, printed in the collision
+ * warning so the author can navigate to each one.
  */
 export type AmbientProvideEntry = {
   readonly source: string | undefined
 }
 
 /**
- * Tracks which Vue component instances have already run
- * `provide(kFormContext, ...)` via `useAbstractForm`. Dev-only —
- * `null` in production so the WeakMap allocation tree-shakes out.
- * A `WeakMap` keyed by the instance object lets Vue GC each
- * component's entry when it unmounts without us tracking
- * lifecycle.
+ * Which component instances have already run `provide(kFormContext,
+ * ...)` through `useAbstractForm`. Dev only, `null` in production so the
+ * allocation tree-shakes out. Keying the `WeakMap` by the instance
+ * object lets Vue collect each entry on unmount with no lifecycle
+ * bookkeeping here.
  *
- * Exported so `injectForm<F>()` (no key) can walk the parent
- * chain and emit a collision warning only when a descendant
- * actually consumes the ambient slot — eager warning in
- * `useForm()` misfired on components that call useForm multiple
- * times intentionally but have no keyless consumer.
+ * Exported so a no-key `injectForm<F>()` can walk the parent chain and
+ * warn about a collision only when a descendant actually consumes the
+ * ambient slot.
  */
 export const ambientProvideHistory: WeakMap<object, AmbientProvideEntry[]> | null = __DEV__
   ? new WeakMap<object, AmbientProvideEntry[]>()
@@ -491,10 +424,10 @@ function recordAmbientProvide(ssr: boolean): void {
   const instance = getCurrentInstance()
   if (instance === null) return
   const instanceKey = instance as unknown as object
-  // Caller already gated on `configuration.key === undefined`, so every
-  // recorded entry corresponds to an anonymous useForm() call. No need
-  // to carry a key — synthetic `__atta:anon:<id>` keys aren't addressable
-  // by the author and would only add noise to the warning.
+  // The caller gated on `configuration.key === undefined`, so every
+  // entry is an anonymous call. Carrying the synthetic
+  // `__atta:anon:<id>` key would only add noise: no author can address
+  // it.
   const entry: AmbientProvideEntry = {
     source: captureUserCallSite(),
   }
@@ -507,43 +440,35 @@ function recordAmbientProvide(ssr: boolean): void {
 }
 
 /**
- * Normalise `configuration.key` into a concrete FormKey. Explicit keys
- * pass through after a reserved-namespace check (anything starting
- * with `__atta:` is rejected with `ReservedFormKeyError`); empty /
- * nullish keys are treated as anonymous and allocated a unique id
- * under the `__atta:anon:` prefix. The reserved-prefix reject + the
- * synthetic-prefix reservation together guarantee zero collision
- * between consumer-chosen keys and library-allocated synthetic ones.
+ * Normalise `configuration.key` into a concrete FormKey. An explicit key
+ * passes through after a reserved-namespace check; an empty or nullish
+ * one is anonymous and gets a unique id under `__atta:anon:`. Rejecting
+ * the reserved prefix and allocating synthetics under it is what makes
+ * a collision between the two impossible rather than unlikely.
  *
- * Anonymous semantics: each `useForm({ schema })` call without a key
- * resolves to a distinct FormStore. Descendant components reach it via
- * ambient `injectForm<F>()`; cross-component lookup by key is not
- * possible (and not meaningful — the key is synthetic). Callers that
- * need shared state, distant lookup, or a recognisable DevTools label
- * should pass an explicit `key`.
+ * Every keyless `useForm({ schema })` call resolves to its own
+ * FormStore, reachable from descendants through ambient
+ * `injectForm<F>()` but not by key, the key being synthetic. Pass an
+ * explicit `key` for shared state, lookup from a distance, or a
+ * readable DevTools label.
  */
 function resolveFormKey(key: FormKey | undefined): FormKey {
   if (key !== undefined && key !== null && key !== '') {
-    // Reject any consumer-supplied key in the reserved `__atta:`
-    // namespace. Without this, a consumer key like `__atta:anon:0`
-    // could silently collide with the synthetic anonymous-key
-    // allocation below — both would land on the same FormStore in
-    // the registry, and the dev-mode schema-mismatch warning
-    // only catches collisions when schemas differ. Throwing here
-    // makes the collision impossible by construction.
+    // A consumer key like `__atta:anon:0` would otherwise collide with
+    // the synthetic allocation below, landing both on one FormStore, and
+    // the dev-mode schema-mismatch warning only catches a collision when
+    // the schemas differ. Throwing makes it impossible by construction.
     if (key.startsWith(RESERVED_KEY_PREFIX)) {
       throw new ReservedFormKeyError(key)
     }
     return key
   }
-  // In setup context, `useId()` threads through Vue's SSR id-allocator
-  // so server-rendered and client-hydrated trees agree on the same
-  // synthetic key.
+  // `useId()` threads through Vue's SSR id-allocator, so the
+  // server-rendered and client-hydrated trees agree on the key.
   if (getCurrentInstance() !== null) {
     return `${ANONYMOUS_FORM_KEY_PREFIX}${useId()}`
   }
-  // Outside setup (tests, ad-hoc composable use) there's no Vue
-  // instance to draw from; fall back to a module-local counter.
+  // Outside setup there is no instance to draw from.
   return `${ANONYMOUS_FORM_KEY_PREFIX}${anonCounter++}`
 }
 

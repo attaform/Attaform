@@ -2,7 +2,7 @@
   import { Rocket, Code, Wrench, Zap, ArrowRight } from 'lucide-vue-next'
 
   // Render inside the docs shell so the full sidebar is present the
-  // moment a reader lands on /docs — no click through Quick start just
+  // moment a reader lands on /docs: no click through Quick start just
   // to reach the nav. The landing content still reads as its own page;
   // it just flows into the layout's content column beside the sidebar.
   definePageMeta({ layout: 'docs' })
@@ -57,7 +57,7 @@
       A type-safe, Zod-first form library for Vue 3 and Nuxt.
     </p>
 
-    <!-- Install card — first action a reader can take. Self-
+    <!-- Install card: first action a reader can take. Self-
          contained: title + manager picker + copy + quick-start
          link all live inside the component. -->
     <div class="mt-10">
@@ -67,7 +67,7 @@
     <!-- Card grid. Each card lifts on hover (1px translate + shadow
          bump from xs → md), the title color shifts to accent, and
          the "Read more" arrow slides 2px right. The interaction is
-         a low-stakes signal that the whole card is clickable —
+         a low-stakes signal that the whole card is clickable,
          not just the title. -->
     <div class="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       <NuxtLink

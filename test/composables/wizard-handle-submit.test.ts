@@ -12,7 +12,7 @@ import type {
 } from '../../src/runtime/types/types-wizard'
 
 /**
- * `wizard.handleSubmit` — universal submit handler that always validates
+ * `wizard.handleSubmit`, universal submit handler that always validates
  * the entire step list, from any step.
  *
  *  - Validates every compiled form (in parallel) regardless of which
@@ -58,7 +58,7 @@ function mountHarness<R>(setup: () => R): { app: App; result: R } {
   return { app, result: handle.result as R }
 }
 
-describe('useWizard — handleSubmit on the final step', () => {
+describe('useWizard: handleSubmit on the final step', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -244,7 +244,7 @@ describe('useWizard — handleSubmit on the final step', () => {
     expect(result.wizard.done).toBe(false)
     await result.wizard.handleSubmit(vi.fn())()
     expect(result.wizard.done).toBe(true)
-    // Invalidate after success. `done` is monotonic — the historical
+    // Invalidate after success. `done` is monotonic: the historical
     // fact "submission landed" does not flip back.
     result.account.setValue('password', '')
     for (let i = 0; i < 16; i += 1) {
@@ -312,7 +312,7 @@ describe('useWizard — handleSubmit on the final step', () => {
       const account = useForm({
         schema: accountSchema,
         key: 'hs-6-account',
-        // Missing password — whole-wizard validation must fail.
+        // Missing password, whole-wizard validation must fail.
         defaultValues: { email: 'a@b.c' },
       })
       const review = useForm({
@@ -516,7 +516,7 @@ describe('useWizard — handleSubmit on the final step', () => {
   })
 })
 
-describe('useWizard — handleSubmit lifecycle signals', () => {
+describe('useWizard: handleSubmit lifecycle signals', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -677,7 +677,7 @@ describe('useWizard — handleSubmit lifecycle signals', () => {
   })
 })
 
-describe('useWizard — handleSubmit on string slots (noop forms)', () => {
+describe('useWizard: handleSubmit on string slots (noop forms)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -759,7 +759,7 @@ describe('useWizard — handleSubmit on string slots (noop forms)', () => {
  * `getFirstErrorElement` returns `null` and the focus policy
  * silently no-ops.
  */
-describe('useWizard — focusFirstError lands focus through v-if step swap', () => {
+describe('useWizard: focusFirstError lands focus through v-if step swap', () => {
   const apps: App[] = []
   let focusSpy: ReturnType<typeof vi.spyOn>
   let offsetParentDescriptor: PropertyDescriptor | undefined

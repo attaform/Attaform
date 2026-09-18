@@ -12,9 +12,9 @@ import {
  * (`>=`, `>`) or `setTimeout` durations inside the runtime. Each
  * option's call site supplies:
  *
- *   - `min` — clamp floor for negatives (typically 0).
- *   - `defaultValue` — fall-back for invalid input.
- *   - `source` — the label the dev warning names.
+ *   - `min`, clamp floor for negatives (typically 0).
+ *   - `defaultValue`, fall-back for invalid input.
+ *   - `source`: the label the dev warning names.
  *
  * Every option it guards wants a finite value: `Infinity` stalls
  * timers, grows memory unboundedly, and defeats DoS protection. So

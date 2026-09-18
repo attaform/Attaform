@@ -22,7 +22,7 @@
   //
   // Previously this branch did `throw createError({ statusCode: 404,
   // fatal: true })`. The throw fires inside an `async setup`, mid-
-  // Suspense-resolve, in the middle of a vue-router navigation —
+  // Suspense-resolve, in the middle of a vue-router navigation,
   // and the rest of the page template still expects `page.value`
   // to be non-null. The result is a cascade of "Invalid vnode type"
   // warnings as the template renders against null, followed by
@@ -45,7 +45,7 @@
   }
 
   // Dev-branch gate for the not-found callout. `import.meta.dev`
-  // is the Vite-stamped dev flag, constant-folded at build time —
+  // is the Vite-stamped dev flag, constant-folded at build time,
   // the production bundle ships a literal `false` here and the
   // dev-only callout template branch tree-shakes out entirely.
   const isDev = import.meta.dev
@@ -57,7 +57,7 @@
   // components bare in the body; explicit `:rows` / `:href` props
   // still win for the rare case a page computes meta dynamically.
   //
-  // The frontmatter key is `metaRows`, not `meta` — `meta` is
+  // The frontmatter key is `metaRows`, not `meta`, `meta` is
   // already claimed by @nuxtjs/seo's frontmatter shape and gets
   // mapped onto SEO meta tags rather than reaching `page.value`.
   provide(
@@ -93,7 +93,7 @@
 
   // Structured data per doc page. Two nodes:
   //
-  //   1. BreadcrumbList — drives the breadcrumb display in SERPs
+  //   1. BreadcrumbList, drives the breadcrumb display in SERPs
   //      (replaces the URL line under the result title with a
   //      readable trail). Reuses the same segment array as the on-
   //      page <DocsBreadcrumb> via useDocsBreadcrumb so on-page text
@@ -104,7 +104,7 @@
   //      BreadcrumbList parser expects every non-final item to
   //      resolve to a page.
   //
-  //   2. TechArticle — adds article-class signals (headline, author,
+  //   2. TechArticle, adds article-class signals (headline, author,
   //      description, mainEntityOfPage) so a docs page reads as
   //      "technical article about a software topic" rather than a
   //      generic page. Pairs with the SoftwareApplication node on
@@ -113,7 +113,7 @@
   // defineBreadcrumb / defineArticle come from nuxt-schema-org's
   // auto-imports (registered by @nuxtjs/seo). They handle the
   // @context / @type boilerplate and resolve relative URLs against
-  // site.url. Both nodes are emitted only when a page exists —
+  // site.url. Both nodes are emitted only when a page exists,
   // emitting Article schema for a 404 path would feed crawlers
   // false structured data about content that isn't there.
   const breadcrumbs = useDocsBreadcrumb()
@@ -143,7 +143,7 @@
               description: page.value?.description ?? '',
               author: { '@type': 'Person', name: 'Oswald Chisala' },
               // mainEntityOfPage is inferred from the current route by
-              // defineArticle when omitted — let it resolve against
+              // defineArticle when omitted, let it resolve against
               // site.url so we don't have to construct the canonical
               // URL ourselves.
             }),
@@ -155,12 +155,12 @@
 
 <template>
   <div class="flex gap-12">
-    <!-- Article — capped at max-w-3xl (768px) for comfortable reading
+    <!-- Article: capped at max-w-3xl (768px) for comfortable reading
          line length. min-w-0 prevents overflow from wide code blocks
          pushing the TOC off-screen. flex-1 lets it grow into available
          space when the TOC is hidden (lg-xl viewports).
          The whole article fades in on first paint (`docs-article-enter`
-         class — keyframe just below `docs-prose`) so the prose lands
+         class: keyframe just below `docs-prose`) so the prose lands
          deliberately rather than popping. The breadcrumb is excluded
          from this since it has its own segment-stagger animation. -->
     <article class="min-w-0 max-w-3xl flex-1">
@@ -178,7 +178,7 @@
           <ContentRenderer :value="page" />
         </div>
 
-        <!-- Edit link sits between prose and pager — same visual weight
+        <!-- Edit link sits between prose and pager: same visual weight
              as a footer note (text-sm, fg-muted) so it doesn't compete
              with the article body but stays discoverable for someone
              who'd file a PR. Hidden on the not-found branch below;
@@ -244,13 +244,14 @@
           </li>
           <li>
             <strong>Remove the link.</strong> If nothing should point here, grep for the source link
-            and drop it. Link-checker only flags paths something else links to — orphan paths don't
-            fail the build.
+            and drop it. Link-checker only flags paths something else links to, so orphan paths
+            don't fail the build.
           </li>
         </ol>
         <p class="text-xs opacity-80">
-          This callout renders only in dev. Production builds get a graceful visitor message instead
-          — but they shouldn't get there in the first place, because CI will have stopped the build.
+          This callout renders only in dev. Production builds get a graceful visitor message
+          instead, but they shouldn't get there in the first place, because CI will have stopped the
+          build.
         </p>
       </div>
 
@@ -265,10 +266,8 @@
       >
         <h1>This page hasn't landed here yet</h1>
         <p>
-          No docs page exists at
-          <code>{{ route.path }}</code>
-          — the URL might be a typo, a stale link from before the docs got their current shape, or a
-          section still on the way.
+          The URL <code>{{ route.path }}</code> might be a typo, a stale link from before the docs
+          got their current shape, or a section still on the way. No page lives there yet.
         </p>
         <p>
           Head back to the

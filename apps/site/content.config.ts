@@ -32,7 +32,7 @@ export default defineContentConfig({
       //   - 80 char min keeps the description from collapsing to a
       //     headline; Google's snippet display starts around 110.
       //   - 200 char max gives a soft cap before truncation. The
-      //     classic "160" cutoff is desktop-SERP-only — mobile +
+      //     classic "160" cutoff is desktop-SERP-only, mobile +
       //     featured snippets show more, and over-budget is just
       //     cosmetic.
       //
@@ -48,7 +48,7 @@ export default defineContentConfig({
       // editorial variation lives in which rows each page declares.
       //
       // The field is named `metaRows` (not bare `meta`) because
-      // `meta` is a reserved Nuxt Content frontmatter key — it gets
+      // `meta` is a reserved Nuxt Content frontmatter key: it gets
       // mapped onto SEO meta tags by @nuxtjs/seo and never reaches
       // the page object. A custom name keeps the rows intact.
       //

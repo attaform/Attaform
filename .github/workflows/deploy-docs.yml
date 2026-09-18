@@ -1,5 +1,5 @@
 name: Deploy docs to Vercel
-run-name: Deploy docs to Vercel${{ github.event.inputs.reason != '' && format(' — {0}', github.event.inputs.reason) || '' }}
+run-name: Deploy docs to Vercel${{ github.event.inputs.reason != '' && format(' ({0})', github.event.inputs.reason) || '' }}
 
 # Manual-only production deployment for the docs site at apps/site.
 # Vercel's git-push auto-deploys from `main` are disabled in
@@ -17,7 +17,7 @@ run-name: Deploy docs to Vercel${{ github.event.inputs.reason != '' && format(' 
 #   3. Run THIS workflow to ship the matching docs
 #
 # Preview deploys for non-main branches and PRs continue to fire
-# automatically — `deploymentEnabled` only gates the production
+# automatically: `deploymentEnabled` only gates the production
 # branch, so PR previews still help review docs changes pre-merge.
 on:
   workflow_dispatch:
@@ -28,11 +28,11 @@ on:
         default: ''
 
 # Workflow-level default: zero scopes. The `deploy` job below hits a
-# Vercel webhook with a secret — no GitHub API access is needed.
+# Vercel webhook with a secret: no GitHub API access is needed.
 permissions: {}
 
 # Serialize deploys; never cancel one mid-flight. The Vercel webhook is
-# fire-and-forget — once the POST returns, Vercel has the build queued
+# fire-and-forget: once the POST returns, Vercel has the build queued
 # regardless of whether THIS workflow run continues. Cancelling a deploy
 # step that's already POSTed would just lose the run-summary write,
 # not the deploy itself.
@@ -66,7 +66,7 @@ jobs:
       #   Name:   "Manual production deploy"
       #   Branch: main
       # The resulting URL goes into the `VERCEL_DEPLOY_HOOK_URL` repo
-      # secret. The URL itself is the auth token — anyone with the URL
+      # secret. The URL itself is the auth token: anyone with the URL
       # can trigger a production deploy, so it lives only as a secret
       # and never in the repo.
       #
@@ -110,5 +110,5 @@ jobs:
             echo "$RESPONSE"
             echo '```'
             echo ""
-            echo "Track the build at https://vercel.com/dashboard — Vercel will publish to the production domain once the build succeeds."
+            echo "Track the build at https://vercel.com/dashboard. Vercel will publish to the production domain once the build succeeds."
           } >> "$GITHUB_STEP_SUMMARY"

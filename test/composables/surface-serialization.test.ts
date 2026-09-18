@@ -11,28 +11,28 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * `form.fields` are all callable Proxies with function targets. Each
  * must serialize sensibly when consumed by:
  *
- *   - Vue templates (`{{ form.values }}`) — routes through
+ *   - Vue templates (`{{ form.values }}`), routes through
  *     `toDisplayString` → `String(proxy)` for callables, which trips
  *     `Symbol.toPrimitive` if intercepted else falls to
  *     `Function.prototype.toString` (i.e. `"() => {}"`, useless).
- *   - `JSON.stringify(proxy)` — routes through the `toJSON` trap.
+ *   - `JSON.stringify(proxy)`, routes through the `toJSON` trap.
  *
  * For `form.errors` specifically, two additional contracts:
  *
  *   - Global errors at the root `[]` (`setErrors([{message}])`) are
  *     the root's own bucket, NOT a child key, so they do NOT appear in
- *     the serialized tree — read them via `errors([])` / `meta.errors`.
+ *     the serialized tree, read them via `errors([])` / `meta.errors`.
  *     A literal `''` field is an ordinary child key and serialises
  *     normally.
  *   - User errors at paths the schema doesn't know about (server
- *     replies referencing an unknown field — drift, typo, soft-renamed
+ *     replies referencing an unknown field, drift, typo, soft-renamed
  *     field) MUST appear too. They're the consumer's data; the
  *     library doesn't get to silently drop them.
  *   - Inactive DU variant errors (schema errors at a path whose
  *     discriminator just switched away) STAY hidden. They're library-
  *     produced; the active variant is the source of truth.
  */
-describe('form.values / form.errors / form.fields — template + JSON.stringify parity', () => {
+describe('form.values / form.errors / form.fields: template + JSON.stringify parity', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -135,7 +135,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       const form = mountSimple()
       // The schema only has `email` and `password`. A server reply
       // referencing an unknown key (`nonExistent.field`) is the
-      // consumer's data — the proxy must surface it for debugging
+      // consumer's data: the proxy must surface it for debugging
       // even though `hasAtPath` would normally filter the path out.
       form.setErrors([
         {
@@ -195,7 +195,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
       const tree = JSON.parse(JSON.stringify(form.errors)) as Record<string, unknown>
       const notify = tree['notify'] as Record<string, unknown> | undefined
       // Either notify is undefined, or it doesn't have an `address`
-      // entry — both encode "the inactive variant's error is hidden."
+      // entry, both encode "the inactive variant's error is hidden."
       if (notify !== undefined) {
         expect(notify['address']).toBeUndefined()
       }
@@ -214,7 +214,7 @@ describe('form.values / form.errors / form.fields — template + JSON.stringify 
 
       // Field error gone.
       expect(form.errors.email).toEqual([])
-      // Global survives — a path-scoped clear leaves other buckets alone.
+      // Global survives: a path-scoped clear leaves other buckets alone.
       expect(form.meta.ownErrors[0]?.message).toBe('capacity exceeded')
     })
 

@@ -10,7 +10,7 @@ import type { FormStatusSeed } from '../../src/runtime/types/types-wizard'
 
 /**
  * `defaultStatuses` seeds `wizard.statuses[key]` BEFORE each form's
- * meta becomes live. Useful for resumable wizards — a server-sent
+ * meta becomes live. Useful for resumable wizards: a server-sent
  * status payload says "step cargo: valid, step review: dirty" and
  * the wizard renders the right step-gate hints from first paint.
  *
@@ -60,7 +60,7 @@ const dirtySeed: FormStatusSeed = {
   errorCount: 1,
 }
 
-describe('useWizard — defaultStatuses', () => {
+describe('useWizard: defaultStatuses', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

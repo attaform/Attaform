@@ -9,13 +9,13 @@ import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transform
 /**
  * The compile-time half of the #464 redundant-binding guard. Compile a
  * template through @vue/compiler-core with the transform registered and
- * capture the `console.warn` output (the diagnostic channel — the Vue
+ * capture the `console.warn` output (the diagnostic channel: the Vue
  * compiler gives transforms no onWarn hook).
  */
 
 // The transforms in the exact production order attaform/vite installs
 // them. redundantBindingWarnTransform runs FIRST, before the two that
-// strip/inject the value channel — the ordering this suite locks in.
+// strip/inject the value channel: the ordering this suite locks in.
 const FULL_PIPELINE = [
   redundantBindingWarnTransform,
   componentBridgeTransform,
@@ -47,7 +47,7 @@ function compile(template: string): string {
     .code
 }
 
-describe('redundantBindingWarnTransform — state bindings warn', () => {
+describe('redundantBindingWarnTransform: state bindings warn', () => {
   it('warns on a text input with v-model', () => {
     const warns = redundantWarnsFor(`<input v-register="reg" v-model="x" />`)
     expect(warns).toHaveLength(1)
@@ -110,7 +110,7 @@ describe('the value channel is the unbound leg now, not a redundant binding (#62
   })
 })
 
-describe('redundantBindingWarnTransform — identity carve-out stays silent', () => {
+describe('redundantBindingWarnTransform: identity carve-out stays silent', () => {
   it('is silent on a radio with :value (radio identity)', () => {
     expect(redundantWarnsFor(`<input type="radio" v-register="reg" :value="opt" />`)).toHaveLength(
       0
@@ -150,7 +150,7 @@ describe('redundantBindingWarnTransform — identity carve-out stays silent', ()
   })
 })
 
-describe('redundantBindingWarnTransform — classification edge cases', () => {
+describe('redundantBindingWarnTransform: classification edge cases', () => {
   it('skips a dynamic :type input (cannot classify at compile time)', () => {
     expect(redundantWarnsFor(`<input :type="kind" v-register="reg" :value="x" />`)).toHaveLength(0)
   })
@@ -168,7 +168,7 @@ describe('redundantBindingWarnTransform — classification edge cases', () => {
   })
 })
 
-describe('redundantBindingWarnTransform — marker stamping', () => {
+describe('redundantBindingWarnTransform: marker stamping', () => {
   it('stamps the compile-active modifier on a native v-register', () => {
     expect(compile(`<input v-register="reg" />`)).toContain('attaformCompiled')
   })
@@ -177,7 +177,7 @@ describe('redundantBindingWarnTransform — marker stamping', () => {
     expect(compile(`<MyInput v-register="reg" :value="x" />`)).toContain('attaformCompiled')
   })
 
-  it('is idempotent — a doubly-applied pipeline warns once and stamps once', () => {
+  it('is idempotent: a doubly-applied pipeline warns once and stamps once', () => {
     const warns: string[] = []
     const spy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warns.push(args.map((a) => String(a)).join(' '))
@@ -196,7 +196,7 @@ describe('redundantBindingWarnTransform — marker stamping', () => {
   })
 })
 
-describe('redundantBindingWarnTransform — ordering / full pipeline (load-bearing)', () => {
+describe('redundantBindingWarnTransform: ordering / full pipeline (load-bearing)', () => {
   it('does NOT cry wolf on our own injected :value (clean input through the real pipeline)', () => {
     // inputTextAreaNodeTransform strips + injects :value on EVERY
     // v-register'd input. Because our transform runs FIRST, it sees the
@@ -214,7 +214,7 @@ describe('redundantBindingWarnTransform — ordering / full pipeline (load-beari
 
   it('warns once for a v-for of identical redundant inputs (one template node)', () => {
     // A v-for compiles the inner <input> to a single template node, so
-    // the build-time warning fires once no matter the row count — the
+    // the build-time warning fires once no matter the row count: the
     // clean "warn once for the pattern" story the runtime can't give a
     // non-plugin consumer.
     const warns = redundantWarnsFor(

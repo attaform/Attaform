@@ -1,11 +1,11 @@
 <script setup lang="ts">
   // Demos directory. Lists every `apps/site/docs-demos/<slug>.vue`
-  // SFC as its own card linking to `/demos/<slug>` — a "show me
+  // SFC as its own card linking to `/demos/<slug>`: a "show me
   // everything Attaform can do, one widget at a time" entry point
   // (plan §3, sidebar page 8).
   //
   // Discovery is glob-driven, so authoring a new SFC under
-  // `docs-demos/` automatically surfaces it here on the next build —
+  // `docs-demos/` automatically surfaces it here on the next build,
   // no per-demo wiring required.
   import { computed, onMounted, ref, watch } from 'vue'
   import { ArrowRight, Eraser, FlaskConical, HardDrive, Rocket, Search, X } from 'lucide-vue-next'
@@ -53,7 +53,7 @@
     return Array.from(new Set([...flat, ...folder])).sort()
   })
 
-  // Substring filter — matches against both the raw slug and its
+  // Substring filter, matches against both the raw slug and its
   // formatted title, so "v-register", "register", and "Register"
   // all surface the same hits. Pagefind (the ⌘K modal) only indexes
   // docs content, not playgrounds, so the playground page carries
@@ -76,7 +76,7 @@
   const currentPage = ref(1)
   const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
 
-  // Reset to page 1 whenever the filter or page size changes —
+  // Reset to page 1 whenever the filter or page size changes,
   // otherwise the reader could land on a stale page number that no
   // longer corresponds to any cards.
   watch([query, pageSize], () => {
@@ -294,7 +294,7 @@
       </NuxtLink>
     </div>
 
-    <!-- No-results state — the filter matched nothing. -->
+    <!-- No-results state: the filter matched nothing. -->
     <div
       v-else-if="query"
       class="rounded-xl border border-dashed border-border bg-surface/30 p-10 text-center"
@@ -327,7 +327,7 @@
       </p>
     </div>
 
-    <!-- Pagination row — page numbers + range readout. Hidden when
+    <!-- Pagination row: page numbers + range readout. Hidden when
          everything fits on one page so it doesn't clutter the
          small-corpus case. -->
     <div

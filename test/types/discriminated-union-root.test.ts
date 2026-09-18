@@ -32,7 +32,7 @@ const form: PaymentForm = (() => {
   return proxy as PaymentForm
 })()
 
-describe('DU root — form.values lift', () => {
+describe('DU root: form.values lift', () => {
   it('discriminator reads as in-flight string; per-variant keys lift to `T | undefined`', () => {
     expectTypeOf(form.values.method).toEqualTypeOf<string>()
     expectTypeOf(form.values.cardNumber).toEqualTypeOf<string | undefined>()
@@ -43,7 +43,7 @@ describe('DU root — form.values lift', () => {
   })
 })
 
-describe('DU root — form.fields / form.errors lift', () => {
+describe('DU root: form.fields / form.errors lift', () => {
   it('per-variant field nodes are node-optional, reachable via `?.`', () => {
     expectTypeOf(form.fields.cardNumber?.value).toEqualTypeOf<string | undefined>()
     expectTypeOf(form.fields.netDays?.value).toEqualTypeOf<number | undefined>()
@@ -55,7 +55,7 @@ describe('DU root — form.fields / form.errors lift', () => {
   })
 })
 
-describe('DU root — register accepts variant + discriminator string paths', () => {
+describe('DU root: register accepts variant + discriminator string paths', () => {
   it('register(discriminator) and register(variant key) typecheck', () => {
     form.register('method')
     form.register('cardNumber')
@@ -69,7 +69,7 @@ describe('DU root — register accepts variant + discriminator string paths', ()
   })
 })
 
-describe('DU root — handleSubmit narrows the parsed union', () => {
+describe('DU root: handleSubmit narrows the parsed union', () => {
   it('values is the true discriminated union, narrowable on the discriminator', () => {
     form.handleSubmit((values) => {
       expectTypeOf(values.method).toEqualTypeOf<'card' | 'bank' | 'invoice'>()

@@ -12,20 +12,20 @@ import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/
 
 /**
  * DIR-F4 characterization. The Array→`.includes` / Set→`.has` / scalar→
- * coerced `String() === String()` decision ladder is encoded three times
- * — once each in `input-text-area-transform.ts`, `component-bridge-transform.ts`,
+ * coerced `String() === String()` decision ladder is encoded three times,
+ * once each in `input-text-area-transform.ts`, `component-bridge-transform.ts`,
  * and at runtime in `directive.ts` (`setChecked` / `setSelected`). Both
  * compile-time emitters now route primitives through `String(...)`
  * before comparing, mirroring the runtime `looseEqual` behaviour. Pre-
  * fix the input-text-area scalar branch used strict `===`, so an SSR
  * `<input type="radio" value="2">` × `z.number()` + model `2` rendered
  * unchecked (`2 === "2"` → false) and then flipped to checked on
- * hydration via `looseEqual` — a one-tick flicker.
+ * hydration via `looseEqual`: a one-tick flicker.
  *
  * Pin both ladders at the source-string level AND at the SSR-output
  * level so a future drift surfaces as a single failing assertion.
  * Updating the ladder will need to touch these pins explicitly, which
- * is the point — silent drift is what got us here in the first place.
+ * is the point, silent drift is what got us here in the first place.
  */
 
 function compileInputTextArea(template: string): string {
@@ -54,7 +54,7 @@ describe('DIR-F4 compile-time emitter ladders', () => {
     // synthesized equality expression routes both sides through String()
     // to mirror the runtime `looseEqual` behaviour for primitives.
     expect(code).toMatch(/String\(.+?\?\.innerRef\?\.value\)\s*===\s*String\(\("2"\)\)/)
-    // It does NOT use strict `===` on the raw scalar target anymore —
+    // It does NOT use strict `===` on the raw scalar target anymore,
     // that was the source of the SSR/CSR mismatch.
     expect(code).not.toMatch(/innerRef\?\.value\s*===\s*\("2"\)/)
   })
@@ -67,7 +67,7 @@ describe('DIR-F4 compile-time emitter ladders', () => {
     // `===`; the single-select branch coerces the option side via
     // String() and reads the model side through `displayValue`. This is
     // the literal shape we depend on for SSR parity with the runtime's
-    // `looseEqual` — pinning here makes any silent flattening of this
+    // `looseEqual`, pinning here makes any silent flattening of this
     // expression visible to review.
     //
     // `displayValue` replaced `String(innerRef.value)` for #569. For
@@ -79,7 +79,7 @@ describe('DIR-F4 compile-time emitter ladders', () => {
     // `<option value="">` placeholder, the same one the runtime
     // `setSelected` picks).
     expect(code).toMatch(/\?\.displayValue\?\.value\s*===\s*String\(\("2"\)\)/)
-    // The model side no longer reaches `innerRef` for the comparison —
+    // The model side no longer reaches `innerRef` for the comparison,
     // only for the `typeof !== 'object'` guard that keeps an array model
     // off a single-select.
     expect(code).not.toMatch(/String\(.+?\?\.innerRef\?\.value\)\s*===/)
@@ -92,9 +92,9 @@ describe('DIR-F4 compile-time emitter ladders', () => {
  * `1`, and assert SSR emits the `selected` attribute (matching what
  * `setSelected` would do at CSR time).
  *
- * The symmetric radio case proves the post-fix parity: same shape
- * (`z.number()` + `value="2"` + model `2`) and SSR now emits `checked`.
- * Pre-fix this rendered unchecked and flipped to checked on hydration.
+ * The symmetric radio case proves the parity: the same shape
+ * (`z.number()`, `value="2"`, model `2`) and SSR emits `checked`, rather
+ * than rendering unchecked and flipping on hydration.
  */
 function makeTemplateModule(template: string, nodeTransforms: NodeTransform[]): Vue.Component {
   const result = baseCompile(template, {

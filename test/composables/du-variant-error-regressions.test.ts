@@ -9,34 +9,27 @@ import type { UseFormReturnType, ValidationError } from '../../src/runtime/types
 import { waitUntil } from '../utils/form-harness'
 
 /**
- * Regression coverage for failure modes observed in spike.vue
- * (`profileSchema`) when the user toggles the discriminated-union
- * channel back and forth (email → sms → email):
+ * Toggling a discriminated-union channel back and forth (email, sms,
+ * email) is where schemaErrors keying shows. `scheduleFieldValidation`
+ * keys each write by the error's own leaf path and clears the scheduled
+ * path's whole descendant subtree first, through
+ * `applySchemaErrorsForSubtree` in create-form-store.ts. Three failure
+ * modes ride on that, all observed in spike.vue's `profileSchema`:
  *
- * 1. Errors at the new variant's required leaf land at the WRONG key
- *    in the schemaErrors store. Pre-fix, the field-validation pipeline
- *    wrote ALL DU child errors under the SCHEDULED path key
- *    (`['notify']`) rather than each error's own leaf path — so the
- *    materialised tree showed `notify: [errors]` instead of
- *    `notify: { number: [errors] }`, and per-leaf reads
- *    (`form.errors('notify.number')`) missed because the canonical
- *    key lookup expected `["notify","number"]`.
+ * 1. Writing every DU child error under the SCHEDULED key (`['notify']`)
+ *    puts them at the wrong key: the materialised tree shows
+ *    `notify: [errors]` instead of `notify: { number: [errors] }`, and
+ *    `form.errors('notify.number')` misses, because the canonical lookup
+ *    expects `["notify","number"]`.
  *
- * 2. Stale leaf errors from a previous variant survived re-validation:
- *    after email→sms, a `notify.address` entry written by the
- *    email-variant pass kept living in `schemaErrors` because the
- *    container-key clear (`schemaErrors.delete(["notify"])`) didn't
- *    touch descendants. `form.meta.errors` leaked the ghost.
+ * 2. A container-key clear that does not touch descendants leaves the
+ *    `notify.address` entry from the email pass alive in `schemaErrors`
+ *    after the switch to sms, and `form.meta.errors` leaks the ghost.
  *
- * 3. `notify.address`'s blank-mark (set via `unset` at mount) didn't
- *    survive a round-trip — both the keying bug and the ghost-entry
- *    bug compounded, hiding the "No value supplied" derived error
- *    from the materialised tree on the way back to email.
- *
- * Fixed by leaf-keying schemaErrors writes in `scheduleFieldValidation`
- * + clearing the entire descendant subtree of the scheduled path
- * before each write. See `applySchemaErrorsForSubtree` in
- * create-form-store.ts.
+ * 3. `notify.address`'s blank-mark, set through `unset` at mount, has to
+ *    survive the round trip; the keying and ghost-entry failures compound
+ *    to hide its "No value supplied" derived error from the materialised
+ *    tree on the way back to email.
  *
  * Mirrors the spike schema: `notify.address` is `z.email()` (so an
  * empty string fails format), `notify.number` is `z.string().min(7)`,
@@ -51,7 +44,7 @@ const profileSchema = z.object({
   ]),
 })
 
-// Loose API type — these tests cross variants via setValue, which
+// Loose API type, these tests cross variants via setValue, which
 // the strict inferred type doesn't permit (variant-only keys aren't
 // in the WriteShape). The runtime accepts the calls; we widen the
 // surface here so each call site doesn't need a per-line cast.
@@ -82,7 +75,7 @@ function mount(
         // Disable debouncing so the test sees the schema's verdict on
         // the same tick as the write. Behaviour under test (error-
         // keying after reshape, blank-mark round-trip, recursion)
-        // doesn't depend on the debounce — it depends on what
+        // doesn't depend on the debounce: it depends on what
         // schema-validation does to the stores once it runs.
         validateOn: 'change',
         debounceMs: 0,
@@ -103,7 +96,7 @@ function mount(
   return { app, api: handle.api as ProfileApi, warnings, errorsObserved }
 }
 
-describe('DU variant switch — error materialisation regressions', () => {
+describe('DU variant switch: error materialisation regressions', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -117,7 +110,7 @@ describe('DU variant switch — error materialisation regressions', () => {
     })
     apps.push(app)
 
-    // Switch to sms — number is empty, .min(7) fails. The reshape
+    // Switch to sms, number is empty, .min(7) fails. The reshape
     // triggers scheduleFieldValidation at the DU container path
     // ['notify']. Expectation: errors land keyed at the leaf path
     // ['notify','number'] so the materialised tree is
@@ -160,7 +153,7 @@ describe('DU variant switch — error materialisation regressions', () => {
       return drilled && drilled.length === 1 ? true : null
     })
 
-    // Dot-access path — same store lookup as the callable form.
+    // Dot-access path, same store lookup as the callable form.
     const drilled = (api.errors as unknown as { notify: { number?: ValidationError[] } }).notify
       .number
     expect(drilled).toHaveLength(1)
@@ -190,13 +183,13 @@ describe('DU variant switch — error materialisation regressions', () => {
     )
     expect(addressBefore?.[0]?.code).toMatch(/zod:/)
 
-    // Switch to sms — re-validation runs at `['notify']`. The stale
+    // Switch to sms, re-validation runs at `['notify']`. The stale
     // `notify.address` schemaErrors entry must clear (active-path
     // filter would also hide it from `form.errors`, but the store
     // entry itself should not survive the re-validation either, or
     // `form.meta.errors` will leak it).
     api.setValue('notify.channel', 'sms')
-    // Wait for the new variant's leaf error (notify.number) to land —
+    // Wait for the new variant's leaf error (notify.number) to land,
     // that's the positive signal the re-validation pass has completed.
     // A predicate on `errs === undefined` would never resolve because
     // the active-path filter returns `[]`, not undefined.
@@ -205,7 +198,7 @@ describe('DU variant switch — error materialisation regressions', () => {
       return errs?.[0]?.code?.startsWith('zod:') ? true : null
     })
 
-    // The stale leaf entry must NOT show up anywhere — not in the
+    // The stale leaf entry must NOT show up anywhere: not in the
     // active-path-filtered surface, not in the unfiltered aggregate.
     const addressAfter = (api.errors as unknown as (p: string) => ValidationError[])(
       'notify.address'
@@ -221,7 +214,7 @@ describe('DU variant switch — error materialisation regressions', () => {
   it('email→sms→email round-trip preserves the blank-mark on notify.address (unset at mount)', async () => {
     // Construction-time blank: notify.address is `unset`, surfacing a
     // derived "No value supplied" for the required string. The mark
-    // belongs to the consumer's intent — round-tripping through sms
+    // belongs to the consumer's intent, round-tripping through sms
     // and back to email must not silently clear it.
     const { app, api } = mount({
       name: 'Ada',
@@ -236,11 +229,11 @@ describe('DU variant switch — error materialisation regressions', () => {
     const initial = (api.errors as unknown as (p: string) => ValidationError[])('notify.address')
     expect(initial?.some((e) => e.code === 'atta:no-value-supplied')).toBe(true)
 
-    // Switch to sms — address is no longer in the active variant.
+    // Switch to sms, address is no longer in the active variant.
     api.setValue('notify.channel', 'sms')
     await waitUntil(() => (api.values.notify?.channel === 'sms' ? true : null))
 
-    // Switch back — variant memory should restore `address` AND the
+    // Switch back, variant memory should restore `address` AND the
     // construction-time `unset` intent (preserved as blankPaths
     // membership). The derived blank error must reappear.
     api.setValue('notify.channel', 'email')

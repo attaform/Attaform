@@ -1,15 +1,21 @@
 # Size-teardown program: master plan
 
-This file plus one phase file is everything a fresh context needs to execute a phase.
-Read this first, then the phase file, then (for background) `SIZE-TEARDOWN.md` sections
-4 and 5. Reference evidence lives in `plans/size-teardown/reference/` (fleet digests,
+**CLOSED at P10 on 2026-08-24 and merged as PR #561.** What follows is the
+record of how the program ran, kept because `scripts/EAGER-BUDGET-LEDGER.md`,
+`CHANGELOG.md` and the phase files cite its measurements. It is not a live
+plan, and the instructions below are written in the present tense only because
+that is how they were written at the time.
+
+The reading order it describes still works for anyone reconstructing a decision:
+this file, then the phase file, then `SIZE-TEARDOWN.md` sections 4 and 5.
+Reference evidence lives in `plans/size-teardown/reference/` (fleet digests,
 attribution tables, verifier measurement scripts, the P8 replacement sketches).
 
 - Audit report: `SIZE-TEARDOWN.md` (repo root, commit f5be28a2)
 - Artifact: https://claude.ai/code/artifact/e784bdb8-1c19-4c26-86ab-73e75ee6268a
 - Baseline: main @ fb532ad9, v0.27.6. Ratchet metric 46,477 B gz
   (minimal useForm, zod-v4, prod; `scripts/check-eager-size.mjs`).
-- Program target: ORIGINAL plan-of-record 25,960 B gz — SUPERSEDED by the
+- Program target: ORIGINAL plan-of-record 25,960 B gz, SUPERSEDED by the
   post-P5 re-anchor (2026-08-23), re-derived again at the P8 boundary
   (2026-08-24): landing ~32.3 kB, honest range 31.5-33.2 kB (see the
   ruling note + addenda under the ledger). Tarball: 1.8 MB packed
@@ -31,7 +37,7 @@ number on the phase's merge commit, not an estimate.
 | P2    | directive un-weld                     | done   | 37,210             | 2026-08-23 | -6,531; caps tightened; delivery landed         |
 | P3    | history plugin + arrays engine        | done   | 35,776             | 2026-08-23 | -1,434; attaform/history entry; ring buffer     |
 | P4    | field-meta install + SPI probe delete | done   | 35,207             | 2026-08-23 | -569; walk rides withMeta; probe deleted        |
-| P5    | store kernel                          | done   | 35,768             | 2026-08-23 | **+561** — size promise refuted; perf phase     |
+| P5    | store kernel                          | done   | 35,768             | 2026-08-23 | **+561**, size promise refuted; perf phase      |
 | P6    | validation shell fold (re-scoped)     | done   | 35,621             | 2026-08-23 | -147 (under band); sign-off 4 retired           |
 | P8    | surface program                       | done   | 34,530             | 2026-08-24 | -1,091; callable-tree; shims restored (+131)    |
 | P7    | zod-core + probe packs                | done   | 33,999             | 2026-08-24 | -531; fix walk; barrel -2,260; s/o 6 refused    |
@@ -48,7 +54,7 @@ number on the phase's merge commit, not an estimate.
 > 1. Expectations above are RE-DERIVED from the true anchor 35,768 with
 >    P5's two discounts (split-overhead ~0.5-1 kB per new chunk;
 >    semantics-preservation tax on consolidations). Re-derived landing
->    ~31.4 kB, honest range 30.5-32.5 kB — NOT the stale 25,960.
+>    ~31.4 kB, honest range 30.5-32.5 kB, NOT the stale 25,960.
 > 2. Execution order changed to value-confidence order: P6 (small,
 >    retires sign-off 4) -> P8 (largest credit, the only one
 >    prototype-measured) -> P7 (barrel-penalty halving is the real
@@ -66,18 +72,18 @@ number on the phase's merge commit, not an estimate.
 >    logic; a lazy chunk needs >~1 kB of genuinely-cold moved code.
 >    P5's full account: P5-store-kernel.md findings.
 > 5. P6 addendum (measured -147 vs -250..-500): gzip pre-discounts
->    TEXTUAL duplication — folding near-identical shells moves little
+>    TEXTUAL duplication, folding near-identical shells moves little
 >    because they were each other's best compression context. Discount
 >    twin-fold credits to near zero; only structurally-redundant logic
 >    deletion counts. Landing re-derived ~31.6 kB. Also: BOTH dist-typed
 >    gates (doc-snippets, bundled-types) must run against a fresh
->    `pnpm exec unbuild` — the stale-dist trap has now bitten three
+>    `pnpm exec unbuild`, the stale-dist trap has now bitten three
 >    times.
 > 6. P8 addendum (measured -1,091 vs -1,400..-2,200; 61%
->    mid-realization): rep sketches price the LEAN ceiling — the pinned
+>    mid-realization): rep sketches price the LEAN ceiling, the pinned
 >    contract claws back real bytes; scale remaining rep-backed credits
 >    by ~0.6. NEW STANDING ITEM for Oswald: sign-off 8's sucrase-shim
->    drop was REVERSED on evidence (+131 B) — the docs playground's
+>    drop was REVERSED on evidence (+131 B), the docs playground's
 >    @vue/repl compiles TS with sucrase WITHOUT disableESTransforms, so
 >    the documented `surface(path)?.x` idiom downlevels into a
 >    `.call`-reading helper that crashed post-drop
@@ -88,7 +94,7 @@ number on the phase's merge commit, not an estimate.
 > 7. P7 addendum (measured -531 vs plan -400..-600 realized; rep armD
 >    -834 realized at 64% before the +98 genericization tax): the
 >    rep-first rule REFUSED sign-off 6's factory absorption on
->    measurement (+17 gz — the services indirection was fully
+>    measurement (+17 gz, the services indirection was fully
 >    gzip-pre-discounted; a shared class weighs what the shared factory
 >    weighs on the barrel too). Its `node()` SPI item moves to P9. The
 >    barrel prize landed larger than the ratchet win: plugin-less
@@ -100,7 +106,7 @@ number on the phase's merge commit, not an estimate.
 > 8. P1b addendum (measured -875 vs the stub's ~-900; the re-derived
 >    entry catalogue was 2,295 raw chars across 18 literals, 16
 >    convertible sites + 2 majors-twins = 14 codes): unique long prose
->    carries almost NO gzip pre-discount — the twin-fold discount
+>    carries almost NO gzip pre-discount, the twin-fold discount
 >    applies to structural twins, not to one-off English strings, so
 >    prose deletion realizes near its raw estimate. No shared
 >    codedMessage helper on purpose (14 near-identical literals gzip to

@@ -96,14 +96,14 @@ describe('auto-aria SSR', () => {
   it('emits nothing for a binding carrying no ariaDisplayState', async () => {
     // A hand-rolled register factory has no field-state accessor to close
     // over, so `buildRegister` omits `ariaDisplayState`. That is the one
-    // remaining "aria off" path — there is no opt-out flag.
+    // remaining "aria off" path: there is no opt-out flag.
     const { html } = await renderField({ dropChannel: true })
     expect(html).not.toContain('aria-invalid')
     expect(html).not.toContain('aria-required')
   })
 })
 
-describe('auto-aria SSR — array-member checkboxes (#381)', () => {
+describe('auto-aria SSR: array-member checkboxes (#381)', () => {
   it('omits aria-required on every checkbox bound to a required array path', async () => {
     const schema = z.object({ permissions: z.array(z.string()) })
     const Comp = defineComponent({
@@ -142,7 +142,7 @@ describe('auto-aria SSR — array-member checkboxes (#381)', () => {
   })
 })
 
-describe('auto-aria SSR — component host (#404)', () => {
+describe('auto-aria SSR: component host (#404)', () => {
   it('does not stamp aria-required on a component host root', async () => {
     const schema = z.object({ email: z.string() })
     // Presentational wrapper whose root is a non-control <div>.

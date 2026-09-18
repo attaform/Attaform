@@ -14,7 +14,7 @@ import { waitUntil } from '../utils/form-harness'
  * a failed submit (validation failure or callback rejection)
  * increments attempts but leaves `submitted` at `false`.
  *
- * `form.reset()` zeroes the submission surface — `submissionAttempts`,
+ * `form.reset()` zeroes the submission surface, `submissionAttempts`,
  * `submitted`, and `submitError` all return to their initial values.
  * Templates that want "the user has tried to submit" should read
  * `submissionAttempts > 0` directly.
@@ -71,7 +71,7 @@ describe('form.meta.submitted', () => {
     expect(api.meta.submissionAttempts).toBe(1)
   })
 
-  it('stays false when validation fails — submissionAttempts still increments', async () => {
+  it('stays false when validation fails: submissionAttempts still increments', async () => {
     const { app, api } = mountForm(schema, { email: '' })
     apps.push(app)
     const handler = api.handleSubmit(async () => {})
@@ -81,7 +81,7 @@ describe('form.meta.submitted', () => {
     expect(api.meta.submissionAttempts).toBe(1)
   })
 
-  it('stays false when the consumer callback throws — submissionAttempts still increments', async () => {
+  it('stays false when the consumer callback throws: submissionAttempts still increments', async () => {
     const { app, api } = mountForm(schema, { email: 'user@example.com' })
     apps.push(app)
     const handler = api.handleSubmit(async () => {

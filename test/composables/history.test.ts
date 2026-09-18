@@ -8,12 +8,12 @@ import type { UseFormConfig, UseFormReturn } from '../../src/zod'
 import { createAttaform } from '../../src/runtime/core/plugin'
 
 /**
- * Phase 5.9 — undo/redo.
+ * Phase 5.9, undo/redo.
  *
  * `history: historyPlugin()` enables the default bounded chain (max
  * 128); `historyPlugin({ max: N })` tunes it. `undo()` / `redo()` restore the
  * prior form value (and the error map). `canUndo` / `canRedo` gate
- * consumer UI. `reset()` is treated as an ordinary mutation — the
+ * consumer UI. `reset()` is treated as an ordinary mutation: the
  * pre-reset state stays one undo away. Persistence hydration is the
  * floor (the pre-hydration default isn't recoverable).
  */
@@ -47,7 +47,7 @@ function mountForm(history: UseFormConfig<typeof schema>['history']): {
   return { app, api: handle.api as ApiReturn }
 }
 
-describe('history — default (historyPlugin())', () => {
+describe('history: default (historyPlugin())', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -98,7 +98,7 @@ describe('history — default (historyPlugin())', () => {
     expect(api.history.redo()).toBe(false)
   })
 
-  it('reset() is itself undoable — the pre-reset state stays recoverable', () => {
+  it('reset() is itself undoable: the pre-reset state stays recoverable', () => {
     const { app, api } = mountForm(historyPlugin())
     apps.push(app)
     api.setValue('email', 'a@example.com')
@@ -106,7 +106,7 @@ describe('history — default (historyPlugin())', () => {
     expect(api.history.canUndo).toBe(true)
     api.reset()
     // reset() is captured as a normal mutation. The pre-reset value
-    // sits one undo away — consumers who hit reset by accident recover
+    // sits one undo away, consumers who hit reset by accident recover
     // with a single undo() instead of losing their input.
     expect(api.history.canUndo).toBe(true)
     expect(api.history.canRedo).toBe(false)
@@ -117,7 +117,7 @@ describe('history — default (historyPlugin())', () => {
   it('restores errors alongside the form on undo', () => {
     const { app, api } = mountForm(historyPlugin())
     apps.push(app)
-    // setErrors does NOT trigger onFormChange — the snapshot
+    // setErrors does NOT trigger onFormChange: the snapshot
     // captured at a later form mutation is what carries the errors
     // forward. Sequence below captures: form='a' (no errors),
     // setErrors lands, form='b' snapshot now has the errors.
@@ -129,7 +129,7 @@ describe('history — default (historyPlugin())', () => {
     api.clearErrors('email')
     api.setValue('email', 'c')
     expect(api.errors.email).toEqual([])
-    // Undo once — snapshot taken at the 'b' mutation carried the
+    // Undo once, snapshot taken at the 'b' mutation carried the
     // errors that were set just before it.
     api.history.undo()
     expect(api.values.email).toBe('b')
@@ -137,7 +137,7 @@ describe('history — default (historyPlugin())', () => {
   })
 })
 
-describe('history — bounded stack', () => {
+describe('history: bounded stack', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -155,7 +155,7 @@ describe('history — bounded stack', () => {
     let depth = 0
     while (api.history.undo()) depth++
     // Stack had 3 entries; undo from the current settles us on the
-    // oldest-retained — we can undo (max - 1) times.
+    // oldest-retained: we can undo (max - 1) times.
     expect(depth).toBe(2)
     expect(['value-2', 'value-3'].includes(api.values.email as string)).toBe(true)
   })
@@ -167,12 +167,12 @@ describe('history — bounded stack', () => {
     api.setValue('email', 'b')
     expect(api.history.size).toBe(3) // initial + 2 mutations
     api.history.undo()
-    // One moved from undo stack to redo stack — total is still 3.
+    // One moved from undo stack to redo stack, total is still 3.
     expect(api.history.size).toBe(3)
   })
 })
 
-describe('history — blankPaths preservation', () => {
+describe('history: blankPaths preservation', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -181,7 +181,7 @@ describe('history — blankPaths preservation', () => {
   // Numeric leaves can be in two consistent states: "storage holds the
   // slim default AND blankPaths records the divergence" (cleared, displays
   // ''), and "storage holds a real value, blankPaths empty" (typed, displays
-  // the value). History snapshots have to carry both halves — replaying
+  // the value). History snapshots have to carry both halves, replaying
   // the form value alone would pin a cleared field to '0' on the screen.
   const numericSchema = z.object({ count: z.number() })
   type NumericApi = UseFormReturn<typeof numericSchema>
@@ -228,10 +228,10 @@ describe('history — blankPaths preservation', () => {
     // 4. Undo, the snapshot we land on captured storage = 0 with blankPaths = {count}.
     expect(api.history.undo()).toBe(true)
     expect(api.values.count).toBe(0)
-    // The bug: blankPaths was reset along the redo path (step 3 above)
-    // and applyFormReplacement does not touch the set, so the restored
-    // state shows a misleading '0' on the wire. The fix re-seeds the
-    // set from the snapshot before the form replacement lands.
+    // The redo path at step 3 resets blankPaths, and
+    // `applyFormReplacement` does not touch the set, so the set is
+    // re-seeded from the snapshot before the replacement lands.
+    // Otherwise the restored state shows a misleading '0' on the wire.
     expect(api.blankPaths.value.has(countKey)).toBe(true)
   })
 
@@ -254,7 +254,7 @@ describe('history — blankPaths preservation', () => {
   })
 })
 
-describe('history — delta round-trip', () => {
+describe('history: delta round-trip', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -320,7 +320,7 @@ describe('history — delta round-trip', () => {
     api.setValue('profile.tags', ['one', 'two', 'three'])
     fingerprints.push(snap())
 
-    // Mutate a nested array element — tests the `setAtPath` spine
+    // Mutate a nested array element, tests the `setAtPath` spine
     // through an index segment.
     api.setValue('profile.tags.1', 'two-updated')
     fingerprints.push(snap())
@@ -329,7 +329,7 @@ describe('history — delta round-trip', () => {
     fingerprints.push(snap())
 
     // Walk back. Each undo() must land on the immediately-prior
-    // fingerprint — not eventually-correct, but step-correct.
+    // fingerprint: not eventually-correct, but step-correct.
     for (let i = fingerprints.length - 2; i >= 0; i--) {
       expect(api.history.undo()).toBe(true)
       expect(api.values()).toEqual(fingerprints[i])
@@ -337,7 +337,7 @@ describe('history — delta round-trip', () => {
     expect(api.history.undo()).toBe(false)
     expect(api.values()).toEqual(fingerprints[0])
 
-    // Walk forward again — redo must reproduce every fingerprint.
+    // Walk forward again, redo must reproduce every fingerprint.
     for (let i = 1; i < fingerprints.length; i++) {
       expect(api.history.redo()).toBe(true)
       expect(api.values()).toEqual(fingerprints[i])
@@ -346,13 +346,13 @@ describe('history — delta round-trip', () => {
   })
 })
 
-describe('history — clear()', () => {
+describe('history: clear()', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
   })
 
-  it('wipes both branches and reseeds — current form state is preserved', () => {
+  it('wipes both branches and reseeds: current form state is preserved', () => {
     const { app, api } = mountForm(historyPlugin())
     apps.push(app)
 
@@ -366,14 +366,14 @@ describe('history — clear()', () => {
 
     // Clear.
     api.history.clear()
-    // Current form value is untouched — clear() is history-only.
+    // Current form value is untouched, clear() is history-only.
     expect(api.values.email).toBe('a@example.com')
     // Both branches gone; only the current position is reachable.
     expect(api.history.canUndo).toBe(false)
     expect(api.history.canRedo).toBe(false)
     expect(api.history.size).toBe(1)
 
-    // History keeps working post-clear — clear() didn't disable the
+    // History keeps working post-clear, clear() didn't disable the
     // feature, just wiped the chain. Subsequent mutations record
     // normally, anchored to the new baseline.
     api.setValue('email', 'c@example.com')
@@ -394,7 +394,7 @@ describe('history — clear()', () => {
   })
 })
 
-describe('history — disabled (no config)', () => {
+describe('history: disabled (no config)', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -413,7 +413,7 @@ describe('history — disabled (no config)', () => {
   })
 })
 
-describe('history — one plugin instance across forms', () => {
+describe('history: one plugin instance across forms', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

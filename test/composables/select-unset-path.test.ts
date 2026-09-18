@@ -4,23 +4,23 @@
  * hold (#569).
  *
  * The house rule for a field with no value is that it displays as its
- * empty value. `displayValue` is where that lives: it folds a blank
- * mark and a null / absent model to `''`. `vRegisterText` paints it
- * into `el.value`, and the compile-time `:value` injection on a
- * `<select>` reads the same ref. `setSelected` and the per-option
- * `:selected` expression were the two readers that went to `innerRef`
- * raw, so an unseeded path compared `undefined` against every option,
- * matched none, and left `selectedIndex` at `-1` — an empty box, a
- * state no user can reach by interacting, and one the server disagreed
- * with (it marks no option, so the browser parses the first as
- * selected, and hydration erased it).
+ * empty value. `displayValue` is where that lives: it folds a blank mark
+ * and a null or absent model to `''`. `vRegisterText` paints it into
+ * `el.value`, the compile-time `:value` injection on a `<select>` reads
+ * the same ref, and so do `setSelected` and the per-option `:selected`
+ * expression. A reader that goes to `innerRef` raw compares `undefined`
+ * against every option on an unseeded path, matches none and leaves
+ * `selectedIndex` at `-1`: an empty box, a state no user can reach by
+ * interacting, and one the server disagrees with, since it marks no
+ * option, the browser parses the first as selected, and hydration
+ * erases it.
  *
  * The report came from a record whose key set is a function of another
  * field, so a key legitimately appears at render time. Seeding the
  * whole key space up front is the workaround, and it is exactly what
  * choosing a record was meant to avoid.
  *
- * The fix is a display change and only that: nothing is written, so a
+ * This is a display change and only that: nothing is written, so a
  * select that renders never invents a record key, never fabricates a
  * choice the user did not make, and never spends the `blank` signal.
  * A model that HOLDS a value no option carries still shows nothing,
@@ -100,7 +100,7 @@ describe.each(adapters)('a <select> on a path the form does not hold ($name)', (
   it('shows the empty option wherever the author put it, not the first', async () => {
     // The browser's own fallback is "the first option". The directive's
     // answer is "the option that carries the empty value", which is the
-    // one an author writes as the placeholder — it does not have to lead
+    // one an author writes as the placeholder: it does not have to lead
     // the list.
     const { el } = await mountSelect('color', ['red', '', 'blue'], {})
     expect(el.selectedIndex).toBe(1)
@@ -115,7 +115,7 @@ describe.each(adapters)('a <select> on a path the form does not hold ($name)', (
 
   it('shows nothing when no option carries the empty value', async () => {
     // Falling back to the first option here would record a choice the
-    // user never made — `us` because it sorts first. Blank is the
+    // user never made, `us` because it sorts first. Blank is the
     // truthful paint, and the author's fix is a placeholder option.
     const { api, el } = await mountSelect('color', ['us', 'uk'], {})
     expect(el.selectedIndex).toBe(-1)
@@ -129,7 +129,7 @@ describe.each(adapters)('a <select> on a path the form does not hold ($name)', (
 
   it('shows the empty option for a path the `unset` sentinel marked blank', async () => {
     // `unset` writes the schema's slim value and joins the path to
-    // `blankPaths`, and `displayValue` reads that set — so a blank
+    // `blankPaths`, and `displayValue` reads that set: so a blank
     // numeric select shows the placeholder rather than highlighting
     // `<option value="0">`, which is the slim value storage now holds.
     const { api, el } = await mountSelect('rating', ['', '0', '1'], { rating: 1 })

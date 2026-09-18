@@ -2,9 +2,9 @@
 /**
  * Hit GitHub's `generate-notes` API for the range
  * `(previous-tag, HEAD)` and prepend the result to `RELEASES.md`.
- * Runs from the `version` npm hook alongside
- * `promote-changelog.mjs` — both files get staged by the caller and
- * ride along on the version commit.
+ * Runs from the `version` npm hook alongside `promote-changelog.mjs`;
+ * both files get staged by the caller and ride along on the version
+ * commit.
  *
  * The API output mirrors GitHub's "Auto-generated release notes" UI:
  * a grouped list of `* PR title by @author in #N` entries plus a
@@ -14,9 +14,9 @@
  *
  * Best-effort by design. Every failure path logs and exits 0 so a
  * transient API outage / auth hiccup / malformed response / disk
- * write error does NOT break the version bump. The worst case is the
- * RELEASES.md entry for this version being missing — the consumer
- * can regenerate after the fact or hand-fill it.
+ * write error does NOT break the version bump. The worst case is a
+ * missing RELEASES.md entry for this version, which can be regenerated
+ * after the fact or hand-filled.
  *
  * Skip conditions (all exit 0):
  * - not running in GitHub Actions (local `pnpm version` shouldn't
@@ -45,9 +45,9 @@ function warn(msg) {
 /**
  * Outer guard: any uncaught exception, any rejected promise, any
  * sync throw inside the generate flow becomes a warning + exit 0.
- * The version hook chain (`A && B && C`) must NOT break on this
- * script — promote-changelog has already touched CHANGELOG.md and
- * the subsequent `git add` should still run.
+ * The version hook chain (`A && B && C`) must NOT break on this script:
+ * promote-changelog has already touched CHANGELOG.md and the subsequent
+ * `git add` still needs to run.
  */
 process.on('uncaughtException', (err) => {
   warn(`uncaught exception: ${err?.message ?? String(err)}`)
@@ -68,7 +68,7 @@ try {
 function main() {
   const inCI = process.env.GITHUB_ACTIONS === 'true'
   if (!inCI) {
-    log('skipping — not in GitHub Actions')
+    log('skipping: not in GitHub Actions')
     return
   }
 
@@ -109,7 +109,7 @@ function main() {
   }
 
   if (previousTag === '') {
-    log('no previous v-tag found — seeding first entry')
+    log('no previous v-tag found, seeding first entry')
   }
 
   const repo = process.env.GITHUB_REPOSITORY ?? 'attaform/Attaform'
@@ -151,7 +151,7 @@ function main() {
 
   const body = typeof notes?.body === 'string' ? notes.body.trim() : ''
   if (body === '') {
-    log('API returned empty body — skipping')
+    log('API returned empty body, skipping')
     return
   }
 
@@ -162,8 +162,8 @@ function main() {
   // (tree-hash equality); an entry date that drifted day-to-day would
   // break the adoption recovery loop on dispatches that happen on a
   // different calendar day than the first attempt. HEAD here is
-  // target_branch's tip — `pnpm version --no-git-tag-version` has not
-  // yet created the bump commit.
+  // target_branch's tip, since `pnpm version --no-git-tag-version` has
+  // not yet created the bump commit.
   let date
   try {
     date = execFileSync('git', ['log', '-1', '--pretty=%cI', 'HEAD'], {
@@ -179,7 +179,7 @@ function main() {
     warn('git log HEAD date returned empty; skipping')
     return
   }
-  const entry = `## ${newTag} — ${date}\n\n${body}\n\n---\n\n`
+  const entry = `## ${newTag} (${date})\n\n${body}\n\n---\n\n`
 
   const releasesPath = resolve(repoRoot, 'RELEASES.md')
   const HEADER = '# Releases\n\n'

@@ -72,8 +72,8 @@ function closureFiles(baseDir: string): string[] {
 /**
  * The intentional production `[attaform]` messages across the WHOLE prod
  * runtime closure. Since P1b, every prose diagnostic ships as an AF##
- * code with its attaform.dev/e URL — the `'[attaform] AF'` prefix covers
- * all of them, on every entry — plus the short no-uncaught-exceptions
+ * code with its attaform.dev/e URL: the `'[attaform] AF'` prefix covers
+ * all of them, on every entry, plus the short no-uncaught-exceptions
  * "callback threw" breadcrumbs and the transform gate-rejection message.
  * Additions here are reviewed, never incidental.
  */
@@ -106,7 +106,7 @@ describe.skipIf(!isRealBuild)('packaging: dev/prod flavor split', () => {
   })
 
   it('dev closure resolves the flag statically too (no process reads)', () => {
-    // The dev flavor is unconditionally dev — flavor selection happens at
+    // The dev flavor is unconditionally dev, flavor selection happens at
     // resolution time via the `development` condition, never at runtime.
     expect(devText).not.toMatch(/\b__DEV__\b/)
     expect(devText).not.toContain('process.env.NODE_ENV')
@@ -141,7 +141,7 @@ describe.skipIf(!isRealBuild)('packaging: dev/prod flavor split', () => {
   })
 
   it('each flavor defines createAttaform exactly once', () => {
-    // One definition per closure means one registry module per graph —
+    // One definition per closure means one registry module per graph,
     // the property that keeps `useForm` and the Nuxt plugin on the same
     // registry instance no matter which flavor a bundler resolves.
     const definition = /function createAttaform\(/g

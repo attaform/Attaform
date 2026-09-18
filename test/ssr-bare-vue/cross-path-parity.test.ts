@@ -209,7 +209,7 @@ const FIXTURES: Fixture[] = [
   {
     // A path the form does not hold displays as its empty value, so the
     // compiled transform marks the authored `<option value="">`
-    // placeholder — the same option the client directive selects, which
+    // placeholder: the same option the client directive selects, which
     // is what keeps hydration from erasing the server's paint (#569).
     // The runtime path's asymmetry is unchanged: it emits no
     // option-level state either way.

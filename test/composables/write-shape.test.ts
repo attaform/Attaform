@@ -7,7 +7,7 @@ import type { WriteShape } from '../../src/runtime/types/types-core'
  * `expectTypeOf` evaluates its argument at runtime even though it only
  * cares about the type. We can't call the real `useForm` here (no Vue
  * app context), so we fake a recursive Proxy that returns itself for
- * every get/apply — enough to keep vitest's runtime happy while the
+ * every get/apply, enough to keep vitest's runtime happy while the
  * checker sees the real types.
  */
 function makeFormProxy<T>(): T {
@@ -26,21 +26,21 @@ function makeFormProxy<T>(): T {
  *
  * `WriteShape` widens primitive-literal leaves to their primitive
  * supertype to match the runtime "slim-primitive write contract."
- * The TS layer becomes honest about what's storable — refinement-
+ * The TS layer becomes honest about what's storable, refinement-
  * invalid values that satisfy the slim primitive type pass through
  * everywhere (defaults, setValue, getValue) without TS errors.
  *
  * Read-side post-validation types (handleSubmit's `data` argument,
  * validate*() result payloads) intentionally stay STRICT.
  *
- * `WriteShape` itself stays STRICT — the consumer-facing write
+ * `WriteShape` itself stays STRICT: the consumer-facing write
  * value uses `DefaultValuesShape<T>` (admits `Unset`), composed via
  * `SetValuePayload`. `WriteShape` is the callback's prev-value
  * argument (always a real value) and the structural shape for
  * read-side surfaces like `FieldStateMap<T>`.
  */
 
-describe('WriteShape — primitive-literal widening', () => {
+describe('WriteShape: primitive-literal widening', () => {
   it('widens string-literal unions to string', () => {
     expectTypeOf<WriteShape<'red' | 'green' | 'blue'>>().toEqualTypeOf<string>()
   })
@@ -76,7 +76,7 @@ describe('WriteShape — primitive-literal widening', () => {
   })
 })
 
-describe('WriteShape — composites', () => {
+describe('WriteShape: composites', () => {
   it('widens object property leaves', () => {
     type R = WriteShape<{ color: 'red' | 'green'; name: string }>
     expectTypeOf<R>().toEqualTypeOf<{ color: string; name: string }>()
@@ -110,7 +110,7 @@ const _setValueSchema = z.object({
 })
 const setValueForm = makeFormProxy<UseFormReturn<typeof _setValueSchema>>()
 
-describe('WriteShape — applied to setValue', () => {
+describe('WriteShape: applied to setValue', () => {
   const form = setValueForm
 
   it('setValue accepts any string at an enum-typed path', () => {
@@ -118,7 +118,7 @@ describe('WriteShape — applied to setValue', () => {
     // in the enum. Post-WriteShape: the slim type is `string`, so any
     // string is accepted at the type level. Runtime validates at the
     // refinement level via field validation. The test asserts that the
-    // call type-checks — if WriteShape ever stopped widening, this
+    // call type-checks, if WriteShape ever stopped widening, this
     // would be a hard TS error.
     form.setValue('color', 'magenta')
   })
@@ -142,12 +142,12 @@ describe('WriteShape — applied to setValue', () => {
   })
 })
 
-describe('WriteShape — applied to defaultValues', () => {
+describe('WriteShape: applied to defaultValues', () => {
   it('refinement-invalid string defaults are accepted', () => {
     const _schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
     type Defaults = UseFormConfig<typeof _schema>['defaultValues']
 
-    // 'teal' is not in the enum, but it's a string — slim-correct.
+    // 'teal' is not in the enum, but it's a string, slim-correct.
     expectTypeOf<{ color: 'teal' }>().toMatchTypeOf<NonNullable<Defaults>>()
   })
 
@@ -155,7 +155,7 @@ describe('WriteShape — applied to defaultValues', () => {
     const _schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
     type Defaults = UseFormConfig<typeof _schema>['defaultValues']
 
-    // @ts-expect-error: number is not a string — slim-mismatch
+    // @ts-expect-error: number is not a string, slim-mismatch
     const _bad: Defaults = { color: 1 }
     void _bad
   })
@@ -164,7 +164,7 @@ describe('WriteShape — applied to defaultValues', () => {
 const _submitSchema = z.object({ color: z.enum(['red', 'green', 'blue']) })
 const _submitForm = makeFormProxy<UseFormReturn<typeof _submitSchema>>()
 
-describe('WriteShape — handleSubmit stays strict', () => {
+describe('WriteShape: handleSubmit stays strict', () => {
   it('handleSubmit data is the strict zod-output type, not WriteShape', () => {
     type SubmitArg = Parameters<Parameters<typeof _submitForm.handleSubmit>[0]>[0]
 
@@ -188,7 +188,7 @@ const _readForm = makeFormProxy<UseFormReturn<typeof _readSchema>>()
  * leaves to the slim primitive type. Strict post-validation shapes
  * only appear on `handleSubmit` / `validate*()`.
  */
-describe('WriteShape — applied to form.values', () => {
+describe('WriteShape: applied to form.values', () => {
   it('form.values at an enum-typed path is string', () => {
     // The store can hold `'teal'` (refinement-invalid but slim-correct);
     // the read type must admit it. Pre-widen this was 'red'|'green'|'blue'.
@@ -219,7 +219,7 @@ describe('WriteShape — applied to form.values', () => {
   })
 })
 
-describe('WriteShape — applied to form.fields', () => {
+describe('WriteShape: applied to form.fields', () => {
   it('fields at an enum-typed path narrows value/original to string', () => {
     expectTypeOf(_readForm.fields.color.value).toEqualTypeOf<string>()
     expectTypeOf(_readForm.fields.color.original).toEqualTypeOf<string>()
@@ -232,7 +232,7 @@ describe('WriteShape — applied to form.fields', () => {
   })
 })
 
-describe('WriteShape — applied to register', () => {
+describe('WriteShape: applied to register', () => {
   it("register(path).innerRef widens the path's leaf type", () => {
     const reg = _readForm.register('color')
     expectTypeOf(reg.innerRef.value).toEqualTypeOf<string>()

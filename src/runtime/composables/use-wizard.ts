@@ -78,10 +78,10 @@ const PENDING_STATUS: FormStatus = {
   gate: null,
 }
 
-/** Status surfaced for noop forms (string-slot affordance steps). Noops
- *  carry no schema, no fields, and no error surface — they are always
- *  trivially valid, so the wizard's progress and complete computeds can
- *  treat string slots as "done by being there." */
+/** Status for a noop form, the desugaring of a string affordance step.
+ *  A noop has no schema, no fields and no error surface, so it is
+ *  trivially valid and the progress and complete computeds can read a
+ *  string slot as done by being there. */
 const NOOP_VALID_STATUS: FormStatus = {
   valid: true,
   dirty: false,
@@ -96,40 +96,33 @@ const NOOP_VALID_STATUS: FormStatus = {
 const EMPTY_LOCK_SET: ReadonlySet<FormKey> = new Set()
 
 /**
- * Subset of the form's surface the wizard reads for status + values.
- * Picked off the public `UseFormReturnType` so additions on the form
- * side don't drift this slice (and so a removal/rename trips the type
- * checker instead of leaking silently through a hand-redeclared shape).
+ * What the wizard reads for status and values. `Pick`ed off the public
+ * `UseFormReturnType` so a removal or rename on the form side trips the
+ * type checker rather than leaking through a hand-redeclared shape.
  */
 type StatusSourceForm = Pick<UseFormReturnType<GenericForm>, 'meta' | 'values'>
 
-/**
- * Subset of the form's surface the wizard's submission walk exercises.
- * Picked off `UseFormReturnType` for the same drift-detection reason as
- * `StatusSourceForm`.
- */
+/** What the submission walk exercises. Same drift check as `StatusSourceForm`. */
 type SubmissionSourceForm = Pick<
   UseFormReturnType<GenericForm>,
   'meta' | 'values' | 'activate' | 'parse' | 'applyInvalidSubmitPolicy' | 'reset' | 'hydrateError'
 >
 
 /**
- * Internal compiled-step shape. Extends the public `CompiledStep` with
- * the `isGate` flag the gating spine reads (which position a `gate()`
- * wrapped). Kept off the public `CompiledStep` so `wizard.steps` stays a
- * clean `{ key, form }` surface; the flag is an implementation detail of
- * the lock derivation.
+ * The public `CompiledStep` plus the `isGate` flag the gating spine
+ * reads, recording which position a `gate()` wrapped. It stays off
+ * `CompiledStep` so `wizard.steps` keeps its clean `{ key, form }`
+ * surface; the flag belongs to the lock derivation alone.
  */
 type CompiledStepInternal = CompiledStep & { readonly isGate: boolean }
 
 /**
- * Internal helpers that center the `AnyForm → UseFormReturnType` cast.
- * The wizard's slot surface is intentionally narrow (`AnyForm` —
- * `{ readonly key: FormKey }`) to avoid forcing contravariant
- * unification across participating forms; at runtime every form is
- * the full `UseFormReturnType`. These helpers do the one-way coercion
- * in a single place per surface so call sites read as a typed access
- * instead of a `as unknown as` chain (W-COUPLE-1).
+ * Center the `AnyForm` to `UseFormReturnType` coercion, one helper per
+ * surface, so a call site reads as a typed access rather than an `as
+ * unknown as` chain. The slot surface is deliberately narrow (`AnyForm`
+ * is `{ readonly key: FormKey }`) to avoid forcing contravariant
+ * unification across participating forms, but at runtime every one of
+ * them is the full `UseFormReturnType`.
  */
 function asStatusSource(form: AnyForm): StatusSourceForm {
   return form as unknown as StatusSourceForm
@@ -137,41 +130,37 @@ function asStatusSource(form: AnyForm): StatusSourceForm {
 function asSubmissionSource(form: AnyForm): SubmissionSourceForm {
   return form as unknown as SubmissionSourceForm
 }
-// Centers the `AnyForm → handleSubmit` coercion for the live `activeForm`
-// facade. The slot type omits `handleSubmit`; at runtime every
-// participating form carries it.
+// Same coercion for the live `activeForm` facade. The slot type omits
+// `handleSubmit`; every participating form carries it at runtime.
 function asHandleSubmitSource(form: AnyForm): Pick<UseFormReturnType<GenericForm>, 'handleSubmit'> {
   return form as unknown as Pick<UseFormReturnType<GenericForm>, 'handleSubmit'>
 }
 
 /**
- * Multistep-form orchestrator built around an ordered list of step slots.
- * Each slot resolves to a participating form: an existing `useForm`
- * reference, a bare string key (desugared to a noop form so affordance
- * steps participate uniformly), an eagerly-evaluated function slot for
- * runtime branching, or a `lazy()`-wrapped function slot that caches
- * its resolution and re-fires only on its own tracked deps.
+ * Multistep-form orchestrator built around an ordered list of step
+ * slots. A slot resolves to a participating form four ways: an existing
+ * `useForm` reference, a bare string key (desugared to a noop form, so
+ * an affordance step participates like any other), an eager function
+ * slot for runtime branching, or a `lazy()`-wrapped function slot that
+ * caches its resolution and re-fires only on its own tracked deps.
  *
- * The wizard's surface is read-only from the consumer's side:
- * navigation (`next` / `back` / `goTo`) walks positional indices,
+ * Navigation (`next` / `back` / `goTo`) walks positional indices.
  * `handleSubmit` validates the whole step list from any step and never
- * advances (gate advance with `activeForm.handleSubmit(() =>
- * wizard.next())`), and URL synchronization rides on `restore` /
- * `persist` callbacks that default to `?step=<key>`.
+ * advances; to gate an advance, write
+ * `activeForm.handleSubmit(() => wizard.next())`. URL sync rides on the
+ * `restore` / `persist` callbacks, which default to `?step=<key>`.
  */
 export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   options: WizardOptions & { readonly steps: S }
 ): UseWizardReturnType<S> {
-  // Defensive coercion: a misshapen `steps` (non-array, undefined, empty)
-  // never crashes the surrounding app. Dev-warn surfaces the
-  // misconfiguration; runtime continues with an empty list and the
-  // wizard reads as degenerate (`currentStep === undefined`,
-  // navigation refuses, `handleSubmit` no-ops). The "wizard wired into
-  // a checkout never crashes" promise sits on this branch.
+  // A misshapen `steps` must never crash the surrounding app. The dev
+  // error surfaces the misconfiguration and the runtime continues
+  // degenerate: `currentStep` undefined, navigation refuses,
+  // `handleSubmit` no-ops. A wizard wired into a checkout rests here.
   const rawSteps: ReadonlyArray<StepSlot> = Array.isArray(options.steps) ? options.steps : []
   if (rawSteps.length === 0 && __DEV__) {
     console.error(
-      '[attaform] useWizard({ steps }): expected a non-empty array of step slots. Continuing with an empty step list — wizard.currentStep reads as undefined, navigation refuses, handleSubmit no-ops.'
+      '[attaform] useWizard({ steps }): expected a non-empty array of step slots. Continuing with an empty step list: wizard.currentStep reads as undefined, navigation refuses, handleSubmit no-ops.'
     )
   }
 
@@ -179,23 +168,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Noop-form synthesis for top-level string slots -------------------
   //
-  // String slots desugar to a wizard-owned `useAbstractForm` call backed
-  // by `buildNoopWizardSchema`. Synthesis runs at setup time so the
-  // forms are registered in the registry (status + ref-counting +
-  // consumer eviction all flow through the same paths as real forms).
-  // Function and lazy slots may also return string keys at runtime,
-  // including ones not declared at the top level. Those go through
-  // `getOrBuildNoop` below, which constructs a noop on the fly inside
-  // a wizard-scoped `effectScope` so consumer cleanup, registry
-  // presence, and the rest of the FormStore surface stay identical to
-  // an eagerly-built noop.
+  // A string slot desugars to a wizard-owned `useAbstractForm` over
+  // `buildNoopWizardSchema`. Synthesising at setup time is what puts the
+  // form in the registry, so status, ref-counting and consumer eviction
+  // all follow the paths real forms take. A function or lazy slot can
+  // return a string key too, including one never declared at the top
+  // level; `getOrBuildNoop` below builds those on the fly.
   const noopForms = new Map<string, AnyForm>()
-  // Wizard-private scope for lazily-built noops. Building inside this
-  // scope lets `useAbstractForm` register its `onScopeDispose` hook
-  // against the wizard's lifetime, not against whatever component
-  // happens to be active when the function slot first returned an
-  // undeclared key. Stopped when the wizard's own setup scope tears
-  // down.
+  // Building inside a wizard-private scope is what binds
+  // `useAbstractForm`'s `onScopeDispose` to the wizard's lifetime rather
+  // than to whichever component happened to be active when a function
+  // slot first returned an undeclared key.
   const lazyNoopScope = effectScope(true)
   for (const slot of rawSteps) {
     if (typeof slot !== 'string') continue
@@ -221,11 +204,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         ) as unknown as AnyForm
     )
     if (noop === undefined) {
-      // `lazyNoopScope.run` only returns `undefined` if the scope has
-      // already been stopped, which only happens at wizard teardown.
-      // Reaching this branch means the wizard is mid-disposal; return
-      // a structurally-empty stand-in so the caller's compile pass
-      // completes without crashing.
+      // `run` returns `undefined` only on a stopped scope, so reaching
+      // here means the wizard is mid-teardown. An empty stand-in lets
+      // the caller's compile pass finish without crashing.
       const stub: AnyForm = { key }
       return stub
     }
@@ -236,9 +217,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Static slot inventory -------------------------------------------
   //
-  // Collect every form referenced by a top-level slot. This is the
-  // initial consumer-tracking set; function slots add to it lazily as
-  // they resolve.
+  // Every form a top-level slot references, which seeds consumer
+  // tracking. Function slots add to it as they resolve.
   const trackedKeys = new Set<FormKey>()
   function trackOnce(form: AnyForm): void {
     if (trackedKeys.has(form.key)) return
@@ -259,39 +239,34 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Reactive plumbing for the slot compiler --------------------------
   //
-  // Each `lazy()` slot gets its own Vue computed. The resolver fires
-  // eagerly on the first compile pass and the result memoizes. The
-  // cache invalidates only when one of the resolver's own tracked
-  // reactive reads changes (Vue handles dep tracking) — an unrelated
-  // slot re-evaluating does not re-fire this one. `wizard.reset()`
-  // bumps `lazyEpoch` so every lazy computed re-fires on the next
-  // compile pass.
+  // Each `lazy()` slot gets its own computed, fired eagerly on the first
+  // compile pass and memoized after. Only that resolver's own tracked
+  // reads invalidate it, so an unrelated slot re-evaluating cannot
+  // re-fire it. `wizard.reset()` bumps `lazyEpoch` to re-fire them all.
   //
-  // The computed caches the resolver's *raw* return (form / string /
-  // nested marker / nullish). String → noop conversion and nested-marker
-  // unwrapping happen in `normalizeSlot`, OUTSIDE the computed, so
-  // noop-construction and nested-resolution reactivity don't leak into
-  // this slot's dep set (otherwise the form registry's initialization
-  // writes would invalidate the cache on the very first compile pass).
+  // The computed caches the resolver's RAW return: form, string, nested
+  // marker or nullish. String-to-noop conversion and nested-marker
+  // unwrapping stay outside it, in `normalizeSlot`, or the form
+  // registry's initialization writes would land in this slot's dep set
+  // and invalidate the cache on the very first compile pass.
   //
-  // The memo is keyed by marker identity (not slot index) so a `lazy()`
-  // nested inside a `gate()` — in either composition order — still
-  // resolves through one stable cache. A WeakMap lets a dropped marker's
-  // cache be collected with it.
+  // Keying the memo by marker identity rather than slot index is what
+  // lets a `lazy()` inside a `gate()` resolve through one stable cache
+  // in either composition order. The WeakMap lets a dropped marker's
+  // cache go with it.
   const lazyEpoch = ref(0)
   const lazyComputeds = new WeakMap<LazyMarker, ComputedRef<SlotResolution>>()
 
-  // `activeKey` is the canonical source of truth for the active step.
-  // Initialized below from `restore` (or the first compiled slot's key).
-  // Declared early so the slot compiler's `ctx.currentKey` reads it.
+  // The canonical source of truth for the active step, initialized below
+  // from `restore` or the first compiled slot's key. Declared this early
+  // so the slot compiler's `ctx.currentKey` can read it.
   const activeKey = ref<string>('')
 
-  // Static accumulator of forms reachable through top-level slots. The
-  // slot context's `forms` projection reads from this Map so function
-  // slots can branch on a stable lookup surface (`ctx.forms.account`)
-  // without forcing the slot context to depend on the compiled step
-  // list — that dependency would close a reactive cycle through the
-  // slot compiler.
+  // Forms reachable through top-level slots. The slot context's `forms`
+  // projection reads this Map, which gives a function slot a stable
+  // lookup surface (`ctx.forms.account`) without making the slot context
+  // depend on the compiled step list. That dependency would close a
+  // reactive cycle through the slot compiler.
   const formsAccumulator = new Map<FormKey, AnyForm>()
   for (const slot of rawSteps) {
     if (typeof slot === 'string') {
@@ -302,11 +277,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
   }
 
-  // Slot resolution context shape — projected to consumers as the
-  // single argument of function slots. Values are loose-typed because
-  // the wizard does not generically thread each step's schema through
-  // `ctx.forms`; consumers reach back to their original form refs for
-  // typed access.
+  // Projected to consumers as the single argument of a function slot.
+  // Loosely typed, because the wizard does not thread each step's schema
+  // through `ctx.forms`; reach back to the original form ref for that.
   const slotForms = new Proxy({} as Record<FormKey, WizardCtxForm>, {
     get(_, key: string | symbol): WizardCtxForm | undefined {
       if (typeof key !== 'string') return undefined
@@ -326,14 +299,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return { configurable: true, enumerable: true, writable: false, value: form }
     },
   })
-  // Shared slot-resolution context. Built as a plain object with
-  // `currentKey` exposed as a getter so the `activeKey` dep is
-  // established only when a slot body actually reads `ctx.currentKey`
-  // — every navigation writes `activeKey`, so reading it eagerly
-  // (e.g. via a wrapping `computed`) would thread the dep through
-  // every bare function slot and re-fire the entire compile pass on
-  // each `next` / `back` / `goTo`. The getter form lets `lazy()` and
-  // bare function slots opt into the active-step dep individually.
+  // A plain object, with `currentKey` as a GETTER so the `activeKey` dep
+  // is established only when a slot body actually reads it. Every
+  // navigation writes `activeKey`, so reading it eagerly (through a
+  // wrapping `computed`, say) would thread the dep through every bare
+  // function slot and re-fire the whole compile pass on each `next` /
+  // `back` / `goTo`. The getter lets each slot opt in for itself.
   const slotCtx: WizardCtx = {
     forms: slotForms,
     get currentKey() {
@@ -341,8 +312,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     },
   }
 
-  /** Get (or lazily build) the memo computed for a `lazy()` marker,
-   *  keyed by marker identity. See the `lazyComputeds` note above. */
+  /** The memo computed for a `lazy()` marker, keyed by marker identity. */
   function lazyComputedFor(marker: LazyMarker): ComputedRef<SlotResolution> {
     const cached = lazyComputeds.get(marker)
     if (cached !== undefined) return cached
@@ -354,23 +324,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return c
   }
 
-  // Cap on how deep the slot normalizer will unwrap. gate/lazy/function
-  // nesting is a handful of levels in any real wizard; the cap only
-  // catches a pathological cycle (a resolver that returns itself).
+  // gate / lazy / function nesting runs a handful of levels deep in any
+  // real wizard, so this only catches a resolver that returns itself.
   const MAX_SLOT_DEPTH = 32
 
   /**
-   * Recursively resolve a single slot to a participating form plus
-   * whether a `gate()` wrapped it anywhere on the way down, or
-   * `undefined` to drop the slot from the compiled list.
+   * Resolve one slot to a participating form plus whether a `gate()`
+   * wrapped it anywhere on the way down, or `undefined` to drop the slot
+   * from the compiled list.
    *
-   * Each level unwraps one layer and recurses: a `gate()` records the
-   * gate and descends into its inner slot; a `lazy()` reads its memo; a
-   * function slot is called; a string desugars to its noop form; a form
+   * Each level unwraps one layer and recurses: a `gate()` records itself
+   * and descends into its inner slot, a `lazy()` reads its memo, a
+   * function slot is called, a string desugars to its noop, and a form
    * bottoms out. So `gate()` and `lazy()` compose in either order, and a
-   * function / lazy resolver may itself return a `gate()` wrapper. String
-   * → noop conversion and nested-marker reads happen here (not inside a
-   * lazy computed) to keep resolver dep sets clean.
+   * function or lazy resolver may itself return a `gate()`. The
+   * string-to-noop conversion and the nested-marker reads live here
+   * rather than inside a lazy computed, to keep resolver dep sets clean.
    */
   function normalizeSlot(
     slot: unknown,
@@ -386,21 +355,19 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       }
       return undefined
     }
-    // A `null` / `undefined` slot (a literal absence, e.g. `cond ? form :
-    // null`) drops out of the compiled list.
+    // A literal absence, such as `cond ? form : null`, drops out.
     if (slot === undefined || slot === null) return undefined
-    // String slots build a noop on first reference (top-level strings are
-    // pre-built at construction; the builder hits that cache). Authors
-    // don't pre-declare affordance keys; the wizard handles new keys
-    // uniformly.
+    // Built on first reference; a top-level string was pre-built at
+    // construction and hits that cache. Affordance keys are never
+    // pre-declared, so a new key has to work like any other.
     if (typeof slot === 'string') return { form: getOrBuildNoop(slot), gated }
-    // `gate(step)`: mark the position gated and descend into the wrapped
-    // slot. The gated flag rides through every further unwrap.
+    // `gate(step)`: mark the position and descend. The flag rides through
+    // every further unwrap.
     if (isGateMarker(slot)) return normalizeSlot(slot.inner, ctx, true, depth + 1)
-    // `lazy(fn)`: read through the marker-keyed memo, then normalize the
-    // raw result (which may itself be a string / gate / lazy).
+    // `lazy(fn)`: read the memo, then normalize the raw result, which may
+    // itself be a string, gate or lazy.
     if (isLazyMarker(slot)) return normalizeSlot(lazyComputedFor(slot).value, ctx, gated, depth + 1)
-    // Eager function slot: call and normalize the result.
+    // Eager function slot.
     if (typeof slot === 'function') {
       const result = (slot as (ctx: WizardCtx) => SlotResolution)(ctx)
       return normalizeSlot(result, ctx, gated, depth + 1)
@@ -409,13 +376,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return undefined
   }
 
-  // The compiled step list. Function slots re-evaluate on every read
-  // of their reactive deps; lazy slots run through their own memoized
-  // computed; string slots cache their noop forms; a `gate()` marks its
-  // position and is transparent to the resolved form. The compile pass
-  // itself has no `activeKey` dep — each function-slot body contributes
-  // its own deps through `slotCtx.currentKey`'s getter, so navigation
-  // only re-fires the slots that actually look at the active step.
+  // A function slot re-evaluates on every read of its reactive deps, a
+  // lazy slot runs through its own memo, a string slot caches its noop,
+  // and a `gate()` marks its position while staying transparent to the
+  // resolved form. The compile pass carries no `activeKey` dep of its
+  // own: each function-slot body contributes its deps through
+  // `slotCtx.currentKey`'s getter, so navigation re-fires only the slots
+  // that actually look at the active step.
   const compiledSteps = computed<readonly CompiledStepInternal[]>(() => {
     const out: CompiledStepInternal[] = []
     const seen = new Set<FormKey>()
@@ -450,13 +417,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return -1
   })
 
-  // `currentStep` and `activeForm` resolve through the same
-  // `activeIndex`-aware lookup so they can never disagree on which
-  // step the wizard is on. The forward-continuity watch below keeps
-  // `activeKey` pointed at a live step, so in steady state
-  // `activeIndex` is in range; the `list[0]` fallback here only covers
-  // the sub-tick before that watch flushes, and the degenerate
-  // empty-key case.
+  // `currentStep` and `activeForm` share this `activeIndex`-aware
+  // lookup, so they can never disagree on which step the wizard is on.
+  // The forward-continuity watch below keeps `activeKey` on a live step,
+  // so `activeIndex` is in range in steady state; the `list[0]` fallback
+  // covers only the sub-tick before that watch flushes, plus the
+  // degenerate empty-key case.
   const currentStep = computed<FormKey | undefined>(() => {
     const list = compiledSteps.value
     const idx = activeIndex.value
@@ -477,15 +443,15 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return first === undefined ? undefined : first.form
   })
 
-  // Forward-continuity guard. When the active step drops out of the
-  // compiled list (a function or lazy slot that used to yield the active
-  // form now returns nullish), re-point `activeKey` at the step that took
-  // its place so the flow continues from there rather than snapping back
-  // to the first step. Clamp to the new last when the dropped step was
-  // last; an emptied wizard falls back to the degenerate empty key.
-  // Re-pinning at the source keeps `activeIndex` / `currentStep` /
-  // `activeForm` and index-based navigation consistent, instead of
-  // leaving `activeKey` stranded on a dead key.
+  // Forward continuity. When the active step drops out of the compiled
+  // list, because a function or lazy slot that yielded it now returns
+  // nullish, re-point `activeKey` at whichever step took its place, so
+  // the flow continues FORWARD instead of snapping back to step one. A
+  // dropped last step clamps to the new last; an emptied wizard falls
+  // back to the degenerate empty key. Re-pinning at the source is what
+  // keeps `activeIndex`, `currentStep`, `activeForm` and index-based
+  // navigation agreeing, rather than stranding `activeKey` on a dead
+  // key.
   watch(compiledSteps, (list, prevList) => {
     const key = activeKey.value
     if (key === '') return
@@ -499,21 +465,19 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (slid !== undefined) commitActiveKey(slid.key)
   })
 
-  // `wizard.activeForm` returns this single facade (when the wizard is
-  // non-degenerate) on every read, so a handler captured once at setup
-  // time stays correct as the wizard advances:
+  // Every read of `wizard.activeForm` returns this one facade, so a
+  // handler captured once at setup stays correct as the wizard advances:
   //
   //   const onNext = wizard.activeForm.handleSubmit(() => wizard.next())
   //
-  // `handleSubmit` is late-bound: the returned submit handler resolves
-  // the active form when it RUNS, not when `.handleSubmit(...)` was
-  // called, so `onNext` validates whichever step is current at click
-  // time instead of pinning to step one. Every other access forwards to
-  // the current form. Reach for `wizard.forms[key]` when you need a
-  // specific step's raw handle. The Proxy target is inert: all behavior
-  // comes from the traps, which read the reactive `activeForm` computed
-  // at access time (so reactivity tracks through the stable identity)
-  // and no-op safely when the wizard has no steps.
+  // `handleSubmit` is late-bound: the submit handler it returns resolves
+  // the active form when it RUNS, so `onNext` validates whichever step
+  // is current at click time rather than pinning to step one. Every
+  // other access forwards to the current form; reach for
+  // `wizard.forms[key]` for a specific step's raw handle. The Proxy
+  // target is inert, all behaviour living in the traps, which read the
+  // reactive `activeForm` at access time and no-op when there are no
+  // steps.
   const activeFormFacade = new Proxy({} as UseFormReturnType<GenericForm>, {
     get(_target, prop) {
       const form = activeForm.value
@@ -543,9 +507,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       if (form === undefined) return undefined
       const descriptor = Reflect.getOwnPropertyDescriptor(form, prop)
       if (descriptor === undefined) return undefined
-      // Force `configurable: true` so the Proxy invariant (a descriptor
-      // reported for a key absent from the inert target must be
-      // configurable) holds regardless of how the handle defines the key.
+      // The Proxy invariant: a descriptor reported for a key absent from
+      // the inert target must be configurable, however the handle
+      // defines it.
       return { ...descriptor, configurable: true }
     },
   })
@@ -566,23 +530,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   })
 
-  // "Form ready?" gate — `true` once a participating form's defaults
-  // have applied (sync defaults at construction, or async factory
-  // settle complete). Reads through the registry's per-store flag,
-  // not through the public `form.ready` getter, because the latter
-  // would activate dormant lazy factories the wizard hasn't asked
-  // for. Hoisted so `errorsFor` and `statusFor` share one definition
-  // of the gate (W-DUP-2 dedup).
+  // `true` once a participating form's defaults have applied, whether
+  // sync at construction or an async factory that has settled. It reads
+  // the registry's per-store flag rather than the public `form.ready`
+  // getter, because that getter would activate dormant lazy factories
+  // the wizard never asked for. Shared by `errorsFor` and `statusFor`.
   function isFormReady(key: FormKey): boolean {
     const store = registry.forms.get(key)
     return store?.defaultsResolved.value === true
   }
 
   // Lift a per-form error into the wizard's aggregate shape. Which form
-  // an entry belongs to is envelope-level identity — the wizard knows
-  // the step it is processing and stamps that key onto the aggregate
-  // entry. Centralising the lift dedups the construction shared by
-  // `allErrors` and `collectErrors` (W-DUP-1).
+  // an entry belongs to is envelope-level identity: the wizard knows the
+  // step it is processing and stamps that key on. Shared by `allErrors`
+  // and `collectErrors`.
   function toWizardAggregateError(
     err: {
       readonly path: ReadonlyArray<string | number>
@@ -600,11 +561,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return entry
   }
 
-  // Per-key memoization for `allValues` / `allErrors`. One field edit
-  // on form A only invalidates form A's slot; templates reading
-  // `wizard.allErrors.formB` stay cached. Mirrors `statusCache` below
-  // — the audit's COMP-W2 finding flagged the whole-record
-  // re-evaluation each per-step computed used to do.
+  // Per-key memoization for `allValues` and `allErrors`, so one field
+  // edit on form A invalidates only form A's slot and a template reading
+  // `wizard.allErrors.formB` stays cached. `statusCache` below is the
+  // same shape.
   const valuesCache = new Map<FormKey, ComputedRef<unknown>>()
   function valuesFor(form: AnyForm): ComputedRef<unknown> {
     const cached = valuesCache.get(form.key)
@@ -631,11 +591,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return computedErrors
   }
 
-  // Identity-stable Proxy surfaces backed by the per-key caches.
-  // `get` and `getOwnPropertyDescriptor` delegate to the per-key
-  // ComputedRef, so reads track only the form they target; `ownKeys`
-  // and `has` use `formsRecord` so iteration order matches the
-  // compiled step list.
+  // Identity-stable Proxy surfaces over the per-key caches. `get` and
+  // `getOwnPropertyDescriptor` delegate to the per-key ComputedRef, so a
+  // read tracks only the form it targets; `ownKeys` and `has` go through
+  // `formsRecord`, so iteration order matches the compiled step list.
   const allValues = new Proxy({} as Record<FormKey, unknown>, {
     get(_, key: string | symbol): unknown {
       if (typeof key !== 'string') return undefined
@@ -692,45 +651,44 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Gates (hard prerequisites; drive the member-form freeze) ---------
   //
-  // A `gate()` seals every step positioned after it until the gate
-  // CLEARS. Clearance is submission-triggered — a member form's clean
-  // submit, or a seeded-valid form gate whose verdict settles at mount —
-  // never a live value edit. That intent-vs-confirmation split is the
-  // whole point of `gate()`: keying on a leading value signal lets a
-  // downstream step collect data before the prerequisite is confirmed.
-  // Gate PRESENCE stays reactive (a function slot may add / drop a gate),
+  // A `gate()` seals every step after it until the gate CLEARS, and
+  // clearance is submission-triggered: a member form's clean submit, or
+  // a seeded-valid form gate settling at mount. Never a live value edit.
+  // That intent-versus-confirmation split is the whole point, since
+  // keying on a leading value signal would let a downstream step collect
+  // data before the prerequisite was confirmed. Gate PRESENCE stays
+  // reactive, because a function slot may add or drop one, while
   // clearance is a LATCH, so a checkbox toggle can never open the rail.
   //
-  // Two derived sets feed the reused spine:
+  // Two derived sets feed the shared spine:
   //   - navLockSet: steps strictly after the first UNCLEARED gate. Drives
   //     the `commitActiveKey` redirect and `statuses[key].locked`.
-  //   - freezeSet: navLockSet ∪ each cleared gate's own key. Drives Part
-  //     1's `externalLock`, so a cleared gate is frozen-but-navigable
-  //     (a read-only review, no withdrawal path) and everything
-  //     downstream stays frozen until its gate clears. The freeze is
-  //     bypass-proof: unlike a navigation guard, a deep link or
-  //     back/forward cannot reach around the data-layer freeze.
+  //   - freezeSet: navLockSet plus each cleared gate's own key. Drives
+  //     the member-form `externalLock`, so a cleared gate is frozen but
+  //     navigable, a read-only review with no withdrawal path, and
+  //     everything downstream stays frozen until its own gate clears.
+  //     Being at the data layer is what makes it bypass-proof: a deep
+  //     link or a back/forward cannot reach around it the way they reach
+  //     around a navigation guard.
 
-  // Static "could this wizard ever gate?" flag: a top-level gate marker,
-  // or a function / lazy slot that might resolve to one. A plain
-  // form / string wizard allocates no gate watchers.
+  // Could this wizard ever gate? A top-level gate marker, or a function
+  // or lazy slot that might resolve to one. A plain form / string wizard
+  // allocates no gate watchers at all.
   const mightGate = rawSteps.some(
     (slot) => isGateMarker(slot) || isLazyMarker(slot) || typeof slot === 'function'
   )
 
-  // Cleared gates, latched. A reactive Set (mirroring create-form-store's
-  // reactive collections) so `navLockSet` / `freezeSet` recompute on an
-  // add. Only a `defaultStatuses` gate seed, a member form's clean submit,
-  // `relock()`, and `reset()` ever move it — never a value going valid, so
-  // a checkbox toggle can't open the rail.
+  // Cleared gates, latched. Reactive so `navLockSet` and `freezeSet`
+  // recompute on an add. Exactly four things move it: a `defaultStatuses`
+  // gate seed, a member form's clean submit, `relock()` and `reset()`. A
+  // value going valid is not among them.
   const clearedGates = reactive(new Set<FormKey>())
 
-  // Subscribe each gate form to its clean-submit signal (the authoritative
-  // confirmation) and drop subscriptions for gates that left the compiled
-  // list. Idempotent; driven by the reconcile watch below plus one init
-  // pass. Clearance is established here (clean submit) or via the
-  // `defaultStatuses` seed — never inferred from a form's live validity, so
-  // a value going valid can never open a gate.
+  // Subscribe each gate form to its clean-submit signal, the
+  // authoritative confirmation, and drop subscriptions for gates that
+  // left the compiled list. Idempotent, driven by the reconcile watch
+  // below plus one init pass. Clearance is established here or by the
+  // `defaultStatuses` seed, never inferred from live validity.
   const gateSubs = new Map<FormKey, () => void>()
   function reconcileGates(): void {
     const gateKeys = new Set<FormKey>()
@@ -762,7 +720,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   )
 
   // Steps strictly after the first uncleared gate. The gate itself is
-  // never nav-locked — you must be able to reach it to clear it.
+  // never nav-locked: reaching it is how it gets cleared.
   const navLockSet = computed<ReadonlySet<FormKey>>(() => {
     const out = new Set<FormKey>()
     let sealed = false
@@ -776,20 +734,19 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out.size === 0 ? EMPTY_LOCK_SET : out
   })
 
-  // Freeze set: nav-locked steps plus each cleared gate's own key. A
-  // cleared gate is navigable but frozen (a read-only review), so the
-  // freeze set is a superset of the nav-lock set.
+  // Nav-locked steps plus each cleared gate's own key. A cleared gate is
+  // navigable but frozen, a read-only review, so this is a superset of
+  // the nav-lock set.
   const freezeSet = computed<ReadonlySet<FormKey>>(() => {
     const out = new Set<FormKey>(navLockSet.value)
     for (const key of gatePositions.value) if (clearedGates.has(key)) out.add(key)
     return out.size === 0 ? EMPTY_LOCK_SET : out
   })
 
-  // The furthest step reachable from the start without crossing a gate:
-  // walk positionally and stop at the first nav-locked step. A nav-locked
-  // target redirects here, so a deep link past an uncleared gate lands on
-  // the gate. `undefined` only when the very first step is nav-locked
-  // (pathological); callers then leave the pin where it is.
+  // The furthest step reachable from the start without crossing a gate.
+  // A nav-locked target redirects here, so a deep link past an uncleared
+  // gate lands on the gate. `undefined` only when the very first step is
+  // nav-locked, which is pathological; a caller then leaves the pin.
   function lastReachableKey(): FormKey | undefined {
     const list = compiledSteps.value
     const locked = navLockSet.value
@@ -801,13 +758,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return last
   }
 
-  // Resolve where a navigation to `target` actually lands. A reachable
-  // target lands as-is. A nav-locked target redirects to the gate
-  // (`lastReachableKey`), but only once that gate has resolved its
-  // defaults: bouncing onto a still-hydrating gate would flicker if it
-  // settles to "reachable" a tick later, so while the gate is pending the
-  // pin stays on the (frozen, therefore safe) target and the corrector
-  // performs the bounce once readiness settles.
+  // Where a navigation to `target` actually lands. A reachable target
+  // lands as-is; a nav-locked one redirects to `lastReachableKey`, but
+  // only once that gate has resolved its defaults. Bouncing onto a
+  // still-hydrating gate would flicker if it settled to reachable a tick
+  // later, so while the gate is pending the pin stays on the target,
+  // which is frozen and therefore safe, and the corrector performs the
+  // bounce once readiness settles.
   function resolveLandingKey(target: FormKey): FormKey {
     if (!navLockSet.value.has(target)) return target
     const redirect = lastReachableKey()
@@ -816,16 +773,15 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return redirect
   }
 
-  // Sole writer of `activeKey.value`. Every navigation path routes its
-  // target through here so a nav-locked step can never silently become
-  // the active step (subject to the readiness defer in
-  // `resolveLandingKey`). Side-effect-minimal by design: callers keep
-  // their own `visited` / activation bookkeeping and use the returned
-  // landing key, so they record where navigation actually ended up rather
-  // than where it was aimed. The empty-string clear (degenerate wizard)
-  // passes through. A hoisted declaration so the forward-continuity watch
-  // above can route through it; every caller invokes it after
-  // `navLockSet` is live.
+  // The SOLE writer of `activeKey.value`. Every navigation path routes
+  // its target through here, so a nav-locked step can never quietly
+  // become the active step, subject to the readiness defer in
+  // `resolveLandingKey`. It stays side-effect-minimal: callers keep their
+  // own `visited` and activation bookkeeping and read the returned
+  // landing key, so each records where navigation ENDED UP rather than
+  // where it was aimed. An empty-string clear passes through. Hoisted so
+  // the forward-continuity watch above can route through it; every caller
+  // runs after `navLockSet` is live.
   function commitActiveKey(target: FormKey): FormKey {
     const landing = target === '' ? '' : resolveLandingKey(target)
     if (activeKey.value !== landing) activeKey.value = landing
@@ -833,10 +789,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   }
 
   if (mightGate) {
-    // Reconcile gate subscriptions. The signature fires when the gate set
-    // changes or a gate's store registers — exactly the moments to
-    // (re)subscribe. `immediate` runs the init pass so subscriptions are
-    // live before the initial landing below.
+    // The signature fires when the gate set changes or a gate's store
+    // registers, which are exactly the moments to resubscribe.
+    // `immediate` runs the init pass, so subscriptions are live before
+    // the initial landing below.
     watch(
       () => {
         const parts: string[] = []
@@ -851,11 +807,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       { immediate: true }
     )
 
-    // Drive Part 1's `externalLock` on each member store from
-    // `freezeSet`. A key entering the set freezes its form; a key leaving
-    // it (its gate cleared and it is no longer downstream, or the step
-    // dropped out) releases it. `previouslyFrozen` tracks what we froze
-    // last pass so a departed key is actively reset rather than stranded.
+    // Drive each member store's `externalLock` from `freezeSet`. A key
+    // entering freezes its form; a key leaving releases it, whether
+    // because its gate cleared and it is no longer downstream or because
+    // the step dropped out. `previouslyFrozen` holds what the last pass
+    // froze, so a departed key is actively reset rather than stranded.
     let previouslyFrozen: FormKey[] = []
     watchEffect(() => {
       const frozen = freezeSet.value
@@ -866,8 +822,8 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         }
       }
       for (const key of frozen) {
-        // `registry.forms` is reactive, so a member store registered after
-        // this first runs re-triggers the effect and picks up its freeze.
+        // `registry.forms` is reactive, so a member store that registers
+        // later re-triggers this effect and picks up its freeze.
         const store = registry.forms.get(key)
         if (store !== undefined) store.externalLock.value = true
       }
@@ -876,10 +832,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
     if (getCurrentScope() !== undefined) {
       onScopeDispose(() => {
-        // Release every still-frozen member and drop gate subscriptions on
-        // teardown so a form that outlives the wizard (shared key,
-        // KeepAlive) is not stranded frozen. A store already evicted from
-        // the registry is skipped.
+        // Release every still-frozen member and drop gate subscriptions,
+        // so a form that outlives the wizard through a shared key or a
+        // KeepAlive is not stranded frozen. An already-evicted store is
+        // skipped.
         for (const key of previouslyFrozen) {
           const store = registry.forms.get(key)
           if (store !== undefined) store.externalLock.value = false
@@ -892,12 +848,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Statuses proxy + seed --------------------------------------------
 
-  // Apply a resolved `defaultStatuses` map's gate seeds to the cleared
-  // latch: any key seeded `gate: 'cleared'` that compiles to a live gate is
-  // latched cleared. This is the ONLY seed path to clearance (there is no
-  // validity inference), one-shot and explicit, so it never opens a gate on
-  // an in-session signal. A seed for a non-gate key is ignored here (the
-  // unknown-key dev-warn below still flags a key that matches no step).
+  // Latch any key seeded `gate: 'cleared'` that compiles to a live gate.
+  // This is the ONLY seed path to clearance, since nothing is inferred
+  // from validity, and it is one-shot and explicit, so it can never open
+  // a gate on an in-session signal. A seed for a non-gate key is ignored
+  // here; the dev warn below still flags one matching no step at all.
   function applyGateSeed(map: Record<string, FormStatusSeed> | undefined): void {
     if (map === undefined || !mightGate) return
     const gates = gatePositions.value
@@ -927,9 +882,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
   }
 
-  // Per-step status computeds, lazily extended as new step keys appear
-  // through function-slot resolution. A keyed cache keeps each form's
-  // computed identity stable across re-evaluations of `compiledSteps`.
+  // Extended lazily as new step keys appear through function-slot
+  // resolution. Keying the cache is what keeps each form's computed
+  // identity stable across re-evaluations of `compiledSteps`.
   const statusCache = new Map<FormKey, ComputedRef<FormStatus>>()
 
   function statusFor(form: AnyForm): ComputedRef<FormStatus> {
@@ -937,12 +892,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (cached !== undefined) return cached
     const source = asStatusSource(form)
     const computedStatus = computed<FormStatus>(() => {
-      // `locked` and `gate` are orthogonal to the readiness trichotomy
-      // below: both overlay whatever base status this form resolves to.
-      // `locked` = sealed behind an earlier uncleared gate; `gate` = this
-      // step's OWN prerequisite role (null unless it compiles to a
-      // `gate()`). Constants pass through untouched on the common
-      // unlocked + ungated path so their identity survives.
+      // Both overlay whatever base status the readiness trichotomy below
+      // resolves to. `locked` means sealed behind an earlier uncleared
+      // gate; `gate` is this step's OWN prerequisite role, null unless it
+      // compiles to a `gate()`. On the common unlocked and ungated path
+      // the constants pass through untouched, so their identity
+      // survives.
       const locked = navLockSet.value.has(form.key)
       let gate: FormStatus['gate'] = null
       if (gatePositions.value.includes(form.key)) {
@@ -961,12 +916,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           }
         }
       }
-      // Noop forms surface as always-valid even before their (trivial)
-      // schema settle has registered — noop schemas resolve synchronously
-      // so this branch is mostly defensive, but it keeps the status
-      // surface stable for string-slot keys at t=0. A string slot can
-      // itself be a gate (`gate('terms')`), so the gate overlay applies
-      // here too.
+      // A noop surfaces as always-valid even before its trivial schema
+      // settle has registered. Noop schemas resolve synchronously, so
+      // this is mostly defensive, but it keeps the status surface stable
+      // for a string-slot key at t=0. A string slot can itself be a gate
+      // (`gate('terms')`), so the overlay applies here too.
       if (noopForms.has(form.key)) {
         return locked || gate !== null ? { ...NOOP_VALID_STATUS, locked, gate } : NOOP_VALID_STATUS
       }
@@ -978,19 +932,19 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return computedStatus
   }
 
-  // Wrap the cache in a Proxy so `wizard.statuses` reads each key's
-  // computed lazily, including keys that only appeared via function-slot
-  // resolution. The underlying statuses-proxy expects a static record;
-  // we feed it a live one whose `get` delegates to `statusFor`.
+  // Wrapping the cache in a Proxy is what lets `wizard.statuses` read
+  // each key's computed lazily, including a key that appeared only
+  // through function-slot resolution. The statuses-proxy underneath
+  // expects a static record, so it is handed a live one whose `get`
+  // delegates to `statusFor`.
   const statusesRecord = new Proxy({} as Record<FormKey, ComputedRef<FormStatus>>, {
     get(_, key: string | symbol): ComputedRef<FormStatus> | undefined {
       if (typeof key !== 'string') return undefined
       const form = formsRecord.value[key]
       if (form === undefined) {
-        // Honor seeded keys for forms not yet visible in the compiled
-        // list (e.g. ghost forms behind a function-slot that hasn't
-        // resolved to them yet) so consumers can read a stable status
-        // surface for keys they know about.
+        // Honour a seeded key for a form not yet visible in the compiled
+        // list, such as one behind an unresolved function slot, so a
+        // consumer can read a stable status for a key it knows about.
         const cached = statusCache.get(key)
         if (cached !== undefined) return cached
         return undefined
@@ -1070,26 +1024,24 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- URL / restore wiring --------------------------------------------
   //
-  // Default restore reads the first non-undefined value among:
-  //   1. injected Nuxt-side resolver (`?step=<key>` via useRoute() in
-  //      the Nuxt module's runtime plugin), then
-  //   2. window.location's search param mirrored through a reactive
-  //      ref that updates on popstate.
+  // The default restore takes the first defined value of two: the
+  // injected Nuxt-side resolver, which reads `?step=<key>` through
+  // `useRoute()` in the module's runtime plugin, then `window.location`'s
+  // search param mirrored through a ref that updates on popstate.
   //
-  // Default persist writes back to the URL via `wizard-history.ts`.
-  // The historyHandle is created only when the consumer has not
-  // disabled `restore`/`persist`, so embed contexts that opt out (or
-  // pass custom handlers) never touch the DOM History API.
+  // The default persist writes back through `core/wizard-history.ts`. The
+  // handle is built only when the consumer has disabled neither `restore`
+  // nor `persist`, so an embed that opts out, or passes its own handlers,
+  // never touches the DOM History API.
   const wantsDefaultUrlSync = options.restore !== false || options.persist !== false
   const historyHandle = wantsDefaultUrlSync
     ? createWizardHistory(DEFAULT_STEP_PARAM)
     : NOOP_WIZARD_HISTORY
   const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
 
-  // Reactive URL mirror — `historyHandle.subscribe` fires the callback
-  // on popstate. Initial value resolves to whatever the URL holds at
-  // setup time (server's URL during SSR via the resolver, or the
-  // window URL on the client).
+  // `historyHandle.subscribe` fires the callback on popstate. The initial
+  // value is whatever the URL holds at setup time: the server's URL
+  // through the resolver under SSR, the window URL on the client.
   const urlMirror = ref<string | undefined>(undefined)
   const initialUrlValue =
     injectedResolver !== null ? injectedResolver(DEFAULT_STEP_PARAM) : historyHandle.read()
@@ -1115,15 +1067,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         ? options.persist
         : (state: WizardRestoreState): void => {
             if (state.step === undefined) return
-            // Resolve the URL's *effective* step: an absent or unknown
-            // `?step=` resolves to the first step (the wizard's
-            // fallback), so a bare `/wizard` is the same effective page
-            // as `?step=<first>`. Writing the step we're already
-            // effectively on is a canonicalization, not a navigation —
-            // replace in place so Back never lands on a dead entry
-            // showing the same step (and the Forward stack survives a
-            // Back round-trip). A genuine step change pushes a real
-            // history entry.
+            // An absent or unknown `?step=` resolves to the first step,
+            // so a bare `/wizard` is the same EFFECTIVE page as
+            // `?step=<first>`. Writing the step already effectively on
+            // screen is a canonicalization rather than a navigation, so
+            // it replaces in place: Back never lands on a dead entry
+            // showing the same step, and the Forward stack survives a
+            // Back round-trip. A genuine step change pushes.
             const current = historyHandle.read()
             const effectiveCurrent =
               current !== undefined && isCompiledKey(current) ? current : firstKey()
@@ -1163,23 +1113,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     initialKey = firstKey()
   }
   if (initialKey !== undefined) {
-    // Route the initial pin through the funnel so a deep link straight
-    // into a gated step lands on the gate (or defers to the corrector
-    // while the gate hydrates) instead of opening a locked step.
+    // Routing the initial pin through the funnel is what makes a deep
+    // link into a gated step land on the gate, or defer to the corrector
+    // while the gate hydrates, rather than open a locked step.
     const landing = commitActiveKey(initialKey)
     visited.value = [landing]
   }
-  // Degenerate path (`initialKey === undefined`): activeKey stays `''`,
-  // visited stays `[]`, and downstream getters surface `undefined`
-  // accordingly. The wizard handle is still constructable; the
-  // surrounding app keeps rendering.
+  // On the degenerate path `activeKey` stays `''`, `visited` stays `[]`,
+  // and the downstream getters surface `undefined`. The handle is still
+  // constructable and the surrounding app keeps rendering.
 
   // --- SSR prefetch coordination ---------------------------------------
   //
-  // On the server, mark the initial step's form for prefetch (so its
-  // async `defaultValues` resolves inside `onServerPrefetch`) and
-  // explicitly skip every other compiled step so a stray transform mark
-  // can't fire a non-current step's factory.
+  // On the server, mark the initial step's form for prefetch, so its
+  // async `defaultValues` resolves inside `onServerPrefetch`, and skip
+  // every other compiled step explicitly, so a stray transform mark
+  // cannot fire a non-current step's factory.
   if (registry.ssr) {
     for (const step of compiledSteps.value) {
       if (step.key === initialKey) {
@@ -1190,13 +1139,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
   }
 
-  // Activate every compiled step's form on the client. Idempotent —
-  // `activate()` returns a resolved promise when the form has no
-  // async work, and the registry's per-store hydration latch holds
-  // the factory single-shot across repeat calls. SSR keeps the
-  // prefetch coordination above (only the initial step's factory
-  // resolves inside `onServerPrefetch`); eager-activate-all is a
-  // client-side contract.
+  // Activate every compiled step's form on the client. Idempotent:
+  // `activate()` resolves immediately for a form with no async work, and
+  // the registry's per-store hydration latch keeps the factory
+  // single-shot across repeat calls. Activating all of them is a
+  // CLIENT-side contract; the server keeps the prefetch coordination
+  // above, where only the initial step's factory resolves.
   if (!registry.ssr) {
     for (const step of compiledSteps.value) {
       const source = asSubmissionSource(step.form)
@@ -1206,13 +1154,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // --- Reactive restore / persist watchers -----------------------------
   //
-  // Loop break: the restore side watches what the `restore` lambda
-  // returns (the lambda's tracked reads decide the dep set), and only
-  // applies when that value moves AND differs from the active step.
-  // The persist side diffs against `lastPersisted`. We deliberately
-  // do not read `activeKey` inside the restore watch's getter — that
-  // would re-fire the restore on every internal navigation and revert
-  // it before the persist write reaches `urlMirror` on its own pass.
+  // How the loop breaks: the restore side watches what the `restore`
+  // lambda returns, its own tracked reads deciding the dep set, and
+  // applies only when that value MOVES and differs from the active step.
+  // The persist side diffs against `lastPersisted`. `activeKey` is
+  // deliberately never read inside the restore watch's getter, which
+  // would re-fire restore on every internal navigation and revert it
+  // before the persist write reached `urlMirror` on its own pass.
   let lastPersisted: string | undefined = initialUrlValue
   if (restoreCallback !== undefined) {
     watch(
@@ -1240,18 +1188,18 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         if (next === lastPersisted) return
         lastPersisted = next
         persistCallback({ step: next })
-        // Keep the URL mirror in sync so the default restore lambda
-        // sees the persisted value on its next read. The restore watch
-        // diffs the new mirror value against `activeKey` and bails out
-        // when they agree, closing the loop in one round.
+        // Keeps the mirror in sync so the default restore lambda sees the
+        // persisted value on its next read. The restore watch diffs it
+        // against `activeKey` and bails when they agree, closing the loop
+        // in one round.
         urlMirror.value = next
       }
     )
     // Replace the URL once at construction so a fresh load reflects the
-    // active step (idempotent when the URL already named the correct
-    // key — the diff in the watcher handles steady-state). The
-    // `initialKey !== undefined` guard short-circuits the degenerate
-    // path: with an empty steps list there's no step to persist.
+    // active step; it is idempotent when the URL already named the right
+    // key, the watcher's diff owning steady state. The `initialKey`
+    // guard covers the degenerate path, where there is no step to
+    // persist.
     if (
       initialKey !== undefined &&
       initialKey !== initialUrlValue &&
@@ -1267,18 +1215,17 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   const submitting = ref(false)
   const submissionAttempts = ref(0)
-  // The error thrown or rejected by the most recent `wizard.handleSubmit`
-  // callback (or its `onError`), coerced to a real `Error`. Mirrors
-  // `form.meta.submitError`: cleared at submit entry, parked here instead
-  // of re-thrown, so binding the handler to `@submit` never
-  // manufactures a `window` unhandledrejection.
+  // Whatever the most recent `wizard.handleSubmit` callback, or its
+  // `onError`, threw or rejected with, coerced to a real `Error`. Same
+  // contract as `form.meta.submitError`: cleared at submit entry and
+  // parked here rather than re-thrown, so binding the handler to
+  // `@submit` never manufactures a `window` unhandledrejection.
   const submitError = ref<Error | null>(null)
-  // Monotonic latch: flips true the first time a `handleSubmit` resolves
-  // without throwing (and leaves no errors on any step), and stays true
-  // through subsequent edits or invalidations. Only `reset()` flips it
-  // back (a new run starts a new history). Distinct accounting from
-  // `complete`, which is forward-looking and reactive to current form
-  // validity.
+  // A monotonic latch: true from the first `handleSubmit` that resolves
+  // without throwing and leaves no errors on any step, and true through
+  // every later edit or invalidation. Only `reset()` flips it back, a new
+  // run being a new history. Separate accounting from `complete`, which
+  // is forward-looking and tracks current validity.
   const done = ref(false)
 
   // --- Navigation internals --------------------------------------------
@@ -1311,10 +1258,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (store !== undefined) store.departAttempts.value += 1
   }
 
-  // Raw single-step advance: record the departure and move the pin to the
-  // next compiled position. Shared by `next()` (the public verb) and
-  // `tryNext()`'s post-submit advance, so `tryNext` never re-enters the
-  // gate-delegating `next()` (which would loop on a gate step).
+  // Record the departure and move the pin one compiled position on.
+  // Shared by the public `next()` and by `tryNext()`'s post-submit
+  // advance, which is what keeps `tryNext` out of the gate-delegating
+  // `next()`, where it would loop on a gate step.
   function advanceOne(): void {
     const list = compiledSteps.value
     const idx = activeIndex.value
@@ -1326,20 +1273,21 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // Ride an in-flight submit rather than firing a second one.
   //
-  // A submit already running on the active step's form means the caller is
-  // inside that form's own submit callback (the documented
-  // `activeForm.handleSubmit(() => wizard.next())` composition) or racing
-  // an autosave. Submitting again would hit `handleSubmit`'s re-entry
-  // guard, come back swallowed, and read as "not clean", so the advance
-  // was lost with nothing reported anywhere. Advancing when the in-flight
-  // submit resolves clean applies the same condition `tryNext` advances
-  // on, and costs the consumer's server no second POST.
+  // A submit already running on the active step's form means the caller
+  // is either inside that form's own submit callback, the documented
+  // `activeForm.handleSubmit(() => wizard.next())` composition, or racing
+  // an autosave. Submitting again would meet `handleSubmit`'s re-entry
+  // guard, come back swallowed, and read as not clean, losing the advance
+  // with nothing reported anywhere. Advancing when the in-flight submit
+  // resolves clean applies the same condition `tryNext` advances on, and
+  // costs the consumer's server no second POST.
   //
-  // Pinned twice so a stale deferral can never move the pin on its own:
-  // to the submission it rode (`submissionAttempts` is bumped in that
-  // submission's `finally`, AFTER the success signal, so an unchanged
-  // count proves this is still that submission) and to the step it was
-  // requested from. One deferral at a time; a fresh request replaces it.
+  // Pinned TWICE so a stale deferral can never move the pin on its own:
+  // to the submission it rode, where an unchanged `submissionAttempts`
+  // proves it is still that submission (the count is bumped in that
+  // submission's `finally`, after the success signal), and to the step it
+  // was requested from. One deferral at a time; a fresh request replaces
+  // it.
   let cancelDeferredAdvance: (() => void) | null = null
   function advanceWhenInFlightSubmitLands(store: FormStore<GenericForm>, key: FormKey): void {
     cancelDeferredAdvance?.()
@@ -1354,10 +1302,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     cancelDeferredAdvance = off
   }
 
-  // The active step's store when it has a submit in flight, else
-  // `undefined`. Reading `activeSubmissions` (not `submitting`) matches
-  // `handleSubmit`'s own re-entry guard exactly, so the two never disagree
-  // about whether a second submit would be swallowed.
+  // The active step's store when it has a submit in flight. Reading
+  // `activeSubmissions` rather than `submitting` matches
+  // `handleSubmit`'s own re-entry guard exactly, so the two can never
+  // disagree about whether a second submit would be swallowed.
   function inFlightActiveStore(): FormStore<GenericForm> | undefined {
     const store = registry.forms.get(activeKey.value)
     if (store === undefined || store.activeSubmissions.value === 0) return undefined
@@ -1389,20 +1337,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       }
       return
     }
-    // A gate step advances only through its own submit: a bare `next()` on
-    // an UNCLEARED gate behaves like `tryNext()`, so wiring Next straight
-    // to `next()` can never skip the gate's confirmation.
+    // A gate step advances only through its own submit, so a bare
+    // `next()` on an UNCLEARED gate behaves like `tryNext()` and wiring
+    // Next straight to `next()` can never skip the confirmation.
     //
-    // Two carve-outs, both of which exist so one user action costs exactly
-    // one submission of the member form:
+    // Two carve-outs, both so that one user action costs exactly one
+    // submission of the member form:
     //
     //  - An already-CLEARED gate has nothing left to confirm, so `next()`
-    //    is plain navigation again. Re-submitting a cleared gate to
-    //    re-confirm it would run the whole submit lifecycle a second time
-    //    (`submissionAttempts`, `onSubmitSuccess`, every consumer
-    //    subscriber) for an answer the latch already holds.
-    //  - A submit already in flight on this form IS the confirmation this
-    //    call is waiting for. Ride it instead of firing a second one.
+    //    is plain navigation again. Re-submitting it would run the whole
+    //    lifecycle a second time, `submissionAttempts`,
+    //    `onSubmitSuccess` and every consumer subscriber, for an answer
+    //    the latch already holds.
+    //  - A submit in flight on this form IS the confirmation this call is
+    //    waiting for. Ride it.
     const active = list[idx]
     if (active !== undefined && active.isGate && !clearedGates.has(active.key)) {
       const inFlight = inFlightActiveStore()
@@ -1416,18 +1364,19 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     advanceOne()
   }
 
-  // Submit the active step, and once that submit resolves clean, advance.
-  // Wire it straight to a control (`@click="wizard.tryNext()"`) with no
-  // captured handler. Invalid input keeps the pin put under the form's own
-  // reveal (first error focused, display state advanced); a clean submit
-  // advances. The advance runs AFTER the submit settles, not inside its
-  // callback, so a `gate()` on the active step has cleared (its
-  // clean-submit signal fired) by the time the pin moves, and the gate
-  // clears + advances in a single call. Resolves to whether the pin
-  // moved, so `if (await wizard.tryNext())` can branch on the outcome.
-  // Pure navigation stays `next()`; the whole-wizard submit stays
-  // `handleSubmit`. No-ops to `false` on a degenerate or final-step
-  // wizard, mirroring `next()`.
+  // Submit the active step and advance once that submit resolves clean.
+  // Wire it straight to a control, `@click="wizard.tryNext()"`, with no
+  // captured handler. Invalid input keeps the pin put under the form's
+  // own reveal, first error focused and display state advanced; a clean
+  // submit advances.
+  //
+  // The advance runs AFTER the submit settles rather than inside its
+  // callback, so a `gate()` on the active step has already fired its
+  // clean-submit signal by the time the pin moves, and one call both
+  // clears the gate and advances. Resolves to whether the pin moved, so
+  // `if (await wizard.tryNext())` can branch on it. Pure navigation stays
+  // `next()` and the whole-wizard submit stays `handleSubmit`. No-ops to
+  // `false` on a degenerate or final-step wizard, as `next()` does.
   async function tryNext(): Promise<boolean> {
     if (submitting.value) {
       if (__DEV__) {
@@ -1454,29 +1403,28 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     const form = activeForm.value
     if (form === undefined) return false
     const before = activeKey.value
-    // A submit already in flight on this form is the submit this call
-    // would otherwise start. Ride it rather than firing a second one that
-    // `handleSubmit`'s re-entry guard would swallow. The pin has not moved
-    // by the time this resolves, so the answer is `false`; the advance
-    // lands when the in-flight submit does.
+    // A submit already in flight IS the submit this call would start.
+    // Ride it rather than firing a second one for the re-entry guard to
+    // swallow. The pin has not moved by the time this resolves, so the
+    // answer is `false`; the advance lands when that submit does.
     const inFlight = inFlightActiveStore()
     if (inFlight !== undefined) {
       advanceWhenInFlightSubmitLands(inFlight, before)
       return false
     }
-    // Confirm the submit ran clean, THEN advance. A `gate()` on the active
-    // step only clears after its submit callback resolves, so advancing
-    // from inside the callback would read pre-clear lock state and refuse.
-    // Marking success in the callback and advancing afterward lets a gate
-    // clear on its own completion. Advance through `advanceOne()`, not
-    // `next()`, so a gate step doesn't loop back into `tryNext`.
+    // Confirm the submit ran clean, THEN advance. A `gate()` on the
+    // active step clears only after its submit callback resolves, so
+    // advancing from inside that callback would read pre-clear lock state
+    // and refuse. Marking success in the callback and advancing after it
+    // lets the gate clear on its own completion. Through `advanceOne()`,
+    // not `next()`, so a gate step cannot loop back into `tryNext`.
     let ranClean = false
     await asHandleSubmitSource(form).handleSubmit(() => {
       ranClean = true
     })()
-    // Pinned to the step this call started from: a deferred advance queued
-    // by a concurrent `next()` / `tryNext()` may already have moved the
-    // pin off it, and advancing again would skip a step.
+    // Pinned to the step this call started from: a deferred advance
+    // queued by a concurrent `next()` or `tryNext()` may already have
+    // moved the pin off it, and advancing again would skip a step.
     if (ranClean && activeKey.value === before) advanceOne()
     return activeKey.value !== before
   }
@@ -1584,12 +1532,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   }
 
-  // Lift the user-error layer of each PROCESSED form into the wizard's
-  // aggregate shape. The post-callback mirror of `collectErrors` (#438):
-  // after a clean validation pass, a callback that called `setErrors` on
-  // a step left those errors here. Scoped to the keys the submit actually
-  // processed (every step, since `handleSubmit` is whole-wizard), matching
-  // the entry-clear scope.
+  // The post-callback mirror of `collectErrors` (#438): after a clean
+  // validation pass, a callback that called `setErrors` on a step left
+  // those errors in the user layer. Scoped to the keys the submit
+  // processed, which is every step since `handleSubmit` is whole-wizard,
+  // matching the entry-clear scope.
   function collectCallbackErrors(keys: Iterable<FormKey>): WizardAggregateError[] {
     const out: WizardAggregateError[] = []
     for (const key of keys) {
@@ -1602,13 +1549,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   }
 
-  // Uncleared `gate()` steps, lifted to the wizard's aggregate error shape.
-  // A gate blocks whole-wizard completion even when its (and every
-  // downstream) form validates, because a gate clears only on a member
-  // form's clean submit — never on a valid-by-default downstream form. So a
-  // finish attempt that jumps past an unconfirmed gate is routed through the
-  // same failure path as a validation error: focus lands on the gate and
-  // `done` never latches.
+  // An uncleared gate blocks whole-wizard completion even when its own
+  // form and every downstream form validates, because a gate clears only
+  // on a member form's clean submit, never on a valid-by-default
+  // downstream form. So a finish attempt that jumps an unconfirmed gate
+  // takes the same failure path a validation error takes: focus lands on
+  // the gate and `done` never latches.
   function collectUnclearedGateErrors(): WizardAggregateError[] {
     const out: WizardAggregateError[] = []
     for (const step of compiledSteps.value) {
@@ -1624,10 +1570,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return out
   }
 
-  // Move to the first failed step and run its invalid-submit focus
-  // nudge. Shared by the validation-failure path and the post-callback
-  // error path (#438) so both honor `options.focusFirstError` the same
-  // way, and runs BEFORE onError so the consumer can override the focus.
+  // Move to the first failed step and run its invalid-submit focus nudge.
+  // Shared by the validation-failure and post-callback error paths so
+  // both honour `options.focusFirstError` identically, and run BEFORE
+  // onError so the consumer can override the focus.
   async function focusFirstWizardError(errors: readonly WizardAggregateError[]): Promise<void> {
     if (options.focusFirstError === false) return
     const firstFailedKey = errors[0]?.formKey
@@ -1668,43 +1614,41 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       submitError.value = null
       try {
         const currentKey = activeKey.value
-        // Positional only: surfaced as `ctx.isFinal`. Nothing branches on
-        // it — `handleSubmit` processes the whole wizard from any step.
+        // Positional only, surfaced as `ctx.isFinal`. Nothing branches on
+        // it: `handleSubmit` processes the whole wizard from any step.
         const final = isFinalStep.value
         const list = compiledSteps.value
         const results = new Map<FormKey, ValidationResponse<unknown>>()
 
-        // Validate every step, regardless of which step fired the submit:
-        // `wizard.handleSubmit` always submits the whole wizard. Gating
-        // advance on a single step's validity is the composition
-        // `activeForm.handleSubmit(() => wizard.next())`, which runs on the
-        // form side. Run in parallel so latency is bounded by the slowest
-        // form rather than the sum of all forms.
+        // Every step, whichever one fired the submit: `handleSubmit`
+        // always submits the whole wizard. Gating an advance on one step's
+        // validity is the `activeForm.handleSubmit(() => wizard.next())`
+        // composition, which runs on the form side. In parallel, so
+        // latency is the slowest form rather than the sum of them.
         await Promise.all(
           list.map(async (step) => {
-            // Entry-clear user-set errors before validating, mirroring
-            // form.handleSubmit: a fresh attempt starts each form from a
-            // clean user-error slate. Every step is processed, so every
-            // step is cleared.
+            // As in `form.handleSubmit`, a fresh attempt starts each form
+            // from a clean user-error slate. Every step is processed, so
+            // every step is cleared.
             registry.forms.get(step.key)?.clearUserErrors()
             const result = await processOne(step.form)
             results.set(step.key, result)
           })
         )
 
-        // Bump per-form submissionAttempts for every form we just
-        // processed (noops included — accounting-distinct counters per
-        // [[feedback-api-name-hygiene]]). The wizard-level counter
-        // always bumps once per invocation.
+        // Bump per-form `submissionAttempts` for every form just
+        // processed, noops included. The wizard-level counter bumps once
+        // per invocation, the two being separate accounting.
         for (const key of results.keys()) {
           const store = registry.forms.get(key)
           if (store !== undefined) {
             store.submissionAttempts.value += 1
-            // Mirror the form's own handleSubmit: a wizard submit is an
-            // explicit reveal, so abort any in-flight per-field validation
-            // (clearing `fieldValidatingSince`) and drop the anti-flash
-            // display state, so leftover show-delay holds or min-visible
-            // spinner timers can't outlive the submit and delay the verdict.
+            // As in the form's own `handleSubmit`: a wizard submit is an
+            // explicit reveal, so abort in-flight per-field validation,
+            // clearing `fieldValidatingSince`, and drop the anti-flash
+            // display state. Otherwise a leftover show-delay hold or
+            // min-visible spinner timer outlives the submit and delays
+            // the verdict.
             store.cancelFieldValidation()
             store.displayEngine.clear()
           }
@@ -1712,10 +1656,11 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
         submissionAttempts.value += 1
 
         const errors = collectErrors(results)
-        // An uncleared gate blocks completion even on an all-valid pass;
-        // fold it into the blocking set so the whole-wizard finish can't
-        // route around an unconfirmed prerequisite. Validation errors sort
-        // first so focus lands on a genuine field error before the gate.
+        // An uncleared gate blocks completion even on an all-valid pass,
+        // so folding it into the blocking set is what stops a whole-wizard
+        // finish routing around an unconfirmed prerequisite. Validation
+        // errors sort first, so focus reaches a genuine field error before
+        // the gate.
         const gateErrors = mightGate ? collectUnclearedGateErrors() : []
         const blocking = gateErrors.length > 0 ? [...errors, ...gateErrors] : errors
         if (blocking.length === 0) {
@@ -1730,12 +1675,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           }
           const ctx = buildSubmitContext(valuesMap, currentKey, final)
           await onSubmit(ctx)
-          // #438 parity with form.handleSubmit: a callback that left errors
-          // on a processed step (the documented `setErrors(...); return`
-          // server-rejection path) has NOT succeeded. The entry-clear above
-          // means any user error present now was set by this callback. Route
-          // it through the same failure path as a validation failure: focus
-          // the first error, fire onError, and return WITHOUT latching `done`.
+          // Parity with `form.handleSubmit` (#438): a callback that left
+          // errors on a processed step, the documented `setErrors(...);
+          // return` server-rejection path, has NOT succeeded. The
+          // entry-clear above means any user error present now came from
+          // this callback. Same failure path as a validation failure:
+          // focus the first error, fire onError, return without latching
+          // `done`.
           const callbackErrors = collectCallbackErrors(results.keys())
           if (callbackErrors.length > 0) {
             await focusFirstWizardError(callbackErrors)
@@ -1748,16 +1694,16 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
             }
             return
           }
-          // Whole-wizard success: every step validated and the callback
-          // left no errors. Latch `done`; never move the pin. Advancing a
-          // step lives in the gated-advance composition, not here.
+          // Every step validated and the callback left no errors. Latch
+          // `done` and never move the pin; advancing lives in the
+          // gated-advance composition.
           done.value = true
         } else {
-          // Apply the invalid-submit focus policy BEFORE onError, mirroring
-          // form.handleSubmit: the consumer's onError can override the
-          // focus, and a throwing onError still leaves the first error
-          // focused rather than stranding the user. `blocking` carries the
-          // validation errors plus any uncleared-gate error.
+          // BEFORE onError, as in `form.handleSubmit`, so the consumer's
+          // onError can override the focus and a THROWING onError still
+          // leaves the first error focused rather than stranding the user.
+          // `blocking` carries the validation errors plus any
+          // uncleared-gate error.
           await focusFirstWizardError(blocking)
           if (onError !== undefined) {
             try {
@@ -1768,12 +1714,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           }
         }
       } catch (err) {
-        // Park the throw on `submitError`, coerced to a real Error; never
-        // re-throw. The handler is bound to DOM events (`@submit`),
-        // so a rejected promise would surface as a `window`
-        // unhandledrejection — a phantom crash for an already-handled
-        // failure. The `finally` still resets `submitting`, so navigation
-        // resumes and the button is never stranded.
+        // Park the throw on `submitError`, coerced to a real Error, and
+        // never re-throw. The handler is bound to DOM events, so a
+        // rejected promise would surface as a `window` unhandledrejection,
+        // a phantom crash for an already-handled failure. The `finally`
+        // still resets `submitting`, so navigation resumes and the button
+        // is never stranded.
         submitError.value = toError(err)
       } finally {
         submitting.value = false
@@ -1787,19 +1733,18 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     submissionAttempts.value = 0
     done.value = false
     submitError.value = null
-    // Clear the gate latch, then (after the per-form resets below) re-apply
-    // the `defaultStatuses` seed so a seeded-cleared gate returns to its
-    // seeded initial clearance, mirroring how those resets restore each
-    // form's `defaultValues`. Clearance is never re-inferred from form
-    // validity — only the explicit seed and a fresh clean submit move it.
+    // Clear the latch, then re-apply the `defaultStatuses` seed after the
+    // per-form resets below, so a seeded-cleared gate returns to its
+    // seeded clearance exactly as those resets restore each form's
+    // `defaultValues`. Clearance is never re-inferred from validity: only
+    // the explicit seed and a fresh clean submit move it.
     if (mightGate) {
       clearedGates.clear()
     }
-    // Bump the lazy epoch so every `lazy()` slot's memoized computed
-    // re-fires on the next compile pass. Without this, expensive
-    // one-shot lookups would stay glued to their first resolution
-    // across a wizard reboot — and `reset()` is meant to be a true
-    // reboot, not a soft rewind.
+    // Re-fires every `lazy()` slot's memo on the next compile pass.
+    // Without it an expensive one-shot lookup stays glued to its first
+    // resolution across a reboot, and `reset()` is a true reboot rather
+    // than a soft rewind.
     lazyEpoch.value += 1
     for (const step of compiledSteps.value) {
       const full = asSubmissionSource(step.form)
@@ -1820,18 +1765,21 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     }
   }
 
-  // Re-seal a cleared gate by key, contingent on `commit`. Like a gate's
-  // clearing submit, the state transition is the server's to confirm: await
-  // `commit` (your server-side revoke) and re-seal only if it resolves clean,
-  // so the gate reflects server-confirmed truth in BOTH directions. A thrown
-  // `commit` leaves the gate as it was (cleared) and resolves `false`.
-  // Seal-only: `clearedGates.delete` re-locks downstream through `navLockSet`
-  // / `freezeSet`, and there is no imperative CLEAR counterpart, so `relock`
-  // can't be turned into the leading-signal foot-gun `gate()` exists to
-  // prevent. `commit` is required (pass `() => {}` for a deliberate
-  // client-only re-seal). Never rejects, so a fire-and-forget relock can't
-  // surface an unhandledrejection. Resolves `false` (dev-warn), and skips
-  // `commit`, on a key that is not a live gate.
+  // Re-seal a cleared gate by key, contingent on `commit`. As with a
+  // gate's clearing submit, the transition is the server's to confirm:
+  // await `commit`, your server-side revoke, and re-seal only if it
+  // resolves clean, so the gate reflects server-confirmed truth in BOTH
+  // directions. A thrown `commit` leaves the gate cleared and resolves
+  // `false`.
+  //
+  // Seal-only, and deliberately so. `clearedGates.delete` re-locks
+  // downstream through `navLockSet` and `freezeSet`, and there is no
+  // imperative CLEAR counterpart, so `relock` cannot be turned into the
+  // leading-signal foot-gun `gate()` exists to prevent. `commit` is
+  // required; pass `() => {}` for a deliberate client-only re-seal. Never
+  // rejects, so a fire-and-forget relock cannot surface an
+  // unhandledrejection. A key that is not a live gate resolves `false`
+  // with a dev warn and never reaches `commit`.
   async function relock(key: FormKey, commit: () => void | Promise<void>): Promise<boolean> {
     if (!mightGate || !gatePositions.value.includes(key)) {
       if (__DEV__) {
@@ -1856,13 +1804,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     return true
   }
 
-  // Gate corrector. `commitActiveKey` refuses a nav-locked target at the
-  // write site, but the active step can still end up nav-locked: its gate
-  // was mid-hydration at commit time (the readiness defer kept the pin on
-  // it), a gate dropped its cleared state, or a forward-continuity slide
-  // landed on it. Whenever the active step is nav-locked and the gate it
-  // sits behind has settled, bounce to the gate. Placed after `moveTo` /
-  // `visited` so the bounce records its landing like any other navigation.
+  // `commitActiveKey` refuses a nav-locked target at the write site, but
+  // the active step can still END UP nav-locked three ways: its gate was
+  // mid-hydration at commit time and the readiness defer kept the pin on
+  // it, a gate dropped its cleared state, or a forward-continuity slide
+  // landed on it. So whenever the active step is nav-locked and the gate
+  // behind it has settled, bounce to the gate. It sits after `moveTo` and
+  // `visited` so the bounce records its landing like any navigation.
   if (mightGate) {
     watchEffect(() => {
       const key = activeKey.value
@@ -1887,16 +1835,15 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   const explicitKey = options.key
   const wizardKey = resolveWizardKey(explicitKey)
-  // The handle's parameterized return type narrows `currentStep` /
+  // The handle's parameterized return narrows `currentStep` and
   // `activeForm` to non-undefined when the steps tuple is statically
-  // safe (see `StaticallyNonEmpty` in types-wizard.ts). The runtime
-  // can't observe the tuple shape, so the active-position getters
-  // cast through `CurrentStepOf<S>` / `ActiveFormOf<S>`. The cast is
-  // sound: when `S` passes the static-safety predicate, the compiled
-  // step list is guaranteed non-empty (only Form and string slots
-  // preserve their positions; function / lazy slots are precluded by
-  // the predicate), so the getters never observe the degenerate
-  // `undefined` branch in that case.
+  // safe; see `StaticallyNonEmpty` in `types/types-wizard.ts`. The
+  // runtime cannot observe the tuple shape, so the active-position
+  // getters cast through `CurrentStepOf<S>` and `ActiveFormOf<S>`. The
+  // cast is sound because a tuple passing that predicate holds only Form
+  // and string slots, which keep their positions, so the compiled list is
+  // guaranteed non-empty and the getters never reach the degenerate
+  // branch.
   const handle: UseWizardReturnType<S> = {
     key: wizardKey,
     next,
@@ -1910,9 +1857,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       return currentStep.value as CurrentStepOf<S>
     },
     get activeForm(): ActiveFormOf<S> {
-      // Live facade (built once above) so a handler captured at setup
-      // time retargets the current step on every call. `undefined`
-      // preserved for the degenerate (no-steps) wizard.
+      // The live facade built once above, so a handler captured at setup
+      // retargets the current step on every call. `undefined` is
+      // preserved for the degenerate wizard.
       return (activeForm.value === undefined ? undefined : activeFormFacade) as ActiveFormOf<S>
     },
     get activeIndex(): number {
@@ -1964,13 +1911,12 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   // Registry registration + ambient provide --------------------------
   //
-  // Every wizard (explicit or synthetic key) lands in the registry so
-  // SSR hydration, DevTools labels, and the consumer-counted lifetime
-  // story all work uniformly. The explicit-collision warning fires
-  // only when the consumer chose the colliding key — two synthetic
-  // keys can't collide (each setup-context `useId()` call returns a
-  // tree-position-stable distinct id; outside setup the module-local
-  // counter increments).
+  // Every wizard lands in the registry, explicit key or synthetic, so SSR
+  // hydration, DevTools labels and the consumer-counted lifetime all work
+  // the same way. The collision warning fires only for a key the consumer
+  // chose: two synthetic keys cannot collide, since `useId()` returns a
+  // tree-position-stable distinct id in setup and the module-local
+  // counter increments outside it.
   const existing = registry.wizards.get(wizardKey)
   if (existing === undefined) {
     registry.wizards.set(wizardKey, handle)
@@ -1984,9 +1930,9 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     onScopeDispose(releaseWizard)
   }
 
-  // Anonymous wizards fill the ambient slot for descendant
-  // `injectWizard()` calls; keyed wizards stay registry-only, so
-  // explicit / ambient resolution stays disjoint (mirrors `useForm`).
+  // An anonymous wizard fills the ambient slot for a descendant
+  // `injectWizard()`; a keyed one stays registry-only, which keeps
+  // explicit and ambient resolution disjoint, as on the form side.
   if (getCurrentInstance() !== null && explicitKey === undefined) {
     recordAmbientWizardProvide(registry.ssr)
     provide(kAttaformAncestorWizard, handle)
@@ -1996,24 +1942,21 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 }
 
 /**
- * Module-local counter for the "no Vue instance in scope" fallback
- * (tests, raw composable calls outside setup). Collisions with
- * consumer-supplied keys are impossible because the synthetic prefix
- * lives inside the reserved `__atta:` namespace and consumer keys
- * starting with `__atta:` are rejected by `useAbstractForm`. Inside
- * setup the wizard reaches for `useId()` instead, which is
- * SSR-stable across the server / hydration boundary.
+ * Feeds the anonymous key when there is no Vue instance in scope, which
+ * means tests and raw composable calls. It cannot collide with a
+ * consumer key: the synthetic prefix lives inside the reserved `__atta:`
+ * namespace, and `useAbstractForm` rejects consumer keys there. In setup
+ * the wizard uses `useId()`, which is stable across SSR and hydration.
  */
 let anonWizardCounter = 0
 
 /**
- * Tracks which parent Vue component instances have already run an
- * anonymous-wizard ambient provide. Dev-only; `null` in production so
- * the WeakMap allocation tree-shakes out. Exported so `injectWizard()`
- * (no key) can walk the parent chain and warn lazily when a single
- * parent registered more than one anonymous `useWizard()`, since Vue's
- * `provide` is last-write-wins. Mirrors `ambientProvideHistory` on the
- * form side.
+ * Which parent instances have already run an anonymous-wizard ambient
+ * provide. Dev only, `null` in production so the allocation tree-shakes
+ * out. Exported so a no-key `injectWizard()` can walk the parent chain
+ * and warn lazily when one parent registered more than one anonymous
+ * `useWizard()`, Vue's `provide` being last-write-wins.
+ * `ambientProvideHistory` is the form side of the same thing.
  */
 export const ambientWizardProvideHistory: WeakMap<object, AmbientProvideEntry[]> | null = __DEV__
   ? new WeakMap<object, AmbientProvideEntry[]>()
@@ -2036,11 +1979,11 @@ function recordAmbientWizardProvide(ssr: boolean): void {
 }
 
 /**
- * Resolve `options.key` into a concrete wizard key. Explicit keys
- * pass through; empty / nullish keys are allocated under the
- * `__atta:anon-wizard:` prefix. Mirrors `resolveFormKey` in
- * `use-abstract-form.ts` so anonymous wizards get the same SSR
- * hydration story anonymous forms do.
+ * Resolve `options.key` into a concrete wizard key. An explicit key
+ * passes through; an empty or nullish one is allocated under
+ * `__atta:anon-wizard:`. Shaped after `resolveFormKey` in
+ * `composables/use-abstract-form.ts`, so an anonymous wizard gets the
+ * same SSR hydration story an anonymous form does.
  */
 function resolveWizardKey(key: string | undefined): string {
   if (key !== undefined && key !== null && key !== '') return key
@@ -2050,10 +1993,10 @@ function resolveWizardKey(key: string | undefined): string {
   return `${ANONYMOUS_WIZARD_KEY_PREFIX}${anonWizardCounter++}`
 }
 
-/** Best-effort discriminator for the `AnyForm` arm of `StepSlot`. Forms
- *  returned by `useForm` always carry a string `key` — checking that
- *  (and ruling out the other arms structurally) keeps `resolveSlot`
- *  readable without forcing every slot through a `typeof` cascade. */
+/** Best-effort discriminator for the `AnyForm` arm of `StepSlot`. A form
+ *  from `useForm` always carries a string `key`, so testing that and
+ *  ruling out the other arms structurally keeps `normalizeSlot` readable
+ *  without a `typeof` cascade over every slot. */
 function isAnyForm(value: unknown): value is AnyForm {
   if (value === null || typeof value !== 'object') return false
   if (typeof (value as { key?: unknown }).key !== 'string') return false

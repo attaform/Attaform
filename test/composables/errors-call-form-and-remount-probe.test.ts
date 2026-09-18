@@ -16,7 +16,7 @@ import { waitUntil } from '../utils/form-harness'
  * Two distinct behaviors converge to produce the observation:
  *
  *   1. `form.errors('')` and `form.errors()` legitimately return
- *      different values — `errors('')` reads the literal `''` field,
+ *      different values, `errors('')` reads the literal `''` field,
  *      `errors()` the whole-form aggregate (which `errors([])` now
  *      equals; the root bucket alone is `meta.ownErrors`). Swapping one
  *      for another changes the rendered JSON.
@@ -26,7 +26,7 @@ import { waitUntil } from '../utils/form-harness'
  *      mounts a fresh one inside the SAME page-level Vue app. The
  *      registry ref-count drops to zero, the FormStore evicts, and
  *      the async factory refires on re-mount. During the brief
- *      in-flight window the form holds schema slim defaults — that's
+ *      in-flight window the form holds schema slim defaults: that's
  *      the "flash" of different values.
  *
  * The shared-app helper here mirrors the docs-site shape: one
@@ -184,7 +184,7 @@ describe('remount-with-same-key: async-factory lifecycle on consumer churn', () 
     const Root = defineComponent({
       setup() {
         // `key` bumps force Vue to unmount the old Inner and mount a
-        // fresh one inside the same render flush — atomic remount,
+        // fresh one inside the same render flush, atomic remount,
         // matching the lifecycle HMR drives.
         return () => (visible.value ? h(Inner, { key: childKey.value }) : null)
       },

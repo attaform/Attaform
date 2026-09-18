@@ -4,25 +4,25 @@
  * payload written via any entry's `withMeta` / `fieldMeta.add` is
  * visible to whichever adapter actually runs at lookup time.
  *
- * No `zod` runtime import — pure JavaScript primitives. The previous
- * v4 adapter built `fieldMeta` via `z.registry<FieldMetaPayload>()`,
- * which left a `z.registry` namespace reference reachable from
- * `attaform/zod`'s module graph; bundlers analysing a `zod@^3` consumer
- * resolved that against zod 3's exports map (no `registry` export) and
- * emitted an `IMPORT_IS_UNDEFINED` warning. Lifting storage here drops
- * that reference entirely so the unified entry behaves cleanly on any
- * Zod major.
+ * Keep this module free of any `zod` runtime import: plain JavaScript
+ * primitives only. Building `fieldMeta` on `z.registry<FieldMetaPayload>()`
+ * leaves a `z.registry` namespace reference reachable from
+ * `attaform/zod`'s module graph, a bundler analysing a `zod@^3` consumer
+ * resolves it against zod 3's exports map, which has no `registry` export,
+ * and the build emits an `IMPORT_IS_UNDEFINED` warning. Storage lives here
+ * so no such reference exists and the unified entry behaves on any Zod
+ * major.
  *
  * The native v4 chain `schema.register(fieldMeta, payload)` still
- * works against this shim — Zod 4's `.register()` only calls
- * `registry.add(this, payload)` and returns the schema; structural
+ * works against this shim: Zod 4's `.register()` only calls
+ * `registry.add(this, payload)` and returns the schema, so structural
  * matching is enough.
  *
  * Two parallel maps:
- * - `store` — last-write-wins single payload per schema reference.
+ * - `store`: last-write-wins, one payload per schema reference.
  *   Backs `fieldMeta.get(schema)` and the adapter's
  *   `getFieldMetaAtPath` single-payload fallback.
- * - `lists` — every registration in order, per schema reference.
+ * - `lists`: every registration in order, per schema reference.
  *   Backs the v4 adapter's path-walker disambiguation when the same
  *   schema instance is bound at multiple form paths.
  */
@@ -33,7 +33,7 @@ import type { PathKey } from './paths'
 import type { FieldMetaWalkServices } from './walk-field-meta'
 
 /**
- * Minimal registry shape the shared store satisfies — `.add` / `.get`
+ * Minimal registry shape the shared store satisfies: `.add` / `.get`
  * / `.has` / `.remove`. Cast to `z.$ZodRegistry<FieldMetaPayload>` at
  * the v4 adapter's re-export so the native `schema.register(fieldMeta,
  * payload)` chain type-checks; the v3 adapter exports it as its own
@@ -97,7 +97,7 @@ const registry: FieldMetaStore = {
 /**
  * The shared registry every Attaform-aware Zod schema can register
  * field metadata against, regardless of Zod major. One module-scoped
- * instance — every adapter entry re-exports this same object so
+ * instance. Every adapter entry re-exports this same object, so
  * writes from one entry are visible at lookup through any other.
  */
 export const fieldMetaStore: FieldMetaStore = registry
@@ -121,7 +121,7 @@ export function getFieldMetaListForSchema(schema: object): readonly FieldMetaPay
 }
 
 /**
- * Signature of `getFieldMetaPathMap` — the tree-walking path → payload
+ * Signature of `getFieldMetaPathMap`, the tree-walking path → payload
  * resolver in `walk-field-meta`. Held here as an installable slot so
  * the walker's bytes ride the REGISTRATION surface (`withMeta` /
  * `fieldMeta.add`) instead of the adapter modules: an app that never
@@ -135,7 +135,7 @@ export type FieldMetaPathMapBuilder = <Schema extends object>(
 
 /**
  * Install the path-map walk. The registration surfaces call this on
- * every metadata write (idempotent — always the same function), which
+ * every metadata write (idempotent, always the same function), which
  * is what guarantees the walk is present before any lookup could need
  * it: registering is the only way a payload can exist.
  */
@@ -145,7 +145,7 @@ export function installFieldMetaPathMapBuilder(builder: FieldMetaPathMapBuilder)
 
 /**
  * Build the path → payload map for `rootSchema` through the installed
- * walk, or `undefined` when no registration surface has ever run — in
+ * walk, or `undefined` when no registration surface has ever run, in
  * which case nothing was registered and there is no map to build.
  * Callers fall back to the schema-keyed single-payload lookup and the
  * `.describe()` / humanize resolution.

@@ -1,18 +1,17 @@
-import type { AbstractSchema, UnionDiscriminatorContext } from '../types/types-api'
-import { isPlainRecord } from './path-walker'
-import { type Segment } from './paths'
-import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
-
 /**
  * Sparse-over-defaults hydration merge. Folds a partial value (a subset
  * of the form's paths) onto the schema's slim defaults during the
  * activate / rehydrate hydration path, with discriminated-union-aware
  * rebasing and prototype-pollution-safe key assignment.
  */
+import type { AbstractSchema, UnionDiscriminatorContext } from '../types/types-api'
+import { isPlainRecord } from './path-walker'
+import { type Segment } from './paths'
+import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 
 /**
  * Merge a sparse partial value over schema defaults. Returns a new
- * object — neither input is mutated. Used by the activate / rehydrate
+ * object, neither input being mutated. Used by the activate / rehydrate
  * hydration path when the incoming value only contains a subset of the
  * form's paths.
  *
@@ -33,7 +32,7 @@ import { safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
  * merge REBASES on the matching variant's slim default rather than
  * deep-merging across variants. Without this, deep merge would produce
  * an inconsistent shape carrying BOTH variants' keys (e.g. `{channel:
- * 'sms', number: '...', address: ''}`) — violates the DU's per-variant
+ * 'sms', number: '...', address: ''}`), violating the DU's per-variant
  * shape contract and surfaces ghost fields in `form.values`.
  */
 export function mergeSparseHydration<F>(
@@ -57,7 +56,7 @@ function mergeDeep(
   // At a discriminated-union path the plain deep-merge can't keep the
   // shape consistent across variants, so hand off to the DU-aware merge.
   // Skipped when no schema is provided (callers without an adapter
-  // handle, including older tests) — those fall through to the plain
+  // handle, including older tests). Those fall through to the plain
   // object merge below.
   if (schema !== undefined) {
     const du = schema.getUnionDiscriminatorAtPath(path as Segment[])
@@ -96,8 +95,8 @@ function mergeDuAwareKeys(
       return mergeVariantKeys(source, variantDefault, path, schema, du)
     }
   }
-  // No (usable) disc in source — empty stub keeps the slot in a "between
-  // selections" state so a subsequent disc write reshapes cleanly.
+  // No usable disc in source, so an empty stub leaves the slot "between
+  // selections" and a subsequent disc write reshapes cleanly.
   return {}
 }
 
@@ -115,7 +114,7 @@ function mergeVariantKeys(
   du: UnionDiscriminatorContext
 ): Record<string, unknown> {
   // Object spread carries `variantDefault`'s own properties via
-  // `CreateDataProperty`, bypassing the inherited `__proto__` setter —
+  // `CreateDataProperty`, bypassing the inherited `__proto__` setter,
   // so a variant default that legitimately declares `__proto__` is
   // copied through without reassigning the result's prototype chain.
   // Per-key writes route through `safeAssign`: a literal `__proto__`
@@ -125,7 +124,7 @@ function mergeVariantKeys(
   // for the DU-variant case unless the schema legitimately declares them.
   const out: Record<string, unknown> = { ...variantDefault }
   for (const key of Object.keys(source)) {
-    // Own-property check — the variant-filter must treat inherited slots
+    // Own-property check: the variant filter must treat an inherited slot
     // as absent so `'__proto__' in variantDefault` doesn't smuggle a
     // hostile source key into the merge.
     if (!safeOwnHas(variantDefault, key) && key !== du.discriminatorKey) continue

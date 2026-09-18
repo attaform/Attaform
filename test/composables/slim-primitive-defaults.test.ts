@@ -11,20 +11,20 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * primitive-correct values pass through unchanged; refinement-invalid
  * values pass through too (validation surfaces the error). Only
  * wrong-primitive defaults get fixed via the schema's primitive
- * default — the form must mount with a usable starting state.
+ * default: the form must mount with a usable starting state.
  *
  * This is a behavior change from the previous "validate-then-fix
  * loop strips anything that fails the slim parse." The motivation:
  *
- *   1. Honest types — what consumers read MUST be what's storable.
+ *   1. Honest types, what consumers read MUST be what's storable.
  *      If `setValue('color', 'magenta')` is allowed at runtime,
  *      `defaultValues: { color: 'magenta' }` must also land
  *      unchanged.
- *   2. Saved-form rehydration — autosave / SSR / server-restore
+ *   2. Saved-form rehydration, autosave / SSR / server-restore
  *      flows preserve refinement-invalid values that became invalid
  *      after the schema tightened. Today's strip behavior silently
  *      clobbers these.
- *   3. Visible failure — refinement errors surface via the
+ *   3. Visible failure, refinement errors surface via the
  *      construction-time validation pass. Silent rewriting is
  *      replaced with explicit error display.
  */
@@ -52,7 +52,7 @@ function mountWith<S extends z.ZodObject>(
   return { api: captured.api as UseFormReturnV4<S>, app }
 }
 
-describe('slim-primitive defaults — refinement-invalid passes through', () => {
+describe('slim-primitive defaults: refinement-invalid passes through', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -87,7 +87,7 @@ describe('slim-primitive defaults — refinement-invalid passes through', () => 
   })
 })
 
-describe('slim-primitive defaults — wrong-primitive fixed to schema default', () => {
+describe('slim-primitive defaults: wrong-primitive fixed to schema default', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()
@@ -124,7 +124,7 @@ describe('slim-primitive defaults — wrong-primitive fixed to schema default', 
   })
 })
 
-describe('slim-primitive defaults — refinement errors surface at construction', () => {
+describe('slim-primitive defaults: refinement errors surface at construction', () => {
   const apps: App[] = []
   afterEach(() => {
     while (apps.length > 0) apps.pop()?.unmount()

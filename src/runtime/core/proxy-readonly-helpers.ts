@@ -5,7 +5,7 @@ import { __DEV__ } from './dev'
  * surface layer (`form.values`, `form.errors`, `form.fields`,
  * `wizard.statuses`). Returning `true` from the calling `set` /
  * `deleteProperty` / `defineProperty` trap keeps strict-mode callers
- * from throwing — the readonly contract is enforced by the absence
+ * from throwing. The readonly contract is enforced by the absence
  * of any actual mutation, not by tripping a host-level `TypeError`.
  * Aligns with PASS2-4 + PASS2-12 from the audit.
  *
@@ -23,7 +23,7 @@ export function warnReadOnly(
   if (!__DEV__) return
   const phrase = action === 'write' ? `write to "${String(key)}"` : `${action} of "${String(key)}"`
   console.warn(
-    `[attaform] ${surface} is read-only — ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
+    `[attaform] ${surface} is read-only; ${phrase} was ignored. Mutate the form via setValue / the directive / field-array helpers instead.`
   )
 }
 
@@ -42,7 +42,7 @@ export function warnReadOnly(
  * Reactivity contract: every coercion call reads `snapshot()` fresh,
  * so reactive deps the snapshot touches re-track inside the
  * consumer's active effect on every stringify / template-coercion
- * pass — the helper itself caches nothing.
+ * pass; the helper itself caches nothing.
  *
  * `valueOf` returns the receiver (the proxy itself, via dynamic
  * `this`). Returning a non-primitive keeps OrdinaryToPrimitive's

@@ -3,16 +3,15 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * v3 path-walker parity tests for ZodUnion / ZodTuple / ZodIntersection /
- * ZodLazy / ZodCatch — the five kinds where v3's pre-unification walker
- * returned `[]` and the v4 walker resolves correctly. Exercises the walker
- * through the public adapter surface (`getSchemasAtPath`, `arrayShapeAtPath`,
- * `getDefaultAtPath`, `getSlimPrimitiveTypesAtPath`, `validateAtPath`) so
- * the tests describe what a consumer observes, not the private walker shape.
+ * v3 path-walker parity across the five kinds most likely to resolve to
+ * nothing: ZodUnion, ZodTuple, ZodIntersection, ZodLazy and ZodCatch.
+ * Everything runs through the public adapter surface
+ * (`getSchemasAtPath`, `arrayShapeAtPath`, `getDefaultAtPath`,
+ * `getSlimPrimitiveTypesAtPath`, `validateAtPath`), so the tests describe
+ * what a consumer observes rather than the private walker shape.
  *
- * Mirror of `test/adapters/zod-v4/path-walker.test.ts` (v4 already passes
- * every case here at the time of writing); the dual-green at the end of
- * Phase 8 is the parity proof.
+ * The v4 half is `test/adapters/zod-v4/path-walker.test.ts`, and
+ * dual-green is the parity proof.
  */
 describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', () => {
   describe('ZodUnion', () => {
@@ -25,7 +24,7 @@ describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', (
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
       const resolved = adapter.getSchemasAtPath(['value', 'x'])
-      // Both branches expose `x` — both should resolve.
+      // Both branches expose `x`, both should resolve.
       expect(resolved.length).toBeGreaterThanOrEqual(1)
     })
 
@@ -127,7 +126,7 @@ describe('zod v3: path-walker parity for union/tuple/intersection/lazy/catch', (
       )
       const schema = z.object({ root: treeSchema })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 2 })
-      // Two-level recursion: root.children.0.children.0.name — within depth 2 still resolves.
+      // Two-level recursion: root.children.0.children.0.name, within depth 2 still resolves.
       const within = adapter.getSchemasAtPath(['root', 'children', '0', 'name'])
       expect(within.length).toBeGreaterThanOrEqual(1)
       // Past the cap, the walker returns []; the slim gate falls back to

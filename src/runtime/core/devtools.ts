@@ -1,10 +1,3 @@
-import type { App } from 'vue'
-import type { FormStore } from './create-form-store'
-import type { AttaformRegistry } from './registry'
-import type { GenericForm } from '../types/types-core'
-import type { FormKey } from '../types/types-api'
-import { canonicalizePath } from './paths'
-
 /**
  * Vue DevTools plugin wiring for attaform. Lazy-imported by
  * `createAttaform` under dev-mode guards so the production
@@ -15,14 +8,20 @@ import { canonicalizePath } from './paths'
  *    nodes for form value / errors / aggregates / history.
  *  - A timeline layer that emits events on submit start/success/
  *    failure, reset, undo, redo, and form mutations.
- *  - State editing — modifying a leaf inside the inspector tree
+ *  - State editing: modifying a leaf inside the inspector tree
  *    pushes through `state.setValueAtPath`, mutating the form.
  *
- * Tolerant of missing `@vue/devtools-api` — the peer dep is marked
+ * Tolerant of a missing `@vue/devtools-api`, the peer dep being marked
  * optional. If the import fails, `setupAttaformDevtools` silently
  * no-ops so production builds / users without DevTools installed
  * don't see errors.
  */
+import type { App } from 'vue'
+import type { FormStore } from './create-form-store'
+import type { AttaformRegistry } from './registry'
+import type { GenericForm } from '../types/types-core'
+import type { FormKey } from '../types/types-api'
+import { canonicalizePath } from './paths'
 
 const INSPECTOR_ID = 'attaform'
 const TIMELINE_LAYER_ID = 'attaform:events'
@@ -82,9 +81,9 @@ type SetupDevtoolsPluginFn = (
 
 /**
  * Install the DevTools plugin for the given Vue app + registry. Safe
- * to call in production — if `@vue/devtools-api` isn't installed, the
+ * to call in production: with `@vue/devtools-api` not installed, the
  * dynamic import fails and we log nothing. Returns `true` when
- * DevTools was wired successfully, `false` otherwise — useful for
+ * DevTools was wired successfully and `false` otherwise, which is useful for
  * tests.
  */
 export async function setupAttaformDevtools(
@@ -97,7 +96,7 @@ export async function setupAttaformDevtools(
       setupDevtoolsPlugin?: SetupDevtoolsPluginFn
     }
   } catch {
-    // Peer dep not installed — silently skip. Production builds pass
+    // Peer dep not installed, so silently skip. Production builds pass
     // `{ devtools: false }` explicitly, but this catch covers the
     // "dev without the peer dep" case without a noisy warning.
     return false
@@ -120,7 +119,7 @@ export async function setupAttaformDevtools(
 }
 
 function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): void {
-  // Per-form subscriber bookkeeping — we keep the unsubscribers so
+  // Per-form subscriber bookkeeping. The unsubscribers are kept so
   // the registry's eviction path can detach them when a form is
   // disposed. Using a Map keyed by FormKey mirrors the registry.
   const subscriberUnsubs = new Map<FormKey, () => void>()
@@ -146,7 +145,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
           time: Date.now(),
           title: 'form.change',
           subtitle: state.formKey,
-          // Devtools is dev-only — emit raw values. Consumers worried
+          // Devtools is dev-only, so emit raw values. Consumers worried
           // about screen-share leaks should close the panel before
           // sharing, same as they would for the browser DevTools
           // console.
@@ -184,7 +183,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
   }
 
   // Subscribe all currently-registered forms + register as they're
-  // added. The registry's `forms` Map is shallowReactive — we poll
+  // added. The registry's `forms` Map is shallowReactive, so this polls
   // once per render on refresh; for live change detection, each
   // useForm call that adds a new form triggers a tree/state refresh
   // via the form's own onFormChange emission on the first
@@ -218,7 +217,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
     const formKey = payload.nodeId.slice('form:'.length)
     const state = registry.forms.get(formKey)
     if (state === undefined) return
-    // Devtools is dev-only — render raw values for everything,
+    // Devtools is dev-only, so render raw values for everything,
     // including sensitive-named paths. Consumers concerned about
     // screen-share leaks should close the panel before sharing.
     payload.state['Form value'] = [
@@ -229,7 +228,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
       },
     ]
     // Schema-driven and user-injected errors land in separate inspector
-    // sections so devs can see the source distinction at a glance — a
+    // sections so a dev sees the source distinction at a glance: a
     // user-injected entry surviving a successful submit, or a schema
     // entry that should have cleared after a value fix, are immediately
     // visible without cross-referencing call sites.
@@ -264,7 +263,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
     const formKey = payload.nodeId.slice('form:'.length)
     const state = registry.forms.get(formKey)
     if (state === undefined) return
-    // payload.path is `['Form value', 'form', ...pathSegments]` — the
+    // payload.path is `['Form value', 'form', ...pathSegments]`, so the
     // first two segments are the inspector section + key, the rest is
     // the target form path the user edited. Pass the segment array
     // directly to `canonicalizePath`: join('.') would collapse a

@@ -1,7 +1,7 @@
 # P1: dev/prod dual dist + error codes
 
 Status: P1a DONE 2026-08-23. Measured: eager 43,741 B gz (down 2,736 from the
-46,477 baseline — 2,55x strip + ~180 warn gating, slightly better than the 2,551 +
+46,477 baseline, 2,55x strip + ~180 warn gating, slightly better than the 2,551 +
 100-150 plan); tarball 377.6 kB packed, 75 files (budget 350k -> 450k, tighter than
 the sketched ~500k); 13 size-limit runtime caps tightened 3-5 kB each. Prod dist
 verified free of `__DEV__` / `process.env.NODE_ENV` / `typeof process` / dev prose
@@ -79,7 +79,7 @@ integration turns painful at execution, that fallback is pre-approved to reconsi
   at the fixture's own package.json, so a plain walk-up would never find the
   package; `.gitignore` gained a negation for it). Green in ~4 s: Vite client AND
   the dev SSR path both honor the `development` condition, so the plugin and app
-  imports share one graph — the mixed-graph worry (Nitro dev resolving prod for
+  imports share one graph, the mixed-graph worry (Nitro dev resolving prod for
   externals) did not materialize. Prod-side single-graph is guarded statically
   (graph-isolation + one-`createAttaform`-definition tests in dist-flavors.test.ts).
 - Unguarded-warn gating (planned under P1b item 3, pulled into P1a since it needs
@@ -93,7 +93,7 @@ integration turns painful at execution, that fallback is pre-approved to reconsi
   legitimately compares `!==!1`.
 - attribution.mjs was re-aligned to the strip methodology and regenerated
   (43,741 total matches the ratchet exactly); verify-unweld.mjs still measures the
-  old way — align it before P2's re-measure (noted in P2).
+  old way, align it before P2's re-measure (noted in P2).
 
 ## P1b: error codes + prose diet (needs docs pages live first)
 

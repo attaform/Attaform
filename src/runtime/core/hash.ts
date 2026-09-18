@@ -4,8 +4,8 @@
  * token, so a field's `id` and its satellite `aria-describedby` targets
  * stay stable for a path without carrying the whole path in the markup.
  *
- * Output: 11-char base36 string with leading zeros padded —
- * stable size regardless of input. ~53 bits of entropy (base of the
+ * Output: an 11-char base36 string, leading zeros padded, so the size is
+ * stable regardless of input. ~53 bits of entropy (base of the
  * cyrb53 algorithm); collision space is 2^53. For the id-disambiguation
  * use case (one page's worth of mounted fields) this is overkill.
  *

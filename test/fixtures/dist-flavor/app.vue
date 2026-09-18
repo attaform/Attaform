@@ -3,10 +3,10 @@
   // the dist/dev flavor while attaform/nuxt registers the runtime plugin
   // by literal path. If the plugin and this import loaded two different
   // module graphs, there would be two registries and this `useForm`
-  // would throw `Registry not found` during SSR — the marker below
+  // would throw `Registry not found` during SSR: the marker below
   // renders only when both sides share one graph.
   import { useForm } from 'attaform/zod-v4'
-  // The undo/redo entry, resolved through the same real exports map —
+  // The undo/redo entry, resolved through the same real exports map,
   // a missing ./history export (or dev-flavor artifact) fails this
   // import outright, and the attach must run during SSR for the
   // history-size marker below to render.

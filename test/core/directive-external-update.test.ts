@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  *
  * Regression: a `v-register` text input must reflect form changes that
- * originate OUTSIDE the host component — cross-tab sync
+ * originate OUTSIDE the host component, cross-tab sync
  * (`applyFormReplacement`), a sibling component's `setValue` / `reset` /
  * `clear`, or any imperative store write while the bound component's
  * template reads no field state (a display-only form never re-renders).
@@ -83,7 +83,7 @@ const hooks = vRegister as unknown as {
   beforeUnmount?: DirectiveHook
 }
 
-// Set the store-side value the way an external writer would — straight
+// Set the store-side value the way an external writer would, straight
 // onto `innerRef`, with no directive hook and no component render.
 function writeExternally<T>(rv: MutableMockRv<T>, next: T): void {
   ;(rv.innerRef as { value: T }).value = next
@@ -179,7 +179,7 @@ function selectedValues(select: HTMLSelectElement): string[] {
     .map((o: HTMLOptionElement) => o.value)
 }
 
-describe('v-register — external store updates reach the DOM without a re-render', () => {
+describe('v-register: external store updates reach the DOM without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -228,7 +228,7 @@ describe('v-register — external store updates reach the DOM without a re-rende
   })
 })
 
-describe('v-register checkbox — external updates without a re-render', () => {
+describe('v-register checkbox: external updates without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -265,7 +265,7 @@ describe('v-register checkbox — external updates without a re-render', () => {
   })
 })
 
-describe('v-register radio — external updates without a re-render', () => {
+describe('v-register radio: external updates without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })
@@ -294,7 +294,7 @@ describe('v-register radio — external updates without a re-render', () => {
   })
 })
 
-describe('v-register select — external updates without a re-render', () => {
+describe('v-register select: external updates without a re-render', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
   })

@@ -8,7 +8,7 @@
  * without Vue calling that a mismatch. That is the gap #569 came
  * through. For a path the form did not hold, the server marked no
  * option, so the browser parsed the first one as selected, and the
- * client directive then cleared the selection outright — a visible
+ * client directive then cleared the selection outright: a visible
  * flip from the placeholder to an empty box on every unseeded select.
  *
  * The pin is the property the matrix cannot state: whatever the browser

@@ -3,15 +3,12 @@ import { z } from 'zod-v3'
 import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
 
 /**
- * The v3 adapter is the pre-rewrite implementation moved verbatim in
- * Phase 4a. It was previously only exercised through `test/ssr.test.ts`
- * (Nuxt fixture). This file is the v3's unit-test counterpart to the
- * v4 suite under `test/adapters/zod-v4/`, covering the `AbstractSchema`
- * contract directly so regressions in shared zod behaviour surface
- * without a full Nuxt build.
+ * The v3 counterpart to the suite under `test/adapters/zod-v4/`,
+ * covering the `AbstractSchema` contract directly so a regression in
+ * shared Zod behaviour surfaces without a full Nuxt build.
  */
 
-describe('zod v3 adapter — getDefaultValues', () => {
+describe('zod v3 adapter: getDefaultValues', () => {
   it('produces defaults for a basic object schema', () => {
     const schema = z.object({
       email: z.string(),
@@ -121,14 +118,13 @@ describe('zod v3 adapter — getDefaultValues', () => {
     expect(result.data).toEqual({ event: { kind: 'click', x: 0 } })
   })
 
-  // The four kinds below were previously unhandled — generateValue
-  // logged "unsupported schema kind" and returned `null`, so any form
-  // built against a schema using lazy / intersection / nativeEnum / set
-  // initialised with phantom nulls instead of the typed empty value.
-  // Each case mirrors v4's `deriveDefault` semantics.
+  // lazy, intersection, nativeEnum and set each derive a typed empty
+  // value, mirroring v4's `deriveDefault`. An "unsupported schema kind"
+  // warn returning `null` initialises the whole form with phantom nulls
+  // instead.
 
   it('z.lazy(...) descends into the lazy target for the default', () => {
-    // Non-recursive lazy — the wrapper is transparent, so the default
+    // Non-recursive lazy: the wrapper is transparent, so the default
     // should match the inner schema's empty object. (Recursive z.lazy
     // patterns work too, but their generic typing on the inner shape
     // doesn't survive `z.ZodType<T>` without conditional unwrapping
@@ -227,11 +223,11 @@ describe('zod v3 adapter — getDefaultValues', () => {
     // async pass scheduled in `create-form-store` when
     // `needsAsyncValidation()` returns true.
     //
-    // (Parity note with v4: the v4 adapter additionally seeds
-    // sync-refinement errors at construction via
-    // `stripAsyncChecks`. v3's slim-schema strategy and runtime
-    // wrapper for `.refine` predicates make that lift a separate
-    // piece of work — see comment in `getDefaultValues`.)
+    // Parity note: v4 seeds sync-refinement errors at construction by
+    // parsing the real schema, and skips that seeding outright once
+    // `containsAsyncTransform` or `containsAsyncRefine` says the schema
+    // holds either. v3 reaches the same end state through its
+    // slim-schema strategy and its runtime wrapper for `.refine`.
     const schema = z.object({
       email: z
         .string()
@@ -248,7 +244,7 @@ describe('zod v3 adapter — getDefaultValues', () => {
   })
 })
 
-describe('zod v3 adapter — validateAtPath', () => {
+describe('zod v3 adapter: validateAtPath', () => {
   it('returns success for a valid full-form value', async () => {
     const schema = z.object({ email: z.string().email() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
@@ -286,7 +282,7 @@ describe('zod v3 adapter — validateAtPath', () => {
   })
 })
 
-describe('zod v3 adapter — getSchemasAtPath', () => {
+describe('zod v3 adapter: getSchemasAtPath', () => {
   it('resolves a nested path', async () => {
     const schema = z.object({
       user: z.object({ email: z.string() }),
@@ -312,7 +308,7 @@ describe('zod v3 adapter — getSchemasAtPath', () => {
   })
 })
 
-describe('zod v3 adapter — validator error paths (refine / superRefine / transform / pipe)', () => {
+describe('zod v3 adapter: validator error paths (refine / superRefine / transform / pipe)', () => {
   it('leaf .refine emits error at the leaf path', async () => {
     const schema = z.object({
       username: z.string().refine((v) => v.length > 3, 'too short'),
@@ -389,7 +385,7 @@ describe('zod v3 adapter — validator error paths (refine / superRefine / trans
   })
 })
 
-describe('zod v3 adapter — discriminated union routing', () => {
+describe('zod v3 adapter: discriminated union routing', () => {
   it('routes per-branch refinement errors to the active branch', async () => {
     const schema = z.object({
       event: z.discriminatedUnion('kind', [
@@ -414,22 +410,21 @@ describe('zod v3 adapter — discriminated union routing', () => {
   })
 })
 
-// stripRefinements descended into objects, arrays, and effects pre-fix
-// but skipped Set / Tuple / Record / Union / DiscriminatedUnion /
-// Intersection / Lazy. Refinements nested inside those containers
-// survived into the slim schema, so defaults that passed primitive
-// shape (e.g. `''` for an email-refined tuple element) still failed
-// the slim parse and got fixed up downstream — which "worked" but
-// produced a different second-parse path than v4. The fix gives v3 the
-// same correctness floor as v4.
+// stripRefinements descends every container, Set / Tuple / Record /
+// Union / DiscriminatedUnion / Intersection / Lazy as well as objects,
+// arrays and effects. A refinement surviving into the slim schema means
+// a default that passes primitive shape (`''` for an email-refined
+// tuple element) still fails the slim parse and gets fixed up
+// downstream, which reaches the right answer down a different
+// second-parse path than v4 takes.
 //
-// What each case asserts is the SHAPE the walk produced. Several of
-// these derived defaults cannot satisfy the leaf refinement they sit
-// under (`''` is not an email, `0` is not `>= 10`), and construction
-// parses the real schema, so the verdict is an honest failure at that
-// leaf. The walk descending and the refinement failing are the two
-// separate facts; both are pinned.
-describe('zod v3 adapter — stripRefinements', () => {
+// Each case asserts the SHAPE the walk produced. Several of these
+// derived defaults cannot satisfy the leaf refinement they sit under
+// (`''` is not an email, `0` is not `>= 10`), and construction parses
+// the real schema, so the verdict is an honest failure at that leaf.
+// The walk descending and the refinement failing are separate facts,
+// and both are pinned.
+describe('zod v3 adapter: stripRefinements', () => {
   it('descends into z.tuple element refinements', () => {
     const schema = z.object({
       pair: z.tuple([z.string().email(), z.number().min(10)]),
@@ -518,7 +513,7 @@ describe('zod v3 adapter — stripRefinements', () => {
   })
 })
 
-describe('zod v3 adapter — construction accepts every kind', () => {
+describe('zod v3 adapter: construction accepts every kind', () => {
   it.each([
     ['z.promise', () => z.object({ pending: z.promise(z.string()) })],
     ['z.function', () => z.object({ cb: z.function() })],
@@ -528,7 +523,7 @@ describe('zod v3 adapter — construction accepts every kind', () => {
     expect(() => zodAdapter(make())('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
-  it('mounts a self-referencing z.lazy(...) — runtime walks cap descent via maxRecursionDepth', () => {
+  it('mounts a self-referencing z.lazy(...): runtime walks cap descent via maxRecursionDepth', () => {
     // Pre-B2 this threw at construction. Post-B2 recursive
     // schemas are supported; v3's downstream walks already carry their
     // own `MAX_UNWRAP_STEPS` cap, so depth is bounded regardless.

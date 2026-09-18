@@ -3,24 +3,24 @@
  * Retention pins for the per-path field-state cache (#612).
  *
  * `getFieldStateAt` memoises one `ComputedRef` per canonical path so
- * repeated reads share a Vue subscription. Each cached entry holds the
- * path's `value` AND its `original`, so the cache pins form data, not
- * just bookkeeping. Nothing evicted, so it grew with the number of
- * paths ever read rather than the number the form currently has: a
- * `z.record` whose keys churn, or an array whose indices do, kept every
- * value it had ever held. Measured before the fix at 200 of 200 removed
- * keys still reachable, 12.5 MB pinned by a form whose value was `{}`.
+ * repeated reads share a Vue subscription. Each entry holds the path's
+ * `value` AND its `original`, so the cache pins form data, not just
+ * bookkeeping, and it has to be bounded by the paths the form currently
+ * has rather than every path ever read. Unbounded, a `z.record` whose
+ * keys churn or an array whose indices do keeps every value it ever
+ * held: measured at 200 of 200 removed keys still reachable, 12.5 MB
+ * pinned by a form whose value was `{}`.
  *
- * The accessor now drops entries for dynamic paths the form no longer
- * has, swept on write once the dynamic set outgrows its threshold.
- * Paths a fixed object shape bounds are never swept, so an absent
+ * So the accessor drops entries for dynamic paths the form no longer
+ * has, swept on write once the dynamic set outgrows its threshold. A
+ * path bounded by a fixed object shape is never swept, so an absent
  * optional field is not dropped and rebuilt on a loop.
  *
  * Evicting is invisible to consumers: a field view comes from a
  * separate cache and re-resolves through this accessor on every read,
  * so the identity-stability contract is untouched. The last group pins
- * that, because a fix that released memory by breaking identity would
- * pass the retention pins alone.
+ * that, because releasing memory by breaking identity would satisfy the
+ * retention pins on their own.
  *
  * These need `--expose-gc`, which the test wrapper passes (see
  * `scripts/run-with-webstorage-flag.mjs`). Run through `pnpm test`; a

@@ -10,7 +10,7 @@
  * the matching @font-face block (re-pointing src URLs at our own
  * `/fonts/<file>`).
  *
- * Run on demand — when bumping a weight, adding a subset, or
+ * Run on demand, when bumping a weight, adding a subset, or
  * upgrading the upstream font version. The output (woff2 binaries +
  * fonts.css) is committed; the dev server and the build pipeline
  * never reach Google again.
@@ -27,7 +27,7 @@
  *
  * Subsets we keep: `latin`, `latin-ext`. Matches the previous
  * `defaults: { subsets: [...] }` configuration. Other subsets
- * (cyrillic, greek, vietnamese) are filtered out — the site is
+ * (cyrillic, greek, vietnamese) are filtered out: the site is
  * English-only, those bytes were dead weight.
  */
 
@@ -40,7 +40,7 @@ const fontsDir = resolve(here, '../public/fonts')
 const cssOutPath = resolve(here, '../assets/css/fonts.css')
 
 // Each (family, weights) pair maps to one Google Fonts CSS API call.
-// Splitting per-family keeps the parser simpler — each response only
+// Splitting per-family keeps the parser simpler: each response only
 // references one family, so we don't have to disambiguate which
 // `@font-face` block belongs where.
 const FAMILIES = [
@@ -61,7 +61,7 @@ const KEEP_SUBSETS = new Set(['latin', 'latin-ext'])
 const UNICODE_RANGE_RE =
   /^U\+[0-9A-Fa-f]+(?:-[0-9A-Fa-f]+)?(?:,\s*U\+[0-9A-Fa-f]+(?:-[0-9A-Fa-f]+)?)*$/
 
-// Modern Chrome UA — without it, Google returns a single legacy
+// Modern Chrome UA, without it, Google returns a single legacy
 // TTF per weight (no WOFF2, no subset variants). The exact UA
 // doesn't matter as long as it advertises Chrome ≥ 60-ish.
 const CHROME_UA =
@@ -98,7 +98,7 @@ function parseGoogleFontsCss(css) {
   // Split on the leading comment so we can read the subset label.
   // Each chunk starts with the subset name and contains exactly one
   // @font-face block (or starts before the first one, which yields
-  // an empty parse — guarded below).
+  // an empty parse, guarded below).
   const chunks = css.split(/\/\*\s*([\w-]+)\s*\*\//).slice(1)
   // After split: [subset0, css0, subset1, css1, ...]
   for (let i = 0; i < chunks.length; i += 2) {
@@ -156,7 +156,7 @@ async function main() {
     console.log(`[fonts] fetching CSS for ${name}`)
     const css = await fetchText(cssUrl)
     const parsed = parseGoogleFontsCss(css)
-    // `r.family === name` bounds the family to the requested constant —
+    // `r.family === name` bounds the family to the requested constant,
     // if Google's CSS ever returns a record with a different family name,
     // reject. Combined with the unicode-range and filename sanitisers
     // this closes the HTTP -> filesystem path-traversal surface CodeQL
@@ -164,14 +164,14 @@ async function main() {
     const filtered = parsed.filter((r) => r.family === name && KEEP_SUBSETS.has(r.subset))
     if (filtered.length === 0) {
       throw new Error(
-        `[fonts] no kept subsets for ${name} — Google may have served a stripped CSS. ` +
+        `[fonts] no kept subsets for ${name}: Google may have served a stripped CSS. ` +
           `Re-check the User-Agent and the subset filter.`
       )
     }
     allRecords.push(...filtered)
   }
 
-  // Download each WOFF2 in parallel — the binaries are independent
+  // Download each WOFF2 in parallel: the binaries are independent
   // and Google's CDN handles concurrent requests well. Errors fail
   // the script (Promise.all rejects on first reject).
   await Promise.all(
@@ -186,7 +186,7 @@ async function main() {
   // Emit `fonts.css` with all the @font-face blocks. Lives in
   // `assets/css/` (not `public/fonts/` next to the binaries) so
   // tailwind.css can `@import './fonts.css'` and inline the rules
-  // into the main bundle — one stylesheet request instead of two.
+  // into the main bundle: one stylesheet request instead of two.
   // The .woff2 binaries stay in `public/fonts/` (served as static
   // assets) and the @font-face src URLs reference them as
   // `/fonts/<file>.woff2`.

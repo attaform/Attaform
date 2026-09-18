@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // DOM-flow integration tests for schema-driven coercion. Pairs with
-// the unit-level coverage in `test/core/schema-coerce.test.ts` —
+// the unit-level coverage in `test/core/schema-coerce.test.ts`,
 // these tests exercise the full path from user-driven DOM events
 // through the directive's assigner → transforms → coerce → write.
 //
@@ -54,7 +54,7 @@ function mount<S extends z.ZodObject>(
   return { api: handle.api, root }
 }
 
-describe('text input — numeric path', () => {
+describe('text input: numeric path', () => {
   const schema = z.object({ age: z.number(), note: z.string() })
 
   it('typing "25" coerces to number 25 in storage', async () => {
@@ -84,7 +84,7 @@ describe('text input — numeric path', () => {
     input.value = ''
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (input.value === '' ? true : null))
-    // The path doesn't admit string — instead of letting the empty
+    // The path doesn't admit string, instead of letting the empty
     // string hit the assigner (where the gate would reject and the
     // post-write force-sync would snap the DOM back to '5'), the
     // directive routes through `markBlank`: storage lands on the slim
@@ -97,7 +97,7 @@ describe('text input — numeric path', () => {
   })
 })
 
-describe('text input — boolean path', () => {
+describe('text input: boolean path', () => {
   it('typing "true" / "false" coerces to boolean', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -115,7 +115,7 @@ describe('text input — boolean path', () => {
   })
 })
 
-describe('text input — `.number` modifier composes without double-coerce', () => {
+describe('text input: `.number` modifier composes without double-coerce', () => {
   it('modifier runs first; coerce sees a number and short-circuits', async () => {
     const schema = z.object({ age: z.number() })
     const { api, root } = mount(schema, { age: 0 }, (api) => {
@@ -135,7 +135,7 @@ describe('text input — `.number` modifier composes without double-coerce', () 
   })
 })
 
-describe('select (single) — numeric path', () => {
+describe('select (single): numeric path', () => {
   it('selecting an option coerces to number', async () => {
     const schema = z.object({ pick: z.number() })
     const { api, root } = mount(schema, { pick: 1 }, (api) => {
@@ -160,7 +160,7 @@ describe('select (single) — numeric path', () => {
   })
 })
 
-describe('select (multi) — number array', () => {
+describe('select (multi): number array', () => {
   it('select two number options stores [1, 2]', async () => {
     const schema = z.object({ ids: z.array(z.number()) })
     const { api, root } = mount(schema, { ids: [] }, (api) => {
@@ -187,7 +187,7 @@ describe('select (multi) — number array', () => {
   })
 })
 
-describe('select (multi) — number Set', () => {
+describe('select (multi): number Set', () => {
   it('select two number options stores Set { 1, 2 }', async () => {
     const schema = z.object({ ids: z.set(z.number()) })
     const { api, root } = mount(schema, { ids: new Set<number>() }, (api) => {
@@ -213,7 +213,7 @@ describe('select (multi) — number Set', () => {
   })
 })
 
-describe('checkbox array — numeric values', () => {
+describe('checkbox array: numeric values', () => {
   it('toggling a checkbox with value="3" pushes 3 (number) into the array', async () => {
     const schema = z.object({ ids: z.array(z.number()) })
     const { api, root } = mount(schema, { ids: [] }, (api) => {
@@ -233,7 +233,7 @@ describe('checkbox array — numeric values', () => {
   })
 })
 
-describe('checkbox Set — boolean values', () => {
+describe('checkbox Set: boolean values', () => {
   it('checkboxes with value="true"/"false" produce booleans in a Set', async () => {
     const schema = z.object({ flags: z.set(z.boolean()) })
     const { api, root } = mount(schema, { flags: new Set<boolean>() }, (api) => {
@@ -262,7 +262,7 @@ describe('checkbox Set — boolean values', () => {
   })
 })
 
-describe('checkbox scalar — boolean path (no-op)', () => {
+describe('checkbox scalar: boolean path (no-op)', () => {
   it('a single boolean checkbox writes booleans (already-correct kind)', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -280,7 +280,7 @@ describe('checkbox scalar — boolean path (no-op)', () => {
   })
 })
 
-describe('checkbox with true-value / false-value — composes with coerce', () => {
+describe('checkbox with true-value / false-value: composes with coerce', () => {
   // `:true-value` / `:false-value` are Vue v-model conventions that
   // store custom values in the model when a checkbox toggles. The
   // directive routes the chosen value through the same assigner
@@ -315,7 +315,7 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
   })
 
   // Bound `:true-value` (non-string) is exercised via templates +
-  // checkbox.test.ts directly — render-function `h()` doesn't reach
+  // checkbox.test.ts directly, render-function `h()` doesn't reach
   // Vue's `_trueValue` slot the same way the compiled template
   // path does. Verified end-to-end in spike.vue scenarios.
 
@@ -344,22 +344,20 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
   })
 
   it('checkbox visual stays in sync with model across multiple toggles (case-mismatched true-value)', async () => {
-    // Regression for the desync where setChecked compared the
-    // post-coerce boolean model against the RAW `_trueValue` string
-    // ("True", capital T) via `looseEqual`. Vue's looseEqual does
-    // case-sensitive `String()` comparison — `looseEqual(true,
-    // "True")` is false — so setChecked decided the box should be
-    // unchecked and overwrote the user's click. Fix: setChecked
-    // coerces the raw _trueValue through the same registry before
-    // comparing.
+    // `setChecked` coerces the raw `_trueValue` through the same
+    // registry before comparing. Comparing the post-coerce boolean
+    // model against the raw string instead desyncs: Vue's `looseEqual`
+    // compares case-sensitively through `String()`, so
+    // `looseEqual(true, "True")` is false, `setChecked` decides the box
+    // should be unchecked, and the user's click is overwritten.
     //
-    // We set `_trueValue` / `_falseValue` imperatively via a ref
-    // callback because render-function `h()` can't reach Vue's
+    // `_trueValue` / `_falseValue` are set imperatively through a ref
+    // callback because a render-function `h()` cannot reach Vue's
     // template-only `:true-value` slot. The `<pre>` reading
-    // `api.values.accepted` matters: it's the reactive dep that
-    // schedules the re-render which fires `beforeUpdate` →
-    // `setChecked`. Without it, the bug stays latent (no rerender,
-    // no faulty re-comparison) and the test would pass pre-fix.
+    // `api.values.accepted` is load-bearing: it is the reactive dep
+    // that schedules the re-render firing `beforeUpdate` and
+    // `setChecked`. Without it nothing re-compares and the test passes
+    // either way.
     const schema = z.object({ accepted: z.boolean() })
     const { api, root } = mount(schema, { accepted: false }, (api) => {
       const rv = api.register('accepted')
@@ -402,7 +400,7 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
     expect(api.values.accepted).toBe(false)
     expect(cb.checked).toBe(false)
 
-    // Toggle ON again — confirm the cycle is clean (no every-other-
+    // Toggle ON again, confirm the cycle is clean (no every-other-
     // click desync that the original report described).
     cb.checked = true
     cb.dispatchEvent(new Event('change', { bubbles: true }))
@@ -446,7 +444,7 @@ describe('checkbox with true-value / false-value — composes with coerce', () =
   })
 })
 
-describe('radio — boolean path', () => {
+describe('radio: boolean path', () => {
   it('selecting value="true"/"false" radios stores boolean', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -614,7 +612,7 @@ describe('el[assignKey] direct-install bypasses coerce', () => {
     // Pre-install the custom assigner BEFORE the directive's `created`
     // hook can install the default. We do this by supplying a hook on
     // the `Parent` component that inspects the rendered DOM and sets
-    // `el[assignKey]` on the input — Vue calls our directive's
+    // `el[assignKey]` on the input, Vue calls our directive's
     // `created` hook before our own `mounted`, but the assignKey
     // pre-install is observed by `setAssignFunction` via the
     // pre-install respect path.
@@ -682,18 +680,15 @@ describe('reference-equality preservation', () => {
   })
 })
 
-// ============================================================
-// Read-side normalizer-symmetry sweep — the same shape of bug
-// (post-coerce model vs raw DOM-side comparison) lurks in every
-// directive site that compares model state against an option /
-// checkbox / radio attribute. Each test below uses a reactive
-// read on the value (the `<pre>` JSON.stringify) to schedule the
-// re-render that fires `beforeUpdate` / `setChecked` / `setSelected`
-// — without it, the bugs stay latent. Pre-fix these tests fail at
-// the visual-state assertion after the second toggle.
-// ============================================================
+// The read-side normalizer-symmetry sweep. Comparing a post-coerce
+// model against a raw DOM-side value is a hazard at every directive
+// site that weighs model state against an option, checkbox or radio
+// attribute. Each test reads the value reactively (the `<pre>`
+// JSON.stringify) to schedule the re-render that fires `beforeUpdate`,
+// `setChecked` or `setSelected`; without that read nothing re-compares
+// and an asymmetry stays latent.
 
-describe('read-side coerce symmetry — array checkbox with case-mismatched boolean values', () => {
+describe('read-side coerce symmetry: array checkbox with case-mismatched boolean values', () => {
   it('checkbox array stays in sync across toggles when option value is "True"/"False"', async () => {
     const schema = z.object({ flags: z.array(z.boolean()) })
     const { api, root } = mount(schema, { flags: [] }, (api) => {
@@ -723,8 +718,8 @@ describe('read-side coerce symmetry — array checkbox with case-mismatched bool
   })
 })
 
-describe('read-side coerce symmetry — Set checkbox with numeric values', () => {
-  it('checkbox Set stays in sync — Set.has uses === so any kind mismatch breaks it', async () => {
+describe('read-side coerce symmetry: Set checkbox with numeric values', () => {
+  it('checkbox Set stays in sync: Set.has uses === so any kind mismatch breaks it', async () => {
     const schema = z.object({ tags: z.set(z.number()) })
     const { api, root } = mount(schema, { tags: new Set<number>() }, (api) => {
       const rv = api.register('tags')
@@ -741,13 +736,13 @@ describe('read-side coerce symmetry — Set checkbox with numeric values', () =>
     cb.dispatchEvent(new Event('change', { bubbles: true }))
     await waitUntil(() => ((api.values.tags as Set<number>).has(1) ? true : null))
     expect(api.values.tags).toEqual(new Set([1]))
-    // Pre-fix Set.has(model, "1") against Set<number>{1} returned
-    // false (strict ===) → setChecked wrote el.checked = false.
+    // `Set.has` is strict, so `has("1")` against `Set<number>{1}` is
+    // false and `setChecked` would write `el.checked = false`.
     expect(cb.checked).toBe(true)
   })
 })
 
-describe('read-side coerce symmetry — multi-select with case-mismatched boolean options', () => {
+describe('read-side coerce symmetry: multi-select with case-mismatched boolean options', () => {
   it('select multi shows the selected booleans across re-renders', async () => {
     const schema = z.object({ flags: z.array(z.boolean()), note: z.string() })
     const { api, root } = mount(schema, { flags: [], note: '' }, (api) => {
@@ -776,10 +771,10 @@ describe('read-side coerce symmetry — multi-select with case-mismatched boolea
     )
     expect(api.values.flags).toEqual([true, false])
 
-    // Force another re-render via a sibling write — this exercises
-    // setSelected with the post-coerce model, where pre-fix
-    // `String(true)` ("true") wouldn't match `String(option.value)`
-    // ("True") and both options would silently get deselected.
+    // A sibling write forces another re-render, exercising
+    // `setSelected` against the post-coerce model. Comparing raw,
+    // `String(true)` is "true" and never matches `String(option.value)`
+    // "True", silently deselecting both options.
     const note = root.querySelector('[data-field="note"]') as HTMLInputElement
     note.value = 'x'
     note.dispatchEvent(new Event('input', { bubbles: true }))
@@ -790,7 +785,7 @@ describe('read-side coerce symmetry — multi-select with case-mismatched boolea
   })
 })
 
-describe('read-side coerce symmetry — single-select with case-mismatched boolean', () => {
+describe('read-side coerce symmetry: single-select with case-mismatched boolean', () => {
   it('select single highlights the option matching the post-coerce model', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
@@ -812,14 +807,14 @@ describe('read-side coerce symmetry — single-select with case-mismatched boole
     sel.dispatchEvent(new Event('change', { bubbles: true }))
     await waitUntil(() => (api.values.active === true ? true : null))
     expect(api.values.active).toBe(true)
-    // Pre-fix selectedIndex would land at -1 — looseEqual(true, "True")
-    // returned false, so no option matched.
+    // Compared raw, `looseEqual(true, "True")` is false, no option
+    // matches, and selectedIndex lands at -1.
     expect(sel.selectedIndex).toBe(1)
   })
 })
 
-describe('read-side coerce symmetry — radio with case-mismatched boolean values', () => {
-  it('radio cycle stays in sync — pre-fix every-other-click desynced like the checkbox case', async () => {
+describe('read-side coerce symmetry: radio with case-mismatched boolean values', () => {
+  it('radio cycle stays in sync: pre-fix every-other-click desynced like the checkbox case', async () => {
     const schema = z.object({ active: z.boolean() })
     const { api, root } = mount(schema, { active: false }, (api) => {
       const rv = api.register('active')
@@ -842,8 +837,8 @@ describe('read-side coerce symmetry — radio with case-mismatched boolean value
     t.dispatchEvent(new Event('change', { bubbles: true }))
     await waitUntil(() => (api.values.active === true ? true : null))
     expect(api.values.active).toBe(true)
-    // Pre-fix the beforeUpdate hook ran `looseEqual(true, "True")`
-    // → false → `el.checked = false`, immediately undoing the click.
+    // Compared raw, `beforeUpdate` runs `looseEqual(true, "True")`,
+    // gets false, writes `el.checked = false` and undoes the click.
     expect(t.checked).toBe(true)
     expect(f.checked).toBe(false)
 
@@ -872,8 +867,9 @@ describe('text input on numeric path without `.number` modifier', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await waitUntil(() => (api.values.age === 25 ? true : null))
     expect(api.values.age).toBe(25)
-    // Pre-fix the beforeUpdate hook fell through to
-    // `el.value = typeof 25 === 'string' ? 25 : ''` → input cleared.
+    // Without the coercion, `beforeUpdate` falls through to
+    // `el.value = typeof 25 === 'string' ? 25 : ''` and clears the
+    // input.
     expect(input.value).toBe('25')
   })
 })

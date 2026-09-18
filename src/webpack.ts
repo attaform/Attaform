@@ -1,11 +1,12 @@
 /**
- * `attaform/webpack` — webpack plugin that rewrites `attaform/zod`
+ * `attaform/webpack`, the webpack plugin that rewrites `attaform/zod`
  * imports to the single matching adapter subpath (`attaform/zod-v3` or
  * `attaform/zod-v4`) at build time, based on the consumer's installed Zod
  * major. Without it, webpack ships both adapters because the unified
  * `attaform/zod` entry imports both for runtime dispatch.
  *
- * Usage (ESM config — the plugin is ESM-only, matching attaform's package):
+ * Usage, in an ESM config, since the plugin is ESM-only like the rest of
+ * the package:
  *
  *   // webpack.config.mjs
  *   import { attaform } from 'attaform/webpack'
@@ -14,16 +15,12 @@
  *     plugins: [attaform()],
  *   }
  *
- * This plugin only does the adapter rewrite. The Vue SFC `v-register`
- * transforms that `attaform/vite` wires (load-bearing for SSR initial
- * render) are `@vitejs/plugin-vue`-specific and do not transfer; a
- * non-Vite consumer that needs them wires `attaform/transforms` into
- * their Vue compiler separately. The `v-register` directive itself is
- * also delivered by the Vite plugin's compile-time binding, so outside
- * that pipeline register it once per app:
- *
- *   import { installVRegister } from 'attaform/directive'
- *   installVRegister(app)
+ * The adapter rewrite is all this plugin does. Two things
+ * `attaform/vite` also provides do NOT transfer, because both are
+ * `@vitejs/plugin-vue`-specific: wire `attaform/transforms` into your
+ * Vue compiler for the SSR-critical template transforms, and register
+ * the directive once per app with `installVRegister(app)` from
+ * `attaform/directive`.
  *
  * Zero-dep: the plugin imports nothing from `webpack` (it taps the resolve
  * hook the compiler injects at the consumer's build). Shares its body with
@@ -40,6 +37,17 @@ export type AttaformWebpackPluginOptions = WebpackFamilyPluginOptions
 /** The structural shape webpack requires of the plugin. */
 export type AttaformWebpackPlugin = WebpackFamilyPlugin
 
+/**
+ * webpack plugin that resolves `attaform/zod` to the one adapter subpath
+ * matching the installed Zod major, so the build ships a single adapter
+ * instead of both.
+ *
+ * ```js
+ * const { attaform } = require('attaform/webpack')
+ *
+ * module.exports = { plugins: [attaform()] }
+ * ```
+ */
 export function attaform(options: AttaformWebpackPluginOptions = {}): AttaformWebpackPlugin {
   return createWebpackFamilyPlugin('attaform/webpack', options)
 }

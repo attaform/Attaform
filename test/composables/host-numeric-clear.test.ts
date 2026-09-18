@@ -19,7 +19,7 @@ import type { GenericForm } from '../../src/runtime/types/types-core'
  * A numeric leaf wrapped in a presentational component and bound by
  * `v-register` is the "bring your own component" shape. A native
  * `<input v-register>` special-cases a DOM clear on a numeric-only leaf
- * (`el.value === ''`) into `markBlank` — storage lands on the slim `0`
+ * (`el.value === ''`) into `markBlank`, storage lands on the slim `0`
  * with the blank flag, and the box stays empty. `setValueFromHost` (the
  * component-host analog: v-model desugar → `onUpdate:modelValue`) now
  * mirrors that: an emitted empty signal ('' / null / undefined) the
@@ -158,7 +158,7 @@ describe.each(adapters)(
   }
 )
 
-describe('hostModelValue — blank-aware :modelValue presentation', () => {
+describe('hostModelValue: blank-aware :modelValue presentation', () => {
   function numericHost(defaultValues: GenericForm) {
     const formKey = `host-model-${Math.random().toString(36).slice(2)}`
     const abstract = zodAdapterV4(z.object({ n: z.number() }))(formKey, { maxRecursionDepth: 64 })

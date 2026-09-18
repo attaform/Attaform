@@ -1,9 +1,7 @@
 /**
- * `attaform/history` — the undo/redo plugin, as a standalone entry so
- * the form core doesn't carry the history runtime for forms that never
+ * `attaform/history`, the undo/redo plugin, kept a standalone entry so
+ * the form core does not carry the history runtime for forms that never
  * opt in.
- *
- * Enable it per form:
  *
  * ```ts
  * import { historyPlugin } from 'attaform/history'
@@ -15,10 +13,9 @@
  * instance to as many forms as you like and each still gets its own
  * independent chain.
  *
- * The consolidated `form.history` namespace (`undo`, `redo`, `clear`,
- * `canUndo`, `canRedo`, `size`) is always present on the form return;
- * without the plugin its methods are no-ops and its flags read
- * `false` / `0`.
+ * The `form.history` namespace (`undo`, `redo`, `clear`, `canUndo`,
+ * `canRedo`, `size`) is always present on the form return; without the
+ * plugin its methods are no-ops and its flags read `false` and `0`.
  */
 
 export { historyPlugin } from './runtime/core/history'

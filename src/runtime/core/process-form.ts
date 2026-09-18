@@ -25,25 +25,21 @@ import {
 } from './paths'
 
 /**
- * Tracks FormStores for which we've already emitted the
- * "validate() called outside an effect scope" warning. One warn per
- * store keeps the diagnostic loud the first time and silent for the
- * rest of the run — important for hot-loop callers that would
- * otherwise spam the console (a tight test loop calling validate()
- * 1000 times shouldn't produce 1000 warnings).
+ * Stores that have already drawn the "validate() called outside an effect
+ * scope" warning. One warn per store keeps the diagnostic loud the first time
+ * and silent after, so a hot-loop caller does not fill the console.
  */
 const warnedNoScopeStores: WeakSet<FormStore<GenericForm>> | null = __DEV__
   ? new WeakSet<FormStore<GenericForm>>()
   : null
 
 /**
- * Does `value` look like a well-constructed `ErrorInput` — something the
- * shared normalizer can turn into a meaningful `ValidationError`? A real
- * `Error` qualifies; so does a plain object carrying a non-empty string
- * `message` and/or an array `path` (a thrown `{ path, message, code? }`).
- * Everything else (a bare primitive, `null`, `undefined`, a shapeless
- * object) is garbage that would normalize to an empty "Unknown error", so
- * the submit-throw path treats it separately.
+ * Whether `value` is a well-constructed `ErrorInput`, something the shared
+ * normalizer can turn into a meaningful `ValidationError`. A real `Error`
+ * qualifies, as does a plain object carrying a non-empty string `message`, an
+ * array `path`, or both. Anything else, a bare primitive, `null`, `undefined`
+ * or a shapeless object, would normalize to an empty "Unknown error", so the
+ * submit-throw path handles it separately.
  */
 function isErrorInputLike(value: unknown): value is ErrorInput {
   if (value instanceof Error) return true
@@ -55,15 +51,13 @@ function isErrorInputLike(value: unknown): value is ErrorInput {
 }
 
 /**
- * Turn whatever a `handleSubmit` `onSubmit` callback threw into the
- * `ValidationError[]` to pipe into the user-error layer, all under the
- * `atta:submit-error` code. A well-constructed throw (or array of them)
- * is normalized honoring its own `path` / `code`, so a dev who threw
- * `{ path: ['email'], message }` gets a field-scoped error and a bare
- * `Error` lands form-level (`[]`). A garbage throw still injects one
- * form-level entry with the normalizer's canonical `Unknown error`
- * fallback (consistent with `setErrors`), and reports `messageless` so
- * the caller can nudge the dev in development.
+ * Turn whatever an `onSubmit` callback threw into the `ValidationError[]` for
+ * the user-error layer, all under `atta:submit-error`. A well-constructed
+ * throw, or an array of them, normalizes honouring its own `path` and `code`,
+ * so a `{ path: ['email'], message }` becomes a field-scoped error while a bare
+ * `Error` lands form-level. A garbage throw still injects one form-level entry
+ * carrying the normalizer's canonical fallback, matching `setErrors`, and
+ * reports `messageless` so the caller can nudge the dev in development.
  */
 function deriveSubmitErrors(err: unknown): { entries: ValidationError[]; messageless: boolean } {
   if (Array.isArray(err) && err.length > 0 && err.every(isErrorInputLike)) {
@@ -81,38 +75,35 @@ function deriveSubmitErrors(err: unknown): { entries: ValidationError[]; message
     }
   }
   // Garbage: a primitive, null, undefined, a shapeless object, or an array
-  // with a non-ErrorInput element. Run an empty ErrorInput through the SAME
-  // normalizer `setErrors` uses so the rendered message is its canonical
-  // `Unknown error` fallback, not a bespoke submit string. `toError`'s raw
-  // diagnostic still lands on `submitError`; this is the consistent projection.
+  // holding a non-ErrorInput. Run an empty ErrorInput through the SAME
+  // normalizer `setErrors` uses, so the rendered message is its canonical
+  // fallback rather than a bespoke submit string. `toError`'s raw diagnostic
+  // still lands on `submitError`; this is its rendered projection.
   return {
     entries: [normalizeErrorInput({}, undefined, AttaformErrorCode.SubmitError)],
     messageless: true,
   }
 }
 
-/**
- * validate + handleSubmit, both built against a FormStore<F>. Replaces
- * use-form-store's validation factory + the submit wrapper in
- * use-abstract-form.ts.
- *
- * Phase 5.6: validation is async end-to-end. `AbstractSchema.validateAtPath`
- * returns `Promise<ValidationResponse<F>>`, so every caller here awaits.
- * The reactive `validate()` ref carries a `pending` flag to distinguish
- * "in-flight" from "settled"; stale results are dropped via a per-call
- * generation counter.
- */
-
+/** Everything `buildProcessForm` needs beyond the store itself. */
 export type BuildProcessFormOptions = {
   /**
-   * Invoked inside handleSubmit when validation fails, after the error
-   * store is populated and before the user's `onError` callback. The
-   * form API supplies its own `focusOnInvalidSubmit` behavior here; with
-   * nothing supplied a failed submit moves neither focus nor viewport.
+   * Called inside `handleSubmit` when validation fails, after the error store
+   * is populated and before the consumer's `onError`. The form API supplies its
+   * `focusOnInvalidSubmit` behaviour here; with nothing supplied, a failed
+   * submit moves neither focus nor viewport.
    */
   applyInvalidSubmit?: () => void
 }
 
+/**
+ * `validate` and `handleSubmit`, both built against a `FormStore<F>`.
+ *
+ * Validation is async end-to-end: `AbstractSchema.validateAtPath` returns a
+ * promise, so every caller here awaits. The reactive `validate()` ref carries a
+ * `pending` flag separating in-flight from settled, and a per-call generation
+ * counter drops a stale result.
+ */
 export function buildProcessForm<F extends GenericForm, Out extends GenericForm = F>(
   state: FormStore<F, Out>,
   options: BuildProcessFormOptions = {}
@@ -120,10 +111,10 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   const applyInvalidSubmit = options.applyInvalidSubmit
 
   function validate(pathInput?: string | Path): Readonly<Ref<ReactiveValidationStatus<F>>> {
-    // Start in a pending state — the first async run has not settled yet.
-    // When validation fires, this ref writes `{ pending: false, ... }`
-    // with the resolved status; stale writes (older generation) are
-    // dropped so a slow earlier run can't overwrite a newer result.
+    // Start pending: the first async run has not settled. When validation
+    // fires, the ref takes `{ pending: false, ... }` with the resolved status,
+    // and a write from an older generation is dropped so a slow earlier run
+    // cannot overwrite a newer result.
     const result = ref<ReactiveValidationStatus<F>>({
       pending: true,
       errors: undefined,
@@ -134,16 +125,14 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     let gen = 0
 
     async function kickoff(data: unknown, path: Path | undefined, captured: number): Promise<void> {
-      // Runs on a microtask outside the watchEffect's sync frame. Reads
-      // and writes to reactive state inside this function DO NOT track
-      // against the effect — the activeEffect stack is empty here —
-      // so writing to `activeValidations` / `result` can't re-trigger
-      // the watchEffect below.
+      // Runs on a microtask outside the watchEffect's sync frame, where the
+      // activeEffect stack is empty, so reads and writes here do NOT track
+      // against the effect and writing `activeValidations` or `result` cannot
+      // re-trigger the watchEffect below.
       //
-      // The `pending: true` write lives INSIDE the guarded region so a
-      // sync watcher on `meta.validating` or on the returned `result`
-      // ref that throws can't leak the counter — the shell's finally
-      // still decrements.
+      // The `pending: true` write sits INSIDE the guarded region, so a sync
+      // watcher on `meta.validating` or on the returned ref that throws cannot
+      // leak the counter: the shell's finally still decrements.
       await withActiveValidation(async () => {
         try {
           result.value = {
@@ -157,21 +146,21 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           result.value = settled(composeWithDerivedBlank(refinement, path))
         } catch (err) {
           if (captured !== gen) return
-          // Adapters are contractually "return errors, don't throw"; if
-          // one does throw we don't want the validate() ref to hang in
-          // `pending: true` forever. Wrap the throw as a single
-          // adapter-level error so the form surfaces something.
+          // The adapter contract is "return errors, do not throw", but a
+          // throwing one must not leave the `validate()` ref pending forever.
+          // Wrap it as a single adapter-level error so the form surfaces
+          // something.
           result.value = settled(adapterThrowResponse(err))
         }
       })
     }
 
     const stop = watchEffect(() => {
-      // Read form.value (or the subtree at path) so the effect re-runs
-      // on any mutation. We must NOT touch any other reactive state
-      // here — the writes in `kickoff` would otherwise re-trigger the
-      // effect in a hot loop. Deferring via `queueMicrotask` puts the
-      // writes on a clean task where `activeEffect` is null.
+      // Read `form.value`, or the subtree at `path`, so the effect re-runs on
+      // any mutation. Touch NO other reactive state here, or the writes in
+      // `kickoff` re-trigger the effect in a hot loop; deferring through
+      // `queueMicrotask` puts them on a clean task where `activeEffect` is
+      // null.
       const segments = pathInput === undefined ? undefined : toSegments(pathInput)
       const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
       const localGen = ++gen
@@ -179,11 +168,10 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         void kickoff(dataAtPath, segments, localGen)
       })
     })
-    // Tie the watcher's lifetime to the caller's effect scope so
-    // components that call validate() in setup release the watcher on
-    // unmount. Tests calling validate() in a raw context simply leak
-    // the watcher for the test's duration — acceptable given tests
-    // tear down the module context per run.
+    // Tie the watcher's lifetime to the caller's effect scope, so a component
+    // calling `validate()` in setup releases it on unmount. A call from a raw
+    // context leaks the watcher for the run's duration, which is why the
+    // dev-warn above exists.
     if (getCurrentScope() !== undefined) {
       onScopeDispose(stop)
     } else if (
@@ -203,18 +191,15 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Shared shell for the imperative validation path (`parse`, both
-   * modes). Handles the path-segment resolution, the
-   * `activeValidations` lifecycle (via `withActiveValidation`), the
-   * adapter-throw → structured-failure translation, and the optional
-   * pre-validate cancellation + post-validate schema-error commit
-   * that `commit: true` switches on. The caller composes the
-   * blank class into the refinement itself.
+   * Shared shell for the imperative validation path, meaning `parse` in both
+   * modes. It resolves the path segments, runs the `activeValidations`
+   * lifecycle, translates an adapter throw into a structured failure, and
+   * performs the pre-validate cancellation and post-validate schema-error
+   * commit that `commit: true` switches on. Composing the blank class into the
+   * refinement is the caller's job.
    *
-   * The discriminated `ok` branch preserves the exact behavior on
-   * adapter throw: the adapter-throw response is returned verbatim,
-   * never folding `derivedBlankErrors` into it, so the helper returns
-   * the raw `adapterThrowResponse` for the failure leg.
+   * The discriminated `ok` branch matters: an adapter-throw response is
+   * returned verbatim, never folding `derivedBlankErrors` into it.
    */
   type ImperativeValidationOptions = {
     cancelInFlight: boolean
@@ -231,18 +216,16 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
     const dataAtPath = segments === undefined ? state.form.value : state.getValueAtPath(segments)
     return await withActiveValidation(async () => {
       try {
-        // Abort any in-flight per-field validation runs so their late
-        // writes can't clobber the authoritative imperative result.
-        // Mirrors handleSubmit's pre-validate cancellation.
+        // Abort in-flight per-field runs so a late write cannot clobber the
+        // authoritative imperative result, as `handleSubmit` does.
         if (config.cancelInFlight) state.cancelFieldValidation()
         const refinement = await runRefinementValidation(dataAtPath, segments)
-        // Commit the refinement to schemaErrors at the validated scope.
-        // The adapter emits issue paths relative to the sub-schema it
-        // parsed (`[]` for a leaf; whole-form pass emits absolute paths
-        // already), so re-stamp with `segments` to land at canonical
-        // store keys. `applySchemaErrorsForSubtree` replaces every key
-        // under the scope so stale entries drop and current ones
-        // survive in their original insertion slots.
+        // Commit the refinement to the schema side at the validated scope. The
+        // adapter emits issue paths relative to the sub-schema it parsed, `[]`
+        // for a leaf, while a whole-form pass is already absolute, so re-stamp
+        // with `segments` to land at canonical store keys.
+        // `applySchemaErrorsForSubtree` replaces every key under the scope, so
+        // stale entries drop and current ones keep their insertion slots.
         if (config.commitToSchemaErrors) {
           const scopePath: Path = segments ?? []
           const errors = refinement.success ? [] : refinement.errors
@@ -263,13 +246,12 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * The one `activeValidations` shell. Increments inside the guarded
-   * region (a sync watcher on `meta.validating` that throws on the
-   * increment still hits the finally), runs `fn`, and decrements with
-   * the Math.max clamp on every exit path. Every validation surface —
-   * the reactive `validate()` kickoff, the imperative paths, and
-   * handleSubmit's pre-dispatch pass — rides this, so the counter can
-   * never leak or steal a concurrent run's count.
+   * The one `activeValidations` shell. It increments inside the guarded region,
+   * so a sync watcher on `meta.validating` that throws on the increment still
+   * hits the finally, runs `fn`, and decrements with the clamp on every exit
+   * path. Every validation surface rides it, the reactive `validate()` kickoff,
+   * the imperative paths and `handleSubmit`'s pre-dispatch pass, so the counter
+   * can neither leak nor steal a concurrent run's count.
    */
   async function withActiveValidation<T>(fn: () => Promise<T>): Promise<T> {
     try {
@@ -281,39 +263,34 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Imperative one-shot parse. Doesn't subscribe to form reactivity;
-   * each call runs the full pipeline once against the current form
-   * snapshot — refinements, `.transform()`s, blank-required
-   * composition — and RETAINS the parsed data. Returns what
-   * `form.values` WOULD be if every refinement passed and every
-   * transform fired: storage holds the pre-transform "honest input
-   * view" (Attaform runs preprocess at write time, never
-   * `.transform()`), and `parse` is the on-demand read of the
-   * post-transform output. handleSubmit's callback receives this same
-   * shape.
+   * Imperative one-shot parse. It subscribes to no form reactivity; each call
+   * runs the full pipeline once against the current snapshot, refinements,
+   * `.transform()`s and blank-required composition alike, and RETAINS the
+   * parsed data. What comes back is what `form.values` would be if every
+   * refinement passed and every transform fired: storage holds the
+   * pre-transform input view, Attaform running preprocess at write time and
+   * never `.transform()`, and `parse` is the on-demand read of the
+   * post-transform output. `handleSubmit`'s callback receives the same shape.
    *
-   * `commit: false` is a PURE read: no store write, no effect on
-   * in-flight field validation — "what would the parsed form look
-   * like right now", independent of the live `form.errors` surface.
+   * `commit: false` is a PURE read: no store write, no effect on in-flight
+   * field validation, just "what would the parsed form look like right now",
+   * independent of the live `form.errors` surface.
    *
-   * `commit: true` makes the run authoritative: cancels any in-flight
-   * per-field validation (mirroring `handleSubmit`) so a late SFV
-   * resolution can't clobber the result, and writes the refinement
-   * verdict back to `schemaErrors` at the validated scope — `await
-   * parse(path, { commit: true })` lands a deterministic view of
-   * `form.errors.<path>` regardless of the background SFV race.
+   * `commit: true` makes the run authoritative. It cancels in-flight per-field
+   * validation, as `handleSubmit` does, so a late resolution cannot clobber the
+   * result, and writes the refinement verdict back to the schema side at the
+   * validated scope, so `await parse(path, { commit: true })` lands a
+   * deterministic view of `form.errors.<path>` regardless of the background
+   * race.
    *
-   * Always async, and there is no synchronous variant by design. A
-   * schema can carry async refinements (`.refine(async ...)`) or async
-   * transforms, so a sync parse would silently miss them the moment
-   * one is added — a latent correctness bug. One always-awaited `parse`
-   * closes that category entirely. `parse('email', ...)` scopes the
-   * run to that path only.
+   * Always async, with no synchronous variant by design. A schema can carry
+   * async refinements or async transforms, so a sync parse would silently miss
+   * them the moment one was added. One always-awaited `parse` closes that
+   * category. `parse('email', ...)` scopes the run to that path.
    *
-   * Never rejects on adapter misbehavior: a throwing adapter (or any
-   * pipeline failure) lands in the response as a `success: false,
-   * errors: [{ code: AdapterThrew }]` shape so the library stays
-   * robust against a bad adapter.
+   * Never rejects on adapter misbehaviour: a throwing adapter, or any pipeline
+   * failure, lands in the response as `success: false` with an `AdapterThrew`
+   * error.
    */
   async function parse(
     pathInput: string | Path | undefined,
@@ -328,13 +305,10 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Build an adapter-threw failure response. Shared between `parse`
-   * and the reactive `validate()`'s kickoff so every validation
-   * surface presents the same
-   * shape on adapter misbehavior: `{ success: false, errors: [{ code
-   * AdapterThrew, message: adapterThrowMessage(err), path: [] }],
-   * formKey }`. The `data` field is `undefined` so the
-   * ValidationResponse union resolves to ErrorWithoutData.
+   * Build an adapter-threw failure response, shared by `parse` and the reactive
+   * `validate()`'s kickoff so every validation surface presents one shape on
+   * adapter misbehaviour. `data` is `undefined`, so the `ValidationResponse`
+   * union resolves to its no-data arm.
    */
   function adapterThrowResponse(err: unknown): ValidationResponse<Out> {
     return {
@@ -352,13 +326,11 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * Refinement-only adapter pass-through. Returns the schema's
-   * refinement-class result without touching the blank-required class
-   * — that lives reactively on `state.derivedBlankErrors`. Callers
-   * compose the consumer-facing response via `composeWithDerivedBlank`
-   * so `setAllSchemaErrors` only ever sees refinement errors and the
-   * blank class never gets double-counted (once in `schemaErrors`, once
-   * in `derivedBlankErrors`).
+   * Refinement-only adapter pass-through. Returns the schema's refinement-class
+   * result and leaves the blank-required class alone, that living reactively on
+   * `state.derivedBlankErrors`. Callers compose the consumer-facing response
+   * through `composeWithDerivedBlank`, so the schema-side writer only ever sees
+   * refinement errors and the blank class is never counted twice.
    */
   async function runRefinementValidation(
     data: unknown,
@@ -369,9 +341,8 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
 
   /**
    * Fold the reactively-derived blank-required errors into a refinement
-   * response. The derived class always reflects current state, so this
-   * snapshot at call time matches what `form.errors` shows in the same
-   * tick.
+   * response. The derived class always reflects current state, so a snapshot at
+   * call time matches what `form.errors` shows in the same tick.
    */
   function composeWithDerivedBlank(
     refinement: ValidationResponse<Out>,
@@ -391,42 +362,37 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
   }
 
   /**
-   * handleSubmit(onSubmit, onError?) builds a submit handler. The two
-   * callbacks dispatch on Attaform's validation verdict: when pre-dispatch
-   * validation fails, populate the schema-error store and call `onError`
-   * (never `onSubmit`); when it passes, call `onSubmit` with the parsed
-   * data. `onError` fires iff validation rejected the submit — a throw, a
-   * `setErrors`, or a clean return out of `onSubmit` is the dev's own
-   * outcome and never routes back through `onError`.
+   * `handleSubmit(onSubmit, onError?)` builds a submit handler. The two
+   * callbacks dispatch on Attaform's validation verdict: a failed pre-dispatch
+   * validation populates the schema-error store and calls `onError`, never
+   * `onSubmit`, and a passing one calls `onSubmit` with the parsed data. So
+   * `onError` fires iff validation rejected the submit; a throw, a `setErrors`
+   * or a clean return out of `onSubmit` is the consumer's own outcome and never
+   * routes back through it.
    *
-   * If the user's onError throws/rejects, the thrown value is wrapped in
-   * SubmitErrorHandlerError so inspection can tell "my error handler
-   * crashed" apart from "my submit body failed". Both converge on
-   * `submitError` (see below); neither re-throws out of the handler.
+   * A throwing or rejecting `onError` has its value wrapped in
+   * `SubmitErrorHandlerError`, so inspection can tell a crashed error handler
+   * from a failed submit body. Both converge on `submitError`, and neither
+   * re-throws out of the handler.
    *
-   * Drives the submission-lifecycle refs on FormStore:
-   *   - `submitting` flips true at entry, false in `finally`.
-   *   - `submissionAttempts` increments once per call, regardless of outcome —
-   *     "how many times did the user click submit" is the consumer-facing
-   *     question, independent of whether anything awaited.
-   *   - `submitError` clears at entry and captures anything thrown from
-   *     the user callback (or the wrapped error-handler error), coerced to
-   *     a real `Error` via `toError`. A throw out of `onSubmit` is ALSO
-   *     piped into the user-error layer under `atta:submit-error`, so it
-   *     surfaces on `form.errors` / `meta.ownErrors` / `firstOwnError`
-   *     (path-scoped when the throw was well-constructed, form-level `[]`
-   *     otherwise); a wrapped `SubmitErrorHandlerError` is the exception
-   *     and stays `submitError`-only. The handler does NOT re-throw: a
-   *     rejecting `onSubmit` bound to `@submit` would otherwise
-   *     surface as a `window` unhandledrejection (a phantom crash for an
-   *     already-handled server failure). Both template and imperative
-   *     callers read the outcome from `submitError` / `submitted`; the
-   *     returned promise always resolves.
+   * It drives the submission-lifecycle refs on the store:
+   *   - `submitting` flips true at entry and false in `finally`.
+   *   - `submissionAttempts` increments once per call whatever the outcome,
+   *     because "how many times did the user click submit" is the
+   *     consumer-facing question.
+   *   - `submitError` clears at entry and captures anything thrown from the
+   *     consumer callback, or the wrapped error-handler error, coerced to a
+   *     real `Error`. A throw out of `onSubmit` ALSO pipes into the user-error
+   *     layer under `atta:submit-error`, so it surfaces on `form.errors`,
+   *     `meta.ownErrors` and `firstOwnError`, path-scoped when the throw was
+   *     well-constructed and form-level otherwise. A wrapped
+   *     `SubmitErrorHandlerError` is the exception and stays `submitError`-only.
    *
-   * Phase 5.6: the pre-dispatch validation is now async, so the handler
-   * awaits `runValidation` before branching on success/failure. The
-   * `validating` ref (backed by `state.activeValidations`) is true
-   * for the validation window.
+   * The handler does NOT re-throw. A rejecting `onSubmit` bound to `@submit`
+   * would surface as a `window` unhandledrejection, a phantom crash for an
+   * already-handled server failure. Template and imperative callers both read
+   * the outcome from `submitError` and `submitted`, and the returned promise
+   * always resolves.
    */
   const handleSubmit: HandleSubmit<Out> = (onSubmit: OnSubmit<Out>, onError?: OnError) => {
     const submitHandler: SubmitHandler = async (event?: Event): Promise<void> => {
@@ -437,19 +403,18 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
       ) {
         event.preventDefault()
       }
-      // Re-entry guard: a submission is already in flight. The classic
-      // double-click case — `submit()` fires while a prior call is still
-      // awaiting validation or the consumer's onSuccess — would otherwise
-      // drive `onSuccess` twice and duplicate side-effects (POSTs, etc).
-      // `preventDefault` already ran above, so a duplicate browser submit
-      // is suppressed even when this branch returns early.
+      // Re-entry guard: a submission is already in flight. The double-click
+      // case, `submit()` firing while a prior call still awaits validation or
+      // the consumer's callback, would otherwise run the callback twice and
+      // duplicate its side effects. `preventDefault` already ran above, so a
+      // duplicate browser submit is suppressed even on this early return.
       //
-      // The swallow is deliberate, and silent for a DOM-driven double
-      // submit: a second click is user input the guard exists to absorb,
-      // and there is nothing for the consumer to fix. A call carrying NO
-      // event is code, though, and code that silently does nothing is the
-      // worst shape to debug: no callback, no `submitting` flip, no error,
-      // no `firstOwnError`. Name it in dev so the loss is visible.
+      // The swallow is deliberate and silent for a DOM-driven double submit: a
+      // second click is user input the guard exists to absorb, and there is
+      // nothing for the consumer to fix. A call carrying NO event is code,
+      // though, and code that silently does nothing is the worst shape to
+      // debug: no callback, no `submitting` flip, no error, no
+      // `firstOwnError`. Name it in dev so the loss is visible.
       if (state.activeSubmissions.value > 0) {
         if (__DEV__ && event === undefined) {
           console.warn(
@@ -461,81 +426,75 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         }
         return
       }
-      // Track in-flight via a counter (not a flag) so that a generation
-      // bump during the run can still distinguish "I'm the live submission"
-      // from "a stale prior submission winding down" via the early
-      // generation snapshot. submitError is shared with the prior call's
-      // capture only when a `reset()` hasn't fired between entry and
-      // throw (see the catch block).
+      // A counter rather than a flag, so a generation bump during the run can
+      // still tell the live submission from a stale prior one winding down,
+      // through the generation snapshot taken at entry. `submitError` is shared
+      // with the prior call's capture only when no `reset()` fired between
+      // entry and throw; see the catch.
       const genAtEntry = state.submissionGeneration.value
       try {
-        // All lifecycle setup happens inside the try so a throw from
-        // any of the setters (e.g. a sync `watch` on `meta.submitting`
-        // that rejects, or a defensive throw from
-        // `cancelFieldValidation`) still lands in the finally block.
-        // Without this, an early-setup throw would leak
-        // `activeSubmissions` at 1 forever and silently block every
-        // subsequent submit. Math.max in the finally already clamps
-        // partial-increment underflow at zero.
+        // Every lifecycle setter sits inside the try, so a throw from one, a
+        // sync `watch` on `meta.submitting` or a defensive throw out of
+        // `cancelFieldValidation`, still lands in the finally. Outside it, an
+        // early-setup throw leaks `activeSubmissions` at 1 forever and silently
+        // blocks every later submit. The finally's clamp already handles
+        // partial-increment underflow.
         state.activeSubmissions.value += 1
         state.submitting.value = true
         state.submitError.value = null
-        // Clear user-set errors (set via `setErrors`) so a
-        // fresh attempt starts from a clean user-error slate. Done at
-        // ENTRY (before validation, before the callback): the consumer's
-        // callback is where the NEW errors are set, so clearing on the way
-        // out would wipe what was just set; and a client-validation
-        // failure never reaches the callback, so only an entry-clear drops
-        // a prior server error in that case too. Schema errors are
-        // recomputed by the validation pass below; this is the user store's
-        // equivalent reset. Unconditional and total (form + field) — the
-        // dominant `setErrors` use is the server's verdict on the
-        // prior attempt, which a new attempt supersedes.
+        // Clear user-set errors, so a fresh attempt starts from a clean slate.
+        // At ENTRY, before validation and before the callback: the callback is
+        // where the NEW errors are set, so clearing on the way out would wipe
+        // what was just set, and a client-validation failure never reaches the
+        // callback, so only an entry-clear drops a prior server error there
+        // too. The validation pass below recomputes the schema side; this is
+        // the user store's equivalent. Unconditional and total, form and field,
+        // because the dominant use of `setErrors` is the server's verdict on
+        // the prior attempt, which a new attempt supersedes.
         state.clearUserErrors()
         // Drain in-flight async register transforms before validating, so a
         // submit fired the instant after a keystroke parses the field's
-        // resolved value rather than its stale pre-transform one. This sits
-        // BEFORE `cancelFieldValidation()` deliberately: a transform that
-        // commits during the drain runs `onFormChange` and can schedule a
-        // fresh field validation, and draining first lets the cancel below
-        // sweep those up so no stray run races this submit's authoritative
-        // whole-form pass. The `while` re-checks because a transform can start
-        // during the await (re-entrancy-safe). `settleTransforms` resolves and
-        // never rejects, so a failed transform does not throw the submit — it
-        // proceeds against committed storage (a failed field keeps its prior
-        // value plus `transformError`, which the validation pass may flag).
-        // `meta.submitting` is already `true` here, so the button stays
-        // disabled across the drain; the await is the correctness net for the
-        // case where it is not.
+        // resolved value rather than its stale pre-transform one.
+        //
+        // Deliberately BEFORE `cancelFieldValidation()`: a transform committing
+        // during the drain runs `onFormChange` and can schedule a fresh field
+        // validation, and draining first lets the cancel below sweep those up,
+        // so no stray run races this submit's authoritative whole-form pass.
+        // The `while` re-checks because a transform can start during the await.
+        // `settleTransforms` resolves and never rejects, so a failed transform
+        // does not throw the submit: it proceeds against committed storage,
+        // where a failed field keeps its prior value plus `transformError` for
+        // the validation pass to flag. `meta.submitting` is already true, so
+        // the button stays disabled across the drain, and the await is the
+        // correctness net for where it is not.
         while (state.activeTransforms.value > 0) await state.settleTransforms()
-        // Abort any in-flight per-field validation runs so their late
-        // writes can't clobber the authoritative submit result. Also
-        // clears debounce timers that never fired.
+        // Abort in-flight per-field runs so a late write cannot clobber the
+        // authoritative submit result, and clear the debounce timers that never
+        // fired.
         state.cancelFieldValidation()
-        // Drop the anti-flash display state too. An explicit submit is a
-        // "show me the verdict now" signal, so a leftover show-delay hold
-        // or a min-visible spinner timer from pre-submit typing must not
-        // outlive the submit and delay the reveal. `cancelFieldValidation`
-        // already cleared `fieldValidatingSince`, so the next read recomputes
-        // the settled verdict against the post-submit gate immediately.
+        // Drop the anti-flash display state too. An explicit submit says "show
+        // me the verdict now", so a leftover show-delay hold or a min-visible
+        // spinner timer from pre-submit typing must not outlive it and delay
+        // the reveal. `cancelFieldValidation` already cleared the streak
+        // anchors, so the next read recomputes the settled verdict against the
+        // post-submit gate immediately.
         state.displayEngine.clear()
         const refinement = await withActiveValidation(() =>
           runRefinementValidation(state.form.value, undefined)
         )
         const merged = composeWithDerivedBlank(refinement, undefined)
-        // Generation guard: if `reset()` fired while we were awaiting
-        // validation, the consumer just zeroed the submission surface
-        // — the validation result is for state that's been replaced.
-        // Skip the schema-error write so reset's empty store stays
-        // empty; still run the user's onError so they get the result
-        // (it's their data, not ours, to discard).
+        // Generation guard: a `reset()` during the await zeroed the submission
+        // surface, so this verdict is about state that has been replaced. Skip
+        // the schema-error write and leave reset's empty store empty, but still
+        // run the consumer's `onError`, since the result is theirs to
+        // discard.
         const generationStillValid = state.submissionGeneration.value === genAtEntry
         if (!merged.success) {
-          // Source-segregated writer: only refinement-class errors land
-          // in `schemaErrors`. The blank-required class is already in
-          // `derivedBlankErrors` (reactively derived from `blankPaths`),
-          // so writing it here would double-count. User-injected errors
-          // live in their own store and are NOT clobbered by validation.
+          // Source-segregated writer: only refinement-class errors land on the
+          // schema side. The blank-required class is already derived from
+          // `blankPaths`, so writing it here would double-count, and
+          // user-injected errors live in their own store, untouched by
+          // validation.
           if (generationStillValid) {
             if (refinement.success) {
               state.clearSchemaErrors()
@@ -543,11 +502,11 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
               state.setAllSchemaErrors(refinement.errors)
             }
           }
-          // Run the invalid-submit nudge AFTER populating the error store
-          // (so getFirstErrorElement walks the fresh entries) and BEFORE
-          // the user's onError callback (so consumer logic can override
-          // by calling .focus on something else). Skip it too on a stale
-          // generation — the post-reset form has no errors to focus.
+          // Run the invalid-submit nudge AFTER populating the error store, so
+          // the first-error walk sees the fresh entries, and BEFORE the
+          // consumer's `onError`, so their logic can override it by focusing
+          // something else. Skipped on a stale generation, the post-reset form
+          // having no errors to focus.
           if (generationStillValid) {
             applyInvalidSubmit?.()
           }
@@ -560,98 +519,90 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
           }
           return
         }
-        // Schema-only clear: a successful submit means refinement
-        // validation passed AND no required-blank errors exist, so the
-        // schema-error store goes empty. User-injected errors persist —
-        // consumers managing their own warning/info state via
-        // setErrors keep ownership of that lifecycle. Skip the
-        // clear when reset already cleared (and bumped gen) — any
-        // errors injected by post-reset user mutations would be wrongly
-        // wiped otherwise.
+        // Schema-only clear. A successful submit means refinement validation
+        // passed AND no required-blank errors exist, so the schema side empties
+        // while user-injected errors persist: a consumer managing warning or
+        // info state through `setErrors` keeps that lifecycle. Skipped when a
+        // reset already cleared and bumped the generation, or an error injected
+        // by a post-reset mutation would be wiped.
         if (generationStillValid) {
           state.clearSchemaErrors()
         }
         await onSubmit(merged.data)
-        // A callback that left errors in the user-error layer did not
-        // succeed (the documented `setErrors(...); return` server-rejection
-        // path — the entry-clear at submit start means any user error
-        // present now was set by this callback). Focus the first error
-        // (generation-gated, like the validation-failure branch) and leave
-        // `submitted` false.
+        // A callback that left errors in the user layer did not succeed. This
+        // is the documented `setErrors(...); return` server-rejection path, and
+        // the entry-clear at submit start means any user error present now was
+        // set by this callback. Focus the first error, generation-gated like
+        // the validation-failure branch, and leave `submitted` false.
         //
-        // `onError` is deliberately NOT called here. The two `handleSubmit`
-        // callbacks are a dispatch on Attaform's *validation* verdict:
-        // `onError` fires iff pre-dispatch validation rejected the submit
-        // (so `onSubmit` never ran). Once `onSubmit` has run, Attaform
-        // already ruled the submit valid; the dev's own `setErrors` is a
-        // state write, not a re-verdict, so it must not route back through
-        // the `onError` arm.
+        // `onError` is deliberately NOT called. The two callbacks dispatch on
+        // Attaform's VALIDATION verdict, and `onError` fires iff pre-dispatch
+        // validation rejected the submit, meaning `onSubmit` never ran. Once
+        // `onSubmit` has run, Attaform has already ruled the submit valid, and
+        // the consumer's own `setErrors` is a state write rather than a
+        // re-verdict.
         if (hasUserErrorEntries(state)) {
           if (state.submissionGeneration.value === genAtEntry) {
             applyInvalidSubmit?.()
           }
           return
         }
-        // Flip `submitted` true once the user callback resolved without
-        // throwing AND left no errors behind — independent of
-        // `submissionAttempts`. Generation guard: a `reset()` that fired during
-        // the await already zeroed the submission surface; honor the consumer's
-        // intent by leaving `submitted` at the post-reset `false`.
+        // Flip `submitted` true once the consumer callback resolved without
+        // throwing AND left no errors behind, independent of
+        // `submissionAttempts`. Generation-guarded: a `reset()` during the
+        // await already zeroed the submission surface, so honour that intent
+        // and leave `submitted` at its post-reset `false`.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitted.value = true
         }
-        // Notify subscribers (the wizard's step-advance handler, the
-        // devtools timeline). Fires only when the user callback resolved —
-        // validation-failure and callback-throw skip it.
+        // Notify subscribers: the wizard's step-advance handler, the devtools
+        // timeline. Fires only when the consumer callback resolved, so a
+        // validation failure or a callback throw skips it.
         state.emitSubmitSuccess()
       } catch (err) {
-        // Only publish the error if `reset()` hasn't fired since this
-        // submission began. Otherwise the consumer just zeroed the
-        // submission surface and we'd undo their intent by re-raising
-        // into `submitError`. Coerce to a real `Error` so the slot is
-        // `Error | null`, never `unknown` (a non-Error throw keeps its
-        // origin on `.cause`).
+        // Publish the error only when no `reset()` fired since this submission
+        // began; otherwise the consumer zeroed the submission surface and
+        // re-raising into `submitError` would undo their intent. Coerced to a
+        // real `Error`, so the slot is `Error | null` and never `unknown`, with
+        // a non-Error throw keeping its origin on `.cause`.
         //
-        // Deliberately NOT re-thrown: the handler is bound to DOM events
-        // (`@submit` / `@click`), so a rejected promise here would
-        // surface as a `window` unhandledrejection — a phantom crash for
-        // what is usually an already-handled server failure. The error is
-        // recorded on `submitError` for both template and imperative
-        // callers; the `finally` still resets `submitting`, so a rejected
-        // submit never strands the button.
+        // Deliberately NOT re-thrown. The handler is bound to DOM events, so a
+        // rejected promise here surfaces as a `window` unhandledrejection, a
+        // phantom crash for what is usually an already-handled server failure.
+        // The error is recorded on `submitError` for template and imperative
+        // callers alike, and the `finally` still resets `submitting`, so a
+        // rejected submit never strands the button.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitError.value = toError(err)
           // `submitError` alone is a raw-`Error` inspection channel most
-          // templates never render, so a thrown submit would otherwise be
-          // invisible in the UI. Pipe the throw into the user-error layer
-          // too (the same normalizer `setErrors` uses) so it surfaces on
-          // `form.errors` / `meta.ownErrors` / `firstOwnError` where the
-          // form already reads: path-scoped when the dev threw a
-          // well-constructed `{ path, message }`, form-level (`[]`)
-          // otherwise. `submitError` keeps the raw Error; this is the
-          // rendered projection of the same failure, not a duplicate.
+          // templates never render, so a thrown submit would be invisible in
+          // the UI. Pipe the throw into the user-error layer too, through the
+          // normalizer `setErrors` uses, so it surfaces on `form.errors`,
+          // `meta.ownErrors` and `firstOwnError` where the form already reads:
+          // path-scoped for a well-constructed `{ path, message }` and
+          // form-level otherwise. `submitError` keeps the raw Error; this is
+          // the same failure rendered, not a duplicate.
           //
-          // Excludes `SubmitErrorHandlerError`: that wraps a crash in the
-          // dev's *validation* `onError` handler, not a failed submit, so
-          // it stays a pure `submitError` diagnostic and is never shown as
-          // a form error.
+          // `SubmitErrorHandlerError` is excluded: it wraps a crash in the
+          // consumer's VALIDATION `onError` handler rather than a failed
+          // submit, so it stays a pure `submitError` diagnostic.
           if (!(err instanceof SubmitErrorHandlerError)) {
             const { entries, messageless } = deriveSubmitErrors(err)
-            // Group by path so a thrown array spanning several fields writes
-            // one bucket per path. Per-path writes MERGE: a bucket the
-            // callback set at another path via `setErrors` before it threw
-            // survives, while a bucket at a colliding path is replaced (the
-            // throw is the newer verdict). Keys come fresh out of the
-            // grouper, so the segment lookup always hits; the null guard
-            // keeps a corrupt key from throwing into the consumer app.
+            // Group by path, so a thrown array spanning several fields writes
+            // one bucket per path. Per-path writes MERGE: a bucket the callback
+            // set elsewhere through `setErrors` before it threw survives, and a
+            // bucket at a colliding path is replaced, the throw being the newer
+            // verdict. Keys come fresh out of the grouper, so the segment
+            // lookup always hits, and the null guard keeps a corrupt key from
+            // throwing into the consumer app.
             for (const [key, bucket] of groupErrorsByKey(entries)) {
               const segments = segmentsForPathKey(key)
               if (segments === null) continue
               state.setUserErrorsForPath([...segments], bucket)
             }
-            // Focus the first error, mirroring the validation-failure and
-            // leftover-errors branches. A form-level `[]` error owns no
-            // element, so this is a no-op in that case.
+            // Focus the first error, as the validation-failure and
+            // leftover-errors branches do. A form-level error owns no element,
+            // so it is a no-op there.
             applyInvalidSubmit?.()
             if (__DEV__ && messageless) {
               console.warn(
@@ -664,13 +615,12 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
         }
       } finally {
         state.activeSubmissions.value = Math.max(0, state.activeSubmissions.value - 1)
-        // `activeSubmissions` always decrements (the submission is done),
-        // but the *visible* lifecycle counters — `submitting` and
-        // `submissionAttempts` — only update when the submission's generation
-        // still matches. A post-reset completion is a no-op from the
-        // consumer's point of view: reset already flipped `submitting`
-        // to false and zeroed `submissionAttempts`, and the finished submission
-        // belongs to the prior generation.
+        // `activeSubmissions` always decrements, the submission being done,
+        // but the VISIBLE counters, `submitting` and `submissionAttempts`,
+        // update only while the generation still matches. A post-reset
+        // completion is a no-op to the consumer: reset already flipped
+        // `submitting` false and zeroed the attempts, and the finished
+        // submission belongs to the prior generation.
         if (state.submissionGeneration.value === genAtEntry) {
           state.submitting.value = state.activeSubmissions.value > 0
           state.submissionAttempts.value += 1
@@ -686,16 +636,15 @@ export function buildProcessForm<F extends GenericForm, Out extends GenericForm 
 /**
  * Name the form a schema verdict belongs to.
  *
- * An `AbstractSchema` answers for the SCHEMA: one instance is shared by
- * every form built on the same schema, so it cannot know which of them
- * asked and returns a verdict with no form key on it. The owning store
- * is where that identity lives, so the store is what stamps it.
+ * An `AbstractSchema` answers for the SCHEMA, one instance being shared by
+ * every form built on it, so it cannot know which asked and returns a verdict
+ * with no form key. The owning store holds that identity and stamps it here.
  */
 function stampFormKey<T>(verdict: SchemaParseResult<T>, formKey: FormKey): ValidationResponse<T> {
   if (verdict.success) return { ...verdict, formKey }
-  // Split on `data` as well as `success`: "failed with no data" and
-  // "failed with partial data" are separate arms of the public response,
-  // and a spread alone would not tell them apart.
+  // Split on `data` as well as `success`: "failed with no data" and "failed
+  // with partial data" are separate arms of the public response, and a spread
+  // alone cannot tell them apart.
   return verdict.data === undefined
     ? { data: undefined, errors: verdict.errors, success: false, formKey }
     : { data: verdict.data, errors: verdict.errors, success: false, formKey }
@@ -719,14 +668,6 @@ function adapterThrowMessage(err: unknown): string {
   return 'Adapter validateAtPath threw a non-Error value'
 }
 
-/**
- * Read the reactively-derived blank-required errors out of the store,
- * filtered to paths inside `scope` (or all paths when `scope` is
- * `undefined`). The errors themselves are computed on the FormStore via
- * `derivedBlankErrors` — this helper just snapshots a scoped slice for
- * the validation/submit response. Mutating the returned array is safe;
- * the store's computed builds a fresh map per recompute.
- */
 /** `true` when any cell in the tagged store holds consumer-set (user-side) entries. */
 function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericForm>): boolean {
   for (const cell of state.errorCells.values()) {
@@ -735,6 +676,13 @@ function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericF
   return false
 }
 
+/**
+ * Snapshot the reactively-derived blank-required errors, filtered to paths
+ * inside `scope`, or all of them when `scope` is `undefined`. The errors
+ * themselves are computed on the store; this takes a scoped slice for the
+ * validation or submit response. Mutating the returned array is safe, the
+ * store's computed building a fresh map per recompute.
+ */
 function collectScopedBlankErrors<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   scope: Path | undefined
@@ -744,11 +692,10 @@ function collectScopedBlankErrors<F extends GenericForm>(
   const errors: ValidationError[] = []
   for (const [pathKey, entries] of derived) {
     if (scope !== undefined) {
-      // Cache hit on canonical PathKeys; cold (corrupt) keys return
-      // null and we skip. Don't round-trip through
-      // `canonicalizePath(pathKey)` — that would treat the JSON-encoded
-      // string as a NEW dotted path and produce a single segment
-      // containing the literal JSON.
+      // A canonical PathKey hits the cache; a corrupt one returns null and is
+      // skipped. Do NOT round-trip through `canonicalizePath(pathKey)`, which
+      // reads the JSON-encoded string as a new dotted path and produces one
+      // segment holding the literal JSON.
       const segments = segmentsForPathKey(pathKey)
       if (segments === null) continue
       if (!isPathPrefix(scope, segments)) continue

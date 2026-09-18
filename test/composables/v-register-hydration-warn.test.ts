@@ -21,7 +21,7 @@
 // The async-setup ancestor under <Suspense> is what forces the
 // async-hydration path (registerDep + hydrateSuspense), reproducing
 // Nuxt's lazy page/layout hydration. A plain sync mount will NOT
-// reproduce it — the existing fresh-mount coverage in
+// reproduce it: the existing fresh-mount coverage in
 // v-register-component-runtime.test.ts (pattern 2) stays green either
 // way.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -46,7 +46,7 @@ const schema = z.object({ email: z.string() })
 
 // Correctly-implemented field wrapper: <div> root, useRegister(), and
 // the captured register re-bound onto an inner native <input>. Exactly
-// what the warning prescribes — so it must NOT warn.
+// what the warning prescribes: so it must NOT warn.
 const Field = defineComponent({
   name: 'Field',
   inheritAttrs: false,
@@ -60,7 +60,7 @@ const Field = defineComponent({
 })
 
 // A genuinely unsupported wrapper: a <div> root with NO useRegister and
-// no custom assigner. This is the case the warn EXISTS for — the fix
+// no custom assigner. This is the case the warn EXISTS for: the fix
 // must keep warning here, including under hydration, or it would have
 // blanket-suppressed a real diagnostic instead of fixing the race.
 const BareDiv = defineComponent({
@@ -132,7 +132,7 @@ async function hydrate(AppComponent: Component): Promise<App> {
   return app
 }
 
-describe('v-register no-op warn — SSR async hydration (marker-timing race)', () => {
+describe('v-register no-op warn: SSR async hydration (marker-timing race)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
   let warnings: string[]
   let app: App | undefined

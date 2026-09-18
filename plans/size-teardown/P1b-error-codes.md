@@ -11,9 +11,9 @@ ordering note, re-anchor ruling item 2).
 
 1. Extract the ACTUAL >=32-byte string literals surviving in the
    ratchet's eager output (`scripts/check-eager-size.mjs` bundles with
-   the prod define — dump its minified text and catalogue the strings;
+   the prod define, dump its minified text and catalogue the strings;
    the dev-flavor prose P1a already strips does NOT count). The stub's
-   ~2.25 kB catalogue is from the audit tree — re-derive it on
+   ~2.25 kB catalogue is from the audit tree, re-derive it on
    today's; P5-P8 deleted several of the cited sites (e.g.
    introspect's kind switch) and P7 added none.
 2. Sort by site class: intentional throws (assertZodVersion,
@@ -28,7 +28,7 @@ ordering note, re-anchor ruling item 2).
 1. Assign AF## codes to the catalogued sites. Error CLASSES and
    `atta:` public codes are API; message TEXT is documented non-API.
 2. Prod message shape: `[attaform] AF## attaform.dev/e/AF##`; the dev
-   flavor keeps full prose (the dual dist routes it — no runtime
+   flavor keeps full prose (the dual dist routes it, no runtime
    branch, the flavor split IS the mechanism).
 3. Gate genuinely unguarded warn sites (the P1a conversion worklist:
    dist-flavor invariants + dist-flavors.test.ts list).

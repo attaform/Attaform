@@ -25,6 +25,7 @@ import {
   useRegistry,
 } from '../core/registry'
 import { resolveTrichotomy } from '../core/resolve-default-values'
+import { callConsumerFn, reportConsumerThrow } from '../core/consumer-code'
 import { isLazyMarker } from '../core/wizard-lazy'
 import { isGateMarker } from '../core/wizard-gate'
 import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
@@ -312,13 +313,29 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     },
   }
 
-  /** The memo computed for a `lazy()` marker, keyed by marker identity. */
-  function lazyComputedFor(marker: LazyMarker): ComputedRef<SlotResolution> {
+  /**
+   * The memo computed for a `lazy()` marker, keyed by marker identity.
+   *
+   * `index` is only ever used to name the slot in a contained-throw report.
+   * A marker reused at two positions resolves through one cache, so the
+   * first index it was seen at is the one reported, which is the same
+   * first-occurrence-wins rule the compiled list applies to duplicate keys.
+   *
+   * The guard sits INSIDE the getter rather than around the `.value` read
+   * in `normalizeSlot`, so Vue never sees a computed that throws and the
+   * memo caches the dropped result like any other.
+   */
+  function lazyComputedFor(marker: LazyMarker, index: number): ComputedRef<SlotResolution> {
     const cached = lazyComputeds.get(marker)
     if (cached !== undefined) return cached
     const c = computed<SlotResolution>(() => {
       void lazyEpoch.value
-      return marker.resolve(slotCtx)
+      return callConsumerFn(
+        () => marker.resolve(slotCtx),
+        undefined,
+        'wizard-lazy-slot',
+        `steps[${index}]`
+      )
     })
     lazyComputeds.set(marker, c)
     return c
@@ -333,6 +350,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
    * wrapped it anywhere on the way down, or `undefined` to drop the slot
    * from the compiled list.
    *
+   * `index` is the slot's position in the consumer's `steps` array, carried
+   * down every unwrap so a diagnostic can name the slot the consumer wrote
+   * rather than the level it broke at.
+   *
    * Each level unwraps one layer and recurses: a `gate()` records itself
    * and descends into its inner slot, a `lazy()` reads its memo, a
    * function slot is called, a string desugars to its noop, and a form
@@ -345,12 +366,13 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     slot: unknown,
     ctx: WizardCtx,
     gated: boolean,
-    depth: number
+    depth: number,
+    index: number
   ): { form: AnyForm; gated: boolean } | undefined {
     if (depth > MAX_SLOT_DEPTH) {
       if (__DEV__) {
         console.warn(
-          `[attaform] useWizard: a step slot nested past ${MAX_SLOT_DEPTH} levels (gate / lazy / function); dropping it. Check for a resolver that returns itself.`
+          `[attaform] useWizard: steps[${index}] nested past ${MAX_SLOT_DEPTH} levels (gate / lazy / function); dropping it. Check for a resolver that returns itself.`
         )
       }
       return undefined
@@ -363,14 +385,24 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     if (typeof slot === 'string') return { form: getOrBuildNoop(slot), gated }
     // `gate(step)`: mark the position and descend. The flag rides through
     // every further unwrap.
-    if (isGateMarker(slot)) return normalizeSlot(slot.inner, ctx, true, depth + 1)
+    if (isGateMarker(slot)) return normalizeSlot(slot.inner, ctx, true, depth + 1, index)
     // `lazy(fn)`: read the memo, then normalize the raw result, which may
     // itself be a string, gate or lazy.
-    if (isLazyMarker(slot)) return normalizeSlot(lazyComputedFor(slot).value, ctx, gated, depth + 1)
-    // Eager function slot.
+    if (isLazyMarker(slot)) {
+      return normalizeSlot(lazyComputedFor(slot, index).value, ctx, gated, depth + 1, index)
+    }
+    // Eager function slot. Consumer code, invoked inside the compile
+    // pass, so an unguarded call escapes out of `useWizard(...)` or out of
+    // whatever read re-triggered the compile. Contained to `undefined`,
+    // which this function already means "drop the slot" by.
     if (typeof slot === 'function') {
-      const result = (slot as (ctx: WizardCtx) => SlotResolution)(ctx)
-      return normalizeSlot(result, ctx, gated, depth + 1)
+      const result = callConsumerFn(
+        () => (slot as (ctx: WizardCtx) => SlotResolution)(ctx),
+        undefined,
+        'wizard-slot',
+        `steps[${index}]`
+      )
+      return normalizeSlot(result, ctx, gated, depth + 1, index)
     }
     if (isAnyForm(slot)) return { form: slot, gated }
     return undefined
@@ -387,7 +419,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     const out: CompiledStepInternal[] = []
     const seen = new Set<FormKey>()
     for (let i = 0; i < rawSteps.length; i++) {
-      const norm = normalizeSlot(rawSteps[i], slotCtx, false, 0)
+      const norm = normalizeSlot(rawSteps[i], slotCtx, false, 0, i)
       if (norm === undefined) continue
       const { form, gated } = norm
       if (seen.has(form.key)) {
@@ -869,13 +901,24 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       seedRef.value = resolved.value
       applyGateSeed(resolved.value)
     } else {
-      const eager = resolved.factory()
+      // The factory is consumer code, invoked synchronously during setup,
+      // so an unguarded call escapes out of `useWizard(...)`. A contained
+      // throw seeds nothing, which is exactly `defaultStatuses: undefined`.
+      const eager = callConsumerFn(() => resolved.factory(), undefined, 'wizard-default-statuses')
       if (eager instanceof Promise) {
-        void eager.then((value) => {
-          seedRef.value = value
-          applyGateSeed(value)
-        })
-      } else {
+        // The `.catch` is not decoration: attaching `.then` without one is
+        // what turns a rejected consumer promise into an unhandled
+        // rejection, and that is Attaform's doing rather than the
+        // consumer's dangling promise.
+        void eager
+          .then((value) => {
+            seedRef.value = value
+            applyGateSeed(value)
+          })
+          .catch((err: unknown) => {
+            reportConsumerThrow('wizard-default-statuses', undefined, err)
+          })
+      } else if (eager !== undefined) {
         seedRef.value = eager
         applyGateSeed(eager)
       }
@@ -994,10 +1037,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
 
   const progressOverride = options.progress
   const progress = computed<number>(() => {
-    if (progressOverride !== undefined) {
-      return progressOverride(compiledSteps.value)
-    }
     const list = compiledSteps.value
+    if (progressOverride !== undefined) {
+      // `null` is the contained-throw sentinel rather than a second
+      // fallback value. The default below walks every step's status, so
+      // computing it up front to hand in as the fallback would add those
+      // deps to this computed on the happy path, where the override is the
+      // only thing that should decide when progress re-fires. `null` is
+      // off-contract for a `=> number` override, and an untyped caller who
+      // returns it gets the built-in ratio, which beats `NaN` progress.
+      const override = callConsumerFn<number | null>(
+        () => progressOverride(list),
+        null,
+        'wizard-progress'
+      )
+      if (override !== null) return override
+    }
     if (list.length === 0) return 0
     let valid = 0
     for (const step of list) {
@@ -1050,21 +1105,31 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     urlMirror.value = value
   })
 
+  // Both consumer callbacks are contained HERE, where they enter, rather
+  // than at each call site: `restore` is read inside a watch getter that
+  // runs during setup, and `persist` fires from three places. Guarding the
+  // boundary covers every present and future caller, which is the same
+  // reason `core/consumer-code.ts` exists as a helper at all.
+  const consumerRestore = options.restore
   const restoreCallback: WizardRestoreFn | undefined =
-    options.restore === false
+    consumerRestore === false
       ? undefined
-      : options.restore !== undefined
-        ? options.restore
+      : consumerRestore !== undefined
+        ? (): WizardRestoreState | undefined =>
+            callConsumerFn(() => consumerRestore(), undefined, 'wizard-restore')
         : (): WizardRestoreState | undefined => {
             const value = urlMirror.value
             return value === undefined ? undefined : { step: value }
           }
 
+  const consumerPersist = options.persist
   const persistCallback: WizardPersistFn | undefined =
-    options.persist === false
+    consumerPersist === false
       ? undefined
-      : options.persist !== undefined
-        ? options.persist
+      : consumerPersist !== undefined
+        ? (state: WizardRestoreState): void => {
+            callConsumerFn(() => consumerPersist(state), undefined, 'wizard-persist')
+          }
         : (state: WizardRestoreState): void => {
             if (state.step === undefined) return
             // An absent or unknown `?step=` resolves to the first step,

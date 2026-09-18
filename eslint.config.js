@@ -179,6 +179,38 @@ export default [
   // Base JS config
   js.configs.recommended,
 
+  // Node tooling: the repo-root gates, the published `attaform skill` CLI,
+  // and the site / bench-arena build scripts. Every one of these was IGNORED
+  // outright until `scripts/check-comment-only.mjs` shipped and drew two
+  // CodeQL highs that nothing local would have caught. The exclusion's
+  // stated reason was that they are "not part of Attaform's typed source",
+  // which is true and is an argument for lighter rules, not for none:
+  // `pnpm check` runs these files, `pnpm version` runs one mid-release, and
+  // `bin/attaform.mjs` is published to npm.
+  //
+  // Untyped on purpose. They sit outside `tsconfig.json`, so the type-aware
+  // pipeline cannot include them and a `project` here would fail the run.
+  // `console` is a CLI's output, so `no-console` stays off; nine stale
+  // `eslint-disable no-console` directives went with this block, themselves
+  // evidence that someone once expected these files to be linted.
+  {
+    files: [
+      'scripts/**/*.{js,mjs,cjs}',
+      'bin/**/*.{js,mjs,cjs}',
+      'apps/site/scripts/**/*.{js,mjs,cjs}',
+      'apps/bench-arena/scripts/**/*.{js,mjs,cjs}',
+      '.prettierrc.cjs',
+    ],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
   // TypeScript recommended config
   ...tseslint.configs.recommended,
 
@@ -455,9 +487,6 @@ export default [
       // is enough to stall typescript-eslint's root inference across the
       // whole run. Same gitignore-shaped trap as the bundles below.
       '**/.claude/worktrees/**',
-      // Size-teardown program reference material: preserved audit
-      // evidence and measurement sketches, not project code.
-      'plans/size-teardown/reference/**',
       // REPL bundle output: 1MB+ minified ESM + sourcemaps regenerated
       // every site dev/build. Linting them stalls eslint for minutes.
       'apps/site/public/lib/**',
@@ -474,17 +503,6 @@ export default [
       // .gitignore entry here so `pnpm check` does not trip locally once
       // the site has been run.
       'apps/site/public/_pagefind/**',
-      // Site-local build scripts, same rationale as repo-root scripts/**.
-      'apps/site/scripts/**',
-      // Bench-arena build scripts (the orchestrator, bundle and version
-      // helpers). Node tooling, same rationale as repo-root scripts/**.
-      'apps/bench-arena/scripts/**',
-      '.prettierrc.cjs',
-      'scripts/**',
-      // The published Node CLI (`attaform skill`): a standalone zero-dep
-      // script run through `npx`, not part of Attaform's typed source.
-      // Same rationale as the repo-root `scripts/**` tooling above.
-      'bin/**',
       // Bundled-types regression fixture imports from `dist/*` to
       // typecheck the published `.d.ts` shape; intentionally sits
       // outside the source tsconfig, so eslint's typed-rule pipeline

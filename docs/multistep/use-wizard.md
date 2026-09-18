@@ -210,6 +210,26 @@ Conditions that would otherwise crash the surrounding app dev-warn and degrade:
 
 A wizard wired into a signup or checkout never crashes the surrounding app for shapes that are clearly a mistake.
 
+### When one of your callbacks throws
+
+Every function you hand `useWizard` runs inside the wizard's own reactive
+work, most of it during setup, so a throw there would come back out of
+`useWizard(...)` and take the component with it. Instead each one is
+contained, reported once in development with the original error attached,
+and falls back to what that option does when you leave it out:
+
+| Callback          | On a throw                                                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A step slot       | The step drops from the compiled list and the rest of the flow compiles. See [When a resolver throws](/docs/multistep/step-slots#when-a-resolver-throws). |
+| `progress`        | `wizard.progress` falls back to the built-in valid-step ratio.                                                                                            |
+| `restore`         | No step is read, so the wizard stays where it is.                                                                                                         |
+| `persist`         | The navigation still happens; the step is live but unrecorded.                                                                                            |
+| `defaultStatuses` | Nothing is seeded, the same as omitting the option. Covers a rejected promise too.                                                                        |
+
+The report is the part to act on. A fallback keeps the page up, but it is
+not the behaviour you asked for, so handle the failure inside your callback
+and return something you chose.
+
 ## Where to next
 
 - [Step slots](/docs/multistep/step-slots) for the full slot reference (form, string, function, lazy).

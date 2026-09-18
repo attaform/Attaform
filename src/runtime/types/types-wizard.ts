@@ -356,6 +356,9 @@ export type WizardOptions = {
    *
    * Unknown keys dev-warn, so a stale resume payload surfaces at
    * construction.
+   *
+   * A factory that throws, or a promise that rejects, seeds nothing and
+   * reports once in development, the same as omitting the option.
    */
   readonly defaultStatuses?:
     | Record<string, FormStatusSeed>
@@ -367,7 +370,8 @@ export type WizardOptions = {
    * returned number is used as-is and normalising it is yours to do.
    *
    * Invoked inside a `computed`, so it must be synchronous and may only
-   * read reactive sources.
+   * read reactive sources. A throw falls back to the built-in ratio and
+   * reports once in development.
    */
   readonly progress?: (steps: ReadonlyArray<CompiledStep>) => number
   /**
@@ -383,6 +387,9 @@ export type WizardOptions = {
    * re-evaluated reactively. The default reads `?step=<key>` from the
    * URL. Pass `false` to disable URL sync, or your own callback for
    * non-router persistence.
+   *
+   * A throw yields no step, so the wizard stays where it is, and reports
+   * once in development.
    */
   readonly restore?: WizardRestoreFn | false
   /**
@@ -390,6 +397,9 @@ export type WizardOptions = {
    * moves. The default writes `?step=<key>`. Pass `false` to disable
    * persistence, or your own callback to scope the param name or write
    * elsewhere.
+   *
+   * A throw does not block the navigation that triggered it, so the step
+   * is live but unrecorded, and reports once in development.
    */
   readonly persist?: WizardPersistFn | false
 }

@@ -563,10 +563,7 @@ async function emitTypeBundles() {
   ])
   await Promise.all(
     Object.entries(packageManifests).map(([pkg, manifest]) =>
-      writeFile(
-        resolve(typesDir, pkg, 'package.json'),
-        JSON.stringify(manifest, null, 2) + '\n'
-      )
+      writeFile(resolve(typesDir, pkg, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
     )
   )
   // Stub runtime entries. Volar 404s harmlessly when these are missing,
@@ -603,14 +600,8 @@ async function emitTypeBundles() {
   // so both surfaces (in-page Volar and host-side IDE) share one
   // source of truth.
   await Promise.all([
-    writeFile(
-      resolve(outDir, 'attaform.d.ts'),
-      `export * from './types/attaform/index'\n`
-    ),
-    writeFile(
-      resolve(outDir, 'attaform-zod.d.ts'),
-      `export * from './types/attaform/zod'\n`
-    ),
+    writeFile(resolve(outDir, 'attaform.d.ts'), `export * from './types/attaform/index'\n`),
+    writeFile(resolve(outDir, 'attaform-zod.d.ts'), `export * from './types/attaform/zod'\n`),
     writeFile(
       resolve(outDir, 'attaform-history.d.ts'),
       `export * from './types/attaform/history'\n`
@@ -641,7 +632,15 @@ async function emitTypeBundles() {
     writeFile(
       resolve(typesDir, 'attaform/meta.json'),
       JSON.stringify(
-        dirMeta(['package.json', 'index.d.ts', 'index.js', 'zod.d.ts', 'zod.js', 'history.d.ts', 'history.js']),
+        dirMeta([
+          'package.json',
+          'index.d.ts',
+          'index.js',
+          'zod.d.ts',
+          'zod.js',
+          'history.d.ts',
+          'history.js',
+        ]),
         null,
         2
       )
@@ -656,11 +655,7 @@ async function emitTypeBundles() {
     ),
     writeFile(
       resolve(typesDir, 'zod-v3/meta.json'),
-      JSON.stringify(
-        dirMeta(['package.json', 'index.d.ts', 'index.js', 'external.d.ts']),
-        null,
-        2
-      )
+      JSON.stringify(dirMeta(['package.json', 'index.d.ts', 'index.js', 'external.d.ts']), null, 2)
     ),
   ])
 }

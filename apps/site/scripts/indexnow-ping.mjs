@@ -101,7 +101,9 @@ async function main() {
     return
   }
 
-  console.log(`[indexnow] pinging ${ENDPOINT} with ${urls.length} URL${urls.length === 1 ? '' : 's'}`)
+  console.log(
+    `[indexnow] pinging ${ENDPOINT} with ${urls.length} URL${urls.length === 1 ? '' : 's'}`
+  )
 
   let response
   try {

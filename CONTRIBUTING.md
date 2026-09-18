@@ -99,7 +99,12 @@ The `version` script hook does two things during the workflow's
 version-bump step:
 
 1. Promotes `CHANGELOG.md`'s `## Unreleased` block to `## v<version>`
-   (`scripts/promote-changelog.mjs`).
+   (`scripts/promote-changelog.mjs`). **It fails the release if that block
+   is still the placeholder**, because promoting the placeholder is silent
+   and looks like success: 17 released versions carry
+   `_No unreleased changes yet._` as their entire entry that way. A release
+   with genuinely nothing to say writes `_No consumer-facing changes._`
+   itself rather than inheriting the placeholder.
 2. Fetches PR-sourced release notes for the range
    `(previous tag, HEAD)` from GitHub's `generate-notes` API and
    prepends the result to `RELEASES.md`
@@ -128,6 +133,32 @@ authenticates with a personal npm access token in your `~/.npmrc`
 rather than the workflow's Trusted Publishing path, so the
 resulting tarball won't carry a signed statement. Prefer the
 workflow when you can.
+
+## Proving a change is comment-only
+
+A docs or comment pass can touch hundreds of files, and at that size "I only
+touched comments" is not something a reviewer can check by reading. Run:
+
+```sh
+pnpm check:comment-only          # against the merge base with main
+pnpm check:comment-only <ref>    # against any other base
+```
+
+It parses every changed `.ts` / `.js` / `.vue` with the TypeScript parser,
+walks each file to its leaf tokens, and compares the streams. A comment edit
+leaves the stream identical; changing one character of code does not. It
+runs a second pass counting build-affecting comments (`@__PURE__`,
+`eslint-disable`, `@vitest-environment` and friends), because those ARE
+comments and the fingerprint is blind to losing one.
+
+It is deliberately not part of `pnpm check`: most branches change code, and
+the gate is meant to fail for them. Paste its output on a comment-only PR
+instead. Two caveats worth knowing before you trust it:
+
+- A trailing comma is a token, so a `prettier --write` on the same branch
+  trips it. That is correct, not a false positive.
+- It answers one question, "did the code change". It cannot see a typo, a
+  broken link, or a scratch marker left in a markdown file. Read the diff.
 
 ## Commit style
 

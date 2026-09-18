@@ -104,7 +104,7 @@ that happens to sit in a foldable shape, so CI cannot see the leak.
 Eleven workstreams, each independently landable, each re-baselining the eager ratchet on
 merge (the standing ratchet number is the only authority; ledger arithmetic never is).
 The per-workstream figures below are the pre-program estimates; what each one actually
-delivered is in `plans/size-teardown/00-program.md`.
+delivered is in [`plans/size-teardown/00-program.md`](https://github.com/attaform/Attaform/blob/bbcc0912/plans/size-teardown/00-program.md).
 Delivered bytes are verifier-adjusted, deduplicated, against the minimal-v4 metric.
 
 | #   | workstream                                                                                                                                       | eager gz                        | depends on                           |
@@ -301,7 +301,7 @@ per-store; serialized boundaries keep one edge parser.
 ## 12. Landed (program close, 2026-08-24)
 
 The program ran P0 through P10 on `experiment/size-teardown` (ledger and
-per-phase addenda: `plans/size-teardown/00-program.md`). Final measured
+per-phase addenda: [`plans/size-teardown/00-program.md`](https://github.com/attaform/Attaform/blob/bbcc0912/plans/size-teardown/00-program.md)). Final measured
 state, in the four terms that matter, against the main fb532ad9 baseline:
 
 | surface                               | baseline       | landed        | delta  |
@@ -333,7 +333,7 @@ What the numbers cost and taught:
 - Guardrails at close: eager ratchet BUDGET_GZ 33_430 (~0.43 kB
   headroom), 24 size-limit caps re-baselined to fresh actuals, tarball
   budget 450 kB (364.9 actual), attribution snapshots (v4, index, v3)
-  regenerated in `plans/size-teardown/reference/`.
+  regenerated in [`plans/size-teardown/reference/`](https://github.com/attaform/Attaform/tree/bbcc0912/plans/size-teardown/reference).
 - Final rulings (Oswald, 2026-08-24): sign-off 12's d.ts Tier-A cap
   ruled Option A, keep every docblock (the hover surface is the
   product; the tarball passes its budget with room), and the sucrase

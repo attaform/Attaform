@@ -5,8 +5,13 @@
 
 # Auto-generated: touched by tooling, not by hand.
 pnpm-lock.yaml
-CHANGELOG.md
 RELEASES.md
+
+# Hand-written, and prettier makes it worse. Its markdown printer re-flows a
+# wrapped inline-code span to column 0, so `useForm({\n  schema })` in a
+# release note loses the indent that keeps the entry readable in the raw
+# file. 97 lines change that way on a --write, none of them improvements.
+CHANGELOG.md
 test/perf-lock/__golden__/
 apps/site/docs-demos/*/styles.css
 

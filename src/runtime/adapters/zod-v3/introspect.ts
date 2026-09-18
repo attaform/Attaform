@@ -11,7 +11,7 @@
  * file pattern-matches on `_def`.
  */
 import type { z } from 'zod-v3'
-import { callConsumerSchemaFn } from '../../core/consumer-code'
+import { callConsumerFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 import { isZodSchemaType } from './helpers'
 
@@ -690,7 +690,7 @@ export function unwrapLazy(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = readDef(schema)
   const getter = def?.getter
   if (typeof getter !== 'function') return undefined
-  return callConsumerSchemaFn(() => getter() as z.ZodTypeAny | undefined, undefined, 'lazy-getter')
+  return callConsumerFn(() => getter() as z.ZodTypeAny | undefined, undefined, 'lazy-getter')
 }
 
 /** The getter function on a `z.lazy()`, which is what cycle detection keys on. */
@@ -742,7 +742,7 @@ export function getDefaultValue(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
   const thunk = def?.defaultValue
   if (typeof thunk !== 'function') return undefined
-  return callConsumerSchemaFn(() => thunk(), undefined, 'default-factory')
+  return callConsumerFn(() => thunk(), undefined, 'default-factory')
 }
 
 /**
@@ -761,11 +761,7 @@ export function getCatchDefault(schema: z.ZodTypeAny): unknown {
   const def = readDef(schema)
   const cv = def?.catchValue
   if (typeof cv !== 'function') return undefined
-  return callConsumerSchemaFn(
-    () => cv({ error: null, input: undefined }),
-    undefined,
-    'catch-factory'
-  )
+  return callConsumerFn(() => cv({ error: null, input: undefined }), undefined, 'catch-factory')
 }
 
 /** True iff the schema carries a callable `_def.catchValue` (ZodCatch wrapper). */

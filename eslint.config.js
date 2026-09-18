@@ -455,9 +455,6 @@ export default [
       // is enough to stall typescript-eslint's root inference across the
       // whole run. Same gitignore-shaped trap as the bundles below.
       '**/.claude/worktrees/**',
-      // Size-teardown program reference material: preserved audit
-      // evidence and measurement sketches, not project code.
-      'plans/size-teardown/reference/**',
       // REPL bundle output: 1MB+ minified ESM + sourcemaps regenerated
       // every site dev/build. Linting them stalls eslint for minutes.
       'apps/site/public/lib/**',

@@ -16,7 +16,8 @@
  * step differs.
  */
 
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
+import { benchAgainstBaseline } from './lib/ratio-floor'
 import {
   canonicalizePath,
   segmentsForPathKey,
@@ -50,41 +51,49 @@ function makeUncachedKeysFromOldStore(store: Map<PathKey, ErrorEntry[]>): PathKe
 const errorStore = makeErrorStore()
 const errorKeys = makeUncachedKeysFromOldStore(errorStore)
 
-describe('materializeErrors inner loop: 100-entry error store', () => {
+test('materializeErrors inner loop: 100-entry error store', async ({ bench }) => {
   // Worst-case container scope: root container with no descendant
   // filter. Both branches walk every entry.
   const containerSegments: readonly Segment[] = []
 
-  bench('old: JSON.parse(pathKey) per entry', () => {
-    let collected = 0
-    entries: for (const [pathKey, errors] of errorStore) {
-      if (errors.length === 0) continue
-      const fullPath = JSON.parse(pathKey) as Segment[]
-      if (fullPath.length <= containerSegments.length) continue
-      for (let i = 0; i < containerSegments.length; i++) {
-        if (fullPath[i] !== containerSegments[i]) continue entries
-      }
-      collected += errors.length
-    }
-    if (collected === 0) throw new Error('fixture invariant: 100 errors expected')
-  })
-
-  bench('new: segmentsForPathKey via inverse cache', () => {
-    let collected = 0
-    entries: for (const [pathKey, errors] of errorStore) {
-      if (errors.length === 0) continue
-      const fullPath = segmentsForPathKey(pathKey)
-      if (fullPath === null) continue
-      if (fullPath.length <= containerSegments.length) continue
-      for (let i = 0; i < containerSegments.length; i++) {
-        if (fullPath[i] !== containerSegments[i]) continue entries
-      }
-      collected += errors.length
-    }
-    if (collected === 0) throw new Error('fixture invariant: 100 errors expected')
-  })
-
   // Ensure the keys array is referenced so the constructor isn't
   // tree-shaken out of the bench fixture.
   if (errorKeys.length !== 100) throw new Error('fixture invariant: 100 keys expected')
+
+  await benchAgainstBaseline(
+    bench,
+    [
+      'JSON.parse(pathKey) per entry',
+      () => {
+        let collected = 0
+        entries: for (const [pathKey, errors] of errorStore) {
+          if (errors.length === 0) continue
+          const fullPath = JSON.parse(pathKey) as Segment[]
+          if (fullPath.length <= containerSegments.length) continue
+          for (let i = 0; i < containerSegments.length; i++) {
+            if (fullPath[i] !== containerSegments[i]) continue entries
+          }
+          collected += errors.length
+        }
+        if (collected === 0) throw new Error('fixture invariant: 100 errors expected')
+      },
+    ],
+    [
+      'segmentsForPathKey via inverse cache',
+      () => {
+        let collected = 0
+        entries: for (const [pathKey, errors] of errorStore) {
+          if (errors.length === 0) continue
+          const fullPath = segmentsForPathKey(pathKey)
+          if (fullPath === null) continue
+          if (fullPath.length <= containerSegments.length) continue
+          for (let i = 0; i < containerSegments.length; i++) {
+            if (fullPath[i] !== containerSegments[i]) continue entries
+          }
+          collected += errors.length
+        }
+        if (collected === 0) throw new Error('fixture invariant: 100 errors expected')
+      },
+    ]
+  )
 })

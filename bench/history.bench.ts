@@ -11,7 +11,7 @@
  * for inspection.
  */
 
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
 import { createFormStore } from '../src/runtime/core/create-form-store'
 import { historyPlugin } from '../src/history'
 import { fakeSchema } from '../test/utils/fake-schema'
@@ -26,8 +26,8 @@ function buildLeaves(count: number): Form {
 
 const defaults100 = buildLeaves(100)
 
-describe('history: applyFormReplacement with / without history', () => {
-  bench('history disabled — applyFormReplacement baseline', () => {
+test('history: applyFormReplacement with / without history', async ({ bench }) => {
+  const disabled = bench('history disabled — applyFormReplacement baseline', () => {
     const state = createFormStore<Form>({
       formKey: 'bench',
       schema: fakeSchema<Form>(defaults100),
@@ -37,7 +37,7 @@ describe('history: applyFormReplacement with / without history', () => {
     state.setValueAtPath(['field2'], 'mutated')
   })
 
-  bench('history enabled — 3 mutations, 3 snapshots pushed', () => {
+  const enabled = bench('history enabled — 3 mutations, 3 snapshots pushed', () => {
     const state = createFormStore<Form>({
       formKey: 'bench',
       schema: fakeSchema<Form>(defaults100),
@@ -48,4 +48,6 @@ describe('history: applyFormReplacement with / without history', () => {
     state.setValueAtPath(['field2'], 'mutated')
     history.dispose()
   })
+
+  await bench.compare(disabled, enabled)
 })

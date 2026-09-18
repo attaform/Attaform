@@ -46,7 +46,7 @@
  * O(F) by P5's `noreg` SSR floor and P4's init decomposition.
  */
 
-import { bench, describe } from 'vitest'
+import { test, type BenchRegistration } from 'vitest'
 import { computed, ref, shallowRef, toRaw, triggerRef } from 'vue'
 import { getAtPath } from '../src/runtime/core/path-walker'
 import type { Path } from '../src/runtime/core/paths'
@@ -64,7 +64,9 @@ const DEPTHS = [1, 4, 16]
 // Sink so the engine can't dead-code-eliminate the reads.
 let sink: unknown
 
-describe('value-tree access: deep-proxy read cost vs raw walk (T5)', () => {
+test('value-tree access: deep-proxy read cost vs raw walk (T5)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const L of DEPTHS) {
     const tree = makeChain(L)
     const path = chainPath(L)
@@ -75,21 +77,27 @@ describe('value-tree access: deep-proxy read cost vs raw walk (T5)', () => {
     const proxyVal = r.value
     const rawVal = toRaw(proxyVal)
 
-    bench(`untracked proxy L=${L}`, () => {
-      sink = getAtPath(proxyVal, path)
-    })
-    bench(`untracked raw L=${L}`, () => {
-      sink = getAtPath(rawVal, path)
-    })
+    arms.push(
+      bench(`untracked proxy L=${L}`, () => {
+        sink = getAtPath(proxyVal, path)
+      })
+    )
+    arms.push(
+      bench(`untracked raw L=${L}`, () => {
+        sink = getAtPath(rawVal, path)
+      })
+    )
 
     // Tracked: a computed that re-runs one getAtPath WITH dep-tracking each
     // time its dep is invalidated -- exactly one reactive read per keystroke.
     const cProxy = computed(() => getAtPath(r.value, path))
     void cProxy.value // prime: create nested proxies + establish the dep set
-    bench(`tracked proxy L=${L}`, () => {
-      triggerRef(r)
-      sink = cProxy.value
-    })
+    arms.push(
+      bench(`tracked proxy L=${L}`, () => {
+        triggerRef(r)
+        sink = cProxy.value
+      })
+    )
 
     // Floor alternative: one token dep + a RAW walk (no proxy, no per-level
     // tracking) -- the "shallow + Map-driven reactivity" read shape.
@@ -99,11 +107,15 @@ describe('value-tree access: deep-proxy read cost vs raw walk (T5)', () => {
       return getAtPath(rawVal, path)
     })
     void cToken.value
-    bench(`tracked token+raw L=${L}`, () => {
-      triggerRef(token)
-      sink = cToken.value
-    })
+    arms.push(
+      bench(`tracked token+raw L=${L}`, () => {
+        triggerRef(token)
+        sink = cToken.value
+      })
+    )
   }
+
+  await bench.compare(...arms)
 })
 
 // Keep `sink` observably used across the module.

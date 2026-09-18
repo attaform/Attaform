@@ -131,21 +131,42 @@ function restore() {
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => (restore(), exit(130)))
 process.on('exit', restore)
 
-/** One bench run over `SUITES`, as scenario name -> ops/sec. */
+/**
+ * One bench run over `SUITES`, as scenario name -> ops/sec.
+ *
+ * vitest 5 dropped `--outputJson` for the JSON reporter, and moved
+ * benchmark results under the test that registers them: `benchmarks[]`
+ * per test, `tasks[]` per `bench()` call, ops/sec as `throughput.mean`
+ * rather than a flat `hz`.
+ *
+ * The scenario half of the key is unchanged: each bench group is one
+ * top-level `test()` whose title is the group name, so all 146 scenarios
+ * report under the same `<group> > <bench>` string they did on vitest 4.
+ * What did change is the prefix, since vitest 4's `group.fullName`
+ * carried the bench file path and vitest 5's `benchmarks[].name` does
+ * not. That is inert here because this script swaps `src/` only, never
+ * `bench/`, so both sides of a comparison run the identical bench files
+ * and produce the identical key shape. A JSON captured under vitest 4
+ * will not join against one captured under vitest 5, and nothing asks it
+ * to.
+ */
 function measure() {
   const out = join(scratch, `bench-${Math.random().toString(36).slice(2)}.json`)
   execFileSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['vitest', 'bench', '--run', `--outputJson=${out}`, ...SUITES],
+    ['vitest', 'bench', '--run', '--reporter=json', `--outputFile=${out}`, ...SUITES],
     { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] }
   )
   const report = JSON.parse(readFileSync(out, 'utf8'))
   const rows = new Map()
-  for (const file of report.files ?? []) {
-    for (const group of file.groups ?? []) {
-      for (const bench of group.benchmarks ?? []) {
-        if (typeof bench.name === 'string' && typeof bench.hz === 'number') {
-          rows.set(`${group.fullName} > ${bench.name}`, bench.hz)
+  for (const file of report.testResults ?? []) {
+    for (const assertion of file.assertionResults ?? []) {
+      for (const group of assertion.benchmarks ?? []) {
+        for (const task of group.tasks ?? []) {
+          const hz = task.throughput?.mean
+          if (typeof task.name === 'string' && typeof hz === 'number') {
+            rows.set(`${group.name} > ${task.name}`, hz)
+          }
         }
       }
     }

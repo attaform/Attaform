@@ -14,7 +14,7 @@
  * allocation.
  */
 
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
 import { createFormStore } from '../src/runtime/core/create-form-store'
 import { fakeSchema } from '../test/utils/fake-schema'
 
@@ -30,25 +30,33 @@ function makeState(opts?: { validateOn?: 'change' | 'blur' | 'submit'; debounceM
   })
 }
 
-describe('fieldValidation: setValueAtPath overhead per keystroke', () => {
-  bench('validateOn: omitted (baseline — defaults to "change", debounceMs: 0)', () => {
-    const state = makeState()
-    state.setValueAtPath(['email'], 'a')
-  })
+test('fieldValidation: setValueAtPath overhead per keystroke', async ({ bench }) => {
+  const omitted = bench(
+    'validateOn: omitted (baseline — defaults to "change", debounceMs: 0)',
+    () => {
+      const state = makeState()
+      state.setValueAtPath(['email'], 'a')
+    }
+  )
 
-  bench('validateOn: "submit" — explicit no-op', () => {
+  const submitOnly = bench('validateOn: "submit" — explicit no-op', () => {
     const state = makeState({ validateOn: 'submit' })
     state.setValueAtPath(['email'], 'a')
   })
 
-  bench('validateOn: "change", debounceMs: 200 — timer scheduled each call', () => {
-    // Uses real setTimeout; the timer is scheduled + cancelled on the
-    // next call, so steady-state cost is one Map lookup + one
-    // clearTimeout + one setTimeout per keystroke.
-    const state = makeState({ validateOn: 'change', debounceMs: 200 })
-    state.setValueAtPath(['email'], 'a')
-    // Tear down the scheduled timer so it doesn't fire after the bench
-    // run completes.
-    state.cancelFieldValidation()
-  })
+  const debounced = bench(
+    'validateOn: "change", debounceMs: 200 — timer scheduled each call',
+    () => {
+      // Uses real setTimeout; the timer is scheduled + cancelled on the
+      // next call, so steady-state cost is one Map lookup + one
+      // clearTimeout + one setTimeout per keystroke.
+      const state = makeState({ validateOn: 'change', debounceMs: 200 })
+      state.setValueAtPath(['email'], 'a')
+      // Tear down the scheduled timer so it doesn't fire after the bench
+      // run completes.
+      state.cancelFieldValidation()
+    }
+  )
+
+  await bench.compare(omitted, submitOnly, debounced)
 })

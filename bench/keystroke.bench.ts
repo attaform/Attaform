@@ -16,7 +16,8 @@
  * measures ops/sec for each approach. Target per the plan: >3× improvement.
  */
 
-import { bench, describe } from 'vitest'
+import { test } from 'vitest'
+import { benchAgainstBaseline } from './lib/ratio-floor'
 import { diffAndApply, type Patch } from '../src/runtime/core/diff-apply'
 
 // The "old approach" utilities (flattenObjectWithBaseKey + setDifference +
@@ -198,7 +199,7 @@ function newApproach(current: Record<string, unknown>, previous: Record<string, 
   return patches
 }
 
-describe('keystroke: 100-leaf form, single-leaf mutation', () => {
+test('keystroke: 100-leaf form, single-leaf mutation', async ({ bench }) => {
   const previous = makeForm(100, 3)
   const current = mutateOneLeaf(previous, 'typed-char')
   const summaryValues: Record<string, Summary> = {}
@@ -221,16 +222,24 @@ describe('keystroke: 100-leaf form, single-leaf mutation', () => {
   // identical to the cold-start run. Cloning inside the bench inflated
   // the ratio gate, charging clone overhead to `old:` runs only.
   const summaryCopy = { ...summaryValues }
-  bench('old: flatten + setDifference x3 + setIntersection x3 + key iteration', () => {
-    oldApproach(current, previous, summaryCopy)
-  })
-
-  bench('new: diffAndApply emits patches only for changed leaves', () => {
-    newApproach(current, previous)
-  })
+  await benchAgainstBaseline(
+    bench,
+    [
+      'flatten + setDifference x3 + setIntersection x3 + key iteration',
+      () => {
+        oldApproach(current, previous, summaryCopy)
+      },
+    ],
+    [
+      'diffAndApply emits patches only for changed leaves',
+      () => {
+        newApproach(current, previous)
+      },
+    ]
+  )
 })
 
-describe('keystroke: 500-leaf form, single-leaf mutation', () => {
+test('keystroke: 500-leaf form, single-leaf mutation', async ({ bench }) => {
   const previous = makeForm(500, 4)
   const current = mutateOneLeaf(previous, 'typed-char')
   const summaryValues: Record<string, Summary> = {}
@@ -245,11 +254,19 @@ describe('keystroke: 500-leaf form, single-leaf mutation', () => {
   }
 
   const summaryCopy = { ...summaryValues }
-  bench('old: 500-leaf form', () => {
-    oldApproach(current, previous, summaryCopy)
-  })
-
-  bench('new: 500-leaf form', () => {
-    newApproach(current, previous)
-  })
+  await benchAgainstBaseline(
+    bench,
+    [
+      '500-leaf form',
+      () => {
+        oldApproach(current, previous, summaryCopy)
+      },
+    ],
+    [
+      '500-leaf form',
+      () => {
+        newApproach(current, previous)
+      },
+    ]
+  )
 })

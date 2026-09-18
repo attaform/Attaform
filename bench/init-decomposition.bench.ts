@@ -40,7 +40,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { bench, describe } from 'vitest'
+import { test, type BenchRegistration } from 'vitest'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { zodAdapter as zodV4Adapter } from '../src/runtime/adapters/zod-v4'
@@ -57,7 +57,9 @@ const ADAPTERS: Adapter[] = [
 const FIELD_COUNTS = [5, 50, 500]
 const NOOP = (): void => {}
 
-describe('init decomposition: eager O(F) primitives, deferrable vs not (P4)', () => {
+test('init decomposition: eager O(F) primitives, deferrable vs not (P4)', async ({ bench }) => {
+  const arms: BenchRegistration<string>[] = []
+
   for (const a of ADAPTERS) {
     for (const F of FIELD_COUNTS) {
       const form = flat(a.z, F)
@@ -71,27 +73,37 @@ describe('init decomposition: eager O(F) primitives, deferrable vs not (P4)', ()
       }).data
 
       // NON-deferrable: produces form.value (SSR renders it). T6 lives here.
-      bench(`parse getDefaultValues F=${F} [${a.tag}]`, () => {
-        schema.getDefaultValues({
-          useDefaultSchemaValues: true,
-          constraints: undefined,
-          strict: true,
+      arms.push(
+        bench(`parse getDefaultValues F=${F} [${a.tag}]`, () => {
+          schema.getDefaultValues({
+            useDefaultSchemaValues: true,
+            constraints: undefined,
+            strict: true,
+          })
         })
-      })
+      )
       // DEFERRABLE: blank baseline -> authoredPaths (consumed at validation only).
-      bench(`baseline getEmptyValueAtPath F=${F} [${a.tag}]`, () => {
-        schema.getEmptyValueAtPath([])
-      })
+      arms.push(
+        bench(`baseline getEmptyValueAtPath F=${F} [${a.tag}]`, () => {
+          schema.getEmptyValueAtPath([])
+        })
+      )
       // NON-deferrable: per-instance isolation clone.
-      bench(`clone structuralSnapshot F=${F} [${a.tag}]`, () => {
-        structuralSnapshot(schemaInitialData)
-      })
+      arms.push(
+        bench(`clone structuralSnapshot F=${F} [${a.tag}]`, () => {
+          structuralSnapshot(schemaInitialData)
+        })
+      )
       // Load-bearing: seeds originals + declaration-order pathOrdinals in one
       // pass. Fresh {} target each iteration so every leaf is an 'added' patch
       // (the seed), and the walk upper-bounds the authored two-tree diff.
-      bench(`walk diffAndApply originals+ordinals F=${F} [${a.tag}]`, () => {
-        diffAndApply({}, schemaInitialData, [], NOOP)
-      })
+      arms.push(
+        bench(`walk diffAndApply originals+ordinals F=${F} [${a.tag}]`, () => {
+          diffAndApply({}, schemaInitialData, [], NOOP)
+        })
+      )
     }
   }
+
+  await bench.compare(...arms)
 })

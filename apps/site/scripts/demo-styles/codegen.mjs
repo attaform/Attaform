@@ -70,13 +70,17 @@ function readManifest(folder) {
     raw = readFileSync(manifestPath, 'utf8')
   } catch (error) {
     if (error.code === 'ENOENT') return []
-    throw new Error(`[demo-styles] ${manifestPath} could not be read: ${error.message}`)
+    throw new Error(`[demo-styles] ${manifestPath} could not be read: ${error.message}`, {
+      cause: error,
+    })
   }
   let parsed
   try {
     parsed = JSON.parse(raw)
   } catch (error) {
-    throw new Error(`[demo-styles] ${manifestPath} is not valid JSON: ${error.message}`)
+    throw new Error(`[demo-styles] ${manifestPath} is not valid JSON: ${error.message}`, {
+      cause: error,
+    })
   }
   const list = parsed?.with ?? []
   if (!Array.isArray(list) || list.some((name) => typeof name !== 'string')) {

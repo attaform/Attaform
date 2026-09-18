@@ -87,7 +87,7 @@ async function fetchBinary(url) {
 
 /**
  * Parse Google Fonts CSS. Each `@font-face` block is preceded by a
- * `/* <subset> *​/` comment that we use to discriminate; per-block
+ * `/* <subset> *\/` comment that we use to discriminate; per-block
  * src/weight/unicode-range come out of the body.
  *
  * Returns one record per @font-face block:

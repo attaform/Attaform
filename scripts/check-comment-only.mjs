@@ -63,6 +63,21 @@ const ts = createRequire(join(ROOT, 'package.json'))('typescript')
 const git = (...args) =>
   execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 28 })
 
+/**
+ * `git show` for a path that may not exist at `base`, which is how an ADDED
+ * file presents. Without silencing stderr, git's own `fatal: path ... does
+ * not exist` reaches the terminal before this script's catch runs, so every
+ * added file on a branch prints two lines: git's, then ours saying the same
+ * thing more usefully.
+ */
+const gitShowQuiet = (ref, rel) =>
+  execFileSync('git', ['show', `${ref}:${rel}`], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    maxBuffer: 1 << 28,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+
 /** Extensions the TypeScript parser can fingerprint. Everything else is eyeballed. */
 export const SCANNABLE = /\.(ts|tsx|mts|cts|js|mjs|cjs|jsx|vue)$/
 
@@ -166,7 +181,7 @@ export function checkCommentOnly(base) {
     }
     let before
     try {
-      before = git('show', `${base}:${rel}`)
+      before = gitShowQuiet(base, rel)
     } catch {
       failures.push(`${rel}: ADDED or renamed, not a comment-only change`)
       continue

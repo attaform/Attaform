@@ -43,7 +43,6 @@ try {
     { stdio: ['ignore', 'inherit', 'inherit'] }
   )
 } catch (err) {
-  // eslint-disable-next-line no-console
   console.error(`[check-bench] vitest bench exited non-zero: ${err?.message ?? err}`)
   process.exit(1)
 }
@@ -52,7 +51,6 @@ let report
 try {
   report = JSON.parse(readFileSync(outputPath, 'utf8'))
 } catch (err) {
-  // eslint-disable-next-line no-console
   console.error(`[check-bench] Failed to parse bench JSON at ${outputPath}: ${err?.message ?? err}`)
   process.exit(1)
 }
@@ -74,7 +72,6 @@ for (const file of report.files ?? []) {
     }
     const ratio = newBench.hz / oldBench.hz
     const status = ratio >= RATIO_FLOOR ? 'OK' : 'FAIL'
-    // eslint-disable-next-line no-console
     console.log(
       `[check-bench] ${status}  ${group.fullName}  ratio=${ratio.toFixed(2)}× ` +
         `(old=${oldBench.hz.toFixed(0)} hz, new=${newBench.hz.toFixed(0)} hz, floor=${RATIO_FLOOR}×)`
@@ -91,29 +88,24 @@ for (const file of report.files ?? []) {
 }
 
 if (failures.length > 0) {
-  // eslint-disable-next-line no-console
   console.error(
     `\n[check-bench] ${failures.length} scenario(s) regressed below ${RATIO_FLOOR}× threshold:`
   )
   for (const f of failures) {
-    // eslint-disable-next-line no-console
     console.error(`  - ${f.group}: ${f.ratio.toFixed(2)}×`)
   }
   process.exit(1)
 }
 
 if (ungated.length > 0) {
-  // eslint-disable-next-line no-console
   console.log(
     `\n[check-bench] ${ungated.length} group(s) carry no old/new pair and are NOT gated here:`
   )
   for (const name of ungated) {
-    // eslint-disable-next-line no-console
     console.log(`  - ${name}`)
   }
-  // eslint-disable-next-line no-console
+
   console.log('[check-bench] Their regressions surface through scripts/bench-delta.mjs.')
 }
 
-// eslint-disable-next-line no-console
 console.log(`\n[check-bench] All ${RATIO_FLOOR}×-gated scenarios within floor.`)

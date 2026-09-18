@@ -203,7 +203,9 @@ function readInstalled() {
         const inRepo = (p) => p === repoRoot || p.startsWith(repoRoot + '/')
         const store = resolve(realDir, name.startsWith('@') ? '../..' : '..')
         const inStore = store.startsWith(pnpmDir + '/')
-        const label = inStore ? store.slice(pnpmDir.length + 1).replace(/\/node_modules$/, '') : 'workspace'
+        const label = inStore
+          ? store.slice(pnpmDir.length + 1).replace(/\/node_modules$/, '')
+          : 'workspace'
         const nested = join(realDir, 'node_modules')
         if (inRepo(nested) && existsSync(nested)) queue.push({ dir: nested, dependent: label })
         if (inStore && store !== realDir && existsSync(store)) {
@@ -381,6 +383,4 @@ if (pinProblems.length > 0) {
 // class would hide the second until the next run.
 if (violations.length > 0 || pinProblems.length > 0) process.exit(1)
 
-console.log(
-  `\nPASS: ${checked.length} floor(s) honoured, ${pinReport.length} override(s) deduped.`
-)
+console.log(`\nPASS: ${checked.length} floor(s) honoured, ${pinReport.length} override(s) deduped.`)

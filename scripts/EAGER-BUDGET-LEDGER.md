@@ -229,7 +229,7 @@ not survive measurement: the activation-chunk split was implemented
 and DECLINED (cross-chunk glue + per-chunk gzip loss exceeded the
 moved bytes). The phase's value landed elsewhere: keystroke deep
 +14/+26/+50%, array writes +8-12% (see
-plans/size-teardown/reference/p5-bench-after.json), one construction
+https://github.com/attaform/Attaform/blob/bbcc0912/plans/size-teardown/reference/p5-bench-after.json), one construction
 tree-copy dropped, per-entry formKey off the SSR wire, and the
 characterization discipline. Budget 35_650 -> 36_200.
 

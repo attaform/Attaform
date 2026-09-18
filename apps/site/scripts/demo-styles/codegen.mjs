@@ -70,13 +70,17 @@ function readManifest(folder) {
     raw = readFileSync(manifestPath, 'utf8')
   } catch (error) {
     if (error.code === 'ENOENT') return []
-    throw new Error(`[demo-styles] ${manifestPath} could not be read: ${error.message}`)
+    throw new Error(`[demo-styles] ${manifestPath} could not be read: ${error.message}`, {
+      cause: error,
+    })
   }
   let parsed
   try {
     parsed = JSON.parse(raw)
   } catch (error) {
-    throw new Error(`[demo-styles] ${manifestPath} is not valid JSON: ${error.message}`)
+    throw new Error(`[demo-styles] ${manifestPath} is not valid JSON: ${error.message}`, {
+      cause: error,
+    })
   }
   const list = parsed?.with ?? []
   if (!Array.isArray(list) || list.some((name) => typeof name !== 'string')) {
@@ -113,7 +117,10 @@ function demoFolders() {
 // and must match the `.demo-<slug>` wrapper class DocsDemo / the REPL apply.
 export function generateOne(folder) {
   if (!existsSync(join(folder, 'App.vue'))) return false
-  return writeIfChanged(join(folder, 'styles.css'), composeCss(readManifest(folder), basename(folder)))
+  return writeIfChanged(
+    join(folder, 'styles.css'),
+    composeCss(readManifest(folder), basename(folder))
+  )
 }
 
 // Remove a styles.css stranded in a folder whose App.vue is gone (a deleted

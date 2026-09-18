@@ -34,7 +34,15 @@
  *     markdown file + line.
  */
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync, readdirSync, rmSync, mkdirSync, existsSync, statSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  rmSync,
+  mkdirSync,
+  existsSync,
+  statSync,
+} from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { ensureFreshDist } from './dist-bundle.mjs'
 import { dirname, resolve, relative, join } from 'node:path'
@@ -187,7 +195,7 @@ for (const file of sources) {
 if (fixtures.length === 0) {
   console.error(
     '[check-doc-snippets] extracted 0 snippets: the fence parser or the attaform-import filter is broken\n' +
-      '  (docs carry dozens of `import ... from "attaform"` blocks). Aborting rather than passing vacuously.',
+      '  (docs carry dozens of `import ... from "attaform"` blocks). Aborting rather than passing vacuously.'
   )
   process.exit(1)
 }
@@ -198,7 +206,7 @@ ensureFreshDist('check-doc-snippets')
 // --- type-check ---------------------------------------------------------
 console.log(
   `[check-doc-snippets] type-checking ${fixtures.length} doc snippets ` +
-    `(${stats.ts} ts, ${stats.vue} vue) from ${stats.files.size} files against dist/*.d.mts`,
+    `(${stats.ts} ts, ${stats.vue} vue) from ${stats.files.size} files against dist/*.d.mts`
 )
 
 let tscOutput = ''
@@ -256,29 +264,34 @@ const BENIGN = {
 }
 const review = tolerated.filter((e) => !BENIGN[e.code])
 const benignCounts = {}
-for (const e of tolerated) if (BENIGN[e.code]) benignCounts[e.code] = (benignCounts[e.code] || 0) + 1
+for (const e of tolerated)
+  if (BENIGN[e.code]) benignCounts[e.code] = (benignCounts[e.code] || 0) + 1
 const toleratedFixtures = new Set(tolerated.map((e) => (e.fx ? e.fx.fixtureName : e.raw))).size
 
 function printToleratedSummary() {
   if (!tolerated.length) return
-  console.log(`  tolerated ${tolerated.length} narrative gap(s) across ${toleratedFixtures} snippet(s) (not surface drift):`)
+  console.log(
+    `  tolerated ${tolerated.length} narrative gap(s) across ${toleratedFixtures} snippet(s) (not surface drift):`
+  )
   for (const [code, count] of Object.entries(benignCounts).sort((a, b) => b[1] - a[1])) {
     console.log(`    ${String(count).padStart(4)}× ${BENIGN[code]} (${code})`)
   }
   if (review.length) {
-    console.log(`  ${review.length} typed mismatch(es) tolerated per the surface-only policy, worth an eyeball:`)
+    console.log(
+      `  ${review.length} typed mismatch(es) tolerated per the surface-only policy, worth an eyeball:`
+    )
     for (const e of review) console.log(`    ${locate(e)}`)
   }
 }
 
 if (surfaceErrors.length) {
   console.error(
-    `\n[check-doc-snippets] FAILED: ${surfaceErrors.length} attaform-surface error(s). A docs import no longer matches dist:\n`,
+    `\n[check-doc-snippets] FAILED: ${surfaceErrors.length} attaform-surface error(s). A docs import no longer matches dist:\n`
   )
   for (const e of surfaceErrors) console.error(`  ${locate(e)}`)
   console.error(
     '\n  Fix the doc to match the published surface (or the surface, if the doc is right).\n' +
-      `  Extracted fixtures are on disk for inspection: ${relative(repoRoot, generatedDir)}/`,
+      `  Extracted fixtures are on disk for inspection: ${relative(repoRoot, generatedDir)}/`
   )
   printToleratedSummary()
   process.exit(1)
@@ -286,7 +299,7 @@ if (surfaceErrors.length) {
 
 console.log(
   `[check-doc-snippets] ok: 0 attaform-surface errors across ${fixtures.length} snippets ` +
-    `(${stats.ts} ts, ${stats.vue} vue) from ${stats.files.size} files`,
+    `(${stats.ts} ts, ${stats.vue} vue) from ${stats.files.size} files`
 )
 printToleratedSummary()
 process.exit(0)

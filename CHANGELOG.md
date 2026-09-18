@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.30.1
 ### Fixed
 
 - **Every function you hand `useWizard` is contained.** A step slot

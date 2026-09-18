@@ -23,7 +23,8 @@ const md = readFileSync(SRC, 'utf8')
 
 // Match each ### block: heading line then Answer, optional URL/evidence, Notes.
 // The URL/evidence line is absent on most N/A entries.
-const blockRe = /^### \d+\. `([a-z_0-9]+)`:[^\n]*\n\n\*\*Answer:\*\* ([^.\n]+(?:\([^)]*\))?)\.\n(?:\*\*URL\/evidence:\*\* ([^\n]+)\n)?\*\*Notes:\*\* ([^\n]+(?:\n(?!### |## )[^\n]*)*)/gm
+const blockRe =
+  /^### \d+\. `([a-z_0-9]+)`:[^\n]*\n\n\*\*Answer:\*\* ([^.\n]+(?:\([^)]*\))?)\.\n(?:\*\*URL\/evidence:\*\* ([^\n]+)\n)?\*\*Notes:\*\* ([^\n]+(?:\n(?!### |## )[^\n]*)*)/gm
 
 const out = {}
 let count = 0
@@ -35,9 +36,9 @@ while ((m = blockRe.exec(md)) !== null) {
   // "Met (delegated)" is doc shorthand for Met where the obligation is
   // discharged via an upstream dependency; the form just sees Met.
   const statusMap = {
-    'Met': 'Met',
+    Met: 'Met',
     'Met (delegated)': 'Met',
-    'Unmet': 'Unmet',
+    Unmet: 'Unmet',
     'N/A': 'N/A',
   }
   const status = statusMap[answer]

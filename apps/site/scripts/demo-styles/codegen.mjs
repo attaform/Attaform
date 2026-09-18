@@ -113,7 +113,10 @@ function demoFolders() {
 // and must match the `.demo-<slug>` wrapper class DocsDemo / the REPL apply.
 export function generateOne(folder) {
   if (!existsSync(join(folder, 'App.vue'))) return false
-  return writeIfChanged(join(folder, 'styles.css'), composeCss(readManifest(folder), basename(folder)))
+  return writeIfChanged(
+    join(folder, 'styles.css'),
+    composeCss(readManifest(folder), basename(folder))
+  )
 }
 
 // Remove a styles.css stranded in a folder whose App.vue is gone (a deleted

@@ -177,7 +177,7 @@
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.5.1",
     "@vitejs/plugin-vue": "^6.0.6",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.0",
     "@vue/compiler-core": "^3.5.33",
     "@vue/compiler-sfc": "^3.5.33",
     "@vue/devtools-api": "^8.1.1",

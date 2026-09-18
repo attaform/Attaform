@@ -211,7 +211,7 @@ npm package: <https://www.npmjs.com/package/attaform>
 
 **Answer:** Met.
 **URL/evidence:** [package.json](https://github.com/attaform/Attaform/blob/main/package.json), [build.config.ts](https://github.com/attaform/Attaform/blob/main/build.config.ts)
-**Notes:** pnpm, Node.js 22, TypeScript, Vue 3, Nuxt 3+, unbuild. All canonical in the JS ecosystem.
+**Notes:** pnpm, Node.js 22+, TypeScript, Vue 3, Nuxt 3+, unbuild. All canonical in the JS ecosystem.
 
 ### 33. `build_floss_tools`: Project SHOULD be buildable using only FLOSS tools.
 

@@ -129,7 +129,14 @@ export function codeprint(text, fileName = 'f.ts') {
   return out.join(' ')
 }
 
-const SFC_SCRIPT = /<script\b[^>]*>([\s\S]*?)<\/script>/gi
+/**
+ * `</script >` with trailing whitespace is legal and parses as a close tag,
+ * so `<\/script>` alone leaves that block's body in the markup half, where
+ * it is compared as whitespace-collapsed text instead of as a program.
+ * CodeQL js/bad-tag-filter caught it the moment this script entered the
+ * repo, which the scratch-directory version was never scanned for.
+ */
+const SFC_SCRIPT = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi
 
 /**
  * An SFC is not one TypeScript program, so it gets its own fingerprint.
@@ -145,15 +152,24 @@ export function vueprint(text, fileName = 'f.vue') {
   let last = 0
   SFC_SCRIPT.lastIndex = 0
   for (let m = SFC_SCRIPT.exec(text); m !== null; m = SFC_SCRIPT.exec(text)) {
+    // `[^>]*` before it guarantees the first `>` closes the opening tag, and
+    // the body's own length locates the close tag whatever it is spelled as.
+    const bodyStart = m.index + m[0].indexOf('>') + 1
     scripts.push(codeprint(m[1], `${fileName}.${scripts.length}.ts`))
-    rest += text.slice(last, m.index + m[0].indexOf('>') + 1)
-    last = m.index + m[0].length - '</script>'.length
+    rest += text.slice(last, bodyStart)
+    last = bodyStart + m[1].length
   }
   rest += text.slice(last)
-  const markup = rest
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  // Strip to a fixed point. One pass leaves `<!--` behind on a nested or
+  // malformed comment (`<!--<!---->`), so a later comment edit could still
+  // move the print. Harmless in a before/after comparison, but the loop is
+  // cheap and it is what js/incomplete-multi-character-sanitization wants.
+  let stripped = rest
+  for (let prev = null; prev !== stripped;) {
+    prev = stripped
+    stripped = stripped.replace(/<!--[\s\S]*?-->/g, '')
+  }
+  const markup = stripped.replace(/\s+/g, ' ').trim()
   return `${scripts.length} ${scripts.join(' ')} ${markup}`
 }
 

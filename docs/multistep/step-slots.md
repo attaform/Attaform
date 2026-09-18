@@ -129,12 +129,13 @@ When the user picks `'business'` on the account step, the branching slot resolve
 
 ### Return values
 
-| Return                 | Result                                                                                                                                                                                       |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An `AnyForm` ref       | The slot compiles to `{ key: form.key, form }`.                                                                                                                                              |
-| A `string` key         | The slot resolves to a noop affordance step under that key. New keys are built on the fly; the same key returned twice reuses the same noop. No pre-declaration needed elsewhere in `steps`. |
-| `null` / `undefined`   | The slot is dropped from the compiled list. Useful for "this branch isn't relevant right now"; the step rail shortens accordingly.                                                           |
-| A `gate()` or `lazy()` | The wrapper is unwrapped and its own result resolved by these same rules, so a slot can decide at runtime that a position is a prerequisite. See [Wrapping a slot](#wrapping-a-slot).        |
+| Return                 | Result                                                                                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| An `AnyForm` ref       | The slot compiles to `{ key: form.key, form }`.                                                                                                                                                                    |
+| A `string` key         | The slot resolves to a noop affordance step under that key. New keys are built on the fly; the same key returned twice reuses the same noop. No pre-declaration needed elsewhere in `steps`.                       |
+| `null` / `undefined`   | The slot is dropped from the compiled list. Useful for "this branch isn't relevant right now"; the step rail shortens accordingly.                                                                                 |
+| A `gate()` or `lazy()` | The wrapper is unwrapped and its own result resolved by these same rules, so a slot can decide at runtime that a position is a prerequisite. See [Wrapping a slot](#wrapping-a-slot).                              |
+| A thrown error         | Treated as `undefined`: the slot drops and the rest of the flow compiles. Attaform reports the throw once in development, naming the position (`steps[2]`). See [When a resolver throws](#when-a-resolver-throws). |
 
 ### Reactive re-evaluation
 
@@ -206,6 +207,7 @@ lazy(() => buildShippingFormForRegion(initialRegion))
 | A `string` key         | Resolves to a noop affordance step under that key, building one on the fly if needed. Result caches under the same dep-tracking rules as a form return. |
 | `null` / `undefined`   | The slot drops from the compiled list. The drop caches; a tracked dep change or `reset()` re-fires the resolver.                                        |
 | A `gate()` or `lazy()` | Unwrapped and resolved by these same rules. The memo caches the wrapper's result, so the nesting costs nothing extra per read.                          |
+| A thrown error         | Treated as `undefined`, and the drop caches like any other result. See [When a resolver throws](#when-a-resolver-throws).                               |
 
 Use `lazy()` when the resolution is expensive enough that thrash matters. For everyday branching on live values, plain function slots are simpler. They re-evaluate freely with the compiled list, and the wizard pays no cache-bookkeeping cost.
 
@@ -281,6 +283,49 @@ for (const step of wizard.steps) {
 }
 ```
 
+## When a resolver throws
+
+A function slot and a `lazy()` resolver are your code, and the wizard calls
+them during its own compile pass. A throw there has nowhere to land, so
+rather than let it out of `useWizard(...)` and take the surrounding
+component with it, Attaform treats the slot as though it had returned
+`undefined`: the step drops, every other slot still compiles, and
+navigation works across the shortened list.
+
+```ts
+const wizard = useWizard({
+  steps: [account, (ctx) => pickShipping(ctx.forms.account.values.region), payment],
+})
+```
+
+If `pickShipping` throws, `wizard.steps` reads as `account, payment` and the
+console carries one error naming `steps[1]`, the original error attached.
+The report is once per position, not once per compile pass, so a resolver
+that throws on every pass does not flood the console.
+
+A dropped step is a real change to the flow, so the report is the part to
+act on: a resolver is not the place to let a failure surface. Handle it
+inside the slot and return something you chose, which is also the only way
+to keep the position:
+
+```ts
+steps: [
+  account,
+  (ctx) => {
+    try {
+      return pickShipping(ctx.forms.account.values.region)
+    } catch {
+      return 'shipping-unavailable' // an affordance step you control
+    }
+  },
+  payment,
+]
+```
+
+Recovery is automatic in the other direction. Once the resolver stops
+throwing, the next compile pass reinstates the step at its original
+position, the same as a slot that stops returning `null`.
+
 ## Drop and dedup semantics
 
 A few rules govern how the source slot list compiles down to the final step list:
@@ -290,6 +335,7 @@ A few rules govern how the source slot list compiles down to the final step list
 - **`null` / `undefined` from a function slot.** The slot drops; subsequent reads of `wizard.steps` reflect the shortened list. Re-running the slot (a reactive read changed) can reintroduce the position. If the dropped slot was the active step, the pin slides forward to the step that took its place.
 - **`null` / `undefined` from a `lazy()` slot.** The slot drops. The drop caches; a tracked-dep change or `reset()` re-fires the resolver, and if it returns nullish again, the slot drops again.
 - **Function or `lazy()` slot returns a new string key.** The wizard builds a noop affordance step on the fly under that key and threads it into the compiled list, the statuses surface, and the rail. The same key returned by a later slot reuses the same noop (first-build wins). No pre-declaration anywhere in `steps` is required.
+- **A resolver that throws.** Contained and treated as `undefined`, so the slot drops and the rest of the list compiles. Reported once per position in development. See [When a resolver throws](#when-a-resolver-throws).
 - **Empty compiled list.** If every slot drops (including an array that is entirely nullish), `wizard.currentStep` reads as `undefined`, navigation refuses with a dev-warn, and the surrounding app keeps rendering. See [Degenerate inputs](/docs/multistep/use-wizard#degenerate-inputs).
 
 ## Where to next

@@ -8,7 +8,7 @@
  * file pattern-matches on `def`.
  */
 import type { z } from 'zod'
-import { callConsumerSchemaFn } from '../../core/consumer-code'
+import { callConsumerFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 
 /**
@@ -290,7 +290,7 @@ export function unwrapLazy(schema: z.ZodType): z.ZodType | undefined {
   const def = readDef(schema)
   const getter = def?.getter
   if (typeof getter !== 'function') return undefined
-  return callConsumerSchemaFn(() => getter() as z.ZodType | undefined, undefined, 'lazy-getter')
+  return callConsumerFn(() => getter() as z.ZodType | undefined, undefined, 'lazy-getter')
 }
 
 /** The getter function on a `z.lazy()`, which is what cycle detection keys on. */
@@ -320,7 +320,7 @@ export function getCatchDefault(schema: z.ZodType): unknown {
   const def = readDef(schema)
   const cv = def?.catchValue
   if (typeof cv !== 'function') return undefined
-  return callConsumerSchemaFn(
+  return callConsumerFn(
     () => cv({ error: new Error('atta:default-values'), input: undefined }),
     undefined,
     'catch-factory'
@@ -341,7 +341,7 @@ export function getDefaultValue(schema: z.ZodType): unknown {
   // factory runs right here, inside a walk `useForm(...)` is waiting on.
   // Unguarded, a throwing factory comes out of `useForm` and takes the
   // host component with it.
-  return callConsumerSchemaFn(() => def?.defaultValue, undefined, 'default-factory')
+  return callConsumerFn(() => def?.defaultValue, undefined, 'default-factory')
 }
 
 /**

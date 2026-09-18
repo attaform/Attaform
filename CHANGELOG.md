@@ -2,7 +2,32 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **Every function you hand `useWizard` is contained.** A step slot
+  resolver runs inside the wizard's compile pass, and `progress`,
+  `restore`, `persist` and `defaultStatuses` run during setup or during a
+  read, so a throw from any of them came back out of `useWizard(...)` and
+  took the host component with it. All six escaped, and an async
+  `defaultStatuses` that rejected surfaced as an unhandled rejection,
+  because the wizard attached `.then` without a `.catch`.
+
+  Each is now contained to what that option already does when you omit it,
+  so nothing new enters the model: a step slot drops from the compiled
+  list, which is what `null` has meant since #467; `progress` falls back
+  to the built-in valid-step ratio; `restore` yields no step, so the
+  wizard stays where it is; `persist` does not block the navigation that
+  triggered it, leaving the step live but unrecorded; and
+  `defaultStatuses` seeds nothing. Each reports once in development with
+  the original error attached, naming the position for a slot
+  (`steps[2]`), and a resolver that stops throwing has its step
+  reinstated on the next compile pass.
+
+  `restore` and `persist` are guarded where your function enters rather
+  than at each call site, so a future caller is covered without anyone
+  having to remember, which is the same reasoning behind the #608 schema
+  containment. `test/composables/wizard-slot-throw-containment.test.ts`
+  is the standing audit.
 
 ## v0.30.0
 _No unreleased changes yet._

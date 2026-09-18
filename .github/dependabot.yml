@@ -46,6 +46,21 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+      # `@vitest/coverage-v8` pins an EXACT vitest in its peers
+      # (`"vitest": "5.0.0"` on 5.0.0), so the two can only move together.
+      # Ungrouped, a major opens one PR per package and each is broken
+      # alone: #653 offered coverage-v8 5.0.0 against vitest ^4.1.11, which
+      # `strict-peer-dependencies=false` would have installed silently and
+      # failed at `pnpm check:coverage`. Majors are listed here on purpose;
+      # the two groups above deliberately cover only minor and patch.
+      vitest:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+        update-types:
+          - 'major'
+          - 'minor'
+          - 'patch'
     # Conventional-commit scope is embedded in the prefix directly
     # (`chore(deps): …`, `chore(deps-dev): …`). Do NOT also set
     # `include: 'scope'`: Dependabot concatenates the two, producing
@@ -94,6 +109,19 @@ updates:
     # demo moves to a different batteries-included kit; deleting this
     # block and relaxing the pins is the whole undo.
     ignore:
+      # Both zod specifiers in this repo are deliberate MAJOR pins, so a
+      # major bump on either is never what we want. `apps/bench-arena` holds
+      # `zod: ^3.25.76` beside `zod-v4: npm:zod@^4.4.3` because the arena
+      # measures both lines, and every Zod-based row is only comparable
+      # while they all carry the SAME Zod: results.json records
+      # `validator: zod 3.25.76` on each, and #643 measured the shared floor
+      # at 13.84 kB gz from it. #652 offered to move the 3.x pin to 4.6.2,
+      # which would have changed every competitor's bundle number and
+      # desynced the committed results from what produced them. Adopting a
+      # new zod major is a deliberate project, not a dependabot PR.
+      - dependency-name: 'zod'
+        update-types:
+          - 'version-update:semver-major'
       - dependency-name: 'primevue'
         update-types:
           - 'version-update:semver-major'
@@ -120,6 +148,21 @@ updates:
     # distinction. Security advisories bypass cooldown.
     cooldown:
       default-days: 7
+    # `github/codeql-action/init` and `.../analyze` run in ONE job and the
+    # action requires them to be the same version. Dependabot treats each
+    # subpath as its own dependency, so ungrouped it opens a PR per subpath,
+    # each bumping half of a matched pair: #647 and #651 both failed
+    # `Analyze (javascript-typescript)` for that reason and neither could
+    # have passed alone. `upload-sarif` joins the group because it is the
+    # same release train, even though it lives in `scorecard.yml`.
+    groups:
+      codeql-action:
+        patterns:
+          - 'github/codeql-action*'
+        update-types:
+          - 'major'
+          - 'minor'
+          - 'patch'
     # Same pattern as the npm block: scope is in the prefix itself;
     # `include: 'scope'` is intentionally omitted to avoid a double scope.
     commit-message:

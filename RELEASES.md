@@ -1,5 +1,25 @@
 # Releases
 
+## v0.30.1 (2026-09-18)
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/645
+* docs: the first comment cleanup, 48.9k lines audited by @ozzyfromspace in https://github.com/attaform/Attaform/pull/646
+* fix(wizard): contain every consumer function useWizard invokes by @ozzyfromspace in https://github.com/attaform/Attaform/pull/654
+* fix(release): stop shipping releases with an empty changelog entry by @ozzyfromspace in https://github.com/attaform/Attaform/pull/655
+* chore: close the three open questions from the comment cleanup by @ozzyfromspace in https://github.com/attaform/Attaform/pull/656
+* chore(deps-dev): bump the dev-dependencies group across 1 directory with 3 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/650
+* fix(security): floor nanoid at 5.1.16 for GHSA-28wg-ghj8-5hjv by @ozzyfromspace in https://github.com/attaform/Attaform/pull/657
+* ci: bump both codeql-action halves together, and group them so they stay that way by @ozzyfromspace in https://github.com/attaform/Attaform/pull/658
+* chore(ci): bump github/codeql-action/upload-sarif from 4.37.9 to 4.38.0 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/649
+* chore(ci): bump zizmorcore/zizmor-action from 0.6.3 to 0.6.4 by @dependabot[bot] in https://github.com/attaform/Attaform/pull/648
+* build(deps): migrate to vitest 5, and move the dev toolchain to Node 24 by @ozzyfromspace in https://github.com/attaform/Attaform/pull/660
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.30.0...v0.30.1
+
+---
+
 ## v0.30.0 (2026-09-16)
 
 ## What's Changed

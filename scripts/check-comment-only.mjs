@@ -130,13 +130,19 @@ export function codeprint(text, fileName = 'f.ts') {
 }
 
 /**
- * `</script >` with trailing whitespace is legal and parses as a close tag,
- * so `<\/script>` alone leaves that block's body in the markup half, where
- * it is compared as whitespace-collapsed text instead of as a program.
- * CodeQL js/bad-tag-filter caught it the moment this script entered the
- * repo, which the scratch-directory version was never scanned for.
+ * An HTML end tag is `</`, the name, then anything up to `>`: `</script >`
+ * and `</script foo="bar">` both close a script block, and a parser ignores
+ * the junk. `<\/script>` alone leaves such a block's body in the markup
+ * half, where it is compared as whitespace-collapsed text rather than
+ * parsed as a program.
+ *
+ * CodeQL js/bad-tag-filter caught this the moment the script entered the
+ * repo, which the scratch-directory version was never scanned for, and
+ * caught it TWICE: the first fix allowed only whitespace (`\s*`) and the
+ * rule came back naming `</script\t\n bar>`. `\b` before `[^>]*` is what
+ * keeps `</scriptx>` from matching.
  */
-const SFC_SCRIPT = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi
+const SFC_SCRIPT = /<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi
 
 /**
  * An SFC is not one TypeScript program, so it gets its own fingerprint.

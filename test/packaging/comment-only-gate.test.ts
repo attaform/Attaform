@@ -95,6 +95,33 @@ describe('check-comment-only: single-file components', () => {
     expect(vueprint(two(2))).not.toBe(vueprint(two(1)))
   })
 
+  it.each([
+    ['plain', '</script>'],
+    ['trailing whitespace', '</script >'],
+    ['a newline and a tab', '</script\t\n>'],
+    ['ignored junk after the name', '</script foo="bar">'],
+  ])('treats a %s end tag as closing the block', (_label, close) => {
+    // An HTML end tag is `</`, the name, then anything up to `>`. A narrower
+    // pattern leaves the body in the markup half, where it is compared as
+    // collapsed text instead of parsed, so a comment edit there reads as a
+    // code change. CodeQL named two of these before the pattern was right.
+    const sfc = (n: number) =>
+      `<script setup lang="ts">\n// a comment\nconst a = ${n}\n</script>\n<template><div /></template>\n`.replace(
+        '</script>',
+        close
+      )
+    const commentOnly = sfc(1).replace('// a comment', '// a different comment')
+    expect(vueprint(commentOnly)).toBe(vueprint(sfc(1)))
+    expect(vueprint(sfc(2))).not.toBe(vueprint(sfc(1)))
+  })
+
+  it('does not treat </scriptx> as a script end tag', () => {
+    const text = '<script setup lang="ts">\nconst a = 1\n</scriptx>\n'
+    // No close tag means no script block, so the whole thing is markup and
+    // the token change has to surface through the text comparison instead.
+    expect(vueprint(text)).not.toBe(vueprint(text.replace('const a = 1', 'const a = 2')))
+  })
+
   it('routes .vue through vueprint and everything else through codeprint', () => {
     const text = '<script setup lang="ts">\nconst a = 1\n</script>\n<template><div /></template>\n'
     expect(fingerprint('App.vue', text)).toBe(vueprint(text, 'App.vue'))

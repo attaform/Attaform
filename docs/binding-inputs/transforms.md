@@ -43,7 +43,7 @@ const dashify: RegisterTransform = (v) => (typeof v === 'string' ? v.replace(/\s
 form.register('slug', { transforms: [lowercase, dashify] })
 ```
 
-Pass an ordered array on the `register` options. Every write flows through the transforms left-to-right and the final value is what lands in storage, on each keystroke by default and on `change` under [`.lazy`](/docs/binding-inputs/modifiers).
+Pass an ordered array on the `register` options. Every write flows through the transforms left-to-right and the final value is what lands in storage, on each keystroke by default and on `change` under [`.lazy`](/docs/binding-inputs/modifiers). A [bound component](/docs/binding-inputs/third-party-components) runs the same array on every value it writes back.
 
 ## Composition order
 

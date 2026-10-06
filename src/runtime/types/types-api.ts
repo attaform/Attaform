@@ -2119,16 +2119,18 @@ export type CustomRegisterDirective<T, Modifiers extends string = string> = Obje
 
 /**
  * Modifier names supported by `v-register` on `<input type="text">`,
- * `<input type="number">`, and `<textarea>`. Mirrors Vue's
- * `v-model` modifier semantics on the same elements; combine freely
- * (`<input v-register.lazy.trim.number="..." />`).
+ * `<input type="number">`, `<textarea>`, and component hosts. Mirrors
+ * Vue's `v-model` modifier semantics on the same elements; combine
+ * freely (`<input v-register.lazy.trim.number="..." />`).
  */
 export type RegisterTextModifier =
   /**
    * Write on `change` (blur) instead of `input`. The reactive
    * model only updates after the user tabs/clicks out of the
    * field. IME composition handlers are skipped under `.lazy`, since
-   * composition events do not gate writes.
+   * composition events do not gate writes. On a component host the
+   * last value emitted while focus is inside the host commits when
+   * focus leaves it.
    */
   | 'lazy'
   /**
@@ -2136,16 +2138,18 @@ export type RegisterTextModifier =
    * the user's raw input (whitespace included) while they're
    * typing; on `change` (blur / commit) the value is trimmed
    * once and written back to both the model and the visible DOM.
-   * Combine with `.lazy` to skip the mid-typing writes entirely.
+   * Combine with `.lazy` to skip the mid-typing writes entirely. On a
+   * component host the trimmed value commits when focus leaves the
+   * host.
    */
   | 'trim'
   /**
-   * Cast the value with `parseFloat` before writing. A value that
-   * does not parse as a number (`'abc'`) passes through unchanged,
-   * and the slim-primitive gate then sees a string heading for a
-   * numeric slot and rejects the write. Auto-applied for
-   * `<input type="number">`, where an explicit `.number` is
-   * redundant.
+   * Cast the value with `parseFloat` before writing. An empty field,
+   * or text that does not parse as a number (`'abc'`), marks the field
+   * blank instead of writing a string. On a component host the cast
+   * applies to string emits, and a value the component already typed
+   * passes through. Auto-applied for `<input type="number">`, where an
+   * explicit `.number` is redundant.
    */
   | 'number'
 

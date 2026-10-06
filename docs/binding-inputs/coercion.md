@@ -34,15 +34,15 @@ The same two rules cover most native HTML input shapes: `<input type="number">` 
 
 ## When coercion fires
 
-Coercion runs **only on user-typed DOM values**. Programmatic writes through [`form.setValue`](/docs/writing-and-mutating/set-value), `form.register('path').setValueWithInternalPath`, or the field-array helpers are **never** coerced; they're typed against the schema's leaf type at the call site, so the value already matches. The strictness is intentional: if you've got the value in hand in code, you knew its type when you typed it.
+Coercion runs **only on user input**: a value typed into a native input, or one a [bound component](/docs/binding-inputs/third-party-components) emits. Programmatic writes through [`form.setValue`](/docs/writing-and-mutating/set-value), `form.register('path').setValueWithInternalPath`, or the field-array helpers are **never** coerced; they're typed against the schema's leaf type at the call site, so the value already matches. The strictness is intentional: if you've got the value in hand in code, you knew its type when you typed it.
 
 The coercion step sits between the directive's value extraction and the slim-type gate's write check:
 
 ```
-DOM event → extract → modifier (.trim, .number) → transforms[] → coerce → slim gate → storage
+DOM event or component emit → extract → modifier (.trim, .number) → transforms[] → coerce → slim gate → storage
 ```
 
-A value neither rule can convert passes through unchanged; the slim gate handles the rejection downstream with a typed diagnostic.
+A value neither rule can convert passes through unchanged; the slim gate handles the rejection downstream with a typed diagnostic. Both rules convert strings only, so a component that already emits a number or a boolean lands it as it is.
 
 One modifier sits outside that line. [`.trim`](/docs/binding-inputs/modifiers) holds its strip until the user leaves the field, so on each keystroke the transforms and the coercion step both see the untrimmed string, and the trimmed one travels the same line again at blur. `.number` and `.lazy.trim` land exactly where the diagram puts them.
 

@@ -119,7 +119,7 @@ Load one when the task reaches its area:
 
 - **`references/wizards.md`**: multistep flows. The declarative step registry, `tryNext` vs `handleSubmit`, using a wizard as a flat multi-form coordinator, and how keyed `injectForm` / `injectWizard` resolve.
 - **`references/errors.md`**: routing server and API errors. The `ValidationError` envelope, `setErrors` / `clearErrors`, the own-vs-subtree error axis, banners, and the one-normalizer pattern.
-- **`references/custom-components.md`**: wrapping an input or binding a third-party component. `useRegister`, the three orthogonal primitives, attribute fallthrough, and the optional `form-key` prop.
+- **`references/custom-components.md`**: wrapping an input or binding a third-party component, with its modifiers and live values. `useRegister`, the three orthogonal primitives, attribute fallthrough, and the optional `form-key` prop.
 - **`references/ssr.md`**: debugging SSR and hydration. Why the value injection is a build-time transform, how to confirm it faithfully, and the test traps to avoid.
 - **`references/validation.md`**: designing the schema. Client-is-UX / server-is-truth, keeping closed sets in sync, and why a clearable edit field is a required string.
 - **`references/saving.md`**: persisting each decision as it is made. Choosing between an observing listener and a `watch`, the ordering that makes a listener safe, and the four things a production autosave adds.

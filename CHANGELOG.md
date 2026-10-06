@@ -1,8 +1,64 @@
 # Changelog
 
 ## Unreleased
+### Added
 
-_No unreleased changes yet._
+- **A component that reports keystrokes updates the form as you type.**
+  PrimeVue's `InputNumber` emits `update:modelValue` only on blur, spin,
+  Enter, and clear, and reports each keystroke through an `input` event
+  carrying `{ value }`. `v-register` now listens for that event too, so
+  typing 4, then 2 reads 4, then 42 in `form.values`, where the field
+  used to hold its seeded value until blur. Storing each digit as it
+  lands also keeps the digits on screen through a parent re-render
+  mid-edit, which used to snap the field back to its stored value. A
+  payload counts only when it is an object holding its own `value`, so a
+  component that forwards the plain DOM event keeps writing through its
+  model, and an `@input` you add beside it runs after Attaform's write
+  and reads committed state.
+
+- **`.lazy`, `.trim`, and `.number` work on component hosts.** Modifiers
+  were read only by the native per-element directives, so a component
+  whose root is not its input, such as PrimeVue's `Password`, ignored
+  them. Attaform now applies them to every value a component writes
+  back: `.lazy` holds the emits while focus is inside the component and
+  commits the last one when focus leaves it, `.trim` commits the trimmed
+  value at that same moment, and `.number` casts a string emit, marking
+  the field blank on an empty or non-numeric one. Focus moving between a
+  component's own parts keeps the edit open, a re-render leaves the held
+  text and caret in place, and a write from code while a `.lazy` value is
+  held wins over it. The component receives a plain `v-model`, so nothing
+  is trimmed or cast twice.
+
+- **Modifiers on a `useRegister` wrapper reach the inner control.**
+  `<FieldRow v-register.trim="...">` lands its `.trim` on the inner
+  `<input v-register="rv">`, which used to apply only its own modifiers.
+  The parent's modifiers combine with the inner binding's, through nested
+  wrappers and onto a component inside the wrapper.
+
+### Fixed
+
+- **Register `transforms` and schema coercion apply to component
+  writes.** A value a component emitted went straight to the write gate,
+  so a `transforms: [...]` array never ran on it, and a text component
+  whose root is not its input had its `'42'` refused by a `z.number()`
+  leaf. Component writes now take the path a native input's do:
+  modifiers, then transforms, then coercion, then the gate. Coercion
+  converts strings only, so a component that already emits a number
+  lands it as it is.
+
+- **A `.lazy` field keeps an in-progress edit through a re-render.** While
+  a native `.lazy` input or a `useRegister` wrapper had focus, any
+  re-render of its parent (a timer, another field's async check, an error
+  message appearing) painted the stored value back over what the user
+  had typed, and the edit was gone before it could commit. The typed text
+  and caret now stay put until focus leaves, the same hold `.lazy` gives a
+  component host. A write from code such as `form.setValue` still
+  replaces the edit, as it does under `v-model.lazy`.
+
+- **The string-into-number dev hint leads with the fix that works
+  everywhere.** It suggested `type="number"` first, which only a native
+  input has. It now leads with the `.number` modifier, which works on a
+  native input and a component alike.
 
 ## v0.30.1
 ### Fixed

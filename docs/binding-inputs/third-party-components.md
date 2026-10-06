@@ -61,11 +61,40 @@ A native input gives `v-register` everything in one element. A component hides i
 
 Composite widgets are welcome too. A PIN input made of several boxes, or a slider built from `<div>`s with no native control at all, has no single element to anchor. Attaform notices, steps back from the single-element latch, and tracks focus at the widget root instead, so the field still knows when the reader is inside it. Tabbing between a widget's own parts stays focused; leaving it reads as a blur.
 
+## Values that land as you type
+
+Some components commit their model only at the end of an edit. A formatted number input is the usual case: PrimeVue's `InputNumber` emits `update:modelValue` on blur, and reports each keystroke through an `input` event whose payload carries the parsed `value`. Attaform listens for that event too, so the form follows every keystroke:
+
+```vue
+<!-- Type 4, then 2: form.values.age reads 4, then 42 -->
+<InputNumber v-register="form.register('age')" />
+```
+
+A component that reports keystrokes this way updates the form as you type, and one that reports nothing until it commits updates the form when it commits. Attaform reads an `input` payload only when it is an object holding its own `value`, so a component that forwards the plain DOM event is left to its model.
+
+A handler of your own on that event runs after Attaform's write, so an `@input` on the component reads committed state, the same [listener ordering](/docs/binding-inputs/v-register#listen-without-binding) a native input gives you.
+
+## The same write rules as a native input
+
+Every value a component writes back takes the path a value typed into a native input takes:
+
+- [Modifiers](/docs/binding-inputs/modifiers#on-a-component): `.lazy`, `.trim`, and `.number` work on the component, timed to focus leaving it.
+- [Register transforms](/docs/binding-inputs/transforms) run on each write, left to right.
+- [Schema-driven coercion](/docs/binding-inputs/coercion) turns a string the component emits into the number or boolean the leaf declares, so a text component can back a `z.number()` field.
+
+```vue
+<!-- '  ada  ' commits as 'ada' when focus leaves the field -->
+<InputText v-register.trim="form.register('username')" />
+
+<!-- Typing 42 stores the number 42 in a z.number() leaf -->
+<InputText v-register="form.register('age')" />
+```
+
 ## When a component has more than one root
 
 Vue hands a runtime directive to a component only when that component renders a **single element root**. A component whose template root is a fragment (several sibling nodes, as some combobox and select roots are) never receives the directive at all.
 
-The value channel still works, because that rides the component's props and emits. What you lose is the directive half: the field's `connected` bit, focus tracking, aria, and scroll-to-error. In development, Attaform notices a value arriving from a component it never attached to and points it out, so the gap is loud rather than silent.
+The value channel still works, because that rides the component's props and emits. What you lose is the directive half: the field's `connected` bit, focus tracking, aria, scroll-to-error, and the focus edge that `.lazy` and `.trim` wait for. In development, Attaform notices a value arriving from a component it never attached to and points it out, so the gap is loud rather than silent.
 
 The fix is to give the directive a single element to land on:
 

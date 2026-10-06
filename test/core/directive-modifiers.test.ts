@@ -714,31 +714,56 @@ describe('vRegisterText.beforeUpdate: escape hatches under focus', () => {
     document.body.innerHTML = ''
   })
 
-  it('`.lazy`: while focused, suppresses reverse-sync when value === oldValue', () => {
+  // A re-render's binding: `oldValue` is the previous RegisterValue for the
+  // same path, never a stored value.
+  function rerenderBinding<T>(
+    rv: RegisterValue<T>,
+    modifiers: Record<string, true>
+  ): DirectiveBinding {
+    return { ...makeBinding(rv, modifiers), oldValue: rv }
+  }
+
+  function mountLazyText<T>(initial: T) {
     const input = document.createElement('input')
     input.type = 'text'
     document.body.appendChild(input)
+    const rv = makeRegisterValue(initial)
+    hooks.created?.(input, makeBinding(rv.value, { lazy: true }), makeVNode({}), null)
+    hooks.mounted?.(input, makeBinding(rv.value, { lazy: true }), makeVNode({}), null)
     input.focus()
-    const { value } = makeRegisterValue('original')
-    value.innerRef = ref('mid-edit') as typeof value.innerRef
+    return { input, ...rv }
+  }
 
-    // User has typed 'half', el.value represents in-progress input.
+  it('`.lazy`: while focused, keeps the typed text when the model has not moved', () => {
+    const { input, value } = mountLazyText('stored')
+    // The user has typed, and `.lazy` writes only on `change`.
     input.value = 'half'
 
-    // beforeUpdate fires with `value === oldValue` (the consumer ref
-    // didn't change between renders), under `.lazy` while focused,
-    // we should NOT clobber el.value.
-    const binding = {
-      value,
-      oldValue: 'mid-edit',
-      modifiers: { lazy: true },
-      arg: undefined,
-      dir: {},
-      instance: null,
-    } as unknown as DirectiveBinding
-    hooks.beforeUpdate?.(input, binding, makeVNode({}), null)
+    hooks.beforeUpdate?.(input, rerenderBinding(value, { lazy: true }), makeVNode({}), null)
+    expect(input.value).toBe('half')
+  })
+
+  it('`.lazy`: while focused, repaints a model that moved', () => {
+    const { input, value } = mountLazyText('stored')
+    input.value = 'half'
+    value.setValueWithInternalPath('programmatic')
+
+    hooks.beforeUpdate?.(input, rerenderBinding(value, { lazy: true }), makeVNode({}), null)
+    expect(input.value).toBe('programmatic')
+  })
+
+  it('`.lazy`: puts the held text and caret back after the render patches the value', () => {
+    const { input, value } = mountLazyText('stored')
+    input.value = 'half'
+    input.setSelectionRange(2, 2)
+
+    hooks.beforeUpdate?.(input, rerenderBinding(value, { lazy: true }), makeVNode({}), null)
+    // The compiled `:value` patch, which runs between the two hooks.
+    input.value = 'stored'
+    hooks.updated?.(input, rerenderBinding(value, { lazy: true }), makeVNode({}), null)
 
     expect(input.value).toBe('half')
+    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 2])
   })
 
   it('`.trim`: while focused, suppresses reverse-sync when el.value.trim() === newValue', () => {

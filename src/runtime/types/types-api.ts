@@ -1584,6 +1584,8 @@ export type AttaformDomBinding = {
  *     payload carries the live value as an own `value` property.
  *   - `markEditing` records focus entering or leaving the host. Leaving
  *     commits a buffered `.lazy` value, or the trimmed form under `.trim`.
+ *   - `holdsDraft` reports a buffered `.lazy` value that storage has not
+ *     moved past, the edit a re-render must leave on screen.
  *   - `release` drops any buffered value when the host unmounts.
  *
  * @internal
@@ -1592,6 +1594,7 @@ export type HostChannel = {
   readonly write: (rv: RegisterValue, value: unknown, modifiers: HostModifiers) => boolean
   readonly writeInput: (rv: RegisterValue, payload: unknown, modifiers: HostModifiers) => boolean
   readonly markEditing: (rv: RegisterValue, editing: boolean, modifiers: HostModifiers) => void
+  readonly holdsDraft: (rv: RegisterValue) => boolean
   readonly release: (rv: RegisterValue) => void
 }
 
@@ -2082,9 +2085,10 @@ export type CustomRegisterDirective<T, Modifiers extends string = string> = Obje
     /**
      * Snapshot of the last `value.innerRef.value` reference the
      * directive's DOM-sync (setSelected / setChecked / radio
-     * `el.checked = …`) was applied for. Used by every input
-     * directive's `updated` / `beforeUpdate` to skip the per-render
-     * DOM sync when the model is identity-unchanged, so a parent
+     * `el.checked = …` / text `el.value = …`) was applied for. Used by
+     * every input directive's `updated` / `beforeUpdate` to skip the
+     * per-render DOM sync when the model is identity-unchanged (for
+     * text, a focused `.lazy` edit is held through it), so a parent
      * re-render (a typed character in a sibling, an async-validation
      * tick, any reactive read) cannot clobber an in-progress user
      * interaction. Identity comparison is sound because every form

@@ -23,6 +23,7 @@
  */
 import { reactive, markRaw } from 'vue'
 import { canonicalizePath, type Path, type PathKey } from './paths'
+import { activeElementOf } from './active-element'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import { createHostChannel } from './host-channel'
 import type { ElementRecord } from './store-records'
@@ -109,10 +110,7 @@ function attachFocusListeners(
   // (ShadowRoot-aware, as the directive's own lookup is) makes the
   // freshly-rendered field's FieldState reflect DOM truth rather than the
   // optimistic `focused: false` seeded at registration.
-  const rootNode = element.getRootNode()
-  const activeElement =
-    rootNode instanceof Document || rootNode instanceof ShadowRoot ? rootNode.activeElement : null
-  if (activeElement === element) {
+  if (activeElementOf(element) === element) {
     kernel.markFocused(segments, true, focusMeta)
   }
 }

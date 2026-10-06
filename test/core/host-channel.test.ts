@@ -226,6 +226,43 @@ describe.each(adapters)('component-host write channel [$name]', ({ adapt, schema
       binding?.hostChannel.markEditing(rv, false, mods)
       expect(value()).toBe('kept')
     })
+
+    it('holds a draft while one is buffered and storage has not moved', () => {
+      const { rv, binding } = host(schemas.string, { n: '' })
+      const mods: HostModifiers = { lazy: true }
+      binding?.hostChannel.markEditing(rv, true, mods)
+      expect(binding?.hostChannel.holdsDraft(rv)).toBe(false)
+      rv.setValueFromHost('ab', mods)
+      expect(binding?.hostChannel.holdsDraft(rv)).toBe(true)
+
+      binding?.hostChannel.markEditing(rv, false, mods)
+      expect(binding?.hostChannel.holdsDraft(rv)).toBe(false)
+    })
+
+    it('lets a write that moves storage win over the buffered value', () => {
+      const { state, rv, binding, value } = host(schemas.string, { n: '' })
+      const mods: HostModifiers = { lazy: true }
+      binding?.hostChannel.markEditing(rv, true, mods)
+      rv.setValueFromHost('typed', mods)
+      state.setValueAtPath(['n'], 'programmatic')
+      expect(binding?.hostChannel.holdsDraft(rv)).toBe(false)
+
+      binding?.hostChannel.markEditing(rv, false, mods)
+      expect(value()).toBe('programmatic')
+    })
+
+    it('buffers typing that follows a write that moved storage', () => {
+      const { state, rv, binding, value } = host(schemas.string, { n: '' })
+      const mods: HostModifiers = { lazy: true }
+      binding?.hostChannel.markEditing(rv, true, mods)
+      rv.setValueFromHost('typed', mods)
+      state.setValueAtPath(['n'], 'programmatic')
+      rv.setValueFromHost('programmatic!', mods)
+      expect(binding?.hostChannel.holdsDraft(rv)).toBe(true)
+
+      binding?.hostChannel.markEditing(rv, false, mods)
+      expect(value()).toBe('programmatic!')
+    })
   })
 
   describe('.trim', () => {

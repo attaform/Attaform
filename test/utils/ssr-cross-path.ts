@@ -23,7 +23,7 @@
 //
 // Consumers must run under `@vitest-environment jsdom` (extractSignal and the
 // hydration assertions parse and mount real DOM).
-import { baseCompile } from '@vue/compiler-core'
+import { baseCompile, type NodeTransform } from '@vue/compiler-core'
 import { renderToString } from '@vue/server-renderer'
 import { expect, vi } from 'vitest'
 import * as Vue from 'vue'
@@ -45,6 +45,7 @@ import { installVRegister, vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { componentBridgeTransform } from '../../src/runtime/lib/core/transforms/component-bridge-transform'
 import { inputTextAreaNodeTransform } from '../../src/runtime/lib/core/transforms/input-text-area-transform'
+import { redundantBindingWarnTransform } from '../../src/runtime/lib/core/transforms/redundant-binding-warn-transform'
 import { vRegisterHintTransform } from '../../src/runtime/lib/core/transforms/v-register-hint-transform'
 import { vRegisterPreambleTransform } from '../../src/runtime/lib/core/transforms/v-register-preamble-transform'
 
@@ -74,8 +75,24 @@ const TRANSFORMS = [
 
 /** Compile a parent template to a render function (mirrors the per-path tests). */
 export function compileToRender(template: string): (this: unknown, ctx: unknown) => unknown {
+  return compileWith(TRANSFORMS, template)
+}
+
+// `attaform/vite`'s order (src/vite.ts): the redundant-binding check runs
+// first and stamps the compiled marker the runtime directive reads.
+const PRODUCTION_TRANSFORMS = [redundantBindingWarnTransform, ...TRANSFORMS]
+
+/** Compile a template exactly as an SFC built with `attaform/vite` compiles. */
+export function compileProduction(template: string): (this: unknown, ctx: unknown) => unknown {
+  return compileWith(PRODUCTION_TRANSFORMS, template)
+}
+
+function compileWith(
+  nodeTransforms: NodeTransform[],
+  template: string
+): (this: unknown, ctx: unknown) => unknown {
   const result = baseCompile(template, {
-    nodeTransforms: TRANSFORMS,
+    nodeTransforms,
     mode: 'function',
     prefixIdentifiers: true,
     hoistStatic: false,

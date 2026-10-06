@@ -10,7 +10,9 @@
  *   - `.trim` writes the raw emit and commits the trimmed form when focus
  *     leaves the host, the native deferred trim.
  *   - `.lazy` buffers emits while focus is inside the host and commits
- *     the last one when focus leaves.
+ *     the last one when focus leaves. A write that moves storage while a
+ *     value is buffered wins, as a programmatic write does on a native
+ *     `.lazy` input: the buffered value is dropped at the leave.
  *   - Register `transforms` and schema coercion run on every commit,
  *     through the skeleton the native default assigner uses.
  *
@@ -44,9 +46,18 @@ function commit(rv: RegisterValue, raw: unknown, modifiers: HostModifiers): bool
   return wrapWithTransforms(value, rv, (coerced) => rv.commitFromHost(coerced), undefined) !== false
 }
 
+// A buffered `.lazy` value, with the stored value it was typed against.
+type Draft = { value: unknown; basis: unknown }
+
 export function createHostChannel(): HostChannel {
   const editing = new Set<PathKey>()
-  const pending = new Map<PathKey, unknown>()
+  const pending = new Map<PathKey, Draft>()
+  // The draft buffered for `rv`'s path, while storage still holds the value
+  // it was typed against.
+  const heldDraft = (rv: RegisterValue): Draft | undefined => {
+    const draft = pending.get(rv.path)
+    return draft?.basis === rv.innerRef.value ? draft : undefined
+  }
 
   return {
     write(rv, value, ownModifiers) {
@@ -55,7 +66,7 @@ export function createHostChannel(): HostChannel {
       // ones the wrapper's parent wrote.
       const modifiers = withInheritedModifiers(rv, ownModifiers)
       if (modifiers.lazy === true && editing.has(rv.path)) {
-        pending.set(rv.path, value)
+        pending.set(rv.path, { value, basis: rv.innerRef.value })
         return true
       }
       return commit(rv, value, modifiers)
@@ -84,14 +95,16 @@ export function createHostChannel(): HostChannel {
         return
       }
       editing.delete(rv.path)
-      if (pending.has(rv.path)) {
-        const buffered = pending.get(rv.path)
-        pending.delete(rv.path)
-        commit(
-          rv,
-          modifiers.trim === true && typeof buffered === 'string' ? buffered.trim() : buffered,
-          modifiers
-        )
+      const draft = heldDraft(rv)
+      if (pending.delete(rv.path)) {
+        if (draft !== undefined) {
+          const buffered = draft.value
+          commit(
+            rv,
+            modifiers.trim === true && typeof buffered === 'string' ? buffered.trim() : buffered,
+            modifiers
+          )
+        }
         return
       }
       if (modifiers.trim === true) {
@@ -101,6 +114,8 @@ export function createHostChannel(): HostChannel {
         }
       }
     },
+
+    holdsDraft: (rv) => heldDraft(rv) !== undefined,
 
     release(rv) {
       editing.delete(rv.path)

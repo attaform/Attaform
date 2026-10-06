@@ -48,6 +48,7 @@ import {
 } from './directive-value-sync'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
+  HostChannel,
   HostModifiers,
   InternalRegisterValue,
   RegisterCheckboxCustomDirective,
@@ -64,6 +65,7 @@ import {
   isDefaultAssigner,
   setAssignFunction,
 } from './assigner-pipeline'
+import { activeElementOf } from './active-element'
 import { armDomBinding } from './dom-binding'
 import { withInheritedModifiers } from './inherited-modifiers'
 
@@ -132,6 +134,42 @@ function onCompositionEnd(e: Event) {
     target.composing = false
     target.dispatchEvent(new Event('input'))
   }
+}
+
+// An in-progress edit a re-render must leave on screen. Vue's `v-model.lazy`
+// leaves a focused input alone while its model is unchanged, but here the
+// compiled `:value` patch, or a component rendering its control from its
+// model, runs after `beforeUpdate` and paints storage over the user's text.
+// `holdDraft` records the control's text and caret before the patch, keyed by
+// the element the directive sits on, and `restoreDraft` puts them back from
+// `updated` when the patch moved them.
+type HeldDraft = {
+  control: HTMLInputElement | HTMLTextAreaElement
+  text: string
+  start: number | null
+  end: number | null
+}
+const heldDrafts = new WeakMap<HTMLElement, HeldDraft>()
+
+function holdDraft(owner: HTMLElement, control: HTMLInputElement | HTMLTextAreaElement): void {
+  heldDrafts.set(owner, {
+    control,
+    text: control.value,
+    start: control.selectionStart,
+    end: control.selectionEnd,
+  })
+}
+
+function restoreDraft(owner: HTMLElement): void {
+  const held = heldDrafts.get(owner)
+  if (held === undefined) return
+  heldDrafts.delete(owner)
+  const { control, text, start, end } = held
+  if (control.value === text) return
+  control.value = text
+  // A type with no selection (`number`, `email`) reads null here, and
+  // `setSelectionRange` throws on it.
+  if (start !== null && end !== null) control.setSelectionRange(start, end)
 }
 
 // The per-tag variants are plain vnode-hook objects, so a build that never
@@ -405,6 +443,7 @@ const vRegisterText: RegisterTextCustomDirective = {
     // `el.value === '0'`, casts, and writes back through the assigner, wiping
     // the blank flag and locking the user out of the empty display state.
     el.value = value.displayValue.value
+    el._lastAppliedModel = value.innerRef.value
 
     // Reactive value sync. `beforeUpdate` repaints only when the host
     // component re-renders, so a mutation originating elsewhere (a sibling's
@@ -419,6 +458,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       () => {
         const next = value.displayValue.value
         if (el.value !== next) el.value = next
+        el._lastAppliedModel = value.innerRef.value
       },
       { skipWhileFocused: true }
     )
@@ -429,6 +469,15 @@ const vRegisterText: RegisterTextCustomDirective = {
     // the unresolved input.
     if ((el as { composing?: boolean }).composing === true) return
     if (!isRegisterValue(value)) return
+
+    // Whether the model moved since the DOM last reflected it: a new stored
+    // value, or the element rebound to another path. `oldValue` is the
+    // previous RegisterValue, not a stored value, so the stored side is
+    // tracked on the element.
+    const model = value.innerRef.value
+    const modelMoved =
+      model !== el._lastAppliedModel || !isRegisterValue(oldValue) || oldValue.path !== value.path
+    el._lastAppliedModel = model
 
     // `displayValue` is the canonical string view: it folds in the blank rule,
     // returning `''` for a blank-marked numeric leaf, and the typed-form
@@ -441,23 +490,15 @@ const vRegisterText: RegisterTextCustomDirective = {
       return
     }
 
-    // ShadowRoot-aware activeElement check: for an input mounted inside a
-    // shadow tree, `activeElement` lives on the rootNode. Reading
-    // `document.activeElement === el` is always false there, defeating the
-    // lazy and trim escape hatches below.
-    const rootNode = el.getRootNode()
-    const activeElement =
-      rootNode instanceof Document || rootNode instanceof ShadowRoot ? rootNode.activeElement : null
-    if (activeElement === el && el.type !== 'range') {
-      // Lazy escape: the consumer chose `change`-only updates. While
-      // the user is still editing, suppress reverse-syncs that would
-      // otherwise revert their typing on every parent re-render.
-      if (lazy === true && value.innerRef.value === oldValue) {
-        return
-      }
-      // Trim escape, same rationale: the trimmed-but-otherwise-equal value is
-      // where blur lands anyway, so do not fight the user's whitespace.
-      if (trim === true && el.value.trim() === target) {
+    if (activeElementOf(el) === el && el.type !== 'range') {
+      // Lazy escape: the consumer chose `change`-only updates, so while the
+      // user is still editing and the model has not moved, their text stays
+      // through the re-render. Trim escape, same rationale: the trimmed but
+      // otherwise equal value is where blur lands anyway, so do not fight the
+      // user's whitespace. Holding the draft also undoes the compiled
+      // `:value` patch, which runs after this hook.
+      if ((lazy === true && !modelMoved) || (trim === true && el.value.trim() === target)) {
+        holdDraft(el, el)
         return
       }
     }
@@ -1161,10 +1202,11 @@ function observeForLateHostControl(el: HTMLElement, rv: RegisterValue): void {
   hostHealObservers.set(el, observer)
 }
 
-// Per-host-root release of the host write channel's edit state, read back at
-// `beforeUnmount` so a `.lazy` value still buffered at unmount is discarded,
-// as native `.lazy` never commits without a `change`.
-const hostEditReleases = new WeakMap<HTMLElement, () => void>()
+// Per-host-root handle on the host write channel. `beforeUpdate` asks it for a
+// buffered `.lazy` draft to hold through the render, and `beforeUnmount`
+// releases it, so a value still buffered at unmount is discarded, as native
+// `.lazy` never commits without a `change`.
+const hostEdits = new WeakMap<HTMLElement, { channel: HostChannel; rv: RegisterValue }>()
 
 // The focus edges of a component host bound with `.lazy` or `.trim`. The host
 // write channel buffers a `.lazy` emit while focus is inside the host and
@@ -1191,7 +1233,23 @@ function trackHostEdits(el: HTMLElement, rv: RegisterValue, modifiers: HostModif
     }
   addTrackedListener(el, 'focus', edge(true), { capture: true })
   addTrackedListener(el, 'blur', edge(false), { capture: true })
-  hostEditReleases.set(el, () => channel.release(rv))
+  hostEdits.set(el, { channel, rv })
+}
+
+// The focused control of a `.lazy` host whose channel holds a draft keeps its
+// text through the render. A component that renders its control from its
+// model would otherwise repaint the stored value over the typing, since the
+// draft reaches storage only when focus leaves the host.
+function holdHostDraft(el: HTMLElement): void {
+  const edits = hostEdits.get(el)
+  if (edits?.channel.holdsDraft(edits.rv) !== true) return
+  const control = activeElementOf(el)
+  if (
+    (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) &&
+    el.contains(control)
+  ) {
+    holdDraft(el, control)
+  }
 }
 
 function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
@@ -1341,6 +1399,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // thrash.
     syncElementRegistration(el, binding.value, binding.oldValue)
     callModelHook(el, binding, vnode, prevVNode, 'beforeUpdate')
+    holdHostDraft(el)
 
     // Re-derive aria. A path change, a reused node rebound on reorder,
     // re-establishes the watch against the new path's display state; a removed
@@ -1364,6 +1423,8 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
   },
   updated(el, binding, vnode, prevVNode) {
     callModelHook(el, inheritModifiers(binding), vnode, prevVNode, 'updated')
+    // Put back an edit `beforeUpdate` held through this render's patch.
+    restoreDraft(el)
   },
   beforeUnmount(el, { value }) {
     // Detach every listener the variant attached in `created`, whether or not
@@ -1384,8 +1445,9 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
 
     // Drop the host write channel's edit state, discarding a buffered `.lazy`
     // value; `trackHostEdits` attached the edges for this host root.
-    hostEditReleases.get(el)?.()
-    hostEditReleases.delete(el)
+    const edits = hostEdits.get(el)
+    edits?.channel.release(edits.rv)
+    hostEdits.delete(el)
 
     if (!isRegisterValue(value)) return
 

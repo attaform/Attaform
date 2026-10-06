@@ -1,4 +1,5 @@
 import { effectScope, watch, type Ref, type WatchSource } from 'vue'
+import { activeElementOf } from './active-element'
 
 /**
  * Per-element teardown slot for the value-sync watch. `Symbol.for(...)`
@@ -7,19 +8,6 @@ import { effectScope, watch, type Ref, type WatchSource } from 'vue'
 const valueSyncScopeKey: unique symbol = Symbol.for('attaform:value-sync-scope')
 type ValueSyncCarrier = HTMLElement & {
   [valueSyncScopeKey]?: () => void
-}
-
-/**
- * ShadowRoot-aware "is this element the focused one" check. A
- * v-register'd control mounted inside a shadow tree reports its focus on
- * the rootNode, not on `document`, mirroring the activeElement lookup in
- * the directive's `beforeUpdate` and `register-api`'s focus probe.
- */
-function isElementFocused(el: HTMLElement): boolean {
-  const rootNode = el.getRootNode()
-  const activeElement =
-    rootNode instanceof Document || rootNode instanceof ShadowRoot ? rootNode.activeElement : null
-  return activeElement === el
 }
 
 export interface ValueSyncOptions {
@@ -69,7 +57,7 @@ export function setupValueSync(
       source,
       () => {
         if ((el as { composing?: boolean }).composing === true) return
-        if (skipWhileFocused && isElementFocused(el)) return
+        if (skipWhileFocused && activeElementOf(el) === el) return
         apply()
       },
       { flush: 'post' }

@@ -71,7 +71,7 @@ describe.each(adapters)('useForm({ disabled }): $name', ({ useForm, schema }) =>
     mounted.push(app)
     const rv = api.register('email')
     expect(rv.setValueWithInternalPath('viaDirective')).toBe(false)
-    expect(rv.setValueFromHost('viaHost')).toBe(false)
+    expect(rv.setValueFromHost('viaHost', {})).toBe(false)
     await awaitSettle()
     expect(api.values.email).toBe('seed@x.com')
   })

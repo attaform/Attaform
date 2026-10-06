@@ -74,6 +74,8 @@ function makeRegisterValue<T>(initial: T): {
     deregisterElement: deregister,
     setValueWithInternalPath: setValue,
     setValueFromHost: setValue,
+    setValueFromHostInput: () => false,
+    commitFromHost: setValue,
     markConnectedOptimistically: () => undefined,
     markHostConnected: () => undefined,
     markFocused: () => undefined,

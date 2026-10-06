@@ -1569,6 +1569,30 @@ export type AttaformDomBinding = {
   readonly getFirstErrorElement: (
     formInstanceId: string
   ) => { path: Path; element: HTMLElement } | null
+  readonly hostChannel: HostChannel
+}
+
+/**
+ * The write policy for a `v-register` component host, held on the DOM
+ * binding so it stays in the directive cluster's lazy graph. Applies the
+ * binding site's modifiers, runs register `transforms` and schema
+ * coercion, and buffers `.lazy` writes while focus is inside the host.
+ *
+ *   - `write` commits a value the host emitted through
+ *     `update:modelValue`.
+ *   - `writeInput` takes an `input` emit and commits it only when the
+ *     payload carries the live value as an own `value` property.
+ *   - `markEditing` records focus entering or leaving the host. Leaving
+ *     commits a buffered `.lazy` value, or the trimmed form under `.trim`.
+ *   - `release` drops any buffered value when the host unmounts.
+ *
+ * @internal
+ */
+export type HostChannel = {
+  readonly write: (rv: RegisterValue, value: unknown, modifiers: HostModifiers) => boolean
+  readonly writeInput: (rv: RegisterValue, payload: unknown, modifiers: HostModifiers) => boolean
+  readonly markEditing: (rv: RegisterValue, editing: boolean, modifiers: HostModifiers) => void
+  readonly release: (rv: RegisterValue) => void
 }
 
 /**
@@ -1631,16 +1655,39 @@ export type RegisterValue<Value = unknown> = Readonly<{
   setValueWithInternalPath: (value: unknown, meta?: WriteMeta) => boolean
   /**
    * Commit a value emitted by a third-party component bound through
-   * `v-register`'s compile-time v-model desugar. Writes the component's
-   * typed model output as authoritative, with no coercion, AND marks
-   * the field interacted, since a v-model host has no DOM input
-   * listener to flip the sticky `interacted` bit. The injected
-   * `onUpdate:modelValue` handler is the only caller. `true` when the
-   * write was accepted.
+   * `v-register`'s compile-time v-model desugar, and mark the field
+   * interacted, since a v-model host has no DOM input listener to flip
+   * the sticky `interacted` bit. The write takes the same path a native
+   * input's does: the binding site's `.number` / `.trim` / `.lazy`
+   * modifiers, then register `transforms`, then schema coercion. The
+   * injected `onUpdate:modelValue` handler is the caller, passing the
+   * modifiers as a static literal. `true` when the write was accepted
+   * or buffered.
    *
    * @internal
    */
-  setValueFromHost: (value: unknown) => boolean
+  setValueFromHost: (value: unknown, modifiers: HostModifiers) => boolean
+  /**
+   * Commit the live value from a component host's `input` emit. A
+   * payload that is a non-Event object owning a `value` property (the
+   * shape PrimeVue's InputNumber reports per keystroke) writes that
+   * value through `setValueFromHost`; anything else, a native `Event`
+   * reaching a fallthrough listener included, is ignored and returns
+   * `false`. The injected `onInput` handler is the only caller.
+   *
+   * @internal
+   */
+  setValueFromHostInput: (payload: unknown, modifiers: HostModifiers) => boolean
+  /**
+   * The final step of a component-host write, after modifiers,
+   * transforms and coercion: an empty signal (`''`, `null` or
+   * `undefined`) the field's schema does not admit marks the field
+   * blank, and anything else writes through. Called by the host write
+   * channel.
+   *
+   * @internal
+   */
+  commitFromHost: (value: unknown) => boolean
   /**
    * Mark this field DOM-connected during SSR, so a server-rendered
    * template reading `form.fields.<path>.connected` does not flicker on
@@ -1699,11 +1746,12 @@ export type RegisterValue<Value = unknown> = Readonly<{
    * every later registration.
    *
    * Optional, so a hand-rolled RegisterValue owning its own element
-   * handling need not declare it.
+   * handling need not declare it. Returns the armed binding, which is how
+   * the directive reaches the host write channel.
    *
    * @internal
    */
-  ensureDomBinding?: (factory: DomBindingFactory) => void
+  ensureDomBinding?: (factory: DomBindingFactory) => AttaformDomBinding
   /**
    * Canonical JSON-encoded path key for this binding, such as
    * `'["items",0,"name"]'`. Useful for stable Map and Set keys, log
@@ -2096,6 +2144,15 @@ export type RegisterTextModifier =
    * redundant.
    */
   | 'number'
+
+/**
+ * The `v-register` modifiers a component host honours, carried from the
+ * binding site to the host write channel as a static literal that the
+ * compile-time bridge transform emits.
+ *
+ * @internal
+ */
+export type HostModifiers = Readonly<Partial<Record<RegisterTextModifier, true>>>
 
 /**
  * v-register directive variant for `<input type="text">`,

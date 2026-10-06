@@ -343,7 +343,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     hostHooks.mounted(host, hostBinding(rv), vnode, null)
     expect(state.getFieldRecord(['email'])?.interacted ?? false).toBe(false)
 
-    rv.setValueFromHost('typed@host')
+    rv.setValueFromHost('typed@host', {})
 
     expect(state.getValueAtPath(['email'])).toBe('typed@host')
     expect(state.getFieldRecord(['email'])?.interacted).toBe(true)
@@ -361,7 +361,7 @@ describe('v-register component host: element discovery (store-level)', () => {
 
     // A host value edit marks interacted; the first blur after that arms the
     // gate (focus listeners ride the latched control via registerElement).
-    rv.setValueFromHost('typed')
+    rv.setValueFromHost('typed', {})
     inner.dispatchEvent(new Event('focus'))
     inner.dispatchEvent(new Event('blur'))
 
@@ -375,8 +375,8 @@ describe('v-register component host: element discovery (store-level)', () => {
     // No host directive ran (Vue dropped it on a multi-root component): nothing
     // registered, connected never set. The value update still arrives via the
     // component's surviving v-model emit. Two updates -> exactly one warning.
-    rv.setValueFromHost('typed')
-    rv.setValueFromHost('typed again')
+    rv.setValueFromHost('typed', {})
+    rv.setValueFromHost('typed again', {})
     await awaitSettle()
 
     const warned = warnSpy.mock.calls.filter((c: unknown[]) =>
@@ -391,7 +391,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     const host = hostWith([input({ type: 'text' })])
     hostHooks.mounted(host, hostBinding(rv), vnode, null)
 
-    rv.setValueFromHost('typed')
+    rv.setValueFromHost('typed', {})
     await awaitSettle()
 
     const warned = warnSpy.mock.calls.filter((c: unknown[]) =>
@@ -407,7 +407,7 @@ describe('v-register component host: element discovery (store-level)', () => {
     const host = hostWith([input(), input()])
     hostHooks.mounted(host, hostBinding(rv), vnode, null)
 
-    rv.setValueFromHost('typed')
+    rv.setValueFromHost('typed', {})
     await awaitSettle()
 
     const warned = warnSpy.mock.calls.filter((c: unknown[]) =>

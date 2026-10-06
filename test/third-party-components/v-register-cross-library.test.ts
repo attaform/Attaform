@@ -88,7 +88,7 @@ type Mount = {
 function vmodel(rv: AnyApi): Record<string, unknown> {
   return {
     modelValue: rv.innerRef.value,
-    'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v),
+    'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v, {}),
     registerValue: rv,
   }
 }

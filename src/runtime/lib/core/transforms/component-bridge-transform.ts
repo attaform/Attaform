@@ -613,7 +613,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       const updateInitExpression = createCompoundExpression([
         '$event => (',
         ...modelValuePropExpArray,
-        ')?.setValueFromHost?.($event)',
+        ')?.setValueFromHost?.($event, {})',
       ])
       const updateSimpleExpression = createSimpleExpression(
         flattenExpression(updateInitExpression),

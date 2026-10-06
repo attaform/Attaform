@@ -89,7 +89,7 @@ describe.each(adapters)(
       const { state, rv } = hostFor(schemas.number, { n: 42 })
       expect(state.getValueAtPath(['n'])).toBe(42)
 
-      const accepted = rv.setValueFromHost('')
+      const accepted = rv.setValueFromHost('', {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe(0) // slim default, well-typed
@@ -99,7 +99,7 @@ describe.each(adapters)(
     it('required z.number(): a host-emitted null blanks the field (common cleared-control signal)', () => {
       const { state, rv } = hostFor(schemas.number, { n: 42 })
 
-      const accepted = rv.setValueFromHost(null)
+      const accepted = rv.setValueFromHost(null, {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe(0)
@@ -109,7 +109,7 @@ describe.each(adapters)(
     it('required z.number(): a host-emitted undefined blanks the field', () => {
       const { state, rv } = hostFor(schemas.number, { n: 42 })
 
-      const accepted = rv.setValueFromHost(undefined)
+      const accepted = rv.setValueFromHost(undefined, {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe(0)
@@ -119,7 +119,7 @@ describe.each(adapters)(
     it('required z.number(): a real emitted number writes through (no blank)', () => {
       const { state, rv } = hostFor(schemas.number, { n: 42 })
 
-      const accepted = rv.setValueFromHost(7)
+      const accepted = rv.setValueFromHost(7, {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe(7)
@@ -129,7 +129,7 @@ describe.each(adapters)(
     it('z.number().nullable(): a host-emitted null is a genuine value, not a blank signal', () => {
       const { state, rv } = hostFor(schemas.nullable, { n: 42 })
 
-      const accepted = rv.setValueFromHost(null)
+      const accepted = rv.setValueFromHost(null, {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe(null) // stored, not coerced to 0
@@ -139,7 +139,7 @@ describe.each(adapters)(
     it('z.number().optional(): a host-emitted undefined is a genuine value, not a blank signal', () => {
       const { state, rv } = hostFor(schemas.optional, { n: 42 })
 
-      const accepted = rv.setValueFromHost(undefined)
+      const accepted = rv.setValueFromHost(undefined, {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe(undefined)
@@ -149,7 +149,7 @@ describe.each(adapters)(
     it('z.string(): a host-emitted "" is a normal text clear, never routed through blank', () => {
       const { state, rv } = hostFor(schemas.string, { n: 'seed' })
 
-      const accepted = rv.setValueFromHost('')
+      const accepted = rv.setValueFromHost('', {})
 
       expect(accepted).toBe(true)
       expect(state.getValueAtPath(['n'])).toBe('') // '' is a valid string, stored as-is
@@ -173,7 +173,7 @@ describe('hostModelValue: blank-aware :modelValue presentation', () => {
 
   it('presents undefined for a blank path so a naive component renders empty', () => {
     const { rv } = numericHost({ n: 42 })
-    rv.setValueFromHost('') // clear -> blank
+    rv.setValueFromHost('', {}) // clear -> blank
 
     // Storage still holds the slim 0, but the model channel presents the
     // typed-model analog of "empty" so `undefined ?? '' === ''` in the host.
@@ -182,10 +182,10 @@ describe('hostModelValue: blank-aware :modelValue presentation', () => {
 
   it('flips back to the typed value once the host re-supplies a number', () => {
     const { rv } = numericHost({ n: 42 })
-    rv.setValueFromHost('')
+    rv.setValueFromHost('', {})
     expect(rv.hostModelValue.value).toBeUndefined()
 
-    rv.setValueFromHost(9)
+    rv.setValueFromHost(9, {})
     expect(rv.hostModelValue.value).toBe(9)
   })
 })
@@ -240,7 +240,7 @@ describe('component host numeric round-trip (integration): clear syncs DOM and s
           withDirectives(
             h(NumHost, {
               modelValue: rv.hostModelValue.value,
-              'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v),
+              'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v, {}),
             }),
             [[vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true }]]
           )

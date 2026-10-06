@@ -1,7 +1,9 @@
 import { computed, nextTick, ref, shallowReadonly, warn, type Ref } from 'vue'
 import type {
+  AttaformDomBinding,
   DisplayState,
   DomBindingFactory,
+  HostModifiers,
   InternalRegisterValue,
   RegisterOptions,
   RegisterTransform,
@@ -227,11 +229,25 @@ export function buildRegister<F extends GenericForm>(
     // (`getDefaultAtPath` gives 0 for `z.number()`, `''` for
     // `z.string()`, `false` for `z.boolean()`). It sits outside the object
     // literal so the `markBlank` binding (the directive's numeric-clear
-    // listener) and `setValueFromHost` (the component-host analog) share
+    // listener) and `commitFromHost` (the component-host analog) share
     // one path, and a cleared numeric leaf reaches the same state from a
     // native `<input>` and a v-model component alike.
     const markBlank = (): boolean =>
       state.setValueAtPath(segments, slimDefault, withInstanceMeta({ blank: true }))
+
+    // The last step of a component-host write. An empty signal ('' / null /
+    // undefined) that a numeric-only leaf would reject goes through
+    // markBlank: storage lands on the slim default with the blank flag, the
+    // state a native `<input v-register>` reaches on clear, rather than the
+    // slim-primitive gate freezing the old value while the component shows
+    // empty. The slim-set gate keeps a `.nullable()` / `.optional()` (or
+    // `z.file()`) leaf accepting null / undefined as a genuine value.
+    const commitFromHost = (value: unknown): boolean =>
+      (value === '' && !acceptsString) ||
+      (value === null && !slimTypes.has('null')) ||
+      (value === undefined && !acceptsUndefined)
+        ? markBlank()
+        : state.setValueAtPath(segments, value, withInstanceMeta(undefined))
 
     // `shallowReadonly` is what makes `rv.path`, `rv.formKey` and the
     // other top-level fields behave as reactive state inside a wrapper
@@ -256,14 +272,14 @@ export function buildRegister<F extends GenericForm>(
         state.markInteracted(segments)
       },
 
-      ensureDomBinding: (factory: DomBindingFactory): void => {
+      ensureDomBinding: (factory: DomBindingFactory): AttaformDomBinding => {
         // Arm-once per store. The factory arrives from the directive
         // cluster or `useRegister`, the modules that own the DOM
         // machinery, so this eager module never imports it: that is the
         // whole point of the slot. Passing it per call also keeps
         // duplicate-package-copy apps coherent, since whichever copy's
         // cluster runs arms the store its RegisterValue is bound to.
-        state.domBinding.value ??= factory(state)
+        return (state.domBinding.value ??= factory(state))
       },
 
       registerElement: (element: HTMLElement): void => {
@@ -299,7 +315,9 @@ export function buildRegister<F extends GenericForm>(
         return state.setValueAtPath(segments, value, withInstanceMeta(meta))
       },
 
-      setValueFromHost: (value: unknown): boolean => {
+      commitFromHost,
+
+      setValueFromHost: (value: unknown, modifiers: HostModifiers): boolean => {
         // The write path for a third-party component bound by v-register's
         // compile-time v-model desugar. The host emits its typed model value
         // through `onUpdate:modelValue`, and unlike a native control there
@@ -307,29 +325,17 @@ export function buildRegister<F extends GenericForm>(
         // markInteracted the way the native input listener pairs the
         // assigner write with noteInteraction. Without it, blur-validation
         // and the reward-early display state would never arm for a
-        // v-model-bound component. A real value is authoritative, being the
-        // component's resolved model type, so it takes the same
-        // no-coercion funnel as setValueWithInternalPath. Mark interacted
-        // before the write, so validation the write triggers sees the bit.
+        // v-model-bound component. Mark interacted before the write, so
+        // validation the write triggers sees the bit.
         state.markInteracted(segments)
-        // Empty-signal normalization, mirroring the native input listener's
-        // DOM-clear handling (directive.ts). A component clearing a
-        // numeric-only leaf emits an empty signal ('' / null / undefined)
-        // that the slim-primitive gate would reject, freezing form state at
-        // the old value while the component's DOM shows empty. When the
-        // emitted value is one of those signals AND the leaf's slim set does
-        // not admit it, route to markBlank: storage lands on the slim
-        // default with the blank flag, the same state a native
-        // `<input v-register>` reaches on clear. The slim-set gate keeps a
-        // `.nullable()` / `.optional()` (or `z.file()`) leaf accepting null /
-        // undefined as a genuine value rather than reading it as blank.
-        const isBlankSignal =
-          (value === '' && !acceptsString) ||
-          (value === null && !slimTypes.has('null')) ||
-          (value === undefined && !acceptsUndefined)
-        const accepted = isBlankSignal
-          ? markBlank()
-          : state.setValueAtPath(segments, value, withInstanceMeta(undefined))
+        // The host channel, armed by the directive, applies the binding
+        // site's modifiers, transforms and coercion before `commitFromHost`.
+        // It lives in the directive cluster, so a store nothing ever armed
+        // (a fragment-rooted host whose directive Vue dropped) commits
+        // directly.
+        const accepted =
+          state.domBinding.value?.hostChannel.write(internalRv, value, modifiers) ??
+          commitFromHost(value)
         // Dev diagnostic: a host value update flowed in, but nothing was ever
         // wired for this path (no registered element, connected never set). The
         // transform's v-model props ride a component's props / emits, which Vue
@@ -361,6 +367,9 @@ export function buildRegister<F extends GenericForm>(
         }
         return accepted
       },
+
+      setValueFromHostInput: (payload: unknown, modifiers: HostModifiers): boolean =>
+        state.domBinding.value?.hostChannel.writeInput(internalRv, payload, modifiers) ?? false,
 
       // Called by the `vRegisterHintTransform` compile-time transform's wrapping
       // IIFE on every server-side render of `<element v-register="…">`.

@@ -212,16 +212,18 @@ function reportRejection(
 
   const expected = formatExpectedKinds(accepted)
 
-  // String-to-number is the most common gate rejection in real apps:
-  // a plain `<input v-register>` against a numeric leaf reads
-  // `el.value` as a string. Show both v-register fix paths verbatim
-  // so the dev can copy-paste rather than parse "slim primitive set".
+  // String-to-number is the most common gate rejection in real apps: a
+  // text input, or a component emitting text, bound to a numeric leaf.
+  // `.number` works on both a native input and a component host, so it
+  // leads; `type="number"` is the native-only alternative. Show both
+  // verbatim so the dev can copy-paste rather than parse "slim primitive
+  // set".
   if (kind === 'string' && accepted.has('number')) {
     console.warn(
       `[attaform] Cannot write a string to '${dotted}': the schema expects ${expected}.\n` +
-        `  Fix: add type="number" to the input, OR use the .number modifier on v-register:\n` +
-        `    <input type="number" v-register="register('${dotted}')" />\n` +
+        `  Fix: use the .number modifier on v-register, OR add type="number" to a native input:\n` +
         `    <input v-register.number="register('${dotted}')" />\n` +
+        `    <input type="number" v-register="register('${dotted}')" />\n` +
         `  The write was a no-op.`
     )
     return

@@ -345,9 +345,10 @@ export function applyCoerce(value: unknown, registerValue: RegisterValue): unkno
  *
  * `commit` receives the post-transform, post-coerce value on both paths.
  * `syncDom` repaints the bound element after an async commit; it is
- * `undefined` on consumer-override paths that own their own DOM.
+ * `undefined` on consumer-override paths that own their own DOM, and on
+ * the component-host channel, where the host re-renders from its model.
  */
-function wrapWithTransforms(
+export function wrapWithTransforms(
   value: unknown,
   registerValue: RegisterValue,
   commit: (coerced: unknown) => boolean | undefined,

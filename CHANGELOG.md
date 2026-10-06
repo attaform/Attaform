@@ -14,7 +14,7 @@
   payload counts only when it is an object holding its own `value`, so a
   component that forwards the plain DOM event keeps writing through its
   model, and an `@input` you add beside it runs after Attaform's write
-  and reads committed state.
+  and reads committed state. (#685)
 
 - **`.lazy`, `.trim`, and `.number` work on component hosts.** Modifiers
   were read only by the native per-element directives, so a component
@@ -27,13 +27,13 @@
   component's own parts keeps the edit open, a re-render leaves the held
   text and caret in place, and a write from code while a `.lazy` value is
   held wins over it. The component receives a plain `v-model`, so nothing
-  is trimmed or cast twice.
+  is trimmed or cast twice. (#685)
 
 - **Modifiers on a `useRegister` wrapper reach the inner control.**
   `<FieldRow v-register.trim="...">` lands its `.trim` on the inner
   `<input v-register="rv">`, which used to apply only its own modifiers.
   The parent's modifiers combine with the inner binding's, through nested
-  wrappers and onto a component inside the wrapper.
+  wrappers and onto a component inside the wrapper. (#685)
 
 ### Fixed
 
@@ -44,7 +44,7 @@
   leaf. Component writes now take the path a native input's do:
   modifiers, then transforms, then coercion, then the gate. Coercion
   converts strings only, so a component that already emits a number
-  lands it as it is.
+  lands it as it is. (#685)
 
 - **A `.lazy` field keeps an in-progress edit through a re-render.** While
   a native `.lazy` input or a `useRegister` wrapper had focus, any
@@ -53,12 +53,12 @@
   had typed, and the edit was gone before it could commit. The typed text
   and caret now stay put until focus leaves, the same hold `.lazy` gives a
   component host. A write from code such as `form.setValue` still
-  replaces the edit, as it does under `v-model.lazy`.
+  replaces the edit, as it does under `v-model.lazy`. (#685)
 
 - **The string-into-number dev hint leads with the fix that works
   everywhere.** It suggested `type="number"` first, which only a native
   input has. It now leads with the `.number` modifier, which works on a
-  native input and a component alike.
+  native input and a component alike. (#685)
 
 ## v0.30.1
 ### Fixed

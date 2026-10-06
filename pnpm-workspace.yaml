@@ -230,16 +230,23 @@ overrides:
   undici: ^7.29.0
   ws: ^8.21.0
 
-# Install-script allowlist. Any package NOT listed here has its
+# Install-script allowlist. Any package NOT set to `true` here has its
 # install / postinstall / preinstall scripts skipped at install
 # time. Mini-Shai-Hulud-style worms that ride a postinstall hook in
-# a transitive dev dep are blocked structurally: only these six
+# a transitive dev dep are blocked structurally: only these five
 # trusted packages (all have legitimate native-binary install needs)
 # get to run scripts. Replaces the deprecated pnpm 10 setting
 # `onlyBuiltDependencies` (different name, different shape).
 allowBuilds:
   '@parcel/watcher': true
-  better-sqlite3: true
+  # better-sqlite3 13 ships every platform's binary inside the package
+  # (`prebuilds/`) and declares no install script. Allowing it would
+  # only run the `node-gyp rebuild` pnpm infers from its binding.gyp,
+  # which compiles nothing when a prebuild exists but still needs
+  # Python to read the file, so the dev image's install failed on
+  # node:24-alpine. `false` skips that step and keeps it out of the
+  # unreviewed-build report.
+  better-sqlite3: false
   esbuild: true
   sharp: true
   unrs-resolver: true

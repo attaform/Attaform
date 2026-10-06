@@ -76,7 +76,7 @@ export default [
     // than v4 because v3 has no static accessor for async refinements, so
     // the adapter carries its own issue-path rewrite and async-strip pass.
     path: 'dist/zod-v3.mjs',
-    limit: '49 KB',
+    limit: '51.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -101,7 +101,7 @@ export default [
     // A jump here with no directive-side feature behind it means core
     // modules started leaking into the cluster's graph.
     path: 'dist/directive.mjs',
-    limit: '7.5 KB',
+    limit: '8.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

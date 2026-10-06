@@ -32,6 +32,7 @@ import {
   type TemplateChildNode,
 } from '@vue/compiler-core'
 import { SSR_COMPONENT_HOST_MODIFIER } from '../../../core/register-protocol'
+import type { RegisterTextModifier } from '../../../types/types-api'
 import {
   flattenExpression,
   getSummarizedProps,
@@ -158,6 +159,43 @@ const NATIVE_FORM_TAGS: ReadonlySet<string> = new Set<string>([
   'label',
   'button',
 ])
+
+// The `v-register` modifiers a plain component host forwards to the host
+// write channel, in the order the forwarded literal lists them. Any other
+// modifier on the directive, the component-host marker stamped below
+// included, stays out of the literal.
+const HOST_MODIFIERS: readonly RegisterTextModifier[] = ['lazy', 'trim', 'number']
+
+/**
+ * Render the register directive's host modifiers as the static object
+ * literal both injected write handlers pass along: `{ lazy: true }`, or
+ * `{}` when the binding site carries none.
+ */
+function hostModifiersLiteral(registerDirective: DirectiveNode | undefined): string {
+  const present = HOST_MODIFIERS.filter(
+    (name) => registerDirective?.modifiers.some((m) => m.content === name) === true
+  )
+  return present.length === 0 ? '{}' : `{ ${present.map((name) => `${name}: true`).join(', ')} }`
+}
+
+/**
+ * Whether `prop` can put an `input` listener on the host: an author
+ * `@input` or `:onInput`, or an object-form `v-on` / `v-bind`. The
+ * injected live-value listener goes ahead of the first one, so the
+ * compiler's merged handler array, and the runtime merge of an object
+ * spread, run Attaform's write first and an author listener reads the
+ * committed value (#570).
+ */
+function isInputListenerSlot(prop: AttributeNode | DirectiveNode): boolean {
+  if (prop.type !== NodeTypes.DIRECTIVE || (prop.name !== 'on' && prop.name !== 'bind')) {
+    return false
+  }
+  if (prop.arg === undefined) return true
+  return (
+    prop.arg.type === NodeTypes.SIMPLE_EXPRESSION &&
+    prop.arg.content === (prop.name === 'on' ? 'input' : 'onInput')
+  )
+}
 
 /**
  * Synthesise a static value for an `<option>foo</option>` carrying no
@@ -564,7 +602,14 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       // writes the value AND flips the sticky `interacted` bit, a v-model
       // host having no DOM input listener to do it, so blur-validation
       // and the reward-early display state arm as they do for a native
-      // input.
+      // input. Both write handlers pass the binding site's `.lazy` /
+      // `.trim` / `.number` as a static literal, so the host write channel
+      // applies them the way the native variants do.
+      const hostModifiers = hostModifiersLiteral(
+        node.props.find(
+          (p): p is DirectiveNode => p.type === NodeTypes.DIRECTIVE && p.name === 'register'
+        )
+      )
       removePropsByName(node.props, [
         'model',
         'modelValue',
@@ -613,7 +658,7 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
       const updateInitExpression = createCompoundExpression([
         '$event => (',
         ...modelValuePropExpArray,
-        ')?.setValueFromHost?.($event, {})',
+        `)?.setValueFromHost?.($event, ${hostModifiers})`,
       ])
       const updateSimpleExpression = createSimpleExpression(
         flattenExpression(updateInitExpression),
@@ -643,6 +688,63 @@ export const componentBridgeTransform: NodeTransform = (node, context) => {
         loc: selectLoc,
       }
       node.props.push(updateModelValueProp)
+
+      // The live-value channel. Some components commit their model only
+      // on blur, Enter or a spin and report every keystroke through an
+      // `input` emit carrying `{ value }`, so `onInput` routes that emit
+      // through `setValueFromHostInput`. On a component that does not
+      // declare `input`, the listener falls through to its root element
+      // and receives a native `Event`, which the runtime ignores.
+      //
+      // Idempotent without a strip: an author `@input` must survive, so a
+      // doubly-registered pipeline detects its own prior injection by the
+      // handler it calls and skips.
+      const inputAlreadyInjected = node.props.some(
+        (p) =>
+          p.type === NodeTypes.DIRECTIVE &&
+          p.name === 'bind' &&
+          p.arg?.type === NodeTypes.SIMPLE_EXPRESSION &&
+          p.arg.content === 'onInput' &&
+          p.exp !== undefined &&
+          flattenExpression(p.exp).includes('setValueFromHostInput')
+      )
+      if (!inputAlreadyInjected) {
+        const inputInitExpression = createCompoundExpression([
+          '$event => (',
+          ...modelValuePropExpArray,
+          `)?.setValueFromHostInput?.($event, ${hostModifiers})`,
+        ])
+        const inputSimpleExpression = createSimpleExpression(
+          flattenExpression(inputInitExpression),
+          false
+        )
+        let inputOutputExp: ExpressionNode
+        try {
+          inputOutputExp = processExpression(inputSimpleExpression, {
+            ...context,
+            prefixIdentifiers: false,
+          })
+        } catch (err) {
+          console.error(
+            '[attaform] component-bridge transform: processExpression failed for onInput; falling back to the unprocessed expression.',
+            err
+          )
+          inputOutputExp = inputSimpleExpression
+        }
+
+        const inputProp: DirectiveNode = {
+          rawName: '@input',
+          arg: createSimpleExpression('onInput', true),
+          exp: inputOutputExp,
+          name: 'bind',
+          modifiers: [],
+          type: NodeTypes.DIRECTIVE,
+          loc: selectLoc,
+        }
+        const authorListenerIndex = node.props.findIndex(isInputListenerSlot)
+        if (authorListenerIndex === -1) node.props.push(inputProp)
+        else node.props.splice(authorListenerIndex, 0, inputProp)
+      }
     }
 
     // Bridge the form's effective freeze to a `:disabled` bind, on every

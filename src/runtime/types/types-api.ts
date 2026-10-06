@@ -2148,11 +2148,13 @@ export type RegisterTextModifier =
 /**
  * The `v-register` modifiers a component host honours, carried from the
  * binding site to the host write channel as a static literal that the
- * compile-time bridge transform emits.
+ * compile-time bridge transform emits. Shaped like Vue's directive
+ * modifiers, so the directive passes its own binding's modifiers to the
+ * channel unchanged.
  *
  * @internal
  */
-export type HostModifiers = Readonly<Partial<Record<RegisterTextModifier, true>>>
+export type HostModifiers = Readonly<Partial<Record<RegisterTextModifier, boolean>>>
 
 /**
  * v-register directive variant for `<input type="text">`,

@@ -22,9 +22,10 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildRegister } from '../../src/runtime/core/register-api'
 import { armDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
-import type { DisplayState, RegisterValue } from '../../src/runtime/types/types-api'
+import type { DisplayState, HostModifiers, RegisterValue } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
+import { ADAPTERS, type Adapter } from '../utils/ssr-cross-path'
 
 /**
  * Phase 2 of the third-party-component story (plan
@@ -865,3 +866,243 @@ describe('v-register component host: container-path aggregate field-state', () =
     expect(api.fields('tags').focused).toBe(true)
   })
 })
+
+// Focus edges of the host write channel. A host bound with `.lazy` or `.trim`
+// gets capture-phase focus / blur listeners on its root: `.lazy` emits buffer
+// while focus is inside the host and commit when it leaves, and `.trim`
+// commits the trimmed value on leave. The parent render mirrors the bridge
+// transform's injection: the v-model pair and the live `onInput` handler,
+// each passing the binding site's modifiers.
+
+const edgeSchema = (z: Adapter['z']) => z.object({ email: z.string().min(2) })
+type EdgeApi = UseFormReturn<ReturnType<typeof edgeSchema>>
+
+type EdgeMount = {
+  app: App
+  api: EdgeApi
+  root: HTMLElement
+  inner: () => HTMLInputElement
+  show: Ref<boolean>
+}
+
+// A div-rooted text component that commits its model on every keystroke, the
+// shape most third-party inputs take. Its single control latches.
+const KeystrokeInput = defineComponent({
+  name: 'KeystrokeInput',
+  inheritAttrs: false,
+  props: { modelValue: { type: String, default: '' } },
+  emits: ['update:modelValue'],
+  setup:
+    (props, { emit }) =>
+    () =>
+      h('div', { class: 'wrapper' }, [
+        h('input', {
+          class: 'inner',
+          value: props.modelValue,
+          onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+        }),
+      ]),
+})
+
+// Two controls feeding one model, so focus can hop inside the host.
+const TwoPartInput = defineComponent({
+  name: 'TwoPartInput',
+  inheritAttrs: false,
+  props: { modelValue: { type: String, default: '' } },
+  emits: ['update:modelValue'],
+  setup:
+    (props, { emit }) =>
+    () =>
+      h('div', { class: 'two-part' }, [
+        h('input', {
+          class: 'inner',
+          value: props.modelValue,
+          onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+        }),
+        h('input', {
+          class: 'second',
+          onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+        }),
+      ]),
+})
+
+// An `<input>`-rooted component: the directive lands on the control itself
+// and the native per-tag variant binds it beside the v-model channel.
+const InputRooted = defineComponent({
+  name: 'InputRooted',
+  props: { modelValue: { type: String, default: '' } },
+  emits: ['update:modelValue'],
+  setup:
+    (props, { emit }) =>
+    () =>
+      h('input', {
+        class: 'inner',
+        value: props.modelValue,
+        onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+      }),
+})
+
+async function mountEdgeHost(
+  adapter: Adapter,
+  Child: ReturnType<typeof defineComponent>,
+  modifiers: HostModifiers,
+  formOptions: { validateOn?: 'blur' } = {}
+): Promise<EdgeMount> {
+  const handle: { api?: EdgeApi } = {}
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const show = ref(true)
+  const Parent = defineComponent({
+    setup() {
+      const api = adapter.useForm({
+        schema: edgeSchema(adapter.z),
+        key: `edge-host-${Math.random().toString(36).slice(2)}`,
+        ...formOptions,
+      })
+      handle.api = api
+      return () => {
+        if (!show.value) return h('div', { class: 'placeholder' })
+        const rv = api.register('email')
+        return withDirectives(
+          h(Child, {
+            modelValue: rv.hostModelValue.value,
+            'onUpdate:modelValue': ($event: unknown) => rv.setValueFromHost($event, modifiers),
+            onInput: ($event: unknown) => rv.setValueFromHostInput($event, modifiers),
+            registerValue: rv,
+          }),
+          [[vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true, ...modifiers }]]
+        )
+      }
+    },
+  })
+  const app = createApp(Parent).use(createAttaform())
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app.mount(root)
+  await waitUntil(() => (handle.api !== undefined && root.firstElementChild !== null ? true : null))
+  await awaitSettle()
+  warnSpy.mockRestore()
+  if (handle.api === undefined) throw new Error('mountEdgeHost: api never set')
+  return {
+    app,
+    api: handle.api,
+    root,
+    inner: () => root.querySelector('input.inner') as HTMLInputElement,
+    show,
+  }
+}
+
+function typeInto(el: HTMLInputElement, value: string): void {
+  el.value = value
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+}
+function focusOn(el: Element, from: Element | null = null): void {
+  el.dispatchEvent(new FocusEvent('focus', { relatedTarget: from }))
+}
+function blurFrom(el: Element, to: Element | null = null): void {
+  el.dispatchEvent(new FocusEvent('blur', { relatedTarget: to }))
+}
+
+describe.each(ADAPTERS)(
+  'v-register component host: write-channel focus edges [$name]',
+  (adapter) => {
+    let m: EdgeMount | undefined
+    afterEach(() => {
+      m?.app.unmount()
+      m = undefined
+      document.body.innerHTML = ''
+    })
+
+    it('.lazy buffers emits while focus is inside the host and commits on leave', async () => {
+      m = await mountEdgeHost(adapter, KeystrokeInput, { lazy: true })
+      focusOn(m.inner())
+      typeInto(m.inner(), 'a')
+      typeInto(m.inner(), 'ab')
+      expect(m.api.values.email).toBe('')
+
+      blurFrom(m.inner(), document.body)
+      expect(m.api.values.email).toBe('ab')
+    })
+
+    it('commits on leave before the control blur listeners and blur-validation run', async () => {
+      m = await mountEdgeHost(adapter, KeystrokeInput, { lazy: true }, { validateOn: 'blur' })
+      const api = m.api
+      let atControlBlur: unknown
+      m.inner().addEventListener('blur', () => {
+        atControlBlur = api.values.email
+      })
+      focusOn(m.inner())
+      typeInto(m.inner(), 'ab')
+
+      blurFrom(m.inner(), document.body)
+      expect(atControlBlur).toBe('ab')
+      // The blur validation reads the committed 'ab'. Run against the
+      // pre-commit '', it would leave a min-length error no later pass clears.
+      await waitUntil(() => (api.fields.email.errors.length === 0 ? true : null))
+      expect(api.fields.email.errors).toEqual([])
+      expect(api.fields.email.blurred).toBe(true)
+    })
+
+    it('treats a focus hop between controls inside the host as no leave', async () => {
+      m = await mountEdgeHost(adapter, TwoPartInput, { lazy: true })
+      const first = m.inner()
+      const second = m.root.querySelector('input.second') as HTMLInputElement
+      focusOn(first)
+      typeInto(first, 'ab')
+      blurFrom(first, second)
+      focusOn(second, first)
+      typeInto(second, 'abc')
+      expect(m.api.values.email).toBe('')
+
+      blurFrom(second, document.body)
+      expect(m.api.values.email).toBe('abc')
+    })
+
+    it('.trim writes the raw emit and commits the trimmed value on leave', async () => {
+      m = await mountEdgeHost(adapter, KeystrokeInput, { trim: true })
+      focusOn(m.inner())
+      typeInto(m.inner(), '  ab ')
+      expect(m.api.values.email).toBe('  ab ')
+
+      blurFrom(m.inner(), document.body)
+      expect(m.api.values.email).toBe('ab')
+    })
+
+    it('gives an <input>-rooted host the edges', async () => {
+      m = await mountEdgeHost(adapter, InputRooted, { lazy: true })
+      expect(m.root.firstElementChild?.tagName).toBe('INPUT')
+      focusOn(m.inner())
+      typeInto(m.inner(), 'ab')
+      expect(m.api.values.email).toBe('')
+
+      blurFrom(m.inner(), document.body)
+      expect(m.api.values.email).toBe('ab')
+    })
+
+    it('gives a useRegister wrapper no edges: its inner control owns the binding', async () => {
+      m = await mountEdgeHost(adapter, UseRegisterWrapper, { lazy: true, trim: true })
+      const channel = armDomBinding(m.api.register('email'))?.hostChannel
+      if (channel === undefined) throw new Error('host channel missing')
+      const markEditing = vi.spyOn(channel, 'markEditing')
+
+      focusOn(m.inner())
+      blurFrom(m.inner(), document.body)
+      expect(markEditing).not.toHaveBeenCalled()
+    })
+
+    it('discards a buffered .lazy value on unmount and leaves no edit state behind', async () => {
+      m = await mountEdgeHost(adapter, KeystrokeInput, { lazy: true })
+      focusOn(m.inner())
+      typeInto(m.inner(), 'ab')
+
+      m.show.value = false
+      await awaitSettle()
+      expect(m.api.values.email).toBe('')
+
+      // Remounted and never focused, the host commits an emit immediately.
+      m.show.value = true
+      await awaitSettle()
+      typeInto(m.inner(), 'cd')
+      expect(m.api.values.email).toBe('cd')
+    })
+  }
+)

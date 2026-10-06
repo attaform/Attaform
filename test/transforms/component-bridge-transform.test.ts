@@ -264,3 +264,85 @@ describe('componentBridgeTransform: :disabled freeze bind', () => {
     expect(code).not.toContain('disabled?.value')
   })
 })
+
+describe('componentBridgeTransform: host write handlers', () => {
+  // Compiled with prefixed identifiers, as an SFC compiles, so assertions
+  // read the shipped shape: `(_ctx.reg)?.setValueFromHost?.(...)`.
+  function compileHost(template: string, transformCount = 1): string {
+    return baseCompile(template, {
+      nodeTransforms: Array.from({ length: transformCount }, () => componentBridgeTransform),
+      mode: 'module',
+      prefixIdentifiers: true,
+    }).code
+  }
+
+  const update = (mods: string): string =>
+    `"onUpdate:modelValue": $event => (_ctx.reg)?.setValueFromHost?.($event, ${mods})`
+  const input = (mods: string): string =>
+    `$event => (_ctx.reg)?.setValueFromHostInput?.($event, ${mods})`
+
+  it('passes an empty modifier literal when the binding site carries none', () => {
+    const code = compileHost(`<MyInput v-register="reg" />`)
+    expect(code).toContain(update('{}'))
+    expect(code).toContain(`onInput: ${input('{}')}`)
+  })
+
+  it.each([
+    ['.lazy', '{ lazy: true }'],
+    ['.trim', '{ trim: true }'],
+    ['.number', '{ number: true }'],
+    ['.trim.lazy', '{ lazy: true, trim: true }'],
+    ['.number.trim.lazy', '{ lazy: true, trim: true, number: true }'],
+  ])('forwards v-register%s to both handlers as %s', (modifiers, literal) => {
+    const code = compileHost(`<MyInput v-register${modifiers}="reg" />`)
+    expect(code).toContain(update(literal))
+    expect(code).toContain(`onInput: ${input(literal)}`)
+  })
+
+  it('leaves the component-host marker and unknown modifiers out of the literal', () => {
+    // The second pass sees the marker the first pass stamped.
+    const code = compileHost(`<MyInput v-register.lazy.custom="reg" />`, 2)
+    expect(code).toContain(update('{ lazy: true }'))
+    expect(code).toContain(`onInput: ${input('{ lazy: true }')}`)
+  })
+
+  it('runs the injected input handler ahead of an author @input', () => {
+    const after = compileHost(`<MyInput v-register="reg" @input="onAuthor" />`)
+    const before = compileHost(`<MyInput @input="onAuthor" v-register="reg" />`)
+    expect(after).toContain(`onInput: [${input('{}')}, _ctx.onAuthor]`)
+    expect(before).toContain(`onInput: [${input('{}')}, _ctx.onAuthor]`)
+  })
+
+  it('runs the injected input handler ahead of an author :onInput bind', () => {
+    const code = compileHost(`<MyInput v-register="reg" :onInput="onAuthor" />`)
+    expect(code).toContain(`onInput: [${input('{}')}, _ctx.onAuthor]`)
+  })
+
+  it('runs the injected input handler ahead of an object-form v-bind spread', () => {
+    const code = compileHost(`<MyInput v-register="reg" v-bind="$attrs" />`)
+    expect(code).toContain(`_mergeProps({ onInput: ${input('{}')} }, _ctx.$attrs`)
+  })
+
+  it('injects the input handler once under a doubled pipeline and keeps the author @input', () => {
+    const code = compileHost(`<MyInput v-register.lazy="reg" @input="onAuthor" />`, 2)
+    expect(code.match(/setValueFromHostInput\?\.\(/g)?.length ?? 0).toBe(1)
+    expect(code).toContain(`onInput: [${input('{ lazy: true }')}, _ctx.onAuthor]`)
+  })
+
+  it('injects both handlers on a kebab-case custom-element host', () => {
+    const code = compileHost(`<my-input v-register.trim="reg" />`)
+    expect(code).toContain(update('{ trim: true }'))
+    expect(code).toContain(`onInput: ${input('{ trim: true }')}`)
+  })
+
+  it('leaves a select-like host and a native <select> without either handler', () => {
+    for (const template of [
+      `<MySelect v-register.number="reg"><option value="1">One</option></MySelect>`,
+      `<select v-register.number="reg"><option value="1">One</option></select>`,
+    ]) {
+      const code = compileHost(template)
+      expect(code).not.toContain('setValueFromHost')
+      expect(code).not.toContain('onInput')
+    }
+  })
+})

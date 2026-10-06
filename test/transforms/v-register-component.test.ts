@@ -342,16 +342,20 @@ describe('v-register on Vue components: AST behaviour', () => {
       // is the sharp check: a non-idempotent re-run would array-wrap the
       // onUpdate handler (two setValueFromHost references) while the
       // `"onUpdate:modelValue":` key itself still reads as one occurrence.
+      // The live `onInput` handler is never stripped, an author `@input`
+      // sharing its key, so it detects its own prior injection instead.
       const code = compileWith(`<MyInput v-register="reg" />`, [
         componentBridgeTransform,
         componentBridgeTransform,
       ])
       const modelValueHits =
         code.match(/modelValue:\s*\(.*\)\?\.hostModelValue\?\.value/g)?.length ?? 0
-      const setterHits = code.match(/setValueFromHost/g)?.length ?? 0
+      const setterHits = code.match(/setValueFromHost\?\.\(/g)?.length ?? 0
+      const inputHits = code.match(/setValueFromHostInput\?\.\(/g)?.length ?? 0
       const regValueHits = code.match(/registerValue:/g)?.length ?? 0
       expect(modelValueHits).toBe(1)
       expect(setterHits).toBe(1)
+      expect(inputHits).toBe(1)
       expect(regValueHits).toBe(1)
     })
   })

@@ -48,6 +48,7 @@ import {
 } from './directive-value-sync'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
 import type {
+  HostModifiers,
   InternalRegisterValue,
   RegisterCheckboxCustomDirective,
   RegisterModelDynamicCustomDirective,
@@ -1159,6 +1160,39 @@ function observeForLateHostControl(el: HTMLElement, rv: RegisterValue): void {
   hostHealObservers.set(el, observer)
 }
 
+// Per-host-root release of the host write channel's edit state, read back at
+// `beforeUnmount` so a `.lazy` value still buffered at unmount is discarded,
+// as native `.lazy` never commits without a `change`.
+const hostEditReleases = new WeakMap<HTMLElement, () => void>()
+
+// The focus edges of a component host bound with `.lazy` or `.trim`. The host
+// write channel buffers a `.lazy` emit while focus is inside the host and
+// commits it, or the deferred `.trim`, when focus leaves. Capture phase on the
+// host root, so the commit lands before the control's own blur listeners: the
+// component's blur-time emit and Attaform's blur-validation both read the
+// committed value. A move whose `relatedTarget` stays inside the host is an
+// intra-widget hop, not an edge. Runs before `activateComponentHost`, whose
+// latch registers a descendant: a registered descendant at this point means a
+// useRegister wrapper, whose inner control owns value and modifiers. An
+// `<input>`-rooted host registered its root through the per-tag variant and
+// still takes the edges, its v-model writes riding the channel too.
+function trackHostEdits(el: HTMLElement, rv: RegisterValue, modifiers: HostModifiers): void {
+  if (modifiers.lazy !== true && modifiers.trim !== true) return
+  if (!INTERACTIVE_TAG_NAMES.has(el.tagName) && rv.hasRegisteredDescendant(el)) return
+  const channel = armDomBinding(rv)?.hostChannel
+  if (channel === undefined) return
+  const edge =
+    (editing: boolean): EventListener =>
+    (event) => {
+      const other = (event as FocusEvent).relatedTarget
+      if (other instanceof Node && el.contains(other)) return
+      channel.markEditing(rv, editing, modifiers)
+    }
+  addTrackedListener(el, 'focus', edge(true), { capture: true })
+  addTrackedListener(el, 'blur', edge(false), { capture: true })
+  hostEditReleases.set(el, () => channel.release(rv))
+}
+
 function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
   // Case A: a useRegister wrapper already owns this path, its inner control
   // having self-registered before this host mounted. That control owns value
@@ -1245,6 +1279,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // before the warn below, so the `REGISTER_OWNER_MARKER` it sets on a Case-B
     // host suppresses the no-op warn a non-interactive host root would draw.
     if (binding.modifiers[SSR_COMPONENT_HOST_MODIFIER] === true && isRegisterValue(binding.value)) {
+      trackHostEdits(el, binding.value, binding.modifiers)
       activateComponentHost(el, binding.value)
     }
 
@@ -1332,6 +1367,11 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
 
     // Stop the reactive disabled-sync watch, a no-op where none was set.
     teardownDisabledSync(el)
+
+    // Drop the host write channel's edit state, discarding a buffered `.lazy`
+    // value; `trackHostEdits` attached the edges for this host root.
+    hostEditReleases.get(el)?.()
+    hostEditReleases.delete(el)
 
     if (!isRegisterValue(value)) return
 

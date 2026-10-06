@@ -141,20 +141,28 @@ function onCompositionEnd(e: Event) {
 // compiled `:value` patch, or a component rendering its control from its
 // model, runs after `beforeUpdate` and paints storage over the user's text.
 // `holdDraft` records the control's text and caret before the patch, keyed by
-// the element the directive sits on, and `restoreDraft` puts them back from
-// `updated` when the patch moved them.
+// the element the directive sits on, together with `stale`, the text such a
+// repaint writes. `restoreDraft` runs from `updated` and puts the edit back
+// only when the patch wrote `stale`: any other text is the component's own
+// rendering of the edit, and stands.
 type HeldDraft = {
   control: HTMLInputElement | HTMLTextAreaElement
   text: string
+  stale: string
   start: number | null
   end: number | null
 }
 const heldDrafts = new WeakMap<HTMLElement, HeldDraft>()
 
-function holdDraft(owner: HTMLElement, control: HTMLInputElement | HTMLTextAreaElement): void {
+function holdDraft(
+  owner: HTMLElement,
+  control: HTMLInputElement | HTMLTextAreaElement,
+  stale: string
+): void {
   heldDrafts.set(owner, {
     control,
     text: control.value,
+    stale,
     start: control.selectionStart,
     end: control.selectionEnd,
   })
@@ -164,12 +172,17 @@ function restoreDraft(owner: HTMLElement): void {
   const held = heldDrafts.get(owner)
   if (held === undefined) return
   heldDrafts.delete(owner)
-  const { control, text, start, end } = held
-  if (control.value === text) return
+  const { control, text, stale, start, end } = held
+  if (control.value !== stale || stale === text) return
   control.value = text
   // A type with no selection (`number`, `email`) reads null here, and
   // `setSelectionRange` throws on it.
   if (start !== null && end !== null) control.setSelectionRange(start, end)
+}
+
+// `node` when it is a text control, the kind whose edit a draft holds.
+function textControl(node: EventTarget | null): HTMLInputElement | HTMLTextAreaElement | null {
+  return node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement ? node : null
 }
 
 // The per-tag variants are plain vnode-hook objects, so a build that never
@@ -498,7 +511,7 @@ const vRegisterText: RegisterTextCustomDirective = {
       // user's whitespace. Holding the draft also undoes the compiled
       // `:value` patch, which runs after this hook.
       if ((lazy === true && !modelMoved) || (trim === true && el.value.trim() === target)) {
-        holdDraft(el, el)
+        holdDraft(el, el, target)
         return
       }
     }
@@ -1205,8 +1218,10 @@ function observeForLateHostControl(el: HTMLElement, rv: RegisterValue): void {
 // Per-host-root handle on the host write channel. `beforeUpdate` asks it for a
 // buffered `.lazy` draft to hold through the render, and `beforeUnmount`
 // releases it, so a value still buffered at unmount is discarded, as native
-// `.lazy` never commits without a `change`.
-const hostEdits = new WeakMap<HTMLElement, { channel: HostChannel; rv: RegisterValue }>()
+// `.lazy` never commits without a `change`. `base` is the focused control's
+// text from before the draft, the stale text a repaint from storage writes.
+type HostEdits = { channel: HostChannel; rv: RegisterValue; base: string | undefined }
+const hostEdits = new WeakMap<HTMLElement, HostEdits>()
 
 // The focus edges of a component host bound with `.lazy` or `.trim`. The host
 // write channel buffers a `.lazy` emit while focus is inside the host and
@@ -1224,16 +1239,19 @@ function trackHostEdits(el: HTMLElement, rv: RegisterValue, modifiers: HostModif
   if (!INTERACTIVE_TAG_NAMES.has(el.tagName) && rv.hasRegisteredDescendant(el)) return
   const channel = armDomBinding(rv)?.hostChannel
   if (channel === undefined) return
+  const edits: HostEdits = { channel, rv, base: undefined }
   const edge =
     (editing: boolean): EventListener =>
     (event) => {
+      // Focus arriving while no draft is held records the pre-edit text.
+      if (editing && !channel.holdsDraft(rv)) edits.base = textControl(event.target)?.value
       const other = (event as FocusEvent).relatedTarget
       if (other instanceof Node && el.contains(other)) return
       channel.markEditing(rv, editing, modifiers)
     }
   addTrackedListener(el, 'focus', edge(true), { capture: true })
   addTrackedListener(el, 'blur', edge(false), { capture: true })
-  hostEdits.set(el, { channel, rv })
+  hostEdits.set(el, edits)
 }
 
 // The focused control of a `.lazy` host whose channel holds a draft keeps its
@@ -1242,14 +1260,9 @@ function trackHostEdits(el: HTMLElement, rv: RegisterValue, modifiers: HostModif
 // draft reaches storage only when focus leaves the host.
 function holdHostDraft(el: HTMLElement): void {
   const edits = hostEdits.get(el)
-  if (edits?.channel.holdsDraft(edits.rv) !== true) return
-  const control = activeElementOf(el)
-  if (
-    (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) &&
-    el.contains(control)
-  ) {
-    holdDraft(el, control)
-  }
+  if (edits?.base === undefined || !edits.channel.holdsDraft(edits.rv)) return
+  const control = textControl(activeElementOf(el))
+  if (control !== null && el.contains(control)) holdDraft(el, control, edits.base)
 }
 
 function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {

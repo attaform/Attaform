@@ -37,6 +37,45 @@ const ControlledInput = defineComponent({
       ]),
 })
 
+// A controlled input beside a focusable button inside the same root, so
+// focus can hop between them without leaving the host.
+const ClearableInput = defineComponent({
+  name: 'ClearableInput',
+  props: { modelValue: { type: String, default: undefined } },
+  emits: ['update:modelValue'],
+  setup:
+    (props, { emit }) =>
+    () =>
+      h('div', { class: 'clearable' }, [
+        h('input', {
+          value: props.modelValue ?? '',
+          onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+        }),
+        h('button', { type: 'button' }, 'clear'),
+      ]),
+})
+
+// Keeps its own text and renders it upper-cased, so its own re-render
+// changes the input's text while the user types.
+const UpperInput = defineComponent({
+  name: 'UpperInput',
+  props: { modelValue: { type: String, default: undefined } },
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    const text = ref(props.modelValue ?? '')
+    return () =>
+      h('div', { class: 'upper' }, [
+        h('input', {
+          value: text.value.toUpperCase(),
+          onInput: (e: Event) => {
+            text.value = (e.target as HTMLInputElement).value
+            emit('update:modelValue', text.value.toUpperCase())
+          },
+        }),
+      ])
+  },
+})
+
 const TextField = defineComponent({
   name: 'TextField',
   setup: () => ({ rv: useRegister() }),
@@ -152,6 +191,34 @@ describe.each(ADAPTERS)(
         await leave(m.input)
         expect(m.form.values.name).toBe('set')
       })
+    })
+
+    it('keeps the typed text after focus hops inside the host and back', async () => {
+      const m = await mount(adapter, `<ClearableInput v-register.lazy="form.register('name')" />`, {
+        ClearableInput,
+      })
+      await typeText(m.input, 'ab')
+      m.input.parentElement?.querySelector('button')?.focus()
+      m.input.focus()
+      await m.rerender()
+      expect(m.input.value).toBe('ab')
+      expect(m.form.values.name).toBe('')
+
+      await leave(m.input)
+      expect(m.form.values.name).toBe('ab')
+    })
+
+    it("leaves a component's own re-render of its text in place", async () => {
+      const m = await mount(adapter, `<UpperInput v-register.lazy="form.register('name')" />`, {
+        UpperInput,
+      })
+      await typeText(m.input, 'ab')
+      expect(m.input.value).toBe('AB')
+      await m.rerender()
+      expect(m.input.value).toBe('AB')
+
+      await leave(m.input)
+      expect(m.form.values.name).toBe('AB')
     })
 
     it("keeps a controlled host's first keystroke when it flips interacted", async () => {

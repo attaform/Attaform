@@ -23,7 +23,9 @@
  */
 import { reactive, markRaw } from 'vue'
 import { canonicalizePath, type Path, type PathKey } from './paths'
+import { activeElementOf } from './active-element'
 import { INTERACTIVE_TAG_NAMES } from './interactive-tags'
+import { createHostChannel } from './host-channel'
 import type { ElementRecord } from './store-records'
 import type {
   AttaformDomBinding,
@@ -108,10 +110,7 @@ function attachFocusListeners(
   // (ShadowRoot-aware, as the directive's own lookup is) makes the
   // freshly-rendered field's FieldState reflect DOM truth rather than the
   // optimistic `focused: false` seeded at registration.
-  const rootNode = element.getRootNode()
-  const activeElement =
-    rootNode instanceof Document || rootNode instanceof ShadowRoot ? rootNode.activeElement : null
-  if (activeElement === element) {
+  if (activeElementOf(element) === element) {
     kernel.markFocused(segments, true, focusMeta)
   }
 }
@@ -352,6 +351,7 @@ export function createDomBinding(kernel: DomBindingKernel): AttaformDomBinding {
     detach,
     markHostConnected,
     getFirstErrorElement,
+    hostChannel: createHostChannel(),
   }
 }
 
@@ -361,8 +361,10 @@ export function createDomBinding(kernel: DomBindingKernel): AttaformDomBinding {
  * registration, so by the time `rv.registerElement` runs, the kernel's
  * `domBinding` slot is live. A hand-rolled RegisterValue (a custom
  * integration, a test fixture) has no `ensureDomBinding` and manages its
- * own elements, so the optional call skips it.
+ * own elements, so the optional call skips it and returns `undefined`.
+ * Otherwise returns the armed binding, the directive's route to the host
+ * write channel.
  */
-export function armDomBinding(value: RegisterValue): void {
-  value.ensureDomBinding?.(createDomBinding)
+export function armDomBinding(value: RegisterValue): AttaformDomBinding | undefined {
+  return value.ensureDomBinding?.(createDomBinding)
 }

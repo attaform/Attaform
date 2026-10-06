@@ -7,8 +7,9 @@
  *
  *  - **The compiler transforms.** `v-register-hint-transform` and
  *    `component-bridge-transform` emit source text calling
- *    `?.markConnectedOptimistically?.()`, `?.setValueFromHost?.($event)`
- *    and `?.findIndex?.()` on a `RegisterValue`. The optional call is
+ *    `?.markConnectedOptimistically?.()`, `?.setValueFromHost?.(...)`,
+ *    `?.setValueFromHostInput?.(...)` and `?.findIndex?.()` on a
+ *    `RegisterValue`. The optional call is
  *    what makes a rename dangerous rather than merely wrong: the emitted
  *    call evaluates to `undefined` and does nothing, so the connected
  *    flag is never set and a host component's writes are dropped, with
@@ -95,6 +96,7 @@ describe('names the compiler transforms emit as text still resolve', () => {
     expect(calls.length).toBeGreaterThanOrEqual(3)
     expect(calls).toContain('markConnectedOptimistically')
     expect(calls).toContain('setValueFromHost')
+    expect(calls).toContain('setValueFromHostInput')
   })
 
   it('every emitted optional call names a real member of the object it targets', () => {

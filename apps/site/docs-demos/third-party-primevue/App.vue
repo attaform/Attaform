@@ -26,7 +26,7 @@
     <div class="field">
       <small>PrimeVue InputText</small>
       <InputText
-        v-register="form.register('username')"
+        v-register.trim="form.register('username')"
         placeholder="jane.doe"
         autocomplete="username"
       />

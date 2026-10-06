@@ -59,12 +59,14 @@ type Mount = {
   warnings: string[]
 }
 
-// The transform-equivalent value channel + register prop, re-read on every
-// parent render so `modelValue` tracks `innerRef`.
+// The transform-equivalent value channel + register prop: the v-model pair
+// and the live `onInput` channel, re-read on every parent render so
+// `modelValue` tracks `innerRef`.
 function vmodel(rv: AnyApi): Record<string, unknown> {
   return {
     modelValue: rv.innerRef.value,
-    'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v),
+    'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v, {}),
+    onInput: (payload: unknown) => rv.setValueFromHostInput(payload, {}),
     registerValue: rv,
   }
 }

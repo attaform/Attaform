@@ -16,7 +16,10 @@ import { vRegister } from '../../src/runtime/core/directive'
 import { SSR_COMPONENT_HOST_MODIFIER } from '../../src/runtime/core/register-protocol'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
+import { ADAPTERS } from '../utils/ssr-cross-path'
+import type { HostModifiers } from '../../src/runtime/types/types-api'
 import PrimeVue from 'primevue/config'
+import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import {
@@ -83,12 +86,15 @@ type Mount = {
   warnings: string[]
 }
 
-// The transform-equivalent value channel + register prop. Re-read on every
-// parent render (inside the render closure) so `modelValue` tracks `innerRef`.
-function vmodel(rv: AnyApi): Record<string, unknown> {
+// The transform-equivalent value channel + register prop: the v-model pair,
+// the live `onInput` channel, each passing the binding site's modifiers. Re-read
+// on every parent render (inside the render closure) so `modelValue` tracks
+// `innerRef`.
+function vmodel(rv: AnyApi, modifiers: HostModifiers): Record<string, unknown> {
   return {
     modelValue: rv.innerRef.value,
-    'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v),
+    'onUpdate:modelValue': (v: unknown) => rv.setValueFromHost(v, modifiers),
+    onInput: (payload: unknown) => rv.setValueFromHostInput(payload, modifiers),
     registerValue: rv,
   }
 }
@@ -98,8 +104,14 @@ const mounts: Mount[] = []
 async function mountHost(
   schema: unknown,
   child: (rv: AnyApi, vm: Record<string, unknown>) => VNode,
-  opts: { prime?: boolean } = {}
+  opts: {
+    prime?: boolean
+    useForm?: (opts: Record<string, unknown>) => AnyApi
+    modifiers?: HostModifiers
+  } = {}
 ): Promise<Mount> {
+  const modifiers = opts.modifiers ?? {}
+  const makeForm = opts.useForm ?? useFormHost
   const handle: { api?: AnyApi } = {}
   const warnings: string[] = []
   const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => {
@@ -109,13 +121,13 @@ async function mountHost(
 
   const Parent = defineComponent({
     setup() {
-      const api = useFormHost({ schema, key: `xlib-${Math.random().toString(36).slice(2)}` })
+      const api = makeForm({ schema, key: `xlib-${Math.random().toString(36).slice(2)}` })
       handle.api = api
       const rv = api.register('field')
       return () => {
         if (!show.value) return h('div', { class: 'placeholder' })
-        return withDirectives(child(rv, vmodel(rv)), [
-          [vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true }],
+        return withDirectives(child(rv, vmodel(rv, modifiers)), [
+          [vRegister, rv, '', { [SSR_COMPONENT_HOST_MODIFIER]: true, ...modifiers }],
         ])
       }
     },
@@ -210,6 +222,63 @@ describe('cross-library matrix: PrimeVue', () => {
     expect(inner.value).toBe('hunter2')
   })
 })
+
+// PrimeVue InputNumber commits `update:modelValue` only on blur, Enter, a
+// spin or a clamp. Each keystroke reports through an `input` emit carrying
+// `{ originalEvent, value, formattedValue }`, which the live channel writes.
+// Driven by keydown + keypress, the events the component handles.
+
+async function pressKey(input: HTMLInputElement, key: string): Promise<void> {
+  input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+  input.dispatchEvent(new KeyboardEvent('keypress', { key, bubbles: true, cancelable: true }))
+  await awaitSettle()
+}
+
+describe.each(ADAPTERS)(
+  'cross-library matrix: PrimeVue InputNumber live value [$name]',
+  (adapter) => {
+    const makeForm = adapter.useForm as unknown as (opts: Record<string, unknown>) => AnyApi
+
+    async function mountInputNumber(modifiers: HostModifiers): Promise<{
+      m: Mount
+      input: HTMLInputElement
+    }> {
+      const m = await mountHost(
+        adapter.z.object({ field: adapter.z.number() }),
+        (_rv, vm) => h(InputNumber, { ...vm }),
+        { prime: true, useForm: makeForm, modifiers }
+      )
+      const input = m.inner('input') as HTMLInputElement
+      input.focus()
+      input.setSelectionRange(0, input.value.length)
+      return { m, input }
+    }
+
+    it('writes each typed digit to the form before blur', async () => {
+      const { m, input } = await mountInputNumber({})
+      await pressKey(input, '4')
+      expect(m.api.values.field).toBe(4)
+      await pressKey(input, '2')
+      expect(m.api.values.field).toBe(42)
+      expect(input.value).toBe('42')
+
+      input.blur()
+      await awaitSettle()
+      expect(m.api.values.field).toBe(42)
+    })
+
+    it('.lazy holds typed digits until focus leaves the host', async () => {
+      const { m, input } = await mountInputNumber({ lazy: true })
+      await pressKey(input, '4')
+      await pressKey(input, '2')
+      expect(m.api.values.field).toBe(0)
+
+      input.blur()
+      await awaitSettle()
+      expect(m.api.values.field).toBe(42)
+    })
+  }
+)
 
 // reka-ui
 

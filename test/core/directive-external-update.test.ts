@@ -46,6 +46,8 @@ function makeRegisterValue<T>(initial: T): MutableMockRv<T> {
     deregisterElement: vi.fn(),
     setValueWithInternalPath: vi.fn(() => true),
     setValueFromHost: vi.fn(() => true),
+    setValueFromHostInput: () => false,
+    commitFromHost: vi.fn(() => true),
     markConnectedOptimistically: () => undefined,
     markHostConnected: () => undefined,
     markFocused: () => undefined,

@@ -57,6 +57,16 @@ When the wrapper's root **is** the input itself, Vue's attribute fallthrough alr
 
 That's the whole pattern: call once, hand the return value to `v-register` inside. `useRegister` reads the parent's binding, surfaces it as a hybrid Ref + RegisterValue Proxy, and the directive picks it up exactly as if the parent had applied it directly to the inner input.
 
+## Modifiers come along
+
+[Modifiers](/docs/binding-inputs/modifiers) the parent writes on the wrapper reach the inner control:
+
+```vue
+<FieldRow v-register.trim="form.register('email')" label="Email" />
+```
+
+The `<input v-register="rv">` inside `FieldRow` now trims exactly as if `.trim` were written on it. Modifiers on the inner binding still apply, and the two sets combine: `.trim` on the parent with `v-register.lazy="rv"` inside gives the input `.lazy.trim`. When the inner control is itself a component, the parent's modifiers reach it the same way, [timed to focus leaving it](/docs/binding-inputs/modifiers#on-a-component).
+
 ## Two surfaces on the return value
 
 `useRegister()` returns a hybrid Proxy:

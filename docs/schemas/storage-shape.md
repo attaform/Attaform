@@ -87,7 +87,7 @@ Two distinct surfaces can change what lands in storage. They sit at different bo
 | `v-register` modifiers and register `transforms`   | yes              | at the user-input boundary |
 | `z.preprocess` / `z.coerce.X()` / `.transform(fn)` | no               | at parse / submit          |
 
-The directive layer owns write-time mutation: `v-register.trim` strips whitespace as the user blurs, `v-register.number` casts the DOM string to a number, and `register({ transforms: [...] })` runs consumer-supplied functions on every commit. Anything those produce ends up in storage.
+The directive layer owns write-time mutation, on a native input and a bound component alike: `v-register.trim` strips whitespace as the user blurs, `v-register.number` casts typed text to a number, and `register({ transforms: [...] })` runs consumer-supplied functions on every commit. Anything those produce ends up in storage.
 
 Schema-side normalizers do their work later, inside `safeParse`. The consumer's verbatim write lands in storage; `handleSubmit`, `validate`, and `parse` re-parse storage through the schema and surface the typed result. There is no schema shape that mutates storage at the write boundary.
 

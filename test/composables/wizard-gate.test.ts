@@ -126,7 +126,7 @@ describe.each(adapters)('useWizard gate(): $name', ({ useForm, z }) => {
 
     // Host + directive write origins no-op (they return false).
     const rv = shipping.register('addr')
-    expect(rv.setValueFromHost('via-host')).toBe(false)
+    expect(rv.setValueFromHost('via-host', {})).toBe(false)
     expect(rv.setValueWithInternalPath('via-directive')).toBe(false)
     await awaitSettle()
     expect(shipping.values.addr).toBe('init-addr')
@@ -206,7 +206,7 @@ describe.each(adapters)('useWizard gate(): $name', ({ useForm, z }) => {
     expect(wizard.statuses.terms.locked).toBe(false)
 
     const rv = terms.register('accepted')
-    expect(rv.setValueFromHost(false)).toBe(false)
+    expect(rv.setValueFromHost(false, {})).toBe(false)
     terms.setValue('accepted', false)
     await awaitSettle()
     expect(terms.values.accepted).toBe(true)

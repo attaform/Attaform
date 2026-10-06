@@ -43,6 +43,8 @@ The parent binds with `v-register`; the wrapper re-forwards that same instance a
 
 `rv` and `field` may be `undefined` until the parent directive attaches, so defend every read with `?.`. `rv.path`, `rv.segments`, and `rv.formKey` pierce directly in script setup without `.value`.
 
+Modifiers the parent writes reach the inner control: `<UiTextField v-register.trim="...">` trims at the inner `<input v-register="rv">`. Modifiers on the inner binding still apply, and the two sets combine. Do not add a prop to pass `.trim` or `.lazy` through by hand.
+
 For a **compound** component that binds _multiple_ paths (a date range exposing start and end, an address subform), skip `useRegister` (it assumes a single binding) and reach for `injectForm<Form>()`, then call `form.register(path)` for each field.
 
 ## Let Attaform own display and ARIA
@@ -57,6 +59,8 @@ For a **compound** component that binds _multiple_ paths (a date range exposing 
 `v-register` binds a third-party component host, not just a native element. The directive marks the host and injects the same binding, SSR, and ARIA it gives a native input.
 
 When the component renders exactly one real form control and forwards attributes to it, that control becomes the field's anchor: focus and blur tracking, ARIA, and the invalid-submit focus target all land on it. A **composite** widget (a PIN input of several boxes) or a **control-less** one (a slider built from `<div>`s) binds too; the directive declines the single-element latch and tracks focus at the widget root instead. Do not reach for an escape hatch on account of either.
+
+Every value the component writes back follows the native input's rules. `.lazy`, `.trim`, and `.number` work on it (`.lazy` and `.trim` commit when focus leaves the component), and register `transforms` plus schema coercion run on each write, so a text component can back a `z.number()` leaf. A component that reports keystrokes through an `input` emit carrying `{ value }` (PrimeVue `InputNumber`) updates the form as the user types, not only when it commits on blur. None of this needs a `v-model`, an `@update:modelValue` handler, or a `modelModifiers` prop; adding one stacks a second writer.
 
 The one shape that loses the directive half is a component whose root is a **fragment**, because Vue hands a runtime directive only to a single-element root. The value channel still works there; wrap it in an element you control to get the rest back.
 

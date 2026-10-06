@@ -9,6 +9,7 @@ import {
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
 import { armDomBinding } from '../core/dom-binding'
+import { recordInheritedModifiers, withInheritedModifiers } from '../core/inherited-modifiers'
 import { REGISTER_OWNER_MARKER, V_REGISTER_MARKER } from '../core/register-protocol'
 import { ensureAttaformInstalled } from '../core/plugin'
 import type { RegisterValue } from '../types/types-api'
@@ -165,6 +166,10 @@ export type UseRegisterOptions = {
  * `.value` unwrap. Reads inside a `computed` or `watchEffect` re-run
  * when the parent rebinds to a different path.
  *
+ * Modifiers on the parent's binding apply at the inner control, so
+ * `<MyInput v-register.trim="form.register('email')" />` trims there,
+ * together with any the wrapper writes on its own `v-register`.
+ *
  * When no parent bound, every field reads `undefined`, so reach for
  * `rv?.path`. `v-register="rv"` is still safe. A wrapper that is meant
  * to render both with and without a form declares it with
@@ -205,6 +210,15 @@ export function useRegister<V = unknown>(
 
   const refreshAndStripBridgeAttrs = (): void => {
     const rawAttrs = instance.attrs as Record<string, unknown>
+    // The parent's own `v-register` binding. Vue fills `vnode.dirs`
+    // whenever the parent's render meets `v-register` on this component,
+    // plugin or no plugin. Match on `V_REGISTER_MARKER` rather than on
+    // shape, so an unrelated user directive cannot false-match and so two
+    // copies of Attaform still recognise each other.
+    const parentBinding = instance.vnode.dirs?.find(
+      (dir) =>
+        (dir.dir as { [k: symbol]: unknown } | null | undefined)?.[V_REGISTER_MARKER] === true
+    )
     // Primary path: `componentBridgeTransform` injected a
     // `:registerValue` bridge prop, which `initProps` lands in
     // `instance.attrs`. Capture only when the key is PRESENT. The strip
@@ -213,31 +227,26 @@ export function useRegister<V = unknown>(
     if ('registerValue' in rawAttrs) {
       capturedRegisterValue.value = rawAttrs['registerValue'] as RegisterValue<V> | undefined
       delete rawAttrs['registerValue']
+    } else if (parentBinding !== undefined) {
+      // Fallback path: no compile-time transform ran, so the bridge attr
+      // never appeared and the parent's binding value is the capture.
+      capturedRegisterValue.value = parentBinding.value as RegisterValue<V> | undefined
+    }
+    const captured = capturedRegisterValue.value
+    if (captured !== undefined) {
       // The wrapper author may call `rv.registerElement(el)` through the
       // proxy instead of using an inner v-register, and that delegate
       // needs the binding already live. No-op for a hand-rolled RV.
-      if (capturedRegisterValue.value !== undefined) armDomBinding(capturedRegisterValue.value)
-    } else {
-      // Fallback path: no compile-time transform ran, so the bridge attr
-      // never appeared. Vue fills `vnode.dirs` whenever the parent's
-      // render meets `v-register` on this component, plugin or no
-      // plugin. Match on `V_REGISTER_MARKER` rather than on shape, so
-      // an unrelated user directive cannot false-match and so two
-      // copies of Attaform still recognise each other.
-      const dirs = instance.vnode.dirs
-      if (dirs !== null && dirs !== undefined) {
-        for (const dir of dirs) {
-          const marked = (dir.dir as { [k: symbol]: unknown } | null | undefined)?.[
-            V_REGISTER_MARKER
-          ]
-          if (marked === true) {
-            capturedRegisterValue.value = dir.value as RegisterValue<V> | undefined
-            // Same arming as the bridge-attr path above.
-            if (capturedRegisterValue.value !== undefined)
-              armDomBinding(capturedRegisterValue.value)
-            break
-          }
-        }
+      armDomBinding(captured)
+      // The parent's `.lazy` / `.trim` / `.number` belong to the inner
+      // control, which reaches this capture through `v-register="rv"`.
+      // Reading the parent binding's own inherited set keeps an outer
+      // parent's modifiers through a wrapper nested in another wrapper.
+      if (parentBinding !== undefined) {
+        recordInheritedModifiers(
+          captured,
+          withInheritedModifiers(parentBinding.value, parentBinding.modifiers)
+        )
       }
     }
     if ('value' in rawAttrs) delete rawAttrs['value']

@@ -20,6 +20,7 @@
  */
 import { looseToNumber } from './vue-shared-shim'
 import { wrapWithTransforms } from './assigner-pipeline'
+import { withInheritedModifiers } from './inherited-modifiers'
 import type { PathKey } from './paths'
 import type { HostChannel, HostModifiers, RegisterValue } from '../types/types-api'
 
@@ -48,7 +49,11 @@ export function createHostChannel(): HostChannel {
   const pending = new Map<PathKey, unknown>()
 
   return {
-    write(rv, value, modifiers) {
+    write(rv, value, ownModifiers) {
+      // The compiled literal carries only the modifiers written beside the
+      // component; a host inside a `useRegister` wrapper also takes the
+      // ones the wrapper's parent wrote.
+      const modifiers = withInheritedModifiers(rv, ownModifiers)
       if (modifiers.lazy === true && editing.has(rv.path)) {
         pending.set(rv.path, value)
         return true

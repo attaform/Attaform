@@ -2149,8 +2149,8 @@ export type RegisterTextModifier =
  * The `v-register` modifiers a component host honours, carried from the
  * binding site to the host write channel as a static literal that the
  * compile-time bridge transform emits. Shaped like Vue's directive
- * modifiers, so the directive passes its own binding's modifiers to the
- * channel unchanged.
+ * modifiers, so the directive passes a binding's modifiers to the channel
+ * unchanged.
  *
  * @internal
  */

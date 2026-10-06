@@ -65,6 +65,7 @@ import {
   setAssignFunction,
 } from './assigner-pipeline'
 import { armDomBinding } from './dom-binding'
+import { withInheritedModifiers } from './inherited-modifiers'
 
 // Re-exported so the public `attaform` entry keeps exporting `assignKey` from
 // this module.
@@ -1230,8 +1231,19 @@ function activateComponentHost(el: HTMLElement, rv: RegisterValue): void {
   scheduleHostSelfHeal(el, rv)
 }
 
+// The binding with any modifiers a `useRegister` wrapper's parent wrote merged
+// under its own, so the inner control of `<MyField v-register.trim>` trims; see
+// `inherited-modifiers.ts`. A shallow copy, never a write to Vue's binding,
+// which Vue reuses across renders. Every hook that dispatches to a per-tag
+// variant reads it, so text, select and host edges all see the same set.
+function inheritModifiers<B extends DirectiveBinding>(binding: B): B {
+  const modifiers = withInheritedModifiers(binding.value, binding.modifiers)
+  return modifiers === binding.modifiers ? binding : { ...binding, modifiers }
+}
+
 const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
-  created(el, binding, vnode) {
+  created(el, ownBinding, vnode) {
+    const binding = inheritModifiers(ownBinding)
     // Arm the store's DOM binding before any registration below, since the
     // variant `created` hooks call `value.registerElement`. This injection is
     // what keeps the DOM machinery out of the form core's eager graph; see
@@ -1254,7 +1266,8 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     // up first: a diagnostic never affects the field's behaviour.
     if (__DEV__) warnRedundantStateBinding(el, binding, vnode)
   },
-  mounted(el, binding, vnode) {
+  mounted(el, ownBinding, vnode) {
+    const binding = inheritModifiers(ownBinding)
     callModelHook(el, binding, vnode, null, 'mounted')
 
     // Reactive `disabled` sync for a render-function native control, mirroring
@@ -1314,7 +1327,8 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
       })
     }
   },
-  beforeUpdate(el, binding, vnode, prevVNode) {
+  beforeUpdate(el, ownBinding, vnode, prevVNode) {
+    const binding = inheritModifiers(ownBinding)
     // A binding that mounted with `undefined` and received its RV on this
     // render never went through `created`'s arm, so cover it before the
     // registration sync below.
@@ -1349,7 +1363,7 @@ const vRegisterDynamic: RegisterModelDynamicCustomDirective = {
     }
   },
   updated(el, binding, vnode, prevVNode) {
-    callModelHook(el, binding, vnode, prevVNode, 'updated')
+    callModelHook(el, inheritModifiers(binding), vnode, prevVNode, 'updated')
   },
   beforeUnmount(el, { value }) {
     // Detach every listener the variant attached in `created`, whether or not

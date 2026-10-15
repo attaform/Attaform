@@ -1,0 +1,613 @@
+{
+  "checkpoints": [
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"a\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "a"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"e\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "e"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {
+          "a": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "a"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "A",
+            "meta": {},
+            "original": "",
+            "path": [
+              "a"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          },
+          "b": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "B",
+            "meta": {},
+            "original": "",
+            "path": [
+              "b"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "c": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "C",
+            "meta": {},
+            "original": 0,
+            "path": [
+              "c"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": 0
+          },
+          "d": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "D",
+            "meta": {},
+            "original": false,
+            "path": [
+              "d"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": false
+          },
+          "e": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "e"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "E",
+            "meta": {},
+            "original": "",
+            "path": [
+              "e"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          }
+        },
+        "firstValidationDone": true,
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errorCount": 2,
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "a"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "e"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "a": "",
+            "b": "",
+            "c": 0,
+            "d": false,
+            "e": ""
+          }
+        }
+      },
+      "label": "first-read"
+    },
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"a\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "a"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"e\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "e"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {
+          "a": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "a"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "A",
+            "meta": {},
+            "original": "",
+            "path": [
+              "a"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          },
+          "b": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "B",
+            "meta": {},
+            "original": "",
+            "path": [
+              "b"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "c": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "C",
+            "meta": {},
+            "original": 0,
+            "path": [
+              "c"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": 0
+          },
+          "d": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "D",
+            "meta": {},
+            "original": false,
+            "path": [
+              "d"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": false
+          },
+          "e": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "e"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "E",
+            "meta": {},
+            "original": "",
+            "path": [
+              "e"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          }
+        },
+        "firstValidationDone": true,
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errorCount": 2,
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "a"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "e"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "a": "",
+            "b": "",
+            "c": 0,
+            "d": false,
+            "e": ""
+          }
+        }
+      },
+      "label": "settled"
+    }
+  ],
+  "v3Divergence": {}
+}

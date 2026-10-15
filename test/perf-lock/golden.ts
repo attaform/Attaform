@@ -82,3 +82,33 @@ export function assertGolden(name: string, actual: unknown): void {
 
   expect(JSON.parse(serialized)).toEqual(JSON.parse(expected))
 }
+
+/** Stands in for a value one side of a `divergence` lacks. */
+const ABSENT = '<absent>'
+
+function isContainer(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
+/**
+ * Every leaf where `other` differs from `base`, keyed by its dotted path and
+ * holding `other`'s value (`'<absent>'` where `other` lacks it). Both inputs
+ * are JSON-shaped captures, so `Object.is` decides leaf equality.
+ *
+ * The first-read goldens store v4's checkpoints whole and v3's as this
+ * delta, which keeps a known adapter asymmetry visible, and pinned, without
+ * a second full copy of the surface.
+ */
+export function divergence(base: unknown, other: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const walk = (a: unknown, b: unknown, at: string): void => {
+    if (isContainer(a) && isContainer(b) && Array.isArray(a) === Array.isArray(b)) {
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+      for (const key of keys) walk(a[key], b[key], at === '' ? key : `${at}.${key}`)
+      return
+    }
+    if (!Object.is(a, b)) out[at] = b === undefined ? ABSENT : b
+  }
+  walk(base, other, '')
+  return out
+}

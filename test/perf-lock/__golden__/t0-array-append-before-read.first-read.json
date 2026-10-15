@@ -1,0 +1,1154 @@
+{
+  "checkpoints": [
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"rows\",0,\"name\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "rows",
+                  0,
+                  "name"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"rows\",1,\"qty\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "rows",
+                  1,
+                  "qty"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {},
+        "firstValidationDone": true,
+        "lists": {
+          "rows": [
+            {
+              "element": {
+                "aria": {
+                  "descriptionId": "<id>-description",
+                  "errorId": "<id>-error"
+                },
+                "blank": false,
+                "blurred": false,
+                "blurredAfterInteraction": false,
+                "busy": false,
+                "connected": false,
+                "description": null,
+                "dirty": false,
+                "displayState": "idle",
+                "errors": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "rows",
+                      0,
+                      "name"
+                    ]
+                  }
+                ],
+                "firstError": "zod:too_small",
+                "focused": false,
+                "id": "<id>",
+                "interacted": false,
+                "key": "<k0>",
+                "label": "",
+                "meta": {},
+                "path": [
+                  "rows",
+                  0
+                ],
+                "placeholder": null,
+                "pristine": true,
+                "showErrors": false,
+                "showIdle": true,
+                "showPending": false,
+                "showSuccess": false,
+                "touched": false,
+                "transformError": null,
+                "transforming": false,
+                "updatedAt": "<ts>",
+                "valid": false,
+                "validating": false,
+                "value": {
+                  "name": "",
+                  "qty": 1
+                }
+              },
+              "fields": {
+                "name": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [
+                    {
+                      "code": "zod:too_small",
+                      "path": [
+                        "rows",
+                        0,
+                        "name"
+                      ]
+                    }
+                  ],
+                  "firstError": "zod:too_small",
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Name",
+                  "meta": {},
+                  "original": "",
+                  "path": [
+                    "rows",
+                    0,
+                    "name"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": false,
+                  "validating": false,
+                  "value": ""
+                },
+                "qty": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [],
+                  "firstError": null,
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Qty",
+                  "meta": {},
+                  "original": 1,
+                  "path": [
+                    "rows",
+                    0,
+                    "qty"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": true,
+                  "validating": false,
+                  "value": 1
+                }
+              },
+              "key": "<k0>"
+            },
+            {
+              "element": {
+                "aria": {
+                  "descriptionId": "<id>-description",
+                  "errorId": "<id>-error"
+                },
+                "blank": false,
+                "blurred": false,
+                "blurredAfterInteraction": false,
+                "busy": false,
+                "connected": false,
+                "description": null,
+                "dirty": false,
+                "displayState": "idle",
+                "errors": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "rows",
+                      1,
+                      "qty"
+                    ]
+                  }
+                ],
+                "firstError": "zod:too_small",
+                "focused": false,
+                "id": "<id>",
+                "interacted": false,
+                "key": "<k1>",
+                "label": "",
+                "meta": {},
+                "path": [
+                  "rows",
+                  1
+                ],
+                "placeholder": null,
+                "pristine": true,
+                "showErrors": false,
+                "showIdle": true,
+                "showPending": false,
+                "showSuccess": false,
+                "touched": false,
+                "transformError": null,
+                "transforming": false,
+                "updatedAt": "<ts>",
+                "valid": false,
+                "validating": false,
+                "value": {
+                  "name": "ok",
+                  "qty": 0
+                }
+              },
+              "fields": {
+                "name": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [],
+                  "firstError": null,
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Name",
+                  "meta": {},
+                  "original": "ok",
+                  "path": [
+                    "rows",
+                    1,
+                    "name"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": true,
+                  "validating": false,
+                  "value": "ok"
+                },
+                "qty": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [
+                    {
+                      "code": "zod:too_small",
+                      "path": [
+                        "rows",
+                        1,
+                        "qty"
+                      ]
+                    }
+                  ],
+                  "firstError": "zod:too_small",
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Qty",
+                  "meta": {},
+                  "original": 0,
+                  "path": [
+                    "rows",
+                    1,
+                    "qty"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": false,
+                  "validating": false,
+                  "value": 0
+                }
+              },
+              "key": "<k1>"
+            },
+            {
+              "element": {
+                "aria": {
+                  "descriptionId": "<id>-description",
+                  "errorId": "<id>-error"
+                },
+                "blank": true,
+                "blurred": false,
+                "blurredAfterInteraction": false,
+                "busy": false,
+                "connected": false,
+                "description": null,
+                "dirty": false,
+                "displayState": "idle",
+                "errors": [],
+                "firstError": null,
+                "focused": false,
+                "id": "<id>",
+                "interacted": false,
+                "key": "<k2>",
+                "label": "",
+                "meta": {},
+                "path": [
+                  "rows",
+                  2
+                ],
+                "placeholder": null,
+                "pristine": true,
+                "showErrors": false,
+                "showIdle": true,
+                "showPending": false,
+                "showSuccess": false,
+                "touched": false,
+                "transformError": null,
+                "transforming": false,
+                "updatedAt": null,
+                "valid": true,
+                "validating": false,
+                "value": {
+                  "name": "",
+                  "qty": 0
+                }
+              },
+              "fields": {
+                "name": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [],
+                  "firstError": null,
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Name",
+                  "meta": {},
+                  "path": [
+                    "rows",
+                    2,
+                    "name"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": null,
+                  "valid": true,
+                  "validating": false,
+                  "value": ""
+                },
+                "qty": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [],
+                  "firstError": null,
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Qty",
+                  "meta": {},
+                  "path": [
+                    "rows",
+                    2,
+                    "qty"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": null,
+                  "valid": true,
+                  "validating": false,
+                  "value": 0
+                }
+              },
+              "key": "<k2>"
+            }
+          ]
+        },
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": true,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errorCount": 2,
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "rows",
+                0,
+                "name"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "rows",
+                1,
+                "qty"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": true,
+          "value": {
+            "rows": [
+              {
+                "name": "",
+                "qty": 1
+              },
+              {
+                "name": "ok",
+                "qty": 0
+              },
+              {
+                "name": "",
+                "qty": 0
+              }
+            ]
+          }
+        }
+      },
+      "label": "first-read"
+    },
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"rows\",0,\"name\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "rows",
+                  0,
+                  "name"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"rows\",1,\"qty\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "rows",
+                  1,
+                  "qty"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"rows\",2,\"name\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "rows",
+                  2,
+                  "name"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"rows\",2,\"qty\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "rows",
+                  2,
+                  "qty"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {},
+        "firstValidationDone": true,
+        "lists": {
+          "rows": [
+            {
+              "element": {
+                "aria": {
+                  "descriptionId": "<id>-description",
+                  "errorId": "<id>-error"
+                },
+                "blank": false,
+                "blurred": false,
+                "blurredAfterInteraction": false,
+                "busy": false,
+                "connected": false,
+                "description": null,
+                "dirty": false,
+                "displayState": "idle",
+                "errors": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "rows",
+                      0,
+                      "name"
+                    ]
+                  }
+                ],
+                "firstError": "zod:too_small",
+                "focused": false,
+                "id": "<id>",
+                "interacted": false,
+                "key": "<k0>",
+                "label": "",
+                "meta": {},
+                "path": [
+                  "rows",
+                  0
+                ],
+                "placeholder": null,
+                "pristine": true,
+                "showErrors": false,
+                "showIdle": true,
+                "showPending": false,
+                "showSuccess": false,
+                "touched": false,
+                "transformError": null,
+                "transforming": false,
+                "updatedAt": "<ts>",
+                "valid": false,
+                "validating": false,
+                "value": {
+                  "name": "",
+                  "qty": 1
+                }
+              },
+              "fields": {
+                "name": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [
+                    {
+                      "code": "zod:too_small",
+                      "path": [
+                        "rows",
+                        0,
+                        "name"
+                      ]
+                    }
+                  ],
+                  "firstError": "zod:too_small",
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Name",
+                  "meta": {},
+                  "original": "",
+                  "path": [
+                    "rows",
+                    0,
+                    "name"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": false,
+                  "validating": false,
+                  "value": ""
+                },
+                "qty": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [],
+                  "firstError": null,
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Qty",
+                  "meta": {},
+                  "original": 1,
+                  "path": [
+                    "rows",
+                    0,
+                    "qty"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": true,
+                  "validating": false,
+                  "value": 1
+                }
+              },
+              "key": "<k0>"
+            },
+            {
+              "element": {
+                "aria": {
+                  "descriptionId": "<id>-description",
+                  "errorId": "<id>-error"
+                },
+                "blank": false,
+                "blurred": false,
+                "blurredAfterInteraction": false,
+                "busy": false,
+                "connected": false,
+                "description": null,
+                "dirty": false,
+                "displayState": "idle",
+                "errors": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "rows",
+                      1,
+                      "qty"
+                    ]
+                  }
+                ],
+                "firstError": "zod:too_small",
+                "focused": false,
+                "id": "<id>",
+                "interacted": false,
+                "key": "<k1>",
+                "label": "",
+                "meta": {},
+                "path": [
+                  "rows",
+                  1
+                ],
+                "placeholder": null,
+                "pristine": true,
+                "showErrors": false,
+                "showIdle": true,
+                "showPending": false,
+                "showSuccess": false,
+                "touched": false,
+                "transformError": null,
+                "transforming": false,
+                "updatedAt": "<ts>",
+                "valid": false,
+                "validating": false,
+                "value": {
+                  "name": "ok",
+                  "qty": 0
+                }
+              },
+              "fields": {
+                "name": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [],
+                  "firstError": null,
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Name",
+                  "meta": {},
+                  "original": "ok",
+                  "path": [
+                    "rows",
+                    1,
+                    "name"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": true,
+                  "validating": false,
+                  "value": "ok"
+                },
+                "qty": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [
+                    {
+                      "code": "zod:too_small",
+                      "path": [
+                        "rows",
+                        1,
+                        "qty"
+                      ]
+                    }
+                  ],
+                  "firstError": "zod:too_small",
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Qty",
+                  "meta": {},
+                  "original": 0,
+                  "path": [
+                    "rows",
+                    1,
+                    "qty"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": "<ts>",
+                  "valid": false,
+                  "validating": false,
+                  "value": 0
+                }
+              },
+              "key": "<k1>"
+            },
+            {
+              "element": {
+                "aria": {
+                  "descriptionId": "<id>-description",
+                  "errorId": "<id>-error"
+                },
+                "blank": true,
+                "blurred": false,
+                "blurredAfterInteraction": false,
+                "busy": false,
+                "connected": false,
+                "description": null,
+                "dirty": false,
+                "displayState": "idle",
+                "errors": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "rows",
+                      2,
+                      "name"
+                    ]
+                  },
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "rows",
+                      2,
+                      "qty"
+                    ]
+                  }
+                ],
+                "firstError": "zod:too_small",
+                "focused": false,
+                "id": "<id>",
+                "interacted": false,
+                "key": "<k2>",
+                "label": "",
+                "meta": {},
+                "path": [
+                  "rows",
+                  2
+                ],
+                "placeholder": null,
+                "pristine": true,
+                "showErrors": false,
+                "showIdle": true,
+                "showPending": false,
+                "showSuccess": false,
+                "touched": false,
+                "transformError": null,
+                "transforming": false,
+                "updatedAt": null,
+                "valid": false,
+                "validating": false,
+                "value": {
+                  "name": "",
+                  "qty": 0
+                }
+              },
+              "fields": {
+                "name": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [
+                    {
+                      "code": "zod:too_small",
+                      "path": [
+                        "rows",
+                        2,
+                        "name"
+                      ]
+                    }
+                  ],
+                  "firstError": "zod:too_small",
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Name",
+                  "meta": {},
+                  "path": [
+                    "rows",
+                    2,
+                    "name"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": null,
+                  "valid": false,
+                  "validating": false,
+                  "value": ""
+                },
+                "qty": {
+                  "aria": {
+                    "descriptionId": "<id>-description",
+                    "errorId": "<id>-error"
+                  },
+                  "blank": false,
+                  "blurred": null,
+                  "blurredAfterInteraction": false,
+                  "busy": false,
+                  "connected": false,
+                  "description": null,
+                  "dirty": false,
+                  "displayState": "idle",
+                  "errors": [
+                    {
+                      "code": "zod:too_small",
+                      "path": [
+                        "rows",
+                        2,
+                        "qty"
+                      ]
+                    }
+                  ],
+                  "firstError": "zod:too_small",
+                  "focused": null,
+                  "id": "<id>",
+                  "interacted": false,
+                  "key": "",
+                  "label": "Qty",
+                  "meta": {},
+                  "path": [
+                    "rows",
+                    2,
+                    "qty"
+                  ],
+                  "placeholder": null,
+                  "pristine": true,
+                  "showErrors": false,
+                  "showIdle": true,
+                  "showPending": false,
+                  "showSuccess": false,
+                  "touched": false,
+                  "transformError": null,
+                  "transforming": false,
+                  "updatedAt": null,
+                  "valid": false,
+                  "validating": false,
+                  "value": 0
+                }
+              },
+              "key": "<k2>"
+            }
+          ]
+        },
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errorCount": 4,
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "rows",
+                0,
+                "name"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "rows",
+                1,
+                "qty"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "rows",
+                2,
+                "name"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "rows",
+                2,
+                "qty"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "rows": [
+              {
+                "name": "",
+                "qty": 1
+              },
+              {
+                "name": "ok",
+                "qty": 0
+              },
+              {
+                "name": "",
+                "qty": 0
+              }
+            ]
+          }
+        }
+      },
+      "label": "settled"
+    }
+  ],
+  "v3Divergence": {}
+}

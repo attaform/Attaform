@@ -7,8 +7,11 @@
  *   root and on one leaf. Every parse of the real schema that reaches the
  *   root runs it once, so `rootRefine` counts verdict parses: the
  *   construction verdict, the post-mount async pass, a whole-form submit.
- * - `getDefaultValues` / `getDefaultAtPath` / `getEmptyValueAtPath`: calls
- *   into the root AbstractSchema, which every form on a schema shares.
+ * - `getDefaultValues` / `validateSync` / `getDefaultAtPath` /
+ *   `getEmptyValueAtPath`: calls into the root AbstractSchema, which every
+ *   form on a schema shares. `validateSync` is the construction verdict, so
+ *   with `rootRefine` it shows whether a verdict was asked for and whether
+ *   it parsed.
  * - `rootWalks`: schema walks that visit the root node.
  *
  * Each count is taken at up to three moments: `mounted` (synchronously
@@ -120,12 +123,18 @@ type Moment = {
   rootRefine: number
   leafRefine: number
   getDefaultValues: number
+  validateSync: number
   getDefaultAtPath: number
   getEmptyValueAtPath: number
   rootWalks: number
 }
 
-const SPIED_METHODS = ['getDefaultValues', 'getDefaultAtPath', 'getEmptyValueAtPath'] as const
+const SPIED_METHODS = [
+  'getDefaultValues',
+  'getDefaultAtPath',
+  'getEmptyValueAtPath',
+  'validateSync',
+] as const
 
 /** Root walks per watched root schema, fed by the `WeakSet#add` spy. */
 const rootWalkCounts = new Map<WeakKey, number>()
@@ -152,6 +161,7 @@ function instrument(adapter: Adapter, fixture: Fixture): Instrumented {
       rootRefine: counts.rootRefine,
       leafRefine: counts.leafRefine,
       getDefaultValues: spies[0]?.mock.calls.length ?? 0,
+      validateSync: spies[3]?.mock.calls.length ?? 0,
       getDefaultAtPath: spies[1]?.mock.calls.length ?? 0,
       getEmptyValueAtPath: spies[2]?.mock.calls.length ?? 0,
       rootWalks: rootWalkCounts.get(schema) ?? 0,
@@ -165,6 +175,7 @@ function since(base: Moment, now: Moment): Moment {
     rootRefine: now.rootRefine - base.rootRefine,
     leafRefine: now.leafRefine - base.leafRefine,
     getDefaultValues: now.getDefaultValues - base.getDefaultValues,
+    validateSync: now.validateSync - base.validateSync,
     getDefaultAtPath: now.getDefaultAtPath - base.getDefaultAtPath,
     getEmptyValueAtPath: now.getEmptyValueAtPath - base.getEmptyValueAtPath,
     rootWalks: now.rootWalks - base.rootWalks,
@@ -176,6 +187,7 @@ function sum(moments: readonly Moment[]): Moment {
     rootRefine: 0,
     leafRefine: 0,
     getDefaultValues: 0,
+    validateSync: 0,
     getDefaultAtPath: 0,
     getEmptyValueAtPath: 0,
     rootWalks: 0,
@@ -184,6 +196,7 @@ function sum(moments: readonly Moment[]): Moment {
     total.rootRefine += m.rootRefine
     total.leafRefine += m.leafRefine
     total.getDefaultValues += m.getDefaultValues
+    total.validateSync += m.validateSync
     total.getDefaultAtPath += m.getDefaultAtPath
     total.getEmptyValueAtPath += m.getEmptyValueAtPath
     total.rootWalks += m.rootWalks
@@ -354,126 +367,140 @@ async function wizard(adapter: Adapter): Promise<Record<string, unknown>> {
 }
 
 /**
- * One construction's calls into the root AbstractSchema: one starting-value
- * derivation (which today also runs the verdict parse), the per-path default
- * lookups of the structural merge and the unset-sentinel walk, and the blank
- * baseline the authored-path diff reads.
+ * One construction's derivation calls into the root AbstractSchema: one
+ * starting-value derivation, the per-path default lookups of the structural
+ * merge and the unset-sentinel walk, and the blank baseline the
+ * authored-path diff reads. The verdict (`validateSync`) is pinned per row.
  */
 const DERIVE = { getDefaultValues: 1, getDefaultAtPath: 4, getEmptyValueAtPath: 1 }
 const DERIVE_4 = { getDefaultValues: 4, getDefaultAtPath: 16, getEmptyValueAtPath: 4 }
 
 /**
- * Today's counts, keyed `mode/fixture`, then adapter. Lower a number in the
- * commit that earns it; never raise one.
+ * The current counts, keyed `mode/fixture`, then adapter. Lower a number in
+ * the commit that earns it. A rise is a construction regression; the one
+ * taken so far is listed below with its reason.
  *
- * What they show on `main` (cf1d4638):
- * - Every construction runs the verdict parse at mount, read or not: a
- *   hydrating client too, which then replaces the verdict with the
+ * What they showed on `main` (cf1d4638):
+ * - Every construction ran the verdict parse at mount, read or not: a
+ *   hydrating client too, which then replaced the verdict with the
  *   server's.
  * - v3 runs a second, post-mount async pass for any schema with a refine,
  *   since it cannot tell a sync refine from an async one.
  * - A fresh v4 schema is walked 5 times; a warm one still twice, the two
- *   async walks the derivation repeats unmemoized beside the factory's
+ *   async walks the verdict repeats unmemoized beside the factory's
  *   memoized pair.
  * - A wizard pays every step's verdict at mount, whichever step is shown.
+ *
+ * Since then:
+ * - P2, the contract split: a hydrating client asks for no verdict, so it
+ *   runs no verdict parse and none of the verdict's walks (5 -> 3 on v4).
+ * - P2, the v3 verdict re-filed: v3's construction verdict re-files map and
+ *   set issues as every other v3 parse does, so a failing verdict with an
+ *   issue under an index (these fixtures' `tags.0`) runs the memoized
+ *   `containsMapOrSet` walk at mount. A fresh v3 form walks once more
+ *   (plain 5 -> 6; refined 4 -> 5, the walk its post-mount pass used to
+ *   run), and the fresh v3 wizard 16 -> 20 at mount. It fixes where a map
+ *   entry's construction error lands; P3 folds the walk into the fused
+ *   capability flags.
  */
 const PINNED: Record<string, Record<AdapterName, unknown>> = {
   'fresh/plain': {
     'zod-v4': {
-      mounted: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      firstRead: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
     },
     'zod-v3': {
-      mounted: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      firstRead: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 6 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 6 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 6 },
     },
   },
   'warm/plain': {
     'zod-v4': {
-      mounted: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
-      firstRead: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
     },
     'zod-v3': {
-      mounted: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 1 },
-      firstRead: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 1 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 1 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 1 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 1 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 1 },
     },
   },
   'server/plain': {
     'zod-v4': {
-      rendered: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      rendered: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
     },
     'zod-v3': {
-      rendered: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      rendered: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 6 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 0, leafRefine: 0, rootWalks: 6 },
     },
   },
   'hydrated/plain': {
     'zod-v4': {
-      mounted: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      firstRead: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
+      firstRead: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
+      settled: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
     },
     'zod-v3': {
-      mounted: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      firstRead: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 0, leafRefine: 0, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
+      firstRead: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
+      settled: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
     },
   },
   'fresh/refined': {
     'zod-v4': {
-      mounted: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
-      firstRead: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
     },
     'zod-v3': {
-      mounted: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 4 },
-      firstRead: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 4 },
-      settled: { ...DERIVE, rootRefine: 2, leafRefine: 2, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 2, leafRefine: 2, rootWalks: 5 },
     },
   },
   'warm/refined': {
     'zod-v4': {
-      mounted: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 2 },
-      firstRead: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 2 },
-      settled: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 2 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 2 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 2 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 2 },
     },
     'zod-v3': {
-      mounted: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 1 },
-      firstRead: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 1 },
-      settled: { ...DERIVE, rootRefine: 2, leafRefine: 2, rootWalks: 1 },
+      mounted: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 1 },
+      firstRead: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 1 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 2, leafRefine: 2, rootWalks: 1 },
     },
   },
   'server/refined': {
     'zod-v4': {
-      rendered: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      rendered: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
     },
     'zod-v3': {
-      rendered: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 4 },
-      settled: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 4 },
+      rendered: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      settled: { ...DERIVE, validateSync: 1, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
     },
   },
   'hydrated/refined': {
     'zod-v4': {
-      mounted: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
-      firstRead: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
-      settled: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
+      firstRead: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
+      settled: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 3 },
     },
     'zod-v3': {
-      mounted: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 4 },
-      firstRead: { ...DERIVE, rootRefine: 1, leafRefine: 1, rootWalks: 4 },
-      settled: { ...DERIVE, rootRefine: 2, leafRefine: 2, rootWalks: 5 },
+      mounted: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
+      firstRead: { ...DERIVE, validateSync: 0, rootRefine: 0, leafRefine: 0, rootWalks: 2 },
+      settled: { ...DERIVE, validateSync: 0, rootRefine: 1, leafRefine: 1, rootWalks: 3 },
     },
   },
   'wizard/refined': {
     'zod-v4': {
       mounted: {
         ...DERIVE_4,
+        validateSync: 4,
         rootRefine: 4,
         leafRefine: 4,
         rootWalks: 20,
@@ -481,6 +508,7 @@ const PINNED: Record<string, Record<AdapterName, unknown>> = {
       },
       activeStepRead: {
         ...DERIVE_4,
+        validateSync: 4,
         rootRefine: 4,
         leafRefine: 4,
         rootWalks: 20,
@@ -488,6 +516,7 @@ const PINNED: Record<string, Record<AdapterName, unknown>> = {
       },
       settled: {
         ...DERIVE_4,
+        validateSync: 4,
         rootRefine: 4,
         leafRefine: 4,
         rootWalks: 20,
@@ -497,20 +526,23 @@ const PINNED: Record<string, Record<AdapterName, unknown>> = {
     'zod-v3': {
       mounted: {
         ...DERIVE_4,
+        validateSync: 4,
         rootRefine: 4,
         leafRefine: 4,
-        rootWalks: 16,
+        rootWalks: 20,
         rootRefineByStep: [1, 1, 1, 1],
       },
       activeStepRead: {
         ...DERIVE_4,
+        validateSync: 4,
         rootRefine: 4,
         leafRefine: 4,
-        rootWalks: 16,
+        rootWalks: 20,
         rootRefineByStep: [1, 1, 1, 1],
       },
       settled: {
         ...DERIVE_4,
+        validateSync: 4,
         rootRefine: 8,
         leafRefine: 8,
         rootWalks: 20,

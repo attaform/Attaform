@@ -1,6 +1,21 @@
 # Changelog
 
 ## Unreleased
+### Breaking
+
+- **Custom adapters derive and validate in two steps.**
+  `AbstractSchema.getDefaultValues(config)` now returns the starting
+  value itself and validates nothing, and a new required member,
+  `validateSync(data)`, returns the schema's synchronous whole-form
+  verdict as `ValidationError[]`: empty when the data passes, and empty
+  rather than thrown when the verdict needs a Promise or a check throws.
+  `SchemaDefaultsResult` is gone. An adapter that returned
+  `{ data, errors, success }` now returns `data` from `getDefaultValues`
+  and moves its parse into `validateSync`. The split lets Attaform skip
+  the parse wherever the verdict is already known, such as a client
+  hydrating server-rendered state. The Zod adapters need nothing from
+  you. (#691)
+
 ### Added
 
 - **A component that reports keystrokes updates the form as you type.**
@@ -37,6 +52,14 @@
 
 ### Fixed
 
+- **On Zod v3, a `z.map` entry's starting-value error lands on the
+  entry.** When a form's default values broke a check inside a map entry,
+  the construction-time verdict filed the error at the entry's position
+  (`lookup.0.value`), a path nothing reads, so `form.errors.lookup.a` and
+  the field's `valid` missed it until the first edit re-validated. It now
+  lands at the entry's key from the first render, where Zod v4 files it
+  and where every later v3 validation already did. (#691)
+
 - **Register `transforms` and schema coercion apply to component
   writes.** A value a component emitted went straight to the write gate,
   so a `transforms: [...]` array never ran on it, and a text component
@@ -59,6 +82,26 @@
   everywhere.** It suggested `type="number"` first, which only a native
   input has. It now leads with the `.number` modifier, which works on a
   native input and a component alike. (#685)
+
+### Performance
+
+- **A client hydrating server-rendered state no longer validates its
+  forms a second time.** The server's verdict arrives in the payload and
+  replaces whatever construction computed, so every form parsed its
+  starting value only to throw the result away. That parse is gone. On a
+  10-step wizard of 30-field pages, in production builds, hydrating got
+  56-58% faster on Zod v4 and 28-36% faster on Zod v3 with plain leaves,
+  and 16-36% faster with leaves that run a nested parse inside a
+  `superRefine`. `reset()` likewise validates the restored values once
+  instead of twice. (#691)
+
+- **A Zod v4 schema's first validation skips the JIT compile.** Zod
+  compiles a fast path on an object schema's first synchronous parse,
+  which costs more than that one parse, so a schema built at runtime for
+  each mount paid for a compile it never used again. The construction
+  verdict now parses a schema's first time without compiling, and
+  compiles once the schema comes back. Building or server-rendering the
+  same wizard from freshly built schemas got 17-29% faster. (#691)
 
 ## v0.30.1
 ### Fixed

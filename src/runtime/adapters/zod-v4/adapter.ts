@@ -5,10 +5,10 @@
  * path-walker, discriminator, errors), leaving this file as the wiring
  * between them and the `AbstractSchema` contract.
  *
- * It holds parity with the v3 adapter on three fronts:
+ * It holds parity with the v3 adapter on four fronts:
  * `getDefaultValues`' derivation, delegated to `default-values.ts`
  * (the default walk, then the DU-aware structural repair walk when
- * constraints are supplied, parsing nothing), followed by one
+ * constraints are supplied, parsing nothing); `validateSync`'s one
  * synchronous parse of the real schema for the construction verdict;
  * `getSchemasAtPath`' DU-aware path walk; and `validateAtPath`'s
  * per-branch parse with aggregated errors.
@@ -16,11 +16,11 @@
 import type { z } from 'zod'
 import type {
   AbstractSchema,
-  SchemaDefaultsResult,
   FormKey,
   GetDefaultValuesConfig,
   ResolvedFieldMeta,
   SchemaFactoryOptions,
+  ValidationError,
 } from '../../types/types-api'
 import {
   createAbstractSchema,
@@ -315,6 +315,7 @@ function buildV4Services<
       deriveDefault(schema, useDefault, maxRecursionDepth),
     runGetDefaults: (schema, config, maxRecursionDepth) =>
       runGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, maxRecursionDepth),
+    validateSync: (schema, data) => validateSyncV4(schema, data),
     unwrapStructuralWrappers: (schema) => unwrapStructuralWrappers(schema),
     unwrapToDiscriminatedUnion: (schema) => unwrapToDiscriminatedUnion(schema),
     peelAllWrappers: (schema) => peelAllWrappers(schema),
@@ -345,27 +346,41 @@ function buildV4Services<
 type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
 
 /**
- * v4's construction-time `getDefaultValues` flow: wrap the slim
- * derivation in `getDefaultValuesFromZodSchema` with a parse against the
- * REAL schema, so refinement errors surface at construction.
- *
- * A schema carrying async work of any kind skips that parse and leaves
- * every verdict to the post-mount `safeParseAsync` pass. See the gate
- * below for why the async-refine half is handled the same way as the
- * async-transform half.
+ * v4's `getDefaultValues` derivation: the slim default walk, then the
+ * DU-aware structural repair walk when constraints are supplied, all in
+ * `getDefaultValuesFromZodSchema`. Nothing is parsed; `validateSyncV4`
+ * is the verdict.
  */
 function runGetDefaultsV4<Form>(
   rootSchema: z.ZodType & { _output: Form },
   config: GetDefaultValuesConfig<Form>,
   maxRecursionDepth: number
-): SchemaDefaultsResult<Form> {
-  const { data } = getDefaultValuesFromZodSchema<Form>({
+): Form {
+  return getDefaultValuesFromZodSchema<Form>({
     schema: rootSchema,
     useDefaultSchemaValues: config.useDefaultSchemaValues,
     constraints: config.constraints,
     maxRecursionDepth,
-  })
+  }).data
+}
 
+/**
+ * Root schemas whose construction verdict has run, which decides whether
+ * the next one compiles Zod's JIT. Weak, so a released schema takes its
+ * entry with it.
+ */
+const verdictRan = new WeakMap<object, true>()
+
+/**
+ * v4's construction verdict: one synchronous parse of the REAL schema,
+ * so refinement and check failures seed at construction.
+ *
+ * A schema carrying async work of any kind skips the parse and leaves
+ * every verdict to the post-mount `safeParseAsync` pass. See the gate
+ * below for why the async-refine half is handled the same way as the
+ * async-transform half.
+ */
+function validateSyncV4(rootSchema: z.ZodType, data: unknown): ValidationError[] {
   // Async work of ANY kind skips the construction parse, refine and
   // transform alike. A transform has no choice: its output shape is
   // load-bearing for the inner schema's input, so there is nothing sound
@@ -379,30 +394,26 @@ function runGetDefaultsV4<Form>(
   // than an async-free twin's, so on SSR a submit button bound to
   // `meta.valid` renders enabled and then disables. The post-mount pass
   // is the source of truth for every verdict either way.
-  if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) {
-    return { data, errors: undefined, success: true }
-  }
+  if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) return []
 
   try {
-    const parseResult = rootSchema.safeParse(data) as z.ZodSafeParseResult<Form>
-    if (parseResult.success) {
-      // Storage holds the pre-transform `z.input` view, so return the
-      // original `data` rather than `parseResult.data`, which is the
-      // post-transform `z.output`. The two coincide without a
-      // `.transform()`; with one, storage stays the honest input view
-      // that `form.values` reflects.
-      return { data, errors: undefined, success: true }
-    }
-    return {
-      data,
-      errors: zodIssuesToValidationErrors(parseResult.error.issues),
-      success: false,
-    }
+    // `jitless` on a schema's first verdict: the first synchronous parse
+    // of an object schema compiles Zod's JIT fast path, which costs more
+    // than this one parse, and a schema built per mount never parses
+    // twice. A schema that comes back is being reused, so its later
+    // verdicts compile once and take the fast path from then on. The
+    // per-parse option is honoured from zod 4.0.0 (and the v4 build in
+    // zod 3.25.68); an older build ignores it and compiles as before,
+    // with the same verdict.
+    const jitless = !verdictRan.has(rootSchema)
+    if (jitless) verdictRan.set(rootSchema, true)
+    const parseResult = rootSchema.safeParse(data, { jitless })
+    return parseResult.success ? [] : zodIssuesToValidationErrors(parseResult.error.issues)
   } catch {
     // Defensive floor for a future Zod construct, or a user sync refine
     // that throws. Mount clean; the post-mount async pass is the source
     // of truth for any verdict this path cannot surface.
-    return { data, errors: undefined, success: true }
+    return []
   }
 }
 
@@ -420,11 +431,7 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
     needsAsyncValidation: () => containsAsyncRefine(schema),
-    getDefaultValues: () => ({
-      data: deriveDefault(schema, true, maxRecursionDepth) as unknown,
-      errors: undefined,
-      success: true,
-    }),
+    getDefaultValues: () => deriveDefault(schema, true, maxRecursionDepth),
     getSchemasAtPath: () => [],
     validateAtPath: async (data: unknown) => {
       // `safeParseAsync` accepts sync and async refinements alike. A

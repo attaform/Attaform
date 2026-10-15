@@ -69,8 +69,8 @@ const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
  *
  * Exported, though `deriveDefaultWalk` below is its only caller. Neither
  * adapter's `runGetDefaults` resolves defaults from parse issues: both
- * derive through `deriveDefaultWalk` and parse the real schema once,
- * afterwards, for the construction verdict.
+ * derive through `deriveDefaultWalk` and parse nothing. The construction
+ * verdict is a separate parse of the real schema, `validateSync`.
  */
 export function peelEmbeddedDefault<Schema>(
   schema: Schema,

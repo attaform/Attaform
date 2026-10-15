@@ -444,8 +444,6 @@ const NEW_FIRST_READ_SCENARIOS: FirstReadScenario[] = [
     fieldPaths: ['lookup.a', 'when'],
     mount: 'client',
     firstReadSchemaErrors: 'some',
-    v3Divergence:
-      "v3's construction verdict skips the Map and Set issue re-filing every other v3 parse applies, so the map entry's error lands at zod's raw [entryIndex, 'value'] path",
   },
   {
     id: 't0-history',

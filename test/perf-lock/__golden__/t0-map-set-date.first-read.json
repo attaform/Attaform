@@ -443,52 +443,5 @@
       "label": "settled"
     }
   ],
-  "v3Divergence": {
-    "first-read": {
-      "errorChannels.[\"lookup\",\"a\"]": "<absent>",
-      "errorChannels.[\"lookup\",0,\"value\"]": {
-        "schema": [
-          {
-            "code": "zod:too_small",
-            "path": [
-              "lookup",
-              0,
-              "value"
-            ]
-          }
-        ],
-        "user": []
-      },
-      "fields.lookup.a.errors.0": "<absent>",
-      "fields.lookup.a.firstError": null,
-      "fields.lookup.a.valid": true,
-      "meta.errorCount": 2,
-      "meta.errors.1.path.0": "when",
-      "meta.errors.1.path.1": "<absent>",
-      "meta.errors.2": "<absent>"
-    },
-    "settled": {
-      "errorChannels.[\"lookup\",\"a\"]": "<absent>",
-      "errorChannels.[\"lookup\",0,\"value\"]": {
-        "schema": [
-          {
-            "code": "zod:too_small",
-            "path": [
-              "lookup",
-              0,
-              "value"
-            ]
-          }
-        ],
-        "user": []
-      },
-      "fields.lookup.a.errors.0": "<absent>",
-      "fields.lookup.a.firstError": null,
-      "fields.lookup.a.valid": true,
-      "meta.errorCount": 2,
-      "meta.errors.1.path.0": "when",
-      "meta.errors.1.path.1": "<absent>",
-      "meta.errors.2": "<absent>"
-    }
-  }
+  "v3Divergence": {}
 }

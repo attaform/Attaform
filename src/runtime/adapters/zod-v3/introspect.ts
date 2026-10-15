@@ -529,11 +529,11 @@ export function containsDiscriminatedUnion(schema: z.ZodTypeAny, seen?: WeakSet<
  * user's fn sits at `_def.effect.transform`, and `isAsyncEffect` reads
  * its `constructor.name` just as v4's `isAsyncCheck` does.
  *
- * It gates the `getDefaultValues` path on its own, because an async
- * transform cannot be stripped: the transform's output shape is
- * load-bearing for the inner schema's input, so the construction parse
- * is skipped outright and the post-mount `safeParseAsync` pass takes
- * over. `zod-v4/introspect.ts` carries the same-named predicate.
+ * It gates the construction verdict, `validateSync`, on its own,
+ * because an async transform cannot be stripped: the transform's
+ * output shape is load-bearing for the inner schema's input, so the
+ * construction parse is skipped outright and the post-mount
+ * `safeParseAsync` pass takes over. `zod-v4/introspect.ts` carries the same-named predicate.
  */
 export function containsAsyncTransform(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
   return walkForTarget(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())

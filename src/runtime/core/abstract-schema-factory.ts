@@ -13,8 +13,8 @@
  *   - `AbstractSchemaServices<Schema, Form, GetValueFormType>`: the delegates
  *     for everything that genuinely diverges per Zod version, namely path
  *     walking, default-value derivation, the `getDefaultValues` flow, the
- *     wrapper peeling tied to each version's wrapper set, field-meta
- *     resolution and the `safeParse` boundary.
+ *     construction verdict, the wrapper peeling tied to each version's
+ *     wrapper set, field-meta resolution and the `safeParse` boundary.
  *
  * The split is what keeps the introspector reusable by any other walker,
  * slim-primitives and default-values among them, without dragging the
@@ -34,7 +34,6 @@ import type {
   UnionDiscriminatorContext,
   ValidationError,
   ValidateOptions,
-  SchemaDefaultsResult,
   SchemaParseResult,
   SchemaFactoryOptions,
 } from '../types/types-api'
@@ -316,20 +315,23 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    */
   deriveDefault(schema: Schema, useDefault: boolean, maxRecursionDepth: number): unknown
   /**
-   * The construction-time default-values flow. Both adapters derive the
-   * starting value without parsing anything (the default walk, then, when
-   * `config.constraints` is supplied, a merge and the structural repair walk),
-   * then parse the real schema against it once, synchronously, so refinement
-   * and check failures seed the schema error channel at construction. v4 skips
-   * that parse for a schema with an async refine or an async transform; v3
-   * skips it only for an async transform, and mounts clean when the parse
-   * throws over an async refine.
+   * The starting-value derivation behind `getDefaultValues`. Both adapters
+   * parse nothing here: the default walk, then, when `config.constraints` is
+   * supplied, a merge and the structural repair walk.
    */
   runGetDefaults(
     schema: Schema,
     config: GetDefaultValuesConfig<Form>,
     maxRecursionDepth: number
-  ): SchemaDefaultsResult<Form>
+  ): Form
+  /**
+   * The synchronous whole-form verdict behind `validateSync`: one parse of
+   * the real schema, so refinement and check failures seed the schema error
+   * channel. MUST NOT throw. v4 skips the parse for a schema with an async
+   * refine or an async transform; v3 skips it only for an async transform,
+   * and returns `[]` when the parse throws over an async refine.
+   */
+  validateSync(schema: Schema, data: unknown): ValidationError[]
   /**
    * Peels `.optional()` and `.nullable()` only when the inner is structurally
    * fillable: an object, array, tuple, record, union or intersection, or a
@@ -603,8 +605,12 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
       return discriminatedUnionFlag
     },
 
-    getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form> {
+    getDefaultValues(config: GetDefaultValuesConfig<Form>): Form {
       return services.runGetDefaults(rootSchema, config, maxRecursionDepth)
+    },
+
+    validateSync(data: unknown): ValidationError[] {
+      return services.validateSync(rootSchema, data)
     },
 
     getDefaultAtPath(path) {

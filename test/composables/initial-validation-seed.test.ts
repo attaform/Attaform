@@ -399,18 +399,16 @@ describe('initial validation seed: async-refine schema', () => {
 
 describe('initial validation seed: hydration takes precedence', () => {
   it('skips the seed when hydration is provided (server is authoritative)', () => {
-    // Hand-roll a fakeSchema whose getDefaultValues reports a failure,
+    // Hand-roll a fakeSchema whose validateSync reports a failure,
     // proves the seed code path WOULD fire if hydration weren't
     // taking precedence. Hydration carries an explicit empty errors
     // slot, modelling "the server validated and decided it was OK."
     type Form = { email: string; password: string }
     const failingDefaultsSchema = fakeSchema<Form>({ email: '', password: '' })
-    failingDefaultsSchema.getDefaultValues = (config) => ({
-      data: {
-        email: config.constraints?.email ?? '',
-        password: config.constraints?.password ?? '',
-      },
-      errors: [
+    let verdicts = 0
+    failingDefaultsSchema.validateSync = () => {
+      verdicts++
+      return [
         {
           path: ['email'],
           message: 'seeded email error',
@@ -423,10 +421,8 @@ describe('initial validation seed: hydration takes precedence', () => {
           formKey: 'hyd',
           code: 'atta:test-fixture',
         },
-      ],
-      success: false,
-      formKey: 'hyd',
-    })
+      ]
+    }
 
     const state = createFormStore<Form>({
       formKey: 'hyd',
@@ -443,6 +439,8 @@ describe('initial validation seed: hydration takes precedence', () => {
     })
 
     expect(state.errorCells.size).toBe(0)
+    // The hydrating client never computes the verdict it would discard.
+    expect(verdicts).toBe(0)
   })
 
   it('replays hydrated schema errors verbatim, ignoring the seed', () => {
@@ -451,25 +449,20 @@ describe('initial validation seed: hydration takes precedence', () => {
     // shape wins: the seed doesn't get to add its own entries on top.
     type Form = { email: string; password: string }
     const failingDefaultsSchema = fakeSchema<Form>({ email: '', password: '' })
-    failingDefaultsSchema.getDefaultValues = () => ({
-      data: { email: '', password: '' },
-      errors: [
-        {
-          path: ['email'],
-          message: 'seed should not appear',
-          formKey: 'hyd2',
-          code: 'atta:test-fixture',
-        },
-        {
-          path: ['password'],
-          message: 'seed should not appear',
-          formKey: 'hyd2',
-          code: 'atta:test-fixture',
-        },
-      ],
-      success: false,
-      formKey: 'hyd2',
-    })
+    failingDefaultsSchema.validateSync = () => [
+      {
+        path: ['email'],
+        message: 'seed should not appear',
+        formKey: 'hyd2',
+        code: 'atta:test-fixture',
+      },
+      {
+        path: ['password'],
+        message: 'seed should not appear',
+        formKey: 'hyd2',
+        code: 'atta:test-fixture',
+      },
+    ]
 
     const onlyServerError = [
       {

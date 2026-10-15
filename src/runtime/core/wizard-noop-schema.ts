@@ -6,7 +6,8 @@
  * submission machinery as schema-backed forms.
  *
  * Contract:
- *  - `validateAtPath` always settles as `success: true` with data `{}`.
+ *  - `validateAtPath` always settles as `success: true` with data `{}`,
+ *    and `validateSync` reports no failures.
  *  - No paths resolve in the schema: every introspection method returns
  *    a permissive empty answer so the form runtime never tries to walk
  *    fields that do not exist.
@@ -18,7 +19,6 @@
 import type {
   AbstractSchema,
   MaybePromise,
-  SchemaDefaultsResult,
   SchemaParseResult,
   SlimPrimitiveKind,
 } from '../types/types-api'
@@ -37,7 +37,6 @@ const NOOP_SUCCESS: SchemaParseResult<Record<string, never>> = {
   data: EMPTY_VALUE,
   errors: undefined,
 }
-const NOOP_DEFAULTS: SchemaDefaultsResult<Record<string, never>> = NOOP_SUCCESS
 
 let NOOP_SCHEMA: AbstractSchema<Record<string, never>, Record<string, never>> | undefined
 
@@ -46,7 +45,8 @@ export function buildNoopWizardSchema(): AbstractSchema<
   Record<string, never>
 > {
   NOOP_SCHEMA ??= {
-    getDefaultValues: () => NOOP_DEFAULTS,
+    getDefaultValues: () => EMPTY_VALUE,
+    validateSync: () => [],
     getDefaultAtPath: () => undefined,
     getEmptyValueAtPath: () => undefined,
     isPreprocessOrCoerceLeaf: () => false,

@@ -52,9 +52,7 @@ function asLegacyShape<T>(du: T): T {
 
 /** The slice of the adapter these cases read, named so no call site casts. */
 type DefaultsProbe = {
-  getDefaultValues(config: { useDefaultSchemaValues: boolean }): {
-    data: unknown
-  }
+  getDefaultValues(config: { useDefaultSchemaValues: boolean }): unknown
   getSlimPrimitiveTypesAtPath(path: readonly (string | number)[]): ReadonlySet<string>
 }
 
@@ -66,7 +64,7 @@ function probeFor(root: z.ZodTypeAny): DefaultsProbe {
 }
 
 function defaultsOf(root: z.ZodTypeAny): unknown {
-  return probeFor(root).getDefaultValues({ useDefaultSchemaValues: true }).data
+  return probeFor(root).getDefaultValues({ useDefaultSchemaValues: true })
 }
 
 describe('a discriminated union whose options are a Map (zod v3 before 3.20.0)', () => {
@@ -87,11 +85,12 @@ describe('a discriminated union whose options are a Map (zod v3 before 3.20.0)',
   it('agrees with the array shape the current zod uses', () => {
     // The parity assertion is the point: the same schema must produce the
     // same defaults whichever container this zod happened to keep its
-    // branches in. Construction parses the rebuilt union, so this also
-    // covers the other half of the fix: a rebuild has to write the
-    // branches back into the container this zod's own `_parse` reads,
-    // and handing an array to a zod that expects a Map produces a union
-    // that matches nothing.
+    // branches in. `getDefaultValues` parses nothing, so the other half
+    // of the fix sits on the `validateSync` path, which parses through a
+    // rebuild of the union: that rebuild has to write the branches back
+    // into the container this zod's own `_parse` reads, and handing an
+    // array to a zod that expects a Map produces a union that matches
+    // nothing.
     const modern = defaultsOf(wrapped)
     const legacy = defaultsOf(
       z.object({

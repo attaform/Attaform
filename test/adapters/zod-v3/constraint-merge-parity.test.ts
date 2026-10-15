@@ -23,12 +23,12 @@ describe('zod v3: constraint-merge parity (D19)', () => {
       tags: z.array(z.string()).default(['x', 'y']),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: { tags: ['a'] },
     })
     // v4 semantic: the consumer's array fully replaces the schema's.
-    expect(result.data).toEqual({ tags: ['a'] })
+    expect(data).toEqual({ tags: ['a'] })
   })
 
   it('constraint null override clears a nullable default', () => {
@@ -36,12 +36,12 @@ describe('zod v3: constraint-merge parity (D19)', () => {
       label: z.string().nullable().default('fallback'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: { label: null },
     })
     // v4 semantic: `null` is a leaf override and replaces the default.
-    expect(result.data).toEqual({ label: null })
+    expect(data).toEqual({ label: null })
   })
 
   it('plain-record constraints merge by key (nested record values preserved)', () => {
@@ -52,13 +52,13 @@ describe('zod v3: constraint-merge parity (D19)', () => {
       }),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: { profile: { name: 'Ozzy' } },
     })
     // Both sides are plain records → recurse; `name` overridden, `bio`
     // kept at the schema default.
-    expect(result.data).toEqual({ profile: { name: 'Ozzy', bio: 'Hello' } })
+    expect(data).toEqual({ profile: { name: 'Ozzy', bio: 'Hello' } })
   })
 
   // The constraints object is the override side of the default-value
@@ -77,18 +77,18 @@ describe('zod v3: constraint-merge parity (D19)', () => {
     const constraints: Record<string, unknown> = JSON.parse(
       '{"__proto__":{"polluted":true},"name":"override"}'
     )
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints,
     })
     // The legitimate override still applies.
-    expect((result.data as Record<string, unknown>)['name']).toBe('override')
+    expect((data as Record<string, unknown>)['name']).toBe('override')
     // The merged result keeps Object.prototype: the __proto__ key did not
     // reassign its prototype chain (the pre-swap raw merge set it to the
     // override value).
-    expect(Object.getPrototypeOf(result.data)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(data)).toBe(Object.prototype)
     // So the injected value is not reachable through the prototype.
-    expect((result.data as Record<string, unknown>)['polluted']).toBeUndefined()
+    expect((data as Record<string, unknown>)['polluted']).toBeUndefined()
     // And no global pollution leaked onto Object.prototype.
     const freshProbe: Record<string, unknown> = {}
     expect(freshProbe['polluted']).toBeUndefined()

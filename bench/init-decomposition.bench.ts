@@ -9,17 +9,19 @@
  *
  * Construction's eager O(F.D) work (`createFormStore`), classified:
  *
- *   parse     getDefaultValues({useDefaultSchemaValues:true})  value NON-deferrable,
- *             two operations in one call. The derivation (the default walk,
- *             plus the structural repair walk when constraints are supplied)
- *             parses nothing and produces schemaInitialData, i.e. form.value,
- *             which SSR renders immediately. Then one synchronous safeParse of
- *             the real schema renders the construction verdict, which seeds
- *             the schema error channel at t=0 and is the bulk of this cell.
- *             Only the derivation is non-deferrable: nothing needs the verdict
- *             until the form's error state is read, and a hydrating client
- *             replays it from the payload. T6 lives in that parse (v4 safeParse
- *             > v3). bench/construction.bench.ts measures it end to end (#691).
+ *   parse     getDefaultValues, then validateSync              value NON-deferrable,
+ *             two calls timed together, as construction makes them.
+ *             getDefaultValues is the derivation (the default walk, plus the
+ *             structural repair walk when constraints are supplied): it parses
+ *             nothing and produces schemaInitialData, i.e. form.value, which
+ *             SSR renders immediately. validateSync then runs one synchronous
+ *             safeParse of the real schema for the construction verdict, which
+ *             seeds the schema error channel at t=0 and is the bulk of this
+ *             cell. Only the derivation is non-deferrable: nothing needs the
+ *             verdict until the form's error state is read, and a hydrating
+ *             client replays it from the payload. T6 lives in that parse (v4
+ *             safeParse > v3). bench/construction.bench.ts measures it end to
+ *             end (#691).
  *   clone     structuralSnapshot(schemaInitialData)            NON-deferrable
  *             per-instance isolation before form.value is exposed.
  *   walk      diffAndApply({}, schemaInitialData)              load-bearing
@@ -79,18 +81,19 @@ test('init decomposition: eager O(F) primitives, deferrable vs not (P4)', async 
       const schemaInitialData = schema.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: undefined,
-        strict: true,
-      }).data
+      })
 
-      // Derivation (form.value, which SSR renders: NON-deferrable) plus the
-      // construction verdict parse (the bulk; deferrable). T6 lives here.
+      // Derivation (getDefaultValues: form.value, which SSR renders,
+      // NON-deferrable) plus the construction verdict (validateSync: the
+      // bulk, deferrable). T6 lives in the verdict parse.
       arms.push(
-        bench(`parse getDefaultValues F=${F} [${a.tag}]`, () => {
-          schema.getDefaultValues({
-            useDefaultSchemaValues: true,
-            constraints: undefined,
-            strict: true,
-          })
+        bench(`parse getDefaultValues+validateSync F=${F} [${a.tag}]`, () => {
+          schema.validateSync(
+            schema.getDefaultValues({
+              useDefaultSchemaValues: true,
+              constraints: undefined,
+            })
+          )
         })
       )
       // DEFERRABLE: blank baseline -> authoredPaths (consumed at validation only).

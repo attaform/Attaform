@@ -181,7 +181,6 @@ export type {
   RegisterTextModifier,
   RegisterTransform,
   RegisterValue,
-  SchemaDefaultsResult,
   SchemaParseErrorWithData,
   SchemaParseErrorWithoutData,
   SchemaParseResult,

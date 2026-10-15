@@ -18,7 +18,6 @@ import type {
   AttaformDomBinding,
   ErrorCell,
   FormKey,
-  SchemaDefaultsResult,
   TransformAbortHolder,
   ValidateOn,
   ValidationError,
@@ -1130,20 +1129,20 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
 // against lifecycle teardown) stays at each call site.
 
 /**
- * The effective baseline for `source`: consumer `defaultValues` at
+ * The effective baseline value for `source`: consumer `defaultValues` at
  * construction, `nextDefaultValues ?? defaultValues` at reset. Sparse
  * constraints pre-merge through `mergeStructural` BEFORE `getDefaultValues`,
  * so a partial constraint against a tuple shape (`coords: [42]` for
  * `z.tuple([_, _, _])`) is padded with position defaults before the adapter's
- * derivation and structural repair walk see it, and the adapter's verdict,
- * its one synchronous parse of the real schema, is rendered against the
- * filled form. That is what keeps the construction and reset
- * responses byte-equivalent for one source.
+ * derivation and structural repair walk see it, and the verdict that
+ * `validateSync` renders on the result sees the filled form. That is what
+ * keeps the construction and reset baselines byte-equivalent for one source.
+ * Derivation only: no caller that just needs the value pays for a parse.
  */
-function computeBaselineResponse<F extends GenericForm, G extends GenericForm = F>(
+function computeBaseline<F extends GenericForm, G extends GenericForm = F>(
   schema: AbstractSchema<F, G>,
   source: DeepPartial<WriteShape<F>> | undefined
-): SchemaDefaultsResult<F> {
+): F {
   const completed =
     source === undefined
       ? undefined
@@ -1190,9 +1189,8 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
 
 /**
  * Queue the one-shot full-form pass that surfaces async-only verdicts
- * (`.refine(async (v) => ...)` and the like), which the sync
- * `getDefaultValues` contract cannot produce. Shared by construction and
- * `reset()`.
+ * (`.refine(async (v) => ...)` and the like), which the synchronous
+ * `validateSync` cannot produce. Shared by construction and `reset()`.
  *
  * Two gates. SSR skips entirely, because microtasks are not awaited before
  * `renderToString` serialises, so firing would stamp a `validating: true` into
@@ -1227,10 +1225,9 @@ function rebuildAuthoredPaths<F extends GenericForm, G extends GenericForm = F>(
     walkAuthoredFromConstraints(constraints, [], st.authoredPaths)
   }
   // The diff needs only the schema's BLANK baseline value tree, every
-  // `.default()` skipped, not a verdict on it. `getEmptyValueAtPath([])` is
-  // the raw default walk, the same value
-  // `getDefaultValues({ useDefaultSchemaValues: false })` derives when no
-  // constraints are supplied, without that call's verdict parse. Locked by
+  // `.default()` skipped. `getEmptyValueAtPath([])` is the raw default walk,
+  // the same value `getDefaultValues({ useDefaultSchemaValues: false })`
+  // derives when no constraints are supplied. Locked by
   // `test/core/authored-baseline-equivalence.test.ts`.
   const slimBaseline = st.schema.getEmptyValueAtPath([])
   walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimBaseline, [], st.authoredPaths)
@@ -3086,7 +3083,9 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
       st.schema as unknown as Parameters<typeof mergeSparseHydration>[2]
     )
   ) as DeepPartial<WriteShape<F>>
-  seedOriginalsFromBaseline(st, computeBaselineResponse(st.schema, st.defaultValues).data, false)
+  // Derivation only. The verdict belongs to the live form, and this value
+  // seeds nothing but the dirty baseline.
+  seedOriginalsFromBaseline(st, computeBaseline(st.schema, st.defaultValues), false)
 }
 
 // --- Reset ---
@@ -3105,8 +3104,8 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // defaults are the source, so a bare `reset()` restores whatever the last
   // `reset(next)` or factory settled on.
   //
-  // `computeBaselineResponse` is what construction runs, so the two responses
-  // stay byte-equivalent for one source.
+  // `computeBaseline` is what construction runs, so the two baselines stay
+  // byte-equivalent for one source.
   const resetSource =
     nextDefaultValues === undefined
       ? st.defaultValues
@@ -3123,14 +3122,13 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // had already made (#576).
   //
   // Snapshotted, so the stored defaults share no structure with what lands in
-  // form storage below: `computeBaselineResponse` hands back the source by
+  // form storage below: `computeBaseline` hands back the source by
   // reference when it is already structurally complete, and `setValue` writes
   // leaves IN PLACE. Without the copy, the first edit to an array or nested
   // object after a reset would mutate the very baseline the next `reset()`
   // restores from.
   st.defaultValues = structuralSnapshot(resetSource)
-  const resetResponse = computeBaselineResponse(st.schema, resetSource)
-  const next = resetResponse.data
+  const next = computeBaseline(st.schema, resetSource)
   // Rebuild `authoredPaths` against the post-reset baseline. Reset is a fresh
   // start, so the prior set is wiped and re-derived from the reset's
   // constraints argument and from the schema-default diff.
@@ -3169,30 +3167,16 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // Drop every recorded error, both sides. Reset is a fresh start, so
   // user-injected errors do not survive it, unlike a successful submit.
   st.errorCells.clear()
-  // Re-derive the schema side from the post-reset state, mirroring the
-  // construction seed. Otherwise reset clears the error store and never re-runs
-  // validation, so a form mounted with invalid defaults (empty required
+  // Re-seed the schema side from the post-reset baseline, the same verdict
+  // construction seeds. Otherwise reset clears the error store and never
+  // re-runs validation, so a form mounted with invalid defaults (empty required
   // strings, say) reads `valid: true` right after a reset that landed it back
   // on those same invalid defaults, and `field.valid`, aggregating over an
-  // empty schema side, flips every leaf green.
-  if (!resetResponse.success) {
-    replaceErrorChannel(st, 'schema', resetResponse.errors)
-  }
-  // The re-derive above already seeded the verdict `getDefaultValues`
-  // returned. Both Zod adapters parse the real schema there, so for a schema
-  // they can parse synchronously this pass parses it a second time. For an
-  // adapter whose `getDefaultValues` returns no verdict, it is what surfaces
-  // a `.min(1)` or `.email()` failure on the post-reset defaults immediately,
-  // with no window where step titles flip green between `reset()` returning
-  // and the async pass landing. An async-only verdict cannot surface this way,
-  // since the adapter returns a Promise; the `queueMicrotask` below covers it.
-  //
-  // Construction has the same gap, but its flash is invisible: the form mounts
-  // before the user is looking and errors land within a microtask.
-  const syncResult = st.schema.validateAtPath(st.form.value, undefined, { sync: true })
-  if (!(syncResult instanceof Promise) && !syncResult.success) {
-    applySchemaErrorsForSubtree(st, [], syncResult.errors)
-  }
+  // empty schema side, flips every leaf green. Seeding synchronously leaves no
+  // window where step titles flip green between `reset()` returning and the
+  // async pass landing. An async-only verdict cannot surface this way, since
+  // `validateSync` skips it; the `queueMicrotask` below covers it.
+  replaceErrorChannel(st, 'schema', st.schema.validateSync(next))
   // Restore the `firstValidationDone` gate to its construction-time value,
   // through the same primitive that seeds the ref. An async-validating schema
   // starts gated, and the watch on `activeValidations` flips it true after the
@@ -3506,8 +3490,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // The schema is ALWAYS consulted, because the schema-derived originals are
   // what carry pristine / dirty across an SSR round-trip. Only the starting
   // value prefers hydration data.
-  const schemaResponse: SchemaDefaultsResult<F> = computeBaselineResponse(schema, defaultValues)
-  const schemaInitialData = schemaResponse.data
+  const schemaInitialData = computeBaseline(schema, defaultValues)
 
   // Paths where the consumer or the schema author declared a starting value.
   // The schema-error filter reads it to tell "missing user input" from
@@ -4110,17 +4093,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         blurredAfterInteraction: false,
       })
     })
-    // No hydration, so seed the schema side from the construction-time
-    // validation result, and only when the schema rejected the defaults.
-    if (!schemaResponse.success) {
-      replaceErrorChannel(st, 'schema', schemaResponse.errors)
-    }
+    // No hydration, so seed the schema side from the schema's synchronous
+    // verdict on the starting value. Only this branch pays for the parse: a
+    // hydrating client replays the server's verdict above instead.
+    replaceErrorChannel(st, 'schema', schema.validateSync(schemaInitialData))
   }
 
-  // An async-only verdict cannot surface from `getDefaultValues`, whose
-  // contract is sync and whose adapter degrades to success when the schema's
-  // sync parse cannot resolve one. Queue the one-shot full-form pass so those
-  // errors land on a later microtask rather than waiting for a user mutation.
+  // An async-only verdict cannot surface from `validateSync`, whose contract
+  // is sync and whose adapter returns no failures when the schema's sync parse
+  // cannot resolve one. Queue the one-shot full-form pass so those errors land
+  // on a later microtask rather than waiting for a user mutation.
   // See `queueInitialAsyncValidation` for the SSR and async gates.
   queueInitialAsyncValidation(st)
 

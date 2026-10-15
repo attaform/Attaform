@@ -16,9 +16,9 @@ describe('zod v3 adapter: getDefaultValues', () => {
       active: z.boolean(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ email: '', age: 0, active: false })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect(data).toEqual({ email: '', age: 0, active: false })
   })
 
   it('honours .default() values', () => {
@@ -27,8 +27,10 @@ describe('zod v3 adapter: getDefaultValues', () => {
       count: z.number().default(5),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ role: 'user', count: 5 })
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
+      role: 'user',
+      count: 5,
+    })
   })
 
   it('optional fields default to undefined', () => {
@@ -37,27 +39,28 @@ describe('zod v3 adapter: getDefaultValues', () => {
       nickname: z.string().optional(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ email: '', nickname: undefined })
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
+      email: '',
+      nickname: undefined,
+    })
   })
 
   it('nullable fields default to null', () => {
     const schema = z.object({ profile: z.string().nullable() })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ profile: null })
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({ profile: null })
   })
 
   it('arrays default to empty', () => {
     const schema = z.object({ tags: z.array(z.string()) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({ tags: [] })
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({ tags: [] })
   })
 
   it('enums default to the first value', () => {
     const schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       color: 'red',
     })
   })
@@ -65,7 +68,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
   it('literal fields default to the literal value', () => {
     const schema = z.object({ kind: z.literal('user') })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       kind: 'user',
     })
   })
@@ -78,7 +81,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
       }),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       profile: { name: '', age: 0 },
     })
   })
@@ -89,11 +92,11 @@ describe('zod v3 adapter: getDefaultValues', () => {
       count: z.number(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: { email: 'seeded@x' },
     })
-    expect(result.data).toEqual({ email: 'seeded@x', count: 0 })
+    expect(data).toEqual({ email: 'seeded@x', count: 0 })
   })
 
   it('tuples default to their per-position empties', () => {
@@ -101,7 +104,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
       point: z.tuple([z.number(), z.number()]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       point: [0, 0],
     })
   })
@@ -114,8 +117,9 @@ describe('zod v3 adapter: getDefaultValues', () => {
       ]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ event: { kind: 'click', x: 0 } })
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
+      event: { kind: 'click', x: 0 },
+    })
   })
 
   // lazy, intersection, nativeEnum and set each derive a typed empty
@@ -132,7 +136,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
     const inner = z.object({ text: z.string(), count: z.number() })
     const schema = z.object({ root: z.lazy(() => inner) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       root: { text: '', count: 0 },
     })
   })
@@ -142,7 +146,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
       combo: z.intersection(z.object({ a: z.string() }), z.object({ b: z.number() })),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       combo: { a: '', b: 0 },
     })
   })
@@ -154,7 +158,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
     }
     const schema = z.object({ c: z.nativeEnum(Color) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       c: 'red',
     })
   })
@@ -166,7 +170,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
     }
     const schema = z.object({ s: z.nativeEnum(Status) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+    expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
       // The first ACTUAL value is 0 (`Status.Active`); the reverse-mapped
       // string keys ('0' → 'Active') aren't valid runtime enum members.
       s: 0,
@@ -176,10 +180,10 @@ describe('zod v3 adapter: getDefaultValues', () => {
   it('z.set(...) defaults to an empty Set', () => {
     const schema = z.object({ tags: z.set(z.string()) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect((result.data as { tags: unknown }).tags).toBeInstanceOf(Set)
-    expect((result.data as { tags: Set<string> }).tags.size).toBe(0)
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect((data as { tags: unknown }).tags).toBeInstanceOf(Set)
+    expect((data as { tags: Set<string> }).tags.size).toBe(0)
   })
 
   it('needsAsyncValidation: true for a schema with an async transform', () => {
@@ -217,17 +221,17 @@ describe('zod v3 adapter: getDefaultValues', () => {
 
   it('async-refine schema regression: form mounts cleanly via lax fallback', () => {
     // Pin: schemas containing async refines must not crash the
-    // adapter at construction. The sync `safeParse` throws on the
-    // async refine; the catch returns lax success so the form
-    // mounts. Async refinement verdicts surface from the post-mount
-    // async pass scheduled in `create-form-store` when
+    // adapter at construction. The sync `safeParse` inside
+    // `validateSync` throws on the async refine; the catch returns `[]`
+    // so the form mounts clean. Async refinement verdicts surface from
+    // the post-mount async pass scheduled in `create-form-store` when
     // `needsAsyncValidation()` returns true.
     //
-    // Parity note: v4 seeds sync-refinement errors at construction by
-    // parsing the real schema, and skips that seeding outright once
-    // `containsAsyncTransform` or `containsAsyncRefine` says the schema
-    // holds either. v3 reaches the same end state through its
-    // slim-schema strategy and its runtime wrapper for `.refine`.
+    // Parity note: v4's `validateSync` seeds sync-refinement errors at
+    // construction by parsing the real schema, and skips that parse
+    // outright once `containsAsyncTransform` or `containsAsyncRefine`
+    // says the schema holds either. v3 reaches the same end state
+    // through the throw its runtime wrapper for `.refine` raises.
     const schema = z.object({
       email: z
         .string()
@@ -235,12 +239,11 @@ describe('zod v3 adapter: getDefaultValues', () => {
         .refine(async () => Promise.resolve(true), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { email: 'a@b.com' },
     })
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(adapter.validateSync(data)).toEqual([])
   })
 })
 
@@ -420,7 +423,7 @@ describe('zod v3 adapter: discriminated union routing', () => {
 //
 // Each case asserts the SHAPE the walk produced. Several of these
 // derived defaults cannot satisfy the leaf refinement they sit under
-// (`''` is not an email, `0` is not `>= 10`), and construction parses
+// (`''` is not an email, `0` is not `>= 10`), and `validateSync` parses
 // the real schema, so the verdict is an honest failure at that leaf.
 // The walk descending and the refinement failing are separate facts,
 // and both are pinned.
@@ -430,10 +433,9 @@ describe('zod v3 adapter: stripRefinements', () => {
       pair: z.tuple([z.string().email(), z.number().min(10)]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ pair: ['', 0] })
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.path)).toEqual([
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ pair: ['', 0] })
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([
       ['pair', 0],
       ['pair', 1],
     ])
@@ -444,9 +446,9 @@ describe('zod v3 adapter: stripRefinements', () => {
       tags: z.set(z.string().min(3)),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect((result.data as { tags: unknown }).tags).toBeInstanceOf(Set)
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect((data as { tags: unknown }).tags).toBeInstanceOf(Set)
   })
 
   it('descends into z.record value refinements', () => {
@@ -454,9 +456,9 @@ describe('zod v3 adapter: stripRefinements', () => {
       counts: z.record(z.number().min(1)),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ counts: {} })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect(data).toEqual({ counts: {} })
   })
 
   it('descends into z.union member refinements', () => {
@@ -464,11 +466,10 @@ describe('zod v3 adapter: stripRefinements', () => {
       val: z.union([z.string().email(), z.number().int()]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     // First member wins the derivation; its `''` then fails `.email()`.
-    expect(result.data).toEqual({ val: '' })
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.path)).toEqual([['val']])
+    expect(data).toEqual({ val: '' })
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([['val']])
   })
 
   it('descends into z.intersection sides', () => {
@@ -479,10 +480,9 @@ describe('zod v3 adapter: stripRefinements', () => {
       ),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ combo: { a: '', b: 0 } })
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.path)).toEqual([
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ combo: { a: '', b: 0 } })
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([
       ['combo', 'a'],
       ['combo', 'b'],
     ])
@@ -496,20 +496,18 @@ describe('zod v3 adapter: stripRefinements', () => {
       ]),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ event: { kind: 'a', msg: '' } })
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.path)).toEqual([['event', 'msg']])
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ event: { kind: 'a', msg: '' } })
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([['event', 'msg']])
   })
 
   it('descends into z.lazy() target refinements', () => {
     const inner = z.object({ name: z.string().email() })
     const schema = z.object({ wrapped: z.lazy(() => inner) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ wrapped: { name: '' } })
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.path)).toEqual([['wrapped', 'name']])
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ wrapped: { name: '' } })
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([['wrapped', 'name']])
   })
 })
 

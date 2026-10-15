@@ -1,6 +1,6 @@
 ---
 title: Custom schema adapters
-description: Implement the AbstractSchema contract (14 required methods plus 4 optional hooks) to wire any schema library into Attaform. Defaults, shape introspection, validation.
+description: Implement the AbstractSchema contract (15 required methods plus 4 optional hooks) to wire any schema library into Attaform. Defaults, shape introspection, validation.
 metaRows:
   - label: Category
     value: Reference
@@ -27,7 +27,7 @@ This page is the contract reference. The Zod adapters under `attaform/zod` and `
 ```ts
 type AbstractSchema<Form, GetValueFormType = Form> = {
   // Defaults
-  getDefaultValues(config): SchemaDefaultsResult<Form>
+  getDefaultValues(config): Form
   getDefaultAtPath(path: Path): unknown
   getEmptyValueAtPath(path: Path): unknown
 
@@ -44,6 +44,7 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   getUnionDiscriminatorAtPath(path: Path): UnionDiscriminatorContext | undefined
 
   // Validation
+  validateSync(data: unknown): ValidationError[]
   validateAtPath(
     data: unknown,
     path: Path | undefined,
@@ -58,13 +59,15 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
 }
 ```
 
-Fourteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
+Fifteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
 
 ## Defaults
 
-### `getDefaultValues(config): SchemaDefaultsResult<Form>`
+### `getDefaultValues(config): Form`
 
-Returns `{ data, errors, success }`. Called at form creation and on `reset()`. The `config` argument carries `useDefaultSchemaValues` and `constraints`.
+Returns the form's starting value: the schema's defaults, with `config.constraints` merged over them. Called at form creation, on `reset()`, and when async `defaultValues` resolve. The `config` argument carries `useDefaultSchemaValues` and `constraints`.
+
+Derive the value only, and validate nothing. The runtime asks `validateSync`, under Validation below, for the verdict as a separate step, so a caller that needs only the value never pays for a parse.
 
 ### `getDefaultAtPath(path: Path): unknown`
 
@@ -144,6 +147,12 @@ For discriminated-union containers, return `{ discriminatorKey, getVariantDefaul
 
 ## Validation
 
+### `validateSync(data): ValidationError[]`
+
+Returns the schema's synchronous verdict on `data` as a whole form: one entry per failure, and `[]` when the data passes. The runtime calls it on the starting value at form creation and on `reset()`, so a form whose defaults break a rule (an empty required field, a too-short password) reads invalid from its first render. A client hydrating server-rendered state never calls it, since the server's verdict arrives with the payload.
+
+Must NOT throw. When your library reaches a verdict only through a Promise, or a check throws, return `[]`: the optional `needsAsyncValidation` hook schedules the async pass that surfaces those errors a microtask later. A library with no synchronous parse returns `[]` every time.
+
 ### `validateAtPath(data, path?, options?): MaybePromise<SchemaParseResult>`
 
 Returns `MaybePromise<SchemaParseResult>`. `path` is a `Segment[]` or `undefined` (whole-form validation). Honor `options.sync` when the schema is sync-capable; the runtime uses it to batch error writes inside DU variant reshape.
@@ -179,13 +188,12 @@ Omitting it is treated as "contains unions", so the conservative per-write probe
 Assume your library exposes:
 
 - `schema.defaultValues()` returning the schema's typed defaults.
-- `schema.parse(data)` returning `{ success: true, data }` or `{ success: false, issues: { path: string[]; message: string }[] }`.
+- `schema.parse(data)` returning `{ success: true, data }` or `{ success: false, issues: MyLibIssue[] }`, where a `MyLibIssue` is `{ path: string[]; message: string; code?: string }`.
 
 ```ts
 import type {
   AbstractSchema,
   GenericForm,
-  SchemaDefaultsResult,
   SlimPrimitiveKind,
   ValidationError,
 } from 'attaform/abstract'
@@ -201,12 +209,28 @@ const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = new Set<SlimPrimitiveKind>([
   'null',
 ])
 
+function toValidationErrors(issues: MyLibIssue[]): ValidationError[] {
+  return issues.map((issue) => ({
+    path: issue.path,
+    message: issue.message,
+    code: `my-lib:${issue.code ?? 'unknown'}`,
+  }))
+}
+
 export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): AbstractSchema<F, F> {
   return {
-    getDefaultValues({ constraints }): SchemaDefaultsResult<F> {
-      const defaults = schema.defaultValues()
-      const merged = mergeDeepPartial(defaults, constraints)
-      return { data: merged, errors: undefined, success: true }
+    getDefaultValues({ constraints }): F {
+      return mergeDeepPartial(schema.defaultValues(), constraints)
+    },
+
+    validateSync(data) {
+      try {
+        const result = schema.parse(data)
+        return result.success ? [] : toValidationErrors(result.issues)
+      } catch {
+        // A check that throws leaves its verdict to the async pass.
+        return []
+      }
     },
 
     getDefaultAtPath(path) {
@@ -289,13 +313,7 @@ export function myLibAdapter<F extends GenericForm>(schema: MyLibSchema<F>): Abs
         return { success: true, data: result.data, errors: undefined }
       }
 
-      const errors: ValidationError[] = result.issues.map((issue) => ({
-        path: issue.path,
-        message: issue.message,
-        code: `my-lib:${issue.code ?? 'unknown'}`,
-      }))
-
-      return { success: false, errors, data: undefined }
+      return { success: false, errors: toValidationErrors(result.issues), data: undefined }
     },
   }
 }

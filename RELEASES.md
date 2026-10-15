@@ -1,5 +1,21 @@
 # Releases
 
+## v0.31.0 (2026-10-15)
+
+## What's Changed
+* chore(bench-arena): refresh benchmark results.json by @attaform-release[bot] in https://github.com/attaform/Attaform/pull/662
+* feat(v-register): live values and modifiers on component hosts by @ozzyfromspace in https://github.com/attaform/Attaform/pull/685
+* build(deps): skip better-sqlite3's no-op node-gyp step so the dev image builds by @ozzyfromspace in https://github.com/attaform/Attaform/pull/686
+* perf(form): pay for what you use at construction (#691) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/693
+* fix(form-api): release a consumer's store registrations with its scope by @ozzyfromspace in https://github.com/attaform/Attaform/pull/692
+* perf(inject-form): share one form API among calls under one ancestor by @ozzyfromspace in https://github.com/attaform/Attaform/pull/699
+* perf(form): two construction cuts for schemas that cannot use the work (#695) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/700
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.30.1...v0.31.0
+
+---
+
 ## v0.30.1 (2026-09-18)
 
 ## What's Changed

@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+_No unreleased changes yet._
+
+## v0.31.0
 ### Breaking
 
 - **Custom adapters derive and validate in two steps.**

@@ -233,7 +233,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
     // entry that should have cleared after a value fix, are immediately
     // visible without cross-referencing call sites.
     payload.state['Schema Errors'] = [
-      ...[...state.errorCells.entries()]
+      ...[...state.errorCells().entries()]
         .filter(([, cell]) => cell.schema.length > 0)
         .map(([k, cell]) => ({
           key: String(k),
@@ -241,7 +241,7 @@ function wire(api: UnsafeDevtoolsApi, app: App, registry: AttaformRegistry): voi
         })),
     ]
     payload.state['User Errors'] = [
-      ...[...state.errorCells.entries()]
+      ...[...state.errorCells().entries()]
         .filter(([, cell]) => cell.user.length > 0)
         .map(([k, cell]) => ({
           key: String(k),

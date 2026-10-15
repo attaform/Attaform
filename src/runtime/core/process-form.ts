@@ -670,7 +670,7 @@ function adapterThrowMessage(err: unknown): string {
 
 /** `true` when any cell in the tagged store holds consumer-set (user-side) entries. */
 function hasUserErrorEntries<F extends GenericForm>(state: FormStore<F, GenericForm>): boolean {
-  for (const cell of state.errorCells.values()) {
+  for (const cell of state.errorCells().values()) {
     if (cell.user.length > 0) return true
   }
   return false

@@ -926,7 +926,7 @@ export type WriteMeta = {
 export type HistoryKernel = {
   readonly form: Ref<unknown>
   readonly blankPaths: Set<PathKey>
-  readonly errorCells: Map<PathKey, ErrorCell>
+  readonly errorCells: () => Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void

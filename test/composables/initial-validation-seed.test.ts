@@ -439,7 +439,7 @@ describe('initial validation seed: hydration takes precedence', () => {
       },
     })
 
-    expect(state.errorCells.size).toBe(0)
+    expect(state.errorCells().size).toBe(0)
     // The hydrating client never computes the verdict it would discard.
     expect(verdicts).toBe(0)
   })
@@ -486,7 +486,7 @@ describe('initial validation seed: hydration takes precedence', () => {
       },
     })
 
-    expect(state.errorCells.size).toBe(1)
-    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('server email rejection')
+    expect(state.errorCells().size).toBe(1)
+    expect(state.errorCells().get(emailKey)?.schema[0]?.message).toBe('server email rejection')
   })
 })

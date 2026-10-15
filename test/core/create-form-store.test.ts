@@ -255,7 +255,7 @@ describe('createFormStore', () => {
 
     const emailKey = canonicalizePath(['email']).key
     const cellSides = (state: ReturnType<typeof makeState>) => {
-      const cell = state.errorCells.get(emailKey)
+      const cell = state.errorCells().get(emailKey)
       return {
         schema: [...(cell?.schema ?? [])].map((e) => e.message),
         user: [...(cell?.user ?? [])].map((e) => e.message),

@@ -185,8 +185,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * mutated so Vue's per-key Map tracking fires for either side. Derived blank
    * entries are not stored here; they synthesize at read
    * (`derivedBlankErrors`).
+   *
+   * A method, not a property, because it is also the gate on the
+   * construction seed: the first call runs it (see `createErrorCells`). A
+   * getter on the store object would gate a property read the same way,
+   * but V8 builds an object literal holding an accessor in dictionary mode,
+   * and every kernel read of the store would then pay a hash lookup.
    */
-  readonly errorCells: Map<PathKey, ErrorCell>
+  readonly errorCells: () => Map<PathKey, ErrorCell>
   /**
    * Reactively-derived "No value supplied" errors: a pure function of
    * `(blankPaths, schema.isRequiredAtPath)` with no writers and no clears.
@@ -1110,6 +1116,14 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
   readonly transformRuns: Map<PathKey, TransformRun>
   readonly transformWaiters: { key: PathKey | null; resolve: () => void }[]
   readonly arrayBookkeeping: ArrayBookkeeping
+  /**
+   * The error store with a construction seed nothing has read yet dropped
+   * unrun; see `createErrorCells`. For a caller about to replace everything
+   * the seed would write: `reset()` and history restore clear the store,
+   * and a root-scope schema commit replaces the whole schema side, the only
+   * side a store nothing has touched can hold.
+   */
+  readonly skipErrorSeed: () => Map<PathKey, ErrorCell>
 
   /**
    * Per-form DU capability flag, taken once at construction from
@@ -2572,6 +2586,51 @@ type ErrorSource = 'schema' | 'user'
 const ERROR_SOURCES: readonly ErrorSource[] = ['schema', 'user']
 
 /**
+ * The form's error store, behind its construction seed: the schema's
+ * synchronous verdict on the pristine starting value, which fills the schema
+ * side a form starts with. It runs the first time anything reads or writes
+ * the store, so a form nothing observes never runs its refinements. The raw
+ * map lives only in here, and that is what makes "first" exact: every route
+ * to the store comes through the returned accessor, so the seed lands before
+ * any read sees the map and before any write changes it. It writes straight
+ * into the raw map for the same reason, no subscriber being able to exist
+ * yet.
+ *
+ * `seed: false` discards a pending seed unrun, for a caller about to replace
+ * everything it would write (`FormState.skipErrorSeed`). Either way the
+ * retained `pristine` tree is dropped. A hydrating client passes none,
+ * replaying the server's verdict instead; a form's starting value is always
+ * an object, so `undefined` is free to mean that.
+ */
+function createErrorCells<F extends GenericForm, G extends GenericForm = F>(
+  schema: AbstractSchema<F, G>,
+  pristine: F | undefined
+): (seed: boolean) => Map<PathKey, ErrorCell> {
+  const raw = new Map<PathKey, ErrorCell>()
+  // `shallowReactive`, not `reactive`, and the difference is not small. Deep
+  // `reactive` wraps every value a collection read HANDS BACK, so iterating
+  // this map minted a fresh proxy per cell per pass: a 400-row table reading
+  // `form.list()` after a keystroke spent most of its time in
+  // `createReactiveObject`, for cells nothing can mutate. An `ErrorCell` is
+  // `readonly` on both sides and every writer REPLACES it through `.set()`, so
+  // the key-level tracking `shallowReactive` keeps in full is the whole of
+  // what the readers need.
+  const cells = shallowReactive(raw)
+  return (seed) => {
+    const data = pristine
+    if (data !== undefined) {
+      pristine = undefined
+      if (seed) {
+        for (const [key, list] of groupErrorsByKey(schema.validateSync(data))) {
+          raw.set(key, { schema: list, user: NO_ERRORS })
+        }
+      }
+    }
+    return cells
+  }
+}
+
+/**
  * Replace one side of the cell at `key` with `entries`, which the caller owns.
  * The other side rides along, and a cell with both sides empty leaves the map.
  * Always sets a FRESH cell object, so Vue's per-key collection dep fires for
@@ -2583,14 +2642,14 @@ function setErrorChannelForKey<F extends GenericForm, G extends GenericForm = F>
   src: ErrorSource,
   entries: readonly ValidationError[]
 ): void {
-  const current = st.errorCells.get(key)
+  const current = st.errorCells().get(key)
   const schema = src === 'schema' ? entries : (current?.schema ?? NO_ERRORS)
   const user = src === 'user' ? entries : (current?.user ?? NO_ERRORS)
   if (schema.length === 0 && user.length === 0) {
-    if (current !== undefined) st.errorCells.delete(key)
+    if (current !== undefined) st.errorCells().delete(key)
     return
   }
-  st.errorCells.set(key, { schema, user })
+  st.errorCells().set(key, { schema, user })
 }
 
 /**
@@ -2606,9 +2665,9 @@ function replaceErrorChannel<F extends GenericForm, G extends GenericForm = F>(
 ): void {
   const other: ErrorSource = src === 'schema' ? 'user' : 'schema'
   const grouped = groupErrorsByKey(entries)
-  for (const [key, cell] of st.errorCells) {
+  for (const [key, cell] of st.errorCells()) {
     if (cell[other].length === 0) {
-      st.errorCells.delete(key)
+      st.errorCells().delete(key)
       continue
     }
     const fresh = grouped.get(key)
@@ -2667,6 +2726,10 @@ function applySchemaErrorsForSubtree<F extends GenericForm, G extends GenericFor
   // entry and the parent reconcile without rerouting.
   const parentKey = canonicalizePath(path).key
   const grouped = groupErrorsByKey(entries)
+  // A root-scope pass replaces the whole schema side, so a construction seed
+  // nothing has read yet would be overwritten unseen: v3's post-mount async
+  // pass, a whole-form submit or `validate()` on an unread form.
+  if (path.length === 0) st.skipErrorSeed()
   // Drop the parent key's schema side only if not in the new pass.
   if (!grouped.has(parentKey)) setErrorChannelForKey(st, parentKey, 'schema', NO_ERRORS)
   // Drop stale descendants: schema-bearing keys under `path` the new pass does
@@ -2674,7 +2737,7 @@ function applySchemaErrorsForSubtree<F extends GenericForm, G extends GenericFor
   // `grouped` stays put and the write below updates it in place. The parent
   // key is exempt, handled just above, so a root-scope pass keeps its own
   // refine entry instead of sweeping it into the descendant set.
-  for (const [existingKey, cell] of st.errorCells) {
+  for (const [existingKey, cell] of st.errorCells()) {
     if (existingKey === parentKey) continue
     if (cell.schema.length === 0) continue
     if (isPathKeyUnder(existingKey, path) && !grouped.has(existingKey)) {
@@ -2692,10 +2755,10 @@ function restoreErrorCells<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   entries: ReadonlyArray<readonly [PathKey, ErrorCell]>
 ): void {
-  st.errorCells.clear()
+  st.skipErrorSeed().clear()
   for (const [key, cell] of entries) {
     if (cell.schema.length === 0 && cell.user.length === 0) continue
-    st.errorCells.set(key, { schema: [...cell.schema], user: [...cell.user] })
+    st.errorCells().set(key, { schema: [...cell.schema], user: [...cell.user] })
   }
 }
 
@@ -2706,7 +2769,7 @@ function getErrorsForPath<F extends GenericForm, G extends GenericForm = F>(
   path: Path
 ): ValidationError[] {
   const { key } = canonicalizePath(path)
-  const cell = st.errorCells.get(key)
+  const cell = st.errorCells().get(key)
   const blankForKey = st.derivedBlankErrors.value.get(key)
   if (cell === undefined && blankForKey === undefined) {
     return []
@@ -3183,8 +3246,9 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
     st.blankPaths.add(key)
   }
   // Drop every recorded error, both sides. Reset is a fresh start, so
-  // user-injected errors do not survive it, unlike a successful submit.
-  st.errorCells.clear()
+  // user-injected errors do not survive it, unlike a successful submit. A
+  // construction seed nothing has read yet is dropped unrun.
+  st.skipErrorSeed().clear()
   // Re-seed the schema side from the post-reset baseline, the same verdict
   // construction seeds. Otherwise reset clears the error store and never
   // re-runs validation, so a form mounted with invalid defaults (empty required
@@ -3372,7 +3436,7 @@ function deleteErrorCellsUnderPrefix<F extends GenericForm, G extends GenericFor
   // Judge each side by its first entry's embedded path, since entries at a key
   // share that key's path: a side whose entries sit under `prefix` is
   // stripped, the other rides along, and a cell left empty leaves the map.
-  for (const [errorKey, cell] of st.errorCells) {
+  for (const [errorKey, cell] of st.errorCells()) {
     for (const src of ERROR_SOURCES) {
       const first = cell[src][0]
       if (first !== undefined && isPathPrefix(prefix, first.path)) {
@@ -3505,10 +3569,21 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const displayEngine = createDisplayEngine(ssr)
   cleanupHooks.push(() => displayEngine.dispose())
 
+  // A defensive copy, taken before the baseline derives from it.
+  // `mergeStructural` hands a structurally complete subtree back by
+  // reference, and `getDefaultValues` building a fresh tree from it is an
+  // adapter implementation detail, not a contract, so the baseline can share
+  // subtrees with its source. The error store retains the baseline for its
+  // seed until something first reads the form's errors: derived from the
+  // consumer's own literal, an edit they make to it in that window would
+  // reach the verdict. The copy is also the durable `st.defaultValues` every
+  // `reset()` reads, which must not depend on that detail either.
+  const ownDefaultValues = structuralSnapshot(defaultValues)
+
   // The schema is ALWAYS consulted, because the schema-derived originals are
   // what carry pristine / dirty across an SSR round-trip. Only the starting
   // value prefers hydration data.
-  const schemaInitialData = computeBaseline(schema, defaultValues, options.schemaDefaults)
+  const schemaInitialData = computeBaseline(schema, ownDefaultValues, options.schemaDefaults)
 
   // Paths where the consumer or the schema author declared a starting value.
   // The schema-error filter reads it to tell "missing user input" from
@@ -3587,17 +3662,14 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   const domBinding = shallowRef<AttaformDomBinding | null>(null)
 
   // The tagged error store; see the Errors section above for the two-source
-  // contract.
-  //
-  // `shallowReactive`, not `reactive`, and the difference is not small. Deep
-  // `reactive` wraps every value a collection read HANDS BACK, so iterating
-  // this map minted a fresh proxy per cell per pass: a 400-row table reading
-  // `form.list()` after a keystroke spent most of its time in
-  // `createReactiveObject`, for cells nothing can mutate. An `ErrorCell` is
-  // `readonly` on both sides and every writer REPLACES it through `.set()`, so
-  // the key-level tracking `shallowReactive` keeps in full is the whole of
-  // what the readers need.
-  const errorCells = shallowReactive(new Map<PathKey, ErrorCell>()) as Map<PathKey, ErrorCell>
+  // contract. It holds the construction verdict as a seed until the store is
+  // first read or written; see `createErrorCells`. Every route below takes the
+  // store through `errorCells()`, never a captured map.
+  const errorStore = createErrorCells(
+    schema,
+    hydration === undefined ? schemaInitialData : undefined
+  )
+  const errorCells = (): Map<PathKey, ErrorCell> => errorStore(true)
 
   // Originals are captured at init and on a path's first appearance, and never
   // reassigned.
@@ -3702,7 +3774,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // dependency list; handing a reader the index itself would put the
   // form-global dep straight back.
   const errorPathIndex = computed<readonly ErrorPathEntry[]>(() =>
-    buildErrorPathIndex(errorCells, derivedBlankErrors.value)
+    buildErrorPathIndex(errorCells(), derivedBlankErrors.value)
   )
 
   // Submission lifecycle. The initial values are "nothing submitted yet": not
@@ -3960,13 +4032,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     originalBlankPaths,
 
     // --- kernel-internal state ---
-    // A defensive copy. `getDefaultValues` building a fresh tree is an adapter
-    // implementation detail, not a contract, and this field is durable state
-    // that every `reset()` reads, so it must not depend on one. The copy also
-    // stops a consumer holding a reference to the literal they passed from
-    // mutating the form's defaults from outside. `reset()` snapshots for a
-    // harder reason, where an alias IS reachable.
-    defaultValues: structuralSnapshot(defaultValues),
+    // The copy taken above, which also stops a consumer holding a reference to
+    // the literal they passed from mutating the form's defaults from outside.
+    // `reset()` snapshots for a harder reason, where an alias IS reachable.
+    defaultValues: ownDefaultValues,
     ssrPrefetch,
     rememberVariants,
     fieldValidationMode,
@@ -3987,6 +4056,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     transformRuns,
     transformWaiters,
     arrayBookkeeping,
+    skipErrorSeed: () => errorStore(false),
     nextOrdinal: 0,
     scheduleEpoch: 0,
     lastCommittedEpoch: 0,
@@ -4099,10 +4169,11 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
       fields.set(rawKey as PathKey, record)
     }
-    // Hydration takes precedence over the construction seed below: the server
-    // already authored whatever error state the client should mirror, the
-    // empty case included. Each side replays from its own snapshot, so source
-    // segregation survives the SSR round-trip.
+    // Hydration takes the construction seed's place, which is why the error
+    // store above holds none here: the server already authored whatever error
+    // state the client should mirror, the empty case included. Each side
+    // replays from its own snapshot, so source segregation survives the SSR
+    // round-trip.
     for (const [rawKey, errs] of hydration.schemaErrors) {
       if (typeof rawKey !== 'string' || !isHydratedValidationErrorArray(errs)) {
         warnMalformedHydration(formKey, 'schemaErrors', String(rawKey))
@@ -4117,11 +4188,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       }
       setErrorChannelForKey(st, rawKey as PathKey, 'user', errs)
     }
-  } else {
-    // No hydration, so seed the schema side from the schema's synchronous
-    // verdict on the starting value. Only this branch pays for the parse: a
-    // hydrating client replays the server's verdict above instead.
-    replaceErrorChannel(st, 'schema', schema.validateSync(schemaInitialData))
   }
 
   // An async-only verdict cannot surface from `validateSync`, whose contract

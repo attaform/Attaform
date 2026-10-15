@@ -152,6 +152,21 @@
   per form built, and a number field it starts at `0` is shown blank
   exactly when it holds that `0`. (#691)
 
+- **A form validates its starting value when something first reads
+  it.** Building a form ran the schema over its starting value at once,
+  so a wizard paid for every step at mount, whichever one was on
+  screen. The check now runs the first time anything reads or writes
+  the form's errors (a template, `form.meta.valid`, a step rail, the
+  server serializing the page), and a form nothing reads never runs
+  it. Every read sees the verdict it saw before. On the same 10-step
+  wizard, with no step's errors read, building got 37-54% faster on
+  both Zod majors; a wizard whose rail reads every step's validity
+  builds as fast as before. A refinement's side effects, a log line or a dev
+  warning, now happen at that first read rather than inside
+  `useForm`. A Zod v3 schema with a refine no longer validates its
+  starting value twice, since its post-mount check replaces the
+  first verdict before anything could read it. (#691)
+
 ## v0.30.1
 ### Fixed
 

@@ -98,11 +98,14 @@ async function tick(rounds = 4): Promise<void> {
 /**
  * Drain the construction-time async validation pass.
  *
- * Construction validates unconditionally and these schemas carry a
- * deferred async refine, so a fresh mount parks one gate invocation per
- * async leaf before any test write happens. Release them with a clean
- * verdict so each test below starts from `pending() === 0` and every
- * parked invocation it then counts is one its own writes caused.
+ * `mount` reads the form's errors, as a template showing them would, so
+ * its construction verdict runs at mount (a form validates its starting
+ * value on first read). These schemas carry a deferred async refine, which
+ * v3's sync-safe verdict calls too, and the post-mount async pass calls it
+ * again, so a fresh mount parks gate invocations before any test write
+ * happens. Release them with a clean verdict so each test below starts from
+ * `pending() === 0` and every parked invocation it then counts is one its
+ * own writes caused.
  */
 async function settleMount(gate: Gate): Promise<void> {
   for (let i = 0; i < 8 && (await tick(), gate.pending() > 0); i++) {
@@ -152,6 +155,7 @@ describe.each(adapters)('P1 validation-cancel equivalence: $name', ({ z, useForm
     document.body.appendChild(root)
     app.mount(root)
     apps.push(app)
+    void api.meta.errors
     return api
   }
 

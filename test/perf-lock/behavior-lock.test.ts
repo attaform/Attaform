@@ -210,7 +210,7 @@ async function runFirstReadScenario(
   scenario.beforeFirstRead?.(form)
   snap('first-read')
   let firstReadSchemaErrors = 0
-  for (const cell of store.errorCells.values()) firstReadSchemaErrors += cell.schema.length
+  for (const cell of store.errorCells().values()) firstReadSchemaErrors += cell.schema.length
   await form.activate?.()
   await settle()
   snap('settled')

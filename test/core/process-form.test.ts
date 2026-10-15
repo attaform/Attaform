@@ -592,7 +592,7 @@ describe('buildProcessForm', () => {
       await submitPromise.catch(() => undefined)
 
       // Reset's empty error store wins: no stale write.
-      expect(state.errorCells.size).toBe(0)
+      expect(state.errorCells().size).toBe(0)
     })
 
     it('submit-success after reset() does NOT clear schemaErrors set by post-reset writers', async () => {
@@ -626,7 +626,7 @@ describe('buildProcessForm', () => {
       })
       await submitPromise.catch(() => undefined)
 
-      expect(state.errorCells.get(canonicalizePath(['email']).key)?.schema).toHaveLength(1)
+      expect(state.errorCells().get(canonicalizePath(['email']).key)?.schema).toHaveLength(1)
     })
   })
 

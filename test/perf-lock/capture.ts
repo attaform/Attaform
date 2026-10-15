@@ -196,7 +196,7 @@ function captureList(
  * registry, since the public surface merges the channels on read.
  */
 export type StoreLike = {
-  readonly errorCells: ReadonlyMap<string, ErrorCell>
+  readonly errorCells: () => ReadonlyMap<string, ErrorCell>
   readonly firstValidationDone: { readonly value: boolean }
 }
 
@@ -207,7 +207,7 @@ export type StoreLike = {
  */
 export function captureErrorChannels(store: StoreLike): Record<string, unknown> {
   const channels: Record<string, unknown> = {}
-  for (const [key, cell] of store.errorCells) {
+  for (const [key, cell] of store.errorCells()) {
     channels[key] = {
       schema: cell.schema.map((e) => ({ code: e.code, path: snapshot(e.path) })),
       user: cell.user.map((e) => ({ code: e.code, path: snapshot(e.path) })),

@@ -239,9 +239,9 @@ describe('hydration shape guard', () => {
     })
 
     // Only the valid 'email' entry made it into each side of the store.
-    expect(state.errorCells.size).toBe(1)
-    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('taken')
-    expect(state.errorCells.get(emailKey)?.user[0]?.message).toBe('taken')
+    expect(state.errorCells().size).toBe(1)
+    expect(state.errorCells().get(emailKey)?.schema[0]?.message).toBe('taken')
+    expect(state.errorCells().get(emailKey)?.user[0]?.message).toBe('taken')
   })
 
   it('warns once per malformed entry in dev mode', () => {

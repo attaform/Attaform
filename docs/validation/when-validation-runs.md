@@ -64,6 +64,12 @@ The field's last committed write wins after `debounceMs` of quiet. Useful for ex
 
 `debounceMs` is only meaningful with `validateOn: 'change'`. TypeScript rejects pairing it with `'blur'` or `'submit'`, so a misconfigured form is a compile error rather than a silent runtime drop.
 
+## Before the first trigger
+
+A form knows its verdict on the values it starts with before any trigger fires. Attaform checks the starting value against the schema the first time anything reads or writes the form's errors: a template rendering `form.errors`, a submit button reading `form.meta.valid`, a wizard's step rail, the server serializing the form for the page. Every read sees the verdict it would have seen had the check run inside `useForm`, and a form nothing reads never runs its refinements, so a wizard pays for the step on screen rather than for every step it holds.
+
+Two things follow from the timing. A refinement with a side effect, a log line or a dev warning, runs at that first read rather than inside `useForm`. And a client hydrating a server-rendered form takes the server's errors as its starting errors and runs no check of its own.
+
 ## Sync versus async
 
 Sync refinements (`refine`, `superRefine` with synchronous returns) run on the trigger. Async refinements (anything that returns a Promise) are awaited:

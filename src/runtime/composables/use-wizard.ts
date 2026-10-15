@@ -1607,7 +1607,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     for (const key of keys) {
       const store = registry.forms.get(key)
       if (store === undefined) continue
-      for (const cell of store.errorCells.values()) {
+      for (const cell of store.errorCells().values()) {
         for (const err of cell.user) out.push(toWizardAggregateError(err, key))
       }
     }

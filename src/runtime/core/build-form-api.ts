@@ -564,7 +564,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
 
   function flattenUserErrors(): ValidationError[] {
     const all: ValidationError[] = []
-    for (const cell of state.errorCells.values()) all.push(...cell.user)
+    for (const cell of state.errorCells().values()) all.push(...cell.user)
     return all
   }
 
@@ -580,7 +580,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       const { segments, key } = canonicalizePath(arg1 as string | Path)
       const input = arg2 as SetErrorsArg
       const resolved =
-        typeof input === 'function' ? input([...(state.errorCells.get(key)?.user ?? [])]) : input
+        typeof input === 'function' ? input([...(state.errorCells().get(key)?.user ?? [])]) : input
       state.setUserErrorsForPath(
         segments,
         normalizeErrorInputs(resolved, segments, AttaformErrorCode.UserError)
@@ -635,7 +635,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   const valid = computed<boolean>(
     () =>
       state.firstValidationDone.value &&
-      state.errorCells.size === 0 &&
+      state.errorCells().size === 0 &&
       state.derivedBlankErrors.value.size === 0 &&
       !validating.value
   )

@@ -72,12 +72,9 @@ export function buildZodLeafArbitrary(z: ZNs): fc.Arbitrary<ZNs> {
 
 /**
  * Options that narrow the set of zod kinds the schema arbitrary may emit.
- * The v3 adapter's current `getDefaultValues` throws on certain nested
- * `z.union([...])` shapes (default-values derivation can't pick a branch
- * when neither matches the defaulted value). Phase 5.6's async rewrite
- * will make both adapters total on unions; until then, the v3 fuzz file
- * passes `{ includeUnion: false }` to stay within the current adapter's
- * supported surface.
+ * `includeUnion: false` drops `z.union([...])` from the mix, for a probe
+ * that needs to stay clear of union branch selection. Both adapters are
+ * total on unions, so both fuzz files leave it at the default.
  */
 export type SchemaKindOptions = {
   /** Include `z.union([...])`. Default: true. */

@@ -468,7 +468,7 @@ function collectErrorsAt<F extends GenericForm>(
   active: boolean,
   into: ValidationError[]
 ): void {
-  const cell = state.errorCells.get(key)
+  const cell = state.errorCells().get(key)
   if (active) {
     if (cell !== undefined) into.push(...cell.schema)
     if (state.blankPaths.has(key) && state.schema.isRequiredAtPath(segments)) {

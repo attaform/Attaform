@@ -1,0 +1,129 @@
+{
+  "checkpoints": [
+    {
+      "capture": {
+        "complete": false,
+        "forms": {
+          "a": {
+            "errorChannels": {},
+            "firstValidationDone": true
+          },
+          "b": {
+            "errorChannels": {
+              "[\"age\"]": {
+                "schema": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "age"
+                    ]
+                  }
+                ],
+                "user": []
+              }
+            },
+            "firstValidationDone": true
+          },
+          "c": {
+            "errorChannels": {},
+            "firstValidationDone": false
+          }
+        },
+        "progress": 0.3333333333333333,
+        "statuses": {
+          "a": {
+            "dirty": false,
+            "errorCount": 0,
+            "gate": null,
+            "locked": false,
+            "submitted": false,
+            "valid": true
+          },
+          "b": {
+            "dirty": false,
+            "errorCount": 1,
+            "gate": null,
+            "locked": false,
+            "submitted": false,
+            "valid": false
+          },
+          "c": {
+            "dirty": false,
+            "errorCount": 0,
+            "gate": null,
+            "locked": false,
+            "submitted": false,
+            "valid": false
+          }
+        }
+      },
+      "label": "first-read"
+    },
+    {
+      "capture": {
+        "complete": false,
+        "forms": {
+          "a": {
+            "errorChannels": {},
+            "firstValidationDone": true
+          },
+          "b": {
+            "errorChannels": {
+              "[\"age\"]": {
+                "schema": [
+                  {
+                    "code": "zod:too_small",
+                    "path": [
+                      "age"
+                    ]
+                  }
+                ],
+                "user": []
+              }
+            },
+            "firstValidationDone": true
+          },
+          "c": {
+            "errorChannels": {},
+            "firstValidationDone": true
+          }
+        },
+        "progress": 0.6666666666666666,
+        "statuses": {
+          "a": {
+            "dirty": false,
+            "errorCount": 0,
+            "gate": null,
+            "locked": false,
+            "submitted": false,
+            "valid": true
+          },
+          "b": {
+            "dirty": false,
+            "errorCount": 1,
+            "gate": null,
+            "locked": false,
+            "submitted": false,
+            "valid": false
+          },
+          "c": {
+            "dirty": false,
+            "errorCount": 0,
+            "gate": null,
+            "locked": false,
+            "submitted": false,
+            "valid": true
+          }
+        }
+      },
+      "label": "settled"
+    }
+  ],
+  "v3Divergence": {
+    "first-read": {
+      "forms.a.firstValidationDone": false,
+      "progress": 0,
+      "statuses.a.valid": false
+    }
+  }
+}

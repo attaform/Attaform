@@ -22,17 +22,19 @@ describe('zod v4 adapter: fuzz over arbitrary supported schemas', () => {
     expect(() => zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })).not.toThrow()
   })
 
-  test.prop([arbRootSchema])('getDefaultValues returns a success response', (schema) => {
-    const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
-      useDefaultSchemaValues: true,
-    })
-    expect(result.success).toBe(true)
-    // After `success === true`, the result type narrows so `.data` is
-    // present by construction, assert on shape instead of mere
-    // existence.
-    expect(typeof result.data).toBe('object')
-  })
+  test.prop([arbRootSchema])(
+    'getDefaultValues derives a value that validateSync passes',
+    (schema) => {
+      const adapter = zodAdapter(schema as z.ZodObject)('f', { maxRecursionDepth: 64 })
+      const data = adapter.getDefaultValues({
+        useDefaultSchemaValues: true,
+      })
+      // A keyed root derives an object: assert on shape instead of mere
+      // existence.
+      expect(typeof data).toBe('object')
+      expect(adapter.validateSync(data)).toEqual([])
+    }
+  )
 
   test.prop([arbRootSchema])(
     'validateAtPath(defaultValues, undefined) passes in lax mode',
@@ -46,8 +48,8 @@ describe('zod v4 adapter: fuzz over arbitrary supported schemas', () => {
       const initial = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
       })
-      expect(initial.success).toBe(true)
-      const validation = await adapter.validateAtPath(initial.data, undefined)
+      expect(adapter.validateSync(initial)).toEqual([])
+      const validation = await adapter.validateAtPath(initial, undefined)
       expect(validation.success).toBe(true)
     }
   )
@@ -61,15 +63,15 @@ describe('zod v4 adapter: fuzz over arbitrary supported schemas', () => {
       // the way out; the schema never sees one.
       const built = zodAdapter(schema as z.ZodObject)
       const config = { useDefaultSchemaValues: true } as const
-      const mine = built(formKey, { maxRecursionDepth: 64 }).getDefaultValues(config)
-      const theirs = built('some-other-form', { maxRecursionDepth: 64 }).getDefaultValues(config)
-      expect(mine.success).toBe(theirs.success)
-      expect(mine.data).toEqual(theirs.data)
-      if (!mine.success) {
-        expect(theirs.success).toBe(false)
-        for (const err of mine.errors) {
-          expect(typeof err.code).toBe('string')
-        }
+      const mySchema = built(formKey, { maxRecursionDepth: 64 })
+      const theirSchema = built('some-other-form', { maxRecursionDepth: 64 })
+      const myData = mySchema.getDefaultValues(config)
+      const theirData = theirSchema.getDefaultValues(config)
+      expect(myData).toEqual(theirData)
+      const myErrors = mySchema.validateSync(myData)
+      expect(myErrors).toEqual(theirSchema.validateSync(theirData))
+      for (const err of myErrors) {
+        expect(typeof err.code).toBe('string')
       }
     }
   )

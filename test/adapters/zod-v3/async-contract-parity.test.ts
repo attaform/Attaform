@@ -8,9 +8,9 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v3'
  * `test/adapters/zod-v4/async-contract-parity.test.ts` agrees line for
  * line.
  *
- * It seeds NOTHING. A schema declaring async work anywhere returns from
- * `getDefaultValues` clean, and every verdict, sync or async, arrives on
- * the post-mount async pass that `needsAsyncValidation()` schedules.
+ * It seeds NOTHING. A schema declaring async work anywhere returns `[]`
+ * from `validateSync`, and every verdict, sync or async, arrives on the
+ * post-mount async pass that `needsAsyncValidation()` schedules.
  *
  * Seeding the sync half would mean parsing against a copy of the schema
  * with its async predicates removed, and building that copy is a second
@@ -31,29 +31,30 @@ describe('zod v3: an async sibling defers the whole construction verdict', () =>
         .refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { items: [], email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(errors).toEqual([])
   })
 
   it('still seeds the same container violation when nothing async is present', () => {
     // The counterweight: this is about the MIXTURE, not about the check.
     const schema = z.object({ items: z.array(z.string()).min(1) })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { items: [] },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.path[0]) ?? []).toContain('items')
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.map((e) => e.path[0])).toContain('items')
   })
 
-  it('returns success when the sync portion is clean but async refines exist', () => {
+  it('returns no errors when the sync portion is clean but async refines exist', () => {
     const schema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z
@@ -62,18 +63,18 @@ describe('zod v3: an async sibling defers the whole construction verdict', () =>
         .refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: 'hello', email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(errors).toEqual([])
   })
 
   it('a FAILING sync sibling is not seeded either, when an async refine is present', () => {
     // The async gate is whole-schema: an obviously failing sync default
-    // still returns success, because the construction parse never ran.
+    // still returns no errors, because the verdict parse never completed.
     const schema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z
@@ -82,20 +83,20 @@ describe('zod v3: an async sibling defers the whole construction verdict', () =>
         .refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(errors).toEqual([])
   })
 
-  it('pure-async schema with clean defaults regression: still returns success', () => {
+  it('pure-async schema with clean defaults regression: still returns no errors', () => {
     // Regression guard: a schema with only async refines and no sync
-    // failures must continue to return success at construction. The
-    // async-only strip path rebuilds the leaf without its async refine
-    // and the parse runs clean.
+    // failures must continue to read clean at construction. The sync
+    // parse throws over the async refine, and `validateSync` returns
+    // `[]`, leaving the verdict to the post-mount async pass.
     const schema = z.object({
       email: z
         .string()
@@ -103,11 +104,12 @@ describe('zod v3: an async sibling defers the whole construction verdict', () =>
         .refine(async () => Promise.resolve(true), 'never fires'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
+    expect(errors).toEqual([])
   })
 })

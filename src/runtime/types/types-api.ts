@@ -180,9 +180,6 @@ export type SchemaParseErrorWithData<TData> = {
 /** Settled schema-level verdict. Discriminate on `success`. */
 export type SchemaParseResult<TData> =
   SchemaParseSuccess<TData> | SchemaParseErrorWithData<TData> | SchemaParseErrorWithoutData
-/** Schema-level `getDefaultValues` verdict: defaults always come back. */
-export type SchemaDefaultsResult<TData> =
-  SchemaParseSuccess<TData> | SchemaParseErrorWithData<TData>
 
 /** Settled validation result when the form or subtree parsed successfully. */
 export type ValidationResponseSuccess<TData> = SchemaParseSuccess<TData> & {
@@ -281,7 +278,31 @@ export type GetDefaultValuesConfig<Form> = {
  * library.
  */
 export type AbstractSchema<Form, GetValueFormType> = {
-  getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form>
+  /**
+   * The form's starting value: the schema's defaults, with
+   * `config.constraints` merged over them and any shape the merge broke
+   * repaired. Derivation only. Nothing is validated here, so no
+   * refinement, check or transform runs; `validateSync` is the verdict.
+   */
+  getDefaultValues(config: GetDefaultValuesConfig<Form>): Form
+  /**
+   * The schema's synchronous verdict on `data` as a whole form, as a
+   * list of failures: empty when the data passes.
+   *
+   * The runtime seeds the schema error channel with it whenever it
+   * establishes a baseline: on the starting value, the first time
+   * anything reads or writes the form's errors, and on `reset()`. A form
+   * starting from invalid defaults therefore reads invalid from its
+   * first render.
+   * A hydrating client never calls it, since the server's verdict
+   * arrives with the payload.
+   *
+   * Adapters MUST NOT throw: a refinement that throws, or a schema whose
+   * verdict resolves only through a Promise, returns `[]` and leaves the
+   * verdict to the async pass that `needsAsyncValidation` queues. An
+   * adapter with no synchronous parse returns `[]` unconditionally.
+   */
+  validateSync(data: unknown): ValidationError[]
   /**
    * The schema-prescribed default at `path`. The runtime uses it to
    * fill structural gaps, so every `setValue` write leaves the form
@@ -636,8 +657,8 @@ export type AbstractSchema<Form, GetValueFormType> = {
   /**
    * Whether `validateAtPath` MAY have to run asynchronously to surface
    * every error this schema can produce. The runtime asks at
-   * construction: `false` means the construction-time sync seed is
-   * authoritative and no extra microtask is spent, `true` queues a
+   * construction: `false` means the synchronous verdict on the starting
+   * value is authoritative and no extra microtask is spent, `true` queues a
    * one-shot full-form async pass so async-only verdicts (refinements,
    * transforms or pipes that resolve only through a Promise) surface
    * without waiting for a user mutation.
@@ -907,7 +928,7 @@ export type WriteMeta = {
 export type HistoryKernel = {
   readonly form: Ref<unknown>
   readonly blankPaths: Set<PathKey>
-  readonly errorCells: Map<PathKey, ErrorCell>
+  readonly errorCells: () => Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void

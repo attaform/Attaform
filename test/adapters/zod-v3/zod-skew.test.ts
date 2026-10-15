@@ -83,10 +83,14 @@ describe('zod-v3 adapter under version skew (hoisted zod v4 alongside v3)', () =
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
 
     // Exercises rebuildDiscriminatedUnion (the optionsMap reconstruction)
-    // without an empty accept-set swallowing the branch leaf.
+    // without an empty accept-set swallowing the branch leaf. The
+    // verdict parse rebuilds the union as well (through `syncSafe`), so
+    // derivation and `validateSync` run together.
     expect(adapter.getSlimPrimitiveTypesAtPath(['payment', 'number']).size).toBeGreaterThan(0)
     expect(() =>
-      adapter.getDefaultValues({ useDefaultSchemaValues: true, constraints: {} })
+      adapter.validateSync(
+        adapter.getDefaultValues({ useDefaultSchemaValues: true, constraints: {} })
+      )
     ).not.toThrow()
   })
 

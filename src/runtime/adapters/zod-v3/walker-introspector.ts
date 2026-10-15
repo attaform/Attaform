@@ -10,9 +10,7 @@ import type { z } from 'zod-v3'
 import type { SchemaIntrospector, SharedZodKind } from '../../core/abstract-schema-factory'
 import { isZodSchemaType } from './helpers'
 import {
-  containsAsyncRefine,
-  containsAsyncTransform,
-  containsDiscriminatedUnion,
+  capabilitiesOf,
   getArrayElement,
   getCatchDefault,
   getDefaultValue,
@@ -21,19 +19,19 @@ import {
   getIntersectionLeft,
   getIntersectionRight,
   getLiteralValues,
-  getNativeEnumValues,
-  getObjectShape,
   getMapKeyType,
   getMapValueType,
+  getNativeEnumValues,
+  getObjectShape,
   getRecordValueType,
   getSetValueType,
   getTupleItems,
   getUnionOptions,
   hasCatchValue,
-  hasContainerOrRootRefine,
   isCoercePrimitive,
   isPreprocessNode,
   kindOf,
+  scanCapabilities,
   unwrapBranded,
   unwrapEffectsSource,
   unwrapInner,
@@ -51,10 +49,7 @@ export const V3_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
   getLiteralValues,
   isPreprocessNode,
   isCoercePrimitive,
-  containsAsyncRefine,
-  containsAsyncTransform,
-  containsDiscriminatedUnion,
-  hasContainerOrRootRefine,
+  capabilitiesOf,
 
   // Walker accessors (D2 / D3 / D5).
   getArrayElement,
@@ -79,4 +74,16 @@ export const V3_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
   getDefaultValue,
   getCatchDefault,
   hasCatchValue,
+}
+
+/**
+ * The introspector a v3 sub-schema is built with. `getSchemasAtPath`
+ * builds a sub-schema per candidate on every query, and the runtime asks
+ * it one question once, `needsAsyncValidation`. Its capability walk
+ * therefore skips the per-node memo: a `WeakMap` insert costs more than
+ * walking the few nodes under a path.
+ */
+export const V3_SUB_SCHEMA_INTROSPECTOR: SchemaIntrospector<z.ZodTypeAny> = {
+  ...V3_INTROSPECTOR,
+  capabilitiesOf: scanCapabilities,
 }

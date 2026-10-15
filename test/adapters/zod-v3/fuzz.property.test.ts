@@ -10,10 +10,11 @@ import { buildZodRootObjectArbitrary } from '../../utils/zod-arbitraries'
  * `z.record` signature takes a single value type while v4 requires
  * both key and value: the `makeRecord` closure uses the v3 form.
  *
- * Properties mirror v4's post-fix shape (getDefaultValues is total in
- * lax mode, never throws, always returns success). The v3 adapter used
- * to throw a ZodError on nested unions + `z.bigint()` defaults; both
- * paths were fixed alongside these property tightenings.
+ * Properties mirror v4's post-fix shape: getDefaultValues is total in
+ * lax mode and never throws, and validateSync passes the value it
+ * derives. The v3 adapter used to throw a ZodError on nested unions +
+ * `z.bigint()` defaults; both paths were fixed alongside these property
+ * tightenings.
  */
 
 const arbRootSchema = buildZodRootObjectArbitrary(z, 3, (inner) => z.record(inner))
@@ -26,19 +27,18 @@ describe('zod v3 adapter: fuzz over arbitrary supported schemas', () => {
   })
 
   test.prop([arbRootSchema])(
-    'getDefaultValues returns a success response in lax mode',
+    'getDefaultValues derives a value that validateSync passes in lax mode',
     (schema) => {
       const adapter = zodAdapter(schema as z.ZodObject<z.ZodRawShape>)('f', {
         maxRecursionDepth: 64,
       })
-      const result = adapter.getDefaultValues({
+      const data = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
       })
-      expect(result.success).toBe(true)
-      // After `success === true`, the result type narrows so `.data` is
-      // present by construction, assert on shape instead of mere
+      // A keyed root derives an object: assert on shape instead of mere
       // existence.
-      expect(typeof result.data).toBe('object')
+      expect(typeof data).toBe('object')
+      expect(adapter.validateSync(data)).toEqual([])
     }
   )
 

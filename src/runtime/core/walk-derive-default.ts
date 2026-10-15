@@ -67,9 +67,10 @@ const NO_EMBEDDED_DEFAULT = Symbol('atta:no-embedded-default')
  * pathological wrapper stack, or a self-referential lazy resolved before
  * its inner is constructed.
  *
- * Exported so the v3 fix-up loop in `zod-v3/index.ts` (the
- * `runGetDefaultsV3` validate-then-fix path) can reuse it for the
- * issue-driven default-resolution step.
+ * Exported, though `deriveDefaultWalk` below is its only caller. Neither
+ * adapter's `runGetDefaults` resolves defaults from parse issues: both
+ * derive through `deriveDefaultWalk` and parse nothing. The construction
+ * verdict is a separate parse of the real schema, `validateSync`.
  */
 export function peelEmbeddedDefault<Schema>(
   schema: Schema,

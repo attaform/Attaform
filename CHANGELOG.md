@@ -1,6 +1,21 @@
 # Changelog
 
 ## Unreleased
+### Breaking
+
+- **Custom adapters derive and validate in two steps.**
+  `AbstractSchema.getDefaultValues(config)` now returns the starting
+  value itself and validates nothing, and a new required member,
+  `validateSync(data)`, returns the schema's synchronous whole-form
+  verdict as `ValidationError[]`: empty when the data passes, and empty
+  rather than thrown when the verdict needs a Promise or a check throws.
+  `SchemaDefaultsResult` is gone. An adapter that returned
+  `{ data, errors, success }` now returns `data` from `getDefaultValues`
+  and moves its parse into `validateSync`. The split lets Attaform skip
+  the parse wherever the verdict is already known, such as a client
+  hydrating server-rendered state. The Zod adapters need nothing from
+  you. (#691)
+
 ### Added
 
 - **A component that reports keystrokes updates the form as you type.**
@@ -37,6 +52,41 @@
 
 ### Fixed
 
+- **On Zod v3, a refine on a `z.map` runs again as the user types.**
+  Each keystroke re-validates only the edited field when every check in
+  the schema sits on a leaf, and the whole form otherwise. Zod v3 never
+  looked inside a map for that test and did not count a map as a
+  container, so a refine on an entry's object (`a` must equal `b`) or on
+  the map itself (no score over 100) read as leaf-local: editing inside
+  an entry left the refine's error unshown until submit. Both now count,
+  and the error shows as the user types, as on Zod v4. (#691)
+
+- **On Zod v4, a field with an async transform waits for its first
+  check.** A field's `valid` holds at `false` until the form's first
+  async pass settles when its schema has async work, the same wait
+  `meta.valid` makes. On Zod v4 only an async refine counted, so a field
+  with `.transform(async ...)` or `z.preprocess(async ...)` read valid
+  while `meta.valid` read false and the pass was still running. It now
+  waits, as it does on Zod v3. (#691)
+
+- **On Zod v3, checks after a `.pipe(...)` count from the first
+  render.** Attaform runs a v3 schema's synchronous validations through
+  a copy that keeps async refinements from throwing, and that copy kept
+  only a pipeline's input side. The checks on its output side, such as
+  the `.email()` in `z.string().pipe(z.string().email())`, never ran on
+  the construction verdict, on `reset()`, or on a discriminated union's
+  synchronous pass, so a form mounted with `''` read valid until its
+  first edit. Both sides now run, and the form reads the error from the
+  first render, as on Zod v4. (#691)
+
+- **On Zod v3, a `z.map` entry's starting-value error lands on the
+  entry.** When a form's default values broke a check inside a map entry,
+  the construction-time verdict filed the error at the entry's position
+  (`lookup.0.value`), a path nothing reads, so `form.errors.lookup.a` and
+  the field's `valid` missed it until the first edit re-validated. It now
+  lands at the entry's key from the first render, where Zod v4 files it
+  and where every later v3 validation already did. (#691)
+
 - **Register `transforms` and schema coercion apply to component
   writes.** A value a component emitted went straight to the write gate,
   so a `transforms: [...]` array never ran on it, and a text component
@@ -59,6 +109,45 @@
   everywhere.** It suggested `type="number"` first, which only a native
   input has. It now leads with the `.number` modifier, which works on a
   native input and a component alike. (#685)
+
+### Performance
+
+- **A form validates its starting value when something first reads
+  it, and building one does less work.** Building a form ran the
+  schema over its starting value at once, so a wizard paid for every
+  step at mount, whichever one was on screen. The check now runs the
+  first time anything reads or writes the form's errors (a template,
+  `form.meta.valid`, a step rail, the server serializing the page), and
+  a form nothing reads never runs it. Every read sees the verdict it
+  saw before. Around it, a schema is walked once to learn what it holds
+  (an async refine or transform, a discriminated union, a check on a
+  container), where each question was its own walk asked again for
+  every form; a form derives its schema's defaults once, where it
+  derived them up to three times; and a Zod v4 schema's first
+  validation skips the fast path Zod compiles on a first parse, which
+  cost more than the parse for a schema built per mount. On a 10-step
+  wizard of 30-field pages, in production builds, building the forms on
+  the client got 39-70% faster with no step's errors read, and
+  server-rendering them got 16-44% faster. With a step rail reading
+  every step's validity and leaves that run a nested parse inside a
+  `superRefine`, building got 12-23% faster on schemas built per
+  mount. (#691)
+
+  A refinement's side effects, a log line or a dev warning, now happen
+  at that first read rather than inside `useForm`. A `.default(() => ...)` function runs once per form built,
+  and a number field it starts at `0` is shown blank exactly when it
+  holds that `0`. `reset()` validates the restored values once instead
+  of twice. A Zod v3 schema with a refine runs its post-mount check
+  either way, and a form nothing reads before that check skips the
+  first verdict, which the check replaces.
+
+- **A client hydrating server-rendered state no longer validates its
+  forms.** The server's verdict arrives in the payload, so every form
+  parsed its starting value only to throw the result away. That parse
+  is gone. On the same
+  wizard, hydrating got 34-68% faster with plain leaves and 13-38%
+  faster with leaves that run a nested parse inside a `superRefine`.
+  (#691)
 
 ## v0.30.1
 ### Fixed

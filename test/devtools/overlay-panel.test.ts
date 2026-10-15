@@ -6,6 +6,7 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import type { AttaformDevtoolsBridge } from '../../src/runtime/core/devtools-shared'
 import { createRegistry } from '../../src/runtime/core/registry'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Component tests for the Nuxt DevTools overlay panel. Mounts the panel
@@ -60,11 +61,11 @@ describe('AttaformDevtoolsPanel: form display', () => {
     const registry = createRegistry({})
     const a = createFormStore<{ name: string }>({
       formKey: 'form-a',
-      schema: fakeSchema<{ name: string }>({ name: '' }),
+      ...schemaOptions(fakeSchema<{ name: string }>({ name: '' })),
     })
     const b = createFormStore<{ name: string }>({
       formKey: 'form-b',
-      schema: fakeSchema<{ name: string }>({ name: '' }),
+      ...schemaOptions(fakeSchema<{ name: string }>({ name: '' })),
     })
     registry.forms.set('form-a', a)
     registry.forms.set('form-b', b)
@@ -81,10 +82,12 @@ describe('AttaformDevtoolsPanel: form display', () => {
     const registry = createRegistry({})
     const state = createFormStore<{ username: string; password: string }>({
       formKey: 'creds',
-      schema: fakeSchema<{ username: string; password: string }>({
-        username: '',
-        password: '',
-      }),
+      ...schemaOptions(
+        fakeSchema<{ username: string; password: string }>({
+          username: '',
+          password: '',
+        })
+      ),
     })
     state.applyFormReplacement({ username: 'alice', password: 'hunter2' })
     registry.forms.set('creds', state)
@@ -103,7 +106,7 @@ describe('AttaformDevtoolsPanel: form display', () => {
     const registry = createRegistry({})
     const state = createFormStore<{ email: string }>({
       formKey: 'errs',
-      schema: fakeSchema<{ email: string }>({ email: '' }),
+      ...schemaOptions(fakeSchema<{ email: string }>({ email: '' })),
     })
     state.setAllUserErrors([{ message: 'looks bad', path: ['email'], code: 'api:bad-email' }])
     registry.forms.set('errs', state)
@@ -128,7 +131,7 @@ describe('AttaformDevtoolsPanel: edit path', () => {
     const registry = createRegistry({})
     const state = createFormStore<{ username: string }>({
       formKey: 'edit-1',
-      schema: fakeSchema<{ username: string }>({ username: '' }),
+      ...schemaOptions(fakeSchema<{ username: string }>({ username: '' })),
     })
     state.applyFormReplacement({ username: 'old' })
     registry.forms.set('edit-1', state)
@@ -157,7 +160,7 @@ describe('AttaformDevtoolsPanel: edit path', () => {
     const registry = createRegistry({})
     const state = createFormStore<{ password: string }>({
       formKey: 'edit-2',
-      schema: fakeSchema<{ password: string }>({ password: '' }),
+      ...schemaOptions(fakeSchema<{ password: string }>({ password: '' })),
     })
     state.applyFormReplacement({ password: 'original' })
     registry.forms.set('edit-2', state)
@@ -196,7 +199,7 @@ describe('AttaformDevtoolsPanel: timeline', () => {
     const registry = createRegistry({})
     const state = createFormStore<{ name: string }>({
       formKey: 'tl',
-      schema: fakeSchema<{ name: string }>({ name: '' }),
+      ...schemaOptions(fakeSchema<{ name: string }>({ name: '' })),
     })
     registry.forms.set('tl', state)
 
@@ -216,7 +219,7 @@ describe('AttaformDevtoolsPanel: timeline', () => {
     const registry = createRegistry({})
     const state = createFormStore<{ name: string }>({
       formKey: 'tl-clear',
-      schema: fakeSchema<{ name: string }>({ name: '' }),
+      ...schemaOptions(fakeSchema<{ name: string }>({ name: '' })),
     })
     registry.forms.set('tl-clear', state)
 

@@ -1,0 +1,625 @@
+{
+  "checkpoints": [
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"name\"]": {
+            "schema": [
+              {
+                "code": "zod:custom",
+                "path": [
+                  "name"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"password\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "password"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {
+          "address.city": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "City",
+            "meta": {},
+            "original": "",
+            "path": [
+              "address",
+              "city"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "address.zip": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Zip",
+            "meta": {},
+            "original": "",
+            "path": [
+              "address",
+              "zip"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "confirm": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Confirm",
+            "meta": {},
+            "original": "",
+            "path": [
+              "confirm"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "name": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:custom",
+                "path": [
+                  "name"
+                ]
+              }
+            ],
+            "firstError": "zod:custom",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Name",
+            "meta": {},
+            "original": "",
+            "path": [
+              "name"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          },
+          "password": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "password"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Password",
+            "meta": {},
+            "original": "",
+            "path": [
+              "password"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          }
+        },
+        "firstValidationDone": true,
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errorCount": 2,
+          "errors": [
+            {
+              "code": "zod:custom",
+              "path": [
+                "name"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "password"
+              ]
+            }
+          ],
+          "firstError": "zod:custom",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "address": {
+              "city": "",
+              "zip": ""
+            },
+            "confirm": "",
+            "name": "",
+            "password": ""
+          }
+        }
+      },
+      "label": "first-read"
+    },
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"name\"]": {
+            "schema": [
+              {
+                "code": "zod:custom",
+                "path": [
+                  "name"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"password\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "password"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {
+          "address.city": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "City",
+            "meta": {},
+            "original": "",
+            "path": [
+              "address",
+              "city"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "address.zip": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Zip",
+            "meta": {},
+            "original": "",
+            "path": [
+              "address",
+              "zip"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "confirm": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [],
+            "firstError": null,
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Confirm",
+            "meta": {},
+            "original": "",
+            "path": [
+              "confirm"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": true,
+            "validating": false,
+            "value": ""
+          },
+          "name": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:custom",
+                "path": [
+                  "name"
+                ]
+              }
+            ],
+            "firstError": "zod:custom",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Name",
+            "meta": {},
+            "original": "",
+            "path": [
+              "name"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          },
+          "password": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "password"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "Password",
+            "meta": {},
+            "original": "",
+            "path": [
+              "password"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": ""
+          }
+        },
+        "firstValidationDone": true,
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": false,
+          "displayState": "idle",
+          "errorCount": 2,
+          "errors": [
+            {
+              "code": "zod:custom",
+              "path": [
+                "name"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "password"
+              ]
+            }
+          ],
+          "firstError": "zod:custom",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": true,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "address": {
+              "city": "",
+              "zip": ""
+            },
+            "confirm": "",
+            "name": "",
+            "password": ""
+          }
+        }
+      },
+      "label": "settled"
+    }
+  ],
+  "v3Divergence": {
+    "first-read": {
+      "firstValidationDone": false
+    }
+  }
+}

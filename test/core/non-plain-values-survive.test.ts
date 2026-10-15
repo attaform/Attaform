@@ -45,7 +45,7 @@ describe('the unset walker carries non-plain values through whole', () => {
     // lost on the rebuild.
     const schema = adapterFor(z.object({ price: z.unknown() }))
     const money = new Money()
-    const out = walkUnsetSentinels({ price: money }, schema)
+    const out = walkUnsetSentinels({ price: money }, schema, schema.getDefaultAtPath([]))
     const read = (out.cleanedValues as { price: unknown }).price
     expect(read).toBe(money)
     expect(read).toBeInstanceOf(Money)
@@ -55,7 +55,7 @@ describe('the unset walker carries non-plain values through whole', () => {
   it('keeps a File intact at an opaque leaf', () => {
     const schema = adapterFor(z.object({ doc: z.instanceof(File) }))
     const file = new File(['hello'], 'a.txt', { type: 'text/plain' })
-    const out = walkUnsetSentinels({ doc: file }, schema)
+    const out = walkUnsetSentinels({ doc: file }, schema, schema.getDefaultAtPath([]))
     const read = (out.cleanedValues as { doc: unknown }).doc
     expect(read).toBe(file)
     expect(read).toBeInstanceOf(File)
@@ -65,7 +65,7 @@ describe('the unset walker carries non-plain values through whole', () => {
   it('keeps a Map intact at a z.map leaf', () => {
     const schema = adapterFor(z.object({ index: z.map(z.string(), z.number()) }))
     const index = new Map([['a', 1]])
-    const out = walkUnsetSentinels({ index }, schema)
+    const out = walkUnsetSentinels({ index }, schema, schema.getDefaultAtPath([]))
     const read = (out.cleanedValues as { index: unknown }).index
     expect(read).toBe(index)
     expect((read as Map<string, number>).get('a')).toBe(1)
@@ -75,7 +75,7 @@ describe('the unset walker carries non-plain values through whole', () => {
     // The counterweight. Carrying non-plain values through must not
     // stop the walker descending into the shapes it exists to walk.
     const schema = adapterFor(z.object({ user: z.object({ name: z.string(), age: z.number() }) }))
-    const out = walkUnsetSentinels({ user: { name: 'ada' } }, schema)
+    const out = walkUnsetSentinels({ user: { name: 'ada' } }, schema, schema.getDefaultAtPath([]))
     const read = (out.cleanedValues as { user: { name: string; age: number } }).user
     expect(read.name).toBe('ada')
     // `age` was unspecified, so the walker synthesised it from the

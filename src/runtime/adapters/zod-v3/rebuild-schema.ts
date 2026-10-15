@@ -233,6 +233,18 @@ export function rebuildDiscriminatedUnion(
 }
 
 /**
+ * Rebuild a `ZodPipeline` around processed input and output sides
+ * (`_def.in`, `_def.out`).
+ */
+export function rebuildPipeline(
+  original: z.ZodTypeAny,
+  inSide: z.ZodTypeAny,
+  outSide: z.ZodTypeAny
+): z.ZodTypeAny {
+  return rebuildWithDef(original, { in: inSide, out: outSide })
+}
+
+/**
  * Rebuild a `ZodEffects` around a processed source schema and a
  * replacement effect.
  *

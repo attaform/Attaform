@@ -77,7 +77,7 @@ export async function runFactoryAndApply<F extends GenericForm, G extends Generi
 function clearHydrationFailedEntry<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>
 ): void {
-  const existing = st.errorCells.get(ROOT_PATH_KEY)?.schema
+  const existing = st.errorCells().get(ROOT_PATH_KEY)?.schema
   if (existing === undefined || existing.length === 0) return
   const filtered = existing.filter((e) => e.code !== AttaformErrorCode.HydrationFailed)
   if (filtered.length !== existing.length) {
@@ -96,7 +96,7 @@ function appendHydrationFailedEntry<F extends GenericForm, G extends GenericForm
     path: [...ROOT_PATH],
     code: AttaformErrorCode.HydrationFailed,
   }
-  const existing = st.errorCells.get(ROOT_PATH_KEY)?.schema ?? []
+  const existing = st.errorCells().get(ROOT_PATH_KEY)?.schema ?? []
   st.setSchemaErrorsForPath([...ROOT_PATH], [...existing, entry])
   return entry
 }

@@ -627,7 +627,8 @@ export type FieldValidationEntry = {
 export type ArrayBookkeepingDeps = {
   readonly form: Ref<unknown>
   readonly fields: Map<PathKey, FieldRecord>
-  readonly errorCells: Map<PathKey, ErrorCell>
+  /** The store's accessor, which runs the construction seed first: call it at use. */
+  readonly errorCells: () => Map<PathKey, ErrorCell>
   readonly originals: Map<PathKey, OriginalsRecord>
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
@@ -717,7 +718,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     // SCHEMA side is derived state describing the prior occupant, so a
     // relocated cell lands schema-empty and the eviction pass below
     // clears stale verdicts (and any empty husk) at every changed index.
-    migrateMapSubtree(errorCells, arrayPath, remap, (cell, segments) => ({
+    migrateMapSubtree(errorCells(), arrayPath, remap, (cell, segments) => ({
       schema: NO_ERRORS,
       user: cell.user.map((error) => ({ ...error, path: [...segments] })),
     }))
@@ -778,7 +779,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       migrateElementState(arrayPath, remap)
       for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex)
       const changed = changedIndices(remap)
-      evictSchemaVerdictsAtIndices(errorCells, arrayPath, changed)
+      evictSchemaVerdictsAtIndices(errorCells(), arrayPath, changed)
       abortValidationAtVacatedIndices(arrayPath, remap)
       variantMemory.dropAtIndices(arrayPath, changed)
       arrayIdentity.applyOp(arrayPath, remap)

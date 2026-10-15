@@ -72,7 +72,7 @@
     void updateTick.value
     const form = activeForm.value
     if (form === null) return []
-    return Array.from(form.errorCells.entries())
+    return Array.from(form.errorCells().entries())
       .filter(([, cell]) => cell.schema.length > 0)
       .map(([key, cell]) => [key, cell.schema] as const)
   })
@@ -81,7 +81,7 @@
     void updateTick.value
     const form = activeForm.value
     if (form === null) return []
-    return Array.from(form.errorCells.entries())
+    return Array.from(form.errorCells().entries())
       .filter(([, cell]) => cell.user.length > 0)
       .map(([key, cell]) => [key, cell.user] as const)
   })
@@ -221,7 +221,7 @@
         value = (value as Record<string | number, unknown>)[seg]
       }
 
-      const cell = form.errorCells.get(canonicalKey)
+      const cell = form.errorCells().get(canonicalKey)
       const schemaEntries =
         (cell?.schema as ReadonlyArray<{ message: string; code: string }> | undefined) ?? []
       const userEntries =

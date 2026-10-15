@@ -62,9 +62,12 @@ const ROOT = join(import.meta.dirname, '..')
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim()
 
 /**
- * The suites that cover the paths a form pays on every keystroke: the
+ * The suites that cover the paths a form pays on every keystroke (the
  * write funnel, the value reads under it, the array helpers, the error
- * rollup, and the reset rebuild.
+ * rollup, and the reset rebuild) and the ones that cover what it pays
+ * once, to be built: `matrix` for init drift across the scaling axes,
+ * and `construction` for a wizard's forms on the client, on the server
+ * and while hydrating (#691).
  */
 const DEFAULT_SUITES = [
   'bench/keystroke.bench.ts',
@@ -72,6 +75,8 @@ const DEFAULT_SUITES = [
   'bench/field-arrays.bench.ts',
   'bench/errors-materialization.bench.ts',
   'bench/reset.bench.ts',
+  'bench/matrix.bench.ts',
+  'bench/construction.bench.ts',
 ]
 
 const SUITES = (env.BENCH_SUITES ?? DEFAULT_SUITES.join(' ')).split(/\s+/).filter(Boolean)

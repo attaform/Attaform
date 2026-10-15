@@ -165,7 +165,7 @@ function buildLeafFieldStateBase<F extends GenericForm>(
   const value = state.getValueAtPath(segments)
   const original = state.originals.get(key)?.value
   const pristine = state.isPristineAtPathByKey(key, segments)
-  const cell = state.errorCells.get(key)
+  const cell = state.errorCells().get(key)
   const schemaForKey = cell !== undefined && cell.schema.length > 0 ? cell.schema : undefined
   // Synthesize this leaf's blank-required error from its OWN blank membership
   // rather than reading the whole-form `derivedBlankErrors` map. That computed
@@ -719,7 +719,7 @@ export function aggregateErrorsAt<F extends GenericForm>(
   const candidates = state.errorWindowAt(prefix, prefixKey)
   if (candidates.length === 0) return []
   const formValue = state.form.value
-  const cells = state.errorCells
+  const cells = state.errorCells()
   const buckets = new Map<number, ValidationError[]>()
   for (const { key, segments } of candidates) {
     // The index window is a superset (it is a key-range, not a prefix

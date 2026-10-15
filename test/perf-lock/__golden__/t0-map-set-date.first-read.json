@@ -1,0 +1,447 @@
+{
+  "checkpoints": [
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"lookup\",\"a\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "lookup",
+                  "a"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"tags\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "tags"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"when\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "when"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {
+          "lookup.a": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "lookup",
+                  "a"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "A",
+            "meta": {},
+            "original": 0,
+            "path": [
+              "lookup",
+              "a"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": 0
+          },
+          "when": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "when"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "When",
+            "meta": {},
+            "original": {
+              "$date": "2019-06-01T00:00:00.000Z"
+            },
+            "path": [
+              "when"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": {
+              "$date": "2019-06-01T00:00:00.000Z"
+            }
+          }
+        },
+        "firstValidationDone": true,
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errorCount": 3,
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "tags"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "lookup",
+                "a"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "when"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "lookup": {
+              "$map": [
+                [
+                  "a",
+                  0
+                ]
+              ]
+            },
+            "tags": {
+              "$set": []
+            },
+            "when": {
+              "$date": "2019-06-01T00:00:00.000Z"
+            }
+          }
+        }
+      },
+      "label": "first-read"
+    },
+    {
+      "capture": {
+        "blankPaths": [],
+        "errorChannels": {
+          "[\"lookup\",\"a\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "lookup",
+                  "a"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"tags\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "tags"
+                ]
+              }
+            ],
+            "user": []
+          },
+          "[\"when\"]": {
+            "schema": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "when"
+                ]
+              }
+            ],
+            "user": []
+          }
+        },
+        "fields": {
+          "lookup.a": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "lookup",
+                  "a"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "A",
+            "meta": {},
+            "original": 0,
+            "path": [
+              "lookup",
+              "a"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": 0
+          },
+          "when": {
+            "aria": {
+              "descriptionId": "<id>-description",
+              "errorId": "<id>-error"
+            },
+            "blank": false,
+            "blurred": null,
+            "blurredAfterInteraction": false,
+            "busy": false,
+            "connected": false,
+            "description": null,
+            "dirty": false,
+            "displayState": "idle",
+            "errors": [
+              {
+                "code": "zod:too_small",
+                "path": [
+                  "when"
+                ]
+              }
+            ],
+            "firstError": "zod:too_small",
+            "focused": null,
+            "id": "<id>",
+            "interacted": false,
+            "key": "",
+            "label": "When",
+            "meta": {},
+            "original": {
+              "$date": "2019-06-01T00:00:00.000Z"
+            },
+            "path": [
+              "when"
+            ],
+            "placeholder": null,
+            "pristine": true,
+            "showErrors": false,
+            "showIdle": true,
+            "showPending": false,
+            "showSuccess": false,
+            "touched": false,
+            "transformError": null,
+            "transforming": false,
+            "updatedAt": "<ts>",
+            "valid": false,
+            "validating": false,
+            "value": {
+              "$date": "2019-06-01T00:00:00.000Z"
+            }
+          }
+        },
+        "firstValidationDone": true,
+        "meta": {
+          "aria": {
+            "descriptionId": "<id>-description",
+            "errorId": "<id>-error"
+          },
+          "blank": false,
+          "blurred": false,
+          "blurredAfterInteraction": false,
+          "busy": false,
+          "connected": false,
+          "departAttempts": 0,
+          "description": null,
+          "dirty": true,
+          "displayState": "idle",
+          "errorCount": 3,
+          "errors": [
+            {
+              "code": "zod:too_small",
+              "path": [
+                "tags"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "lookup",
+                "a"
+              ]
+            },
+            {
+              "code": "zod:too_small",
+              "path": [
+                "when"
+              ]
+            }
+          ],
+          "firstError": "zod:too_small",
+          "focused": false,
+          "id": "<id>",
+          "instanceId": "<instance>",
+          "interacted": false,
+          "key": "",
+          "label": "",
+          "meta": {},
+          "path": [],
+          "placeholder": null,
+          "pristine": false,
+          "showErrors": false,
+          "showIdle": true,
+          "showPending": false,
+          "showSuccess": false,
+          "submissionAttempts": 0,
+          "submitError": null,
+          "submitted": false,
+          "submitting": false,
+          "touched": false,
+          "transformError": null,
+          "transforming": false,
+          "updatedAt": "<ts>",
+          "valid": false,
+          "validating": false,
+          "value": {
+            "lookup": {
+              "$map": [
+                [
+                  "a",
+                  0
+                ]
+              ]
+            },
+            "tags": {
+              "$set": []
+            },
+            "when": {
+              "$date": "2019-06-01T00:00:00.000Z"
+            }
+          }
+        }
+      },
+      "label": "settled"
+    }
+  ],
+  "v3Divergence": {}
+}

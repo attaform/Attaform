@@ -8,9 +8,9 @@ import { zodAdapter } from '../../../src/runtime/adapters/zod-v4'
  * `test/adapters/zod-v3/async-contract-parity.test.ts` agrees line for
  * line.
  *
- * It seeds NOTHING. A schema declaring async work anywhere returns from
- * `getDefaultValues` clean, and every verdict, sync or async, arrives on
- * the post-mount async pass that `needsAsyncValidation()` schedules.
+ * It seeds NOTHING. A schema declaring async work anywhere returns `[]`
+ * from `validateSync`, and every verdict, sync or async, arrives on the
+ * post-mount async pass that `needsAsyncValidation()` schedules.
  *
  * Seeding the sync half would mean parsing against a copy of the schema
  * with its async predicates removed, and building that copy is a second
@@ -28,41 +28,42 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
       email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(errors).toEqual([])
   })
 
   it('still seeds the same violation when nothing async is present', () => {
     // The counterweight: this is about the MIXTURE, not about the check.
     const schema = z.object({ word: z.string().refine((v) => v.length > 0, 'word required') })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(false)
-    expect(result.errors?.map((e) => e.message) ?? []).toContain('word required')
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.map((e) => e.message)).toContain('word required')
   })
 
-  it('returns success when the sync portion is clean but async refines exist', () => {
+  it('returns no errors when the sync portion is clean but async refines exist', () => {
     const schema = z.object({
       word: z.string().refine((v) => v.length > 0, 'word required'),
       email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: 'hello', email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(errors).toEqual([])
   })
 
   it('a FAILING sync sibling is not seeded either, when an async refine is present', () => {
@@ -71,25 +72,26 @@ describe('zod v4: an async sibling defers the whole construction verdict', () =>
       email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { word: '', email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    expect(errors).toEqual([])
   })
 
-  it('pure-async schema with clean defaults regression: still returns success', () => {
+  it('pure-async schema with clean defaults regression: still returns no errors', () => {
     const schema = z.object({
       email: z.email().refine(async () => Promise.resolve(true), 'never fires'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: { email: 'a@b.com' },
     })
+    const errors = adapter.validateSync(data)
 
-    expect(result.success).toBe(true)
+    expect(errors).toEqual([])
   })
 })

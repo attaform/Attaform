@@ -6,8 +6,9 @@
  * schema author declared a `.default()` at by diffing the with-defaults
  * value tree against the schema's BLANK baseline. That baseline used to
  * come from a second full `getDefaultValues({ useDefaultSchemaValues:
- * false })` pass: a whole-schema clone (`getSlimSchema`) plus up to two
- * `safeParse`s, even though the diff only ever reads the value tree.
+ * false })` pass, which at the time also cloned the whole schema
+ * (`getSlimSchema`) and ran up to two `safeParse`s, even though the diff
+ * only ever reads the value tree.
  *
  * Bust 3 swaps that pass for the raw `deriveDefault(false)` walk the
  * factory already exposes as `getEmptyValueAtPath([])`, which is ~32x
@@ -95,7 +96,7 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
     it(`raw blank baseline equals the slim-parsed baseline: ${name}`, () => {
       const slimPassBaseline = built.getDefaultValues({
         useDefaultSchemaValues: false,
-      }).data
+      })
       const rawBaseline = built.getEmptyValueAtPath([])
       expect(rawBaseline).toStrictEqual(slimPassBaseline)
     })
@@ -104,10 +105,10 @@ describe.each(ADAPTERS)('authored-baseline equivalence [$tag]', ({ z, adapter })
       const withDefaults = built.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: undefined,
-      }).data
+      })
       const slimPassBaseline = built.getDefaultValues({
         useDefaultSchemaValues: false,
-      }).data
+      })
       const rawBaseline = built.getEmptyValueAtPath([])
 
       const viaSlimPass = new Set<string>()

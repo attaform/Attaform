@@ -10,6 +10,7 @@ import type {
   ValidationResponse,
 } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Drain the microtask queue + a Vue tick until the reactive validate()
@@ -46,7 +47,7 @@ describe('buildProcessForm', () => {
   function alwaysValid() {
     return createFormStore<Signup>({
       formKey: 'pf',
-      schema: fakeSchema<Signup>({ email: 'a@b', password: 'secret1!' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: 'a@b', password: 'secret1!' })),
     })
   }
 
@@ -65,7 +66,7 @@ describe('buildProcessForm', () => {
     })
     return createFormStore<Signup>({
       formKey: 'pf',
-      schema: fakeSchema<Signup>({ email: '', password: '' }, validator),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' }, validator)),
     })
   }
 
@@ -179,7 +180,7 @@ describe('buildProcessForm', () => {
       }
       const state = createFormStore<Signup>({
         formKey: 'pf',
-        schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
+        ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' }, throwingValidator)),
       })
       const { parse } = buildProcessForm(state)
 
@@ -227,7 +228,7 @@ describe('buildProcessForm', () => {
       }
       const state = createFormStore<Signup>({
         formKey: 'pf',
-        schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
+        ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' }, throwingValidator)),
       })
       const { parse } = buildProcessForm(state)
 
@@ -570,7 +571,7 @@ describe('buildProcessForm', () => {
         releaseValidate = resolve
       })
       const schema = fakeSchema<Signup>({ email: '', password: '' }, async () => validatePromise)
-      const state = createFormStore<Signup>({ formKey: 'pf', schema })
+      const state = createFormStore<Signup>({ formKey: 'pf', ...schemaOptions(schema) })
       const { handleSubmit } = buildProcessForm(state)
 
       // Start a submit; awaits validation.
@@ -591,7 +592,7 @@ describe('buildProcessForm', () => {
       await submitPromise.catch(() => undefined)
 
       // Reset's empty error store wins: no stale write.
-      expect(state.errorCells.size).toBe(0)
+      expect(state.errorCells().size).toBe(0)
     })
 
     it('submit-success after reset() does NOT clear schemaErrors set by post-reset writers', async () => {
@@ -604,7 +605,7 @@ describe('buildProcessForm', () => {
         releaseValidate = resolve
       })
       const schema = fakeSchema<Signup>({ email: '', password: '' }, async () => validatePromise)
-      const state = createFormStore<Signup>({ formKey: 'pf', schema })
+      const state = createFormStore<Signup>({ formKey: 'pf', ...schemaOptions(schema) })
       const { handleSubmit } = buildProcessForm(state)
 
       const submitPromise = handleSubmit(async () => {})()
@@ -625,7 +626,7 @@ describe('buildProcessForm', () => {
       })
       await submitPromise.catch(() => undefined)
 
-      expect(state.errorCells.get(canonicalizePath(['email']).key)?.schema).toHaveLength(1)
+      expect(state.errorCells().get(canonicalizePath(['email']).key)?.schema).toHaveLength(1)
     })
   })
 

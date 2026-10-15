@@ -21,16 +21,26 @@ import { z as z3 } from 'zod-v3'
 import { z as z4 } from 'zod'
 import { zodAdapter as v3Adapter } from '../../src/runtime/adapters/zod-v3'
 import { zodV4Adapter } from '../../src/runtime/adapters/zod-v4/adapter'
+import type { ValidationError } from '../../src/runtime/types/types-api'
 
-type DefaultsResult = { data: unknown; success: boolean }
-type Buildable = { getDefaultValues: (config: unknown) => DefaultsResult }
+type Buildable = {
+  getDefaultValues: (config: unknown) => unknown
+  validateSync: (data: unknown) => ValidationError[]
+}
 
-function defaultsFor(adapter: unknown, schema: unknown, constraints: unknown): DefaultsResult {
+function build(adapter: unknown, schema: unknown): Buildable {
   const factory = adapter as (s: unknown) => (k: string, o: unknown) => Buildable
-  return factory(schema)('parity', { maxRecursionDepth: 64 }).getDefaultValues({
-    useDefaultSchemaValues: true,
-    constraints,
-  })
+  return factory(schema)('parity', { maxRecursionDepth: 64 })
+}
+
+function defaultsFor(adapter: unknown, schema: unknown, constraints: unknown): unknown {
+  return build(adapter, schema).getDefaultValues({ useDefaultSchemaValues: true, constraints })
+}
+
+/** The construction verdict: `validateSync` over the derived starting value. */
+function verdictFor(adapter: unknown, schema: unknown, constraints: unknown): ValidationError[] {
+  const built = build(adapter, schema)
+  return built.validateSync(built.getDefaultValues({ useDefaultSchemaValues: true, constraints }))
 }
 
 /** One shape, declared once per major, with the constraint to feed it. */
@@ -106,8 +116,8 @@ describe('construction repairs the same shapes in both adapters', () => {
         v3: defaultsFor(v3Adapter, v3, constraints),
         v4: defaultsFor(zodV4Adapter, v4, constraints),
       }
-      for (const [cell, result] of Object.entries(cells)) {
-        expect(result.data, `${cell} produced the wrong shape`).toEqual(expected)
+      for (const [cell, data] of Object.entries(cells)) {
+        expect(data, `${cell} produced the wrong shape`).toEqual(expected)
       }
     })
   }
@@ -117,9 +127,9 @@ describe('construction repairs the same shapes in both adapters', () => {
     // ALSO mount holding an error about the shape it just repaired.
     const constraints = { user: 'not-an-object' }
     expect(
-      defaultsFor(v3Adapter, CASES[0]?.v3, constraints).success,
+      verdictFor(v3Adapter, CASES[0]?.v3, constraints),
       'v3 reported an error about a shape it had repaired'
-    ).toBe(true)
-    expect(defaultsFor(zodV4Adapter, CASES[0]?.v4, constraints).success).toBe(true)
+    ).toEqual([])
+    expect(verdictFor(zodV4Adapter, CASES[0]?.v4, constraints)).toEqual([])
   })
 })

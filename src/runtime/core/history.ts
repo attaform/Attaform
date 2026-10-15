@@ -79,7 +79,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     return {
       form: structuralSnapshot(kernel.form.value),
       blankPaths: [...kernel.blankPaths],
-      errorCells: captureErrorCells(kernel.errorCells),
+      errorCells: captureErrorCells(kernel.errorCells()),
     }
   }
 

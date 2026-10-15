@@ -448,8 +448,8 @@ describe('an async .refine that throws', () => {
    * recovery still runs; the promise is simply no longer unowned.
    *
    * The alternative considered and rejected was pre-stripping every
-   * schema containing any `.refine()`, since v3's `containsAsyncRefine`
-   * is conservative. That would have dropped sync-refine seeding at
+   * schema containing any `.refine()`, since v3's `asyncRefine`
+   * capability is conservative. That would have dropped sync-refine seeding at
    * mount for every form using a refinement, which the last two tests
    * here exist to protect.
    */
@@ -538,6 +538,34 @@ describe('an async .refine that throws', () => {
       muted(() => api.setValue('src.k', 'b'))
       await nextTick()
       muted(() => api.setValue('src.k', 'a'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    } finally {
+      process.off('unhandledRejection', capture)
+      process.on('unhandledRejection', onRejection)
+    }
+    expect(seen).toEqual([])
+  })
+
+  it('is contained on v3 when the async refine sits on a pipeline output side', async () => {
+    // The sync verdict runs both sides of a pipe, so a refine on the
+    // output side is discovered by running it, like any other, at mount
+    // and again on `reset()`. Its promise needs the same handling.
+    const seen: unknown[] = []
+    const capture = (e: unknown) => seen.push(e)
+    process.off('unhandledRejection', onRejection)
+    process.on('unhandledRejection', capture)
+    try {
+      const schema = zV3.object({
+        a: zV3.string().pipe(
+          zV3.string().refine(async () => {
+            await Promise.resolve()
+            throw new Error('consumer boom')
+          })
+        ),
+      })
+      const { api } = muted(() => makeMounter(useFormV3, schema)())
+      await drain()
+      muted(() => api.reset())
       await new Promise((resolve) => setTimeout(resolve, 0))
     } finally {
       process.off('unhandledRejection', capture)

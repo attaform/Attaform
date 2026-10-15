@@ -51,7 +51,7 @@ That's the whole setup. Values, both error layers, and every per-field interacti
 | `history` chain      | ❌           | Each tab walks its own undo timeline.                                                                                          |
 | In-flight validation | ❌           | Only settled errors ride the wire; anything still pending is run again on the client.                                          |
 
-The replay happens inside `useForm`, before the component renders, so the client's first paint already carries the server's values and errors. What it does not skip is validation: the client runs its normal mount-time pass whether or not a payload was there, re-deriving the schema half from the hydrated values and landing on the same errors. Worth knowing if a field carries an [async refinement](/docs/validation/async-refinements), since that pass calls it.
+The replay happens inside `useForm`, before the component renders, so the client's first paint already carries the server's values and errors. The client takes the server's schema errors as its starting verdict and runs no check of its own at mount. The one pass it does run is for a schema with async work: the server never runs the post-mount async pass, so the client runs it once over the hydrated values. Worth knowing if a field carries an [async refinement](/docs/validation/async-refinements), since that pass calls it.
 
 ## Auto-imports
 

@@ -26,6 +26,7 @@ import type { DisplayState, HostModifiers, RegisterValue } from '../../src/runti
 import { fakeSchema } from '../utils/fake-schema'
 import { awaitSettle, waitUntil } from '../utils/form-harness'
 import { ADAPTERS, type Adapter } from '../utils/ssr-cross-path'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Phase 2 of the third-party-component story (plan
@@ -71,7 +72,7 @@ describe('v-register component host: element discovery (store-level)', () => {
   function makeForm() {
     const state = createFormStore<F>({
       formKey: 'host',
-      schema: fakeSchema<F>({ email: '', name: '' }),
+      ...schemaOptions(fakeSchema<F>({ email: '', name: '' })),
       ssr: false,
     })
     const register = buildRegister(state, 'host:inst')

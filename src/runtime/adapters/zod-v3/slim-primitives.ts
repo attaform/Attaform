@@ -13,11 +13,13 @@ import { V3_INTROSPECTOR } from './walker-introspector'
  * Thin wrapper around the shared `slimPrimitivesWalk` core walker; v3
  * and v4 dispatch through the same body via their respective
  * `SchemaIntrospector` instance. See `core/walk-slim-primitives.ts`
- * for the per-kind dispatch rules.
+ * for the per-kind dispatch rules. The walk reuses frozen singletons for
+ * leaf kinds, and the set goes to the caller as it is rather than as a
+ * copy, so it is read-only.
  */
-export function slimPrimitivesV3(schema: z.ZodTypeAny): Set<SlimPrimitiveKind> {
+export function slimPrimitivesV3(schema: z.ZodTypeAny): ReadonlySet<SlimPrimitiveKind> {
   // The 64-step lazy-recursion cap matches the v3-only `MAX_LAZY_DEPTH_V3`
   // sentinel the prior inline walker used; consumers historically called
   // this without a depth arg, so the cap stays embedded here.
-  return new Set(slimPrimitivesWalk(schema, V3_INTROSPECTOR, 64))
+  return slimPrimitivesWalk(schema, V3_INTROSPECTOR, 64)
 }

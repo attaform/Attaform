@@ -779,3 +779,51 @@ This phase touches the store's hot path, so the whole-branch A/B was
 mandatory rather than optional. The rotation and `reset()` rows are
 pass 2's win set holding at the same magnitudes with the per-prefix
 windows in place.
+
+## #691 P5 Spends Bytes: the lazy construction verdict, 2026-10-15
+
+P5 SPENDS BYTES: 33,258 -> 33,387 measured (+129), and the budget
+moves 33_320 -> 33_400 (0.01 kB headroom), approved through baton
+proposal d12 after trimming.
+
+What it buys. Building a form validated its starting value at once, so
+every form paid its schema's whole synchronous verdict at mount, the
+largest single cost of construction in the #691 profile. It now runs
+the first time anything reads or writes the form's errors:
+
+| whole-schema parses               | before | after |
+| --------------------------------- | -----: | ----: |
+| a form nothing reads, settled     |      1 |     0 |
+| a v4 4-step wizard reading 1 step |      4 |     1 |
+| a refined v3 form, settled        |      2 |     1 |
+| a refined v3 4-step wizard        |      8 |     4 |
+
+Production A/B against `a61c19cd`, 9 interleaved runs, 10-step wizard
+of 30-field pages:
+
+| scenario, client construction | fresh v4 | cached v4 | fresh v3 | cached v3 |
+| ----------------------------- | -------: | --------: | -------: | --------: |
+| no step's errors read         |   -37.4% |    -54.0% |   -51.4% |    -51.9% |
+| a rail reading every step     |    +0.8% |     -7.0% |    +6.1% |    -14.4% |
+
+The second row is the observed case: every step pays its verdict as
+before, and no figure is a slowdown beyond its run-to-run spread
+(12-23pp). Hydrate and server rows show none either, in both shapes.
+
+Where the bytes went:
+
+- `createErrorCells`, the factory holding the error map behind its
+  seed and the retained pristine tree, and `skipErrorSeed`, which drops
+  a seed nothing read where a clear or a root-scope commit would
+  overwrite it unseen (+88 B with the getter the plan named);
+- the store's copy of `defaultValues`, now taken before the baseline
+  derives from it, so a custom adapter returning constraint subtrees
+  by reference cannot let a consumer's later edit reach the deferred
+  verdict (+27 B);
+- `errorCells` as a method rather than a getter (+14 B): V8 builds an
+  object literal holding an accessor in dictionary mode, and the store
+  object is the one every kernel function reads.
+
+Against `main` (`cf1d4638`, 33,261 B) the branch is +126 B. PR #692
+(#690) separately spends +57 B of `main`'s headroom, so whichever of
+the two merges second rebalances against this entry.

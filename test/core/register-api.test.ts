@@ -9,13 +9,14 @@ import { buildRegister, type InstanceRegisterConfig } from '../../src/runtime/co
 import type { DisplayState } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 import { canonicalizePath } from '../../src/runtime/core/paths'
+import { schemaOptions } from '../utils/store-options'
 
 type F = { email: string; note: string }
 
 function makeRegister(opts?: { ssr?: boolean; formKey?: string; instanceId?: string }) {
   const state = createFormStore<F>({
     formKey: opts?.formKey ?? `r-${Math.random().toString(36).slice(2)}`,
-    schema: fakeSchema<F>({ email: '', note: '' }),
+    ...schemaOptions(fakeSchema<F>({ email: '', note: '' })),
     ...(opts?.ssr === true ? { ssr: true } : {}),
   })
   const register = buildRegister(state, opts?.instanceId ?? 'test:inst')
@@ -255,11 +256,11 @@ describe('buildRegister', () => {
     it('two registers for different forms do not share DOM state', () => {
       const stateA = createFormStore<F>({
         formKey: 'A',
-        schema: fakeSchema<F>({ email: '', note: '' }),
+        ...schemaOptions(fakeSchema<F>({ email: '', note: '' })),
       })
       const stateB = createFormStore<F>({
         formKey: 'B',
-        schema: fakeSchema<F>({ email: '', note: '' }),
+        ...schemaOptions(fakeSchema<F>({ email: '', note: '' })),
       })
       const registerA = buildRegister(stateA, 'test:inst')
       const registerB = buildRegister(stateB, 'test:inst')
@@ -291,7 +292,7 @@ describe('buildRegister', () => {
     function makeAriaRegister(config?: InstanceRegisterConfig) {
       const state = createFormStore<F>({
         formKey: 'aria-form',
-        schema: fakeSchema<F>({ email: '', note: '' }),
+        ...schemaOptions(fakeSchema<F>({ email: '', note: '' })),
       })
       return { state, register: buildRegister(state, 'aria:inst', config) }
     }

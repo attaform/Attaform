@@ -34,9 +34,7 @@ import { zodAdapter as zodV4Adapter } from '../../src/runtime/adapters/zod-v4'
 import { zodAdapter as zodV3Adapter } from '../../src/runtime/adapters/zod-v3'
 
 type Defaults = {
-  getDefaultValues(config: { useDefaultSchemaValues: boolean; constraints?: unknown }): {
-    data: unknown
-  }
+  getDefaultValues(config: { useDefaultSchemaValues: boolean; constraints?: unknown }): unknown
 }
 
 function probe(build: (s: never) => unknown, schema: unknown): Defaults {
@@ -173,13 +171,13 @@ describe.each(ADAPTERS)(
       it.each(cases)('%s', (_label, schema) => {
         const derived = probe(build, schema).getDefaultValues({
           useDefaultSchemaValues,
-        }).data
+        })
         // Handing the derivation back as constraints takes the walking
         // path. Equal results mean the walk had nothing to repair.
         const rewalked = probe(build, schema).getDefaultValues({
           useDefaultSchemaValues,
           constraints: derived,
-        }).data
+        })
         expect(snapshot(rewalked)).toEqual(snapshot(derived))
       })
     })
@@ -200,7 +198,7 @@ describe.each(ADAPTERS)(
       const walked = probe(build, schema).getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: { profile: 'not-an-object' },
-      }).data
+      })
       expect(walked).toEqual({ profile: { city: '', zip: '' } })
     })
 
@@ -222,7 +220,7 @@ describe.each(ADAPTERS)(
       const walked = probe(build, schema).getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: { payment: { kind: 'bank', iban: 'DE00', cardNumber: '4242' } },
-      }).data
+      })
       expect(walked).toEqual({ payment: { kind: 'bank', iban: 'DE00' } })
     })
   }

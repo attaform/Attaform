@@ -73,11 +73,11 @@ describe('zod-v4 adapter: supported variants of lazy/intersection/catch', () => 
     const schema = z.object({ wrap: z.lazy(() => inner) })
     expect(() => zodV4Adapter(schema)).not.toThrow()
     const adapter = zodV4Adapter(schema)('test', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: undefined,
     })
-    expect(result.data).toEqual({ wrap: { x: 0 } })
+    expect(data).toEqual({ wrap: { x: 0 } })
   })
 
   it('z.intersection of two object schemas merges defaults', () => {
@@ -86,31 +86,31 @@ describe('zod-v4 adapter: supported variants of lazy/intersection/catch', () => 
     })
     expect(() => zodV4Adapter(schema)).not.toThrow()
     const adapter = zodV4Adapter(schema)('test', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: undefined,
     })
-    expect(result.data).toEqual({ item: { a: '', b: 0 } })
+    expect(data).toEqual({ item: { a: '', b: 0 } })
   })
 
   it('z.catch(schema, value) uses the catch value when useDefault=true', () => {
     const schema = z.object({ n: z.number().catch(42) })
     const adapter = zodV4Adapter(schema)('test', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: undefined,
     })
-    expect(result.data).toEqual({ n: 42 })
+    expect(data).toEqual({ n: 42 })
   })
 
   it('z.catch falls through to inner leaf default when useDefault=false', () => {
     const schema = z.object({ n: z.number().catch(42) })
     const adapter = zodV4Adapter(schema)('test', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: false,
       constraints: undefined,
     })
-    expect(result.data).toEqual({ n: 0 })
+    expect(data).toEqual({ n: 0 })
   })
 })
 

@@ -39,7 +39,7 @@ import type { AbstractSchema } from '../../src/runtime/types/types-api'
  * The published counts. Kept beside the type-level assertions below so a
  * member change fails `pnpm typecheck` there and the prose scan here.
  */
-const REQUIRED_COUNT = 14
+const REQUIRED_COUNT = 15
 const OPTIONAL_COUNT = 4
 
 /** Every member the contract declares, required and optional. */
@@ -56,9 +56,10 @@ type RequiredMembers = {
 }[Members]
 
 describe('the AbstractSchema surface the docs publish', () => {
-  it('declares exactly the 14 required methods the contract pages list', () => {
+  it('declares exactly the 15 required methods the contract pages list', () => {
     expectTypeOf<RequiredMembers>().toEqualTypeOf<
       | 'getDefaultValues'
+      | 'validateSync'
       | 'getDefaultAtPath'
       | 'getEmptyValueAtPath'
       | 'arrayShapeAtPath'

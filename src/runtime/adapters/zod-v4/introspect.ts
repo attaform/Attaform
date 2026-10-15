@@ -8,6 +8,7 @@
  * file pattern-matches on `def`.
  */
 import type { z } from 'zod'
+import type { SchemaCapabilities } from '../../core/abstract-schema-factory'
 import { callConsumerFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 
@@ -314,7 +315,7 @@ export function getIntersectionRight(schema: z.ZodType): z.ZodType | undefined {
  * as a `(ctx) => value` function on `def.catchValue`, and this invokes it
  * with a placeholder context. A catch function that inspects `ctx.input`
  * or `ctx.error` during default derivation is rare; if one throws, the
- * result is `undefined` and the validate-then-fix loop finds a fallback.
+ * result is `undefined`, and the derivation takes that as the slot's default.
  */
 export function getCatchDefault(schema: z.ZodType): unknown {
   const def = readDef(schema)
@@ -387,7 +388,7 @@ export function hasChecks(schema: z.ZodType): boolean {
 }
 
 /** Raw checks array. Empty when the schema has no refinements. */
-export function getChecks(schema: z.ZodType): readonly unknown[] {
+export function getChecks(schema: unknown): readonly unknown[] {
   const def = readDef(schema)
   const checks = def?.checks
   return Array.isArray(checks) ? (checks as readonly unknown[]) : []
@@ -443,134 +444,9 @@ const DESCEND_RECORD = ['shape', 'entries'] as const
 const DESCEND_LIST = ['options', 'items'] as const
 
 /**
- * Depth-first walk over Zod v4's schema tree. The visitor decides
- * per-node whether the predicate fires; the walk owns recursion through
- * every descendable `def.*` child: innerType, element, pipe in and out,
- * intersection sides, record key and value, object shape, DU entries,
- * union options, tuple items and the lazy getter.
- *
- * The first `visit(node) === true` short-circuits everything. The shared
- * `WeakSet<object>` guards cycles, meaning a lazy schema whose resolver
- * returns the SAME instance on repeat calls. Resolving a lazy is wrapped
- * in try/catch because a recursively-defined schema can throw before its
- * inner is constructed; that branch counts as no match and the walk
- * continues.
- *
- * `containsAsyncRefine`, `containsAsyncTransform` and
- * `hasContainerOrRootRefine` all say "walk the tree, stop at the first
- * hit", so the shape lives here once and each predicate contributes only
- * its per-node test.
- */
-function walkSchemaTree(
-  schema: z.ZodType,
-  visit: (node: z.ZodType) => boolean,
-  seen?: WeakSet<object>
-): boolean {
-  const visited = seen ?? new WeakSet<object>()
-  // Sub-adapters cast through `as`, so a malformed leaf can land here as
-  // a non-object. The signature claims object; runtime safety beats the
-  // conditional-narrowing lint complaint.
-  const candidate = schema as unknown
-  if (typeof candidate !== 'object' || candidate === null) return false
-  if (visited.has(candidate)) return false
-  visited.add(candidate)
-
-  if (visit(schema)) return true
-
-  const def = readDef(schema)
-  if (def === undefined) return false
-  const slots = def as Record<string, unknown>
-
-  for (const key of DESCEND_SINGLE) {
-    const child = slots[key]
-    if (child !== undefined && walkSchemaTree(child as z.ZodType, visit, visited)) return true
-  }
-  for (const key of DESCEND_RECORD) {
-    const record = slots[key]
-    if (record !== undefined) {
-      for (const sub of Object.values(record as Record<string, unknown>)) {
-        if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
-      }
-    }
-  }
-  for (const key of DESCEND_LIST) {
-    const list = slots[key]
-    if (list !== undefined) {
-      for (const sub of list as readonly unknown[]) {
-        if (walkSchemaTree(sub as z.ZodType, visit, visited)) return true
-      }
-    }
-  }
-  if (typeof def.getter === 'function') {
-    try {
-      const inner = def.getter() as z.ZodType
-      if (walkSchemaTree(inner, visit, visited)) return true
-    } catch {
-      // A lazy may throw on resolution before its referenced schema is
-      // constructed; no match, and continue.
-    }
-  }
-
-  return false
-}
-
-/**
- * True when the schema tree holds a discriminated union at ANY depth:
- * `walkSchemaTree` reaches unions inside arrays, tuples, records,
- * intersections, pipes and cycle-capped lazy schemas. Asked once per form
- * at construction, to set the DU capability flag.
- */
-export function containsDiscriminatedUnion(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  return walkSchemaTree(schema, (node) => kindOf(node) === 'discriminated-union', seen)
-}
-
-/**
- * True when any refinement check on the schema or a descendant is async.
- * One `walkSchemaTree` pass, testing each `def.checks[].def.fn` for
- * `constructor.name === 'AsyncFunction'`. A direct `async (v) => ...`
- * refinement is caught; a sync function that merely RETURNS a promise is
- * not, and is better written `async` anyway.
- *
- * `needsAsyncValidation()` reads it to drive the construction-time
- * async-validation seed, in `create-form-store`'s
- * `queueInitialAsyncValidation`. A false negative only delays async
- * refines until the first mutation; a false positive, unlikely given how
- * precise the check is, costs one extra microtask.
- */
-export function containsAsyncRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  return walkSchemaTree(
-    schema,
-    (node) => {
-      for (const check of getChecks(node)) {
-        if (isAsyncCheck(check)) return true
-      }
-      return false
-    },
-    seen
-  )
-}
-
-/**
- * True when the schema tree carries a refine, check or transform at the
- * root or at a non-leaf node. False means every check sits at a leaf, so
- * a per-keystroke subtree pass reaches the same verdicts a whole-form
- * pass would and the runtime can scope leaf validation to the edited
- * path. True forces whole-form: correct, just slower.
- *
- * Non-leaf is read off the presence of descendable children on `def`:
- * `shape`, `entries`, `element`, `options`, `items`, `keyType`,
- * `valueType`, `left`, `right`. The root always qualifies, its checks
- * BEING root refines. A transparent wrapper (Optional, Nullable,
- * Default, Catch, Readonly, Pipe, Lazy) peels through to its inner
- * without re-flagging, because a `.refine` added on top of a wrapper
- * lands its check on the WRAPPER node, so the wrapper's own `def.checks`
- * is what gets inspected.
- *
- * It biases conservative: a missed wrapper variant or an unrecognised
- * `def` shape answers false for THAT node while `walkSchemaTree`'s
- * descent continues, so a container refine nested inside still returns
- * true. A wrapper nobody remembered to peel costs the perf win, never
- * correctness.
+ * The descendable slots whose presence makes a node a container, for
+ * `containerOrRootRefine`. A form root is always a container, so its
+ * checks count as root refines.
  */
 const CONTAINER_SLOTS = [
   'shape',
@@ -584,48 +460,116 @@ const CONTAINER_SLOTS = [
   'right',
 ] as const
 
-export function hasContainerOrRootRefine(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  return walkSchemaTree(
-    schema,
-    (node) => {
-      const def = readDef(node)
-      if (def === undefined) return false
-      const slots = def as Record<string, unknown>
-      if (!CONTAINER_SLOTS.some((key) => slots[key] !== undefined)) return false
-      return getChecks(node).length > 0
-    },
-    seen
-  )
+/** Answers already walked, keyed by the node each query started from. */
+const capabilityMemo = new WeakMap<object, SchemaCapabilities>()
+
+/**
+ * Every capability bit for the tree under `schema`, memoized per node for
+ * the life of the process: a root schema's questions are asked by every
+ * form built on it, and by its verdict.
+ *
+ * Only the node a query started from is memoized. Inside a lazy cycle a
+ * descendant's walk stops where it meets a node already visited, so
+ * what the walk saw below a descendant is not that descendant's answer.
+ */
+export function capabilitiesOf(schema: z.ZodType): SchemaCapabilities {
+  let capabilities = capabilityMemo.get(schema)
+  if (capabilities === undefined) {
+    capabilities = scanCapabilities(schema)
+    const key: unknown = schema
+    if (typeof key === 'object' && key !== null) capabilityMemo.set(key, capabilities)
+  }
+  return capabilities
 }
 
 /**
- * True when any `ZodTransform` in the schema tree wraps an async
- * function. `z.preprocess(fn, inner)` desugars to a pipe whose `def.in`
- * is a `ZodTransform` with `def.transform = fn`, and an async `fn` makes
- * that input side async-only, so a sync `safeParse` cannot run it
- * cleanly: the function is invoked synchronously, returns a promise, and
- * any throw or rejection inside it propagates as an unhandled rejection,
- * nothing being on the other end.
+ * Every capability bit for the tree under `schema`, from one depth-first
+ * walk and without the memo. A sub-schema built for one path query asks
+ * through this: it is asked once, and a `WeakMap` insert costs more than
+ * walking the few nodes under a path.
  *
- * Distinct from `containsAsyncRefine`, which walks `def.checks[].def.fn`,
- * the refinement predicates, where this walks `def.transform`, the
- * transform's payload. The adapter ORs the two to drive
- * `needsAsyncValidation()`, and the construction-time parse is skipped
- * for either, leaving every verdict to the post-mount `safeParseAsync`
- * pass.
+ * Per node:
+ * - `asyncRefine`: a check in `def.checks` whose `def.fn` is an
+ *   `AsyncFunction` (`isAsyncCheck`). A direct `async (v) => ...`
+ *   refinement is caught; a sync function that merely RETURNS a promise
+ *   is not, and is better written `async` anyway. A false negative only
+ *   delays async refines until the first mutation.
+ * - `asyncTransform`: a `ZodTransform` whose `def.transform` is an
+ *   `AsyncFunction`. `z.preprocess(fn, inner)` desugars to a pipe whose
+ *   `def.in` is that transform, and an async `fn` makes the input side
+ *   async-only: a sync `safeParse` invokes it, gets a promise back, and
+ *   a rejection inside it goes unhandled.
+ * - `discriminatedUnion`: `kindOf` reads `'discriminated-union'`.
+ * - `containerOrRootRefine`: the node carries checks and holds one of
+ *   `CONTAINER_SLOTS`. A `.refine` added on top of a transparent wrapper
+ *   lands its check on the WRAPPER node, so the wrapper's own
+ *   `def.checks` is what gets inspected and wrappers need no case of
+ *   their own. An unrecognised `def` shape answers false for that node
+ *   while the walk descends, so a nested container check still surfaces:
+ *   a miss costs the subtree scoping, never correctness.
  */
-export function containsAsyncTransform(schema: z.ZodType, seen?: WeakSet<object>): boolean {
-  return walkSchemaTree(
-    schema,
-    (node) => {
-      const def = readDef(node)
-      if (def === undefined) return false
-      const fn = def.transform
-      if (typeof fn !== 'function') return false
-      return (fn as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
-    },
-    seen
-  )
+export function scanCapabilities(schema: z.ZodType): SchemaCapabilities {
+  const capabilities: Capabilities = {
+    asyncRefine: false,
+    asyncTransform: false,
+    discriminatedUnion: false,
+    containerOrRootRefine: false,
+  }
+  walkCapabilities(schema, capabilities, new WeakSet<object>())
+  return capabilities
+}
+
+type Capabilities = { -readonly [K in keyof SchemaCapabilities]: SchemaCapabilities[K] }
+
+/**
+ * The walk behind `scanCapabilities`. It descends every `def.*` child slot
+ * (innerType, element, pipe in and out, intersection sides, record key
+ * and value, object shape, DU entries, union options, tuple items and
+ * the lazy getter) and sets each bit a node earns. It walks the whole
+ * tree: a schema rarely earns every bit, so stopping early buys nothing
+ * a reader would notice.
+ *
+ * `visited` guards cycles: a lazy schema whose resolver returns the SAME
+ * instance on repeat calls. A malformed child that is not an object
+ * counts as no match. Resolving a lazy is wrapped in try/catch, because
+ * a recursively-defined schema can throw before its inner is
+ * constructed; that branch counts as no match and the walk continues.
+ */
+function walkCapabilities(
+  node: unknown,
+  capabilities: Capabilities,
+  visited: WeakSet<object>
+): void {
+  if (typeof node !== 'object' || node === null || visited.has(node)) return
+  visited.add(node)
+  const def = readDef(node)
+  if (def === undefined) return
+
+  const checks = getChecks(node)
+  if (checks.some(isAsyncCheck)) capabilities.asyncRefine = true
+  if (checks.length > 0 && CONTAINER_SLOTS.some((key) => def[key] !== undefined)) {
+    capabilities.containerOrRootRefine = true
+  }
+  if (typeof def.transform === 'function' && def.transform.constructor.name === 'AsyncFunction') {
+    capabilities.asyncTransform = true
+  }
+  if (kindOf(node) === 'discriminated-union') capabilities.discriminatedUnion = true
+
+  for (const key of DESCEND_SINGLE) walkCapabilities(def[key], capabilities, visited)
+  for (const key of DESCEND_RECORD) {
+    for (const sub of Object.values(def[key] ?? {})) walkCapabilities(sub, capabilities, visited)
+  }
+  for (const key of DESCEND_LIST) {
+    for (const sub of def[key] ?? []) walkCapabilities(sub, capabilities, visited)
+  }
+  if (typeof def.getter === 'function') {
+    try {
+      walkCapabilities(def.getter(), capabilities, visited)
+    } catch {
+      // A lazy may throw on resolution before its referenced schema is
+      // constructed; no match, and continue.
+    }
+  }
 }
 
 interface ZodCheckInternals {

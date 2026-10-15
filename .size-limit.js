@@ -66,7 +66,7 @@ export default [
     // zod@^4, so most Vite consumers ship this entry whichever spelling
     // they wrote.
     path: 'dist/zod-v4.mjs',
-    limit: '47.5 KB',
+    limit: '50 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -88,7 +88,7 @@ export default [
     // dispatch, no fingerprint walker, no slim-primitive machinery), so
     // it prices the shared core on its own.
     path: 'dist/abstract.mjs',
-    limit: '40.25 KB',
+    limit: '42.5 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

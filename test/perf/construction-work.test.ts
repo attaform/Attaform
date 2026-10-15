@@ -403,14 +403,15 @@ async function wizard(adapter: Adapter): Promise<Record<string, unknown>> {
  * schema's defaults, derived once and shared; the starting value derived
  * over the fixture's `defaultValues`; the per-path default lookups below
  * the root, one in the unset-sentinel walk (`address`) and one in the
- * structural merge (the `tags` element); and the blank baseline the
- * authored-path diff reads. The verdict (`validateSync`) is pinned per row.
+ * structural merge (the `tags` element). The fixture holds no preprocess or
+ * coerce leaf, so no blank baseline is derived for the authored-path diff.
+ * The verdict (`validateSync`) is pinned per row.
  */
-const DERIVE = { getDefaultValues: 2, getDefaultAtPath: 2, getEmptyValueAtPath: 1, rootDerives: 2 }
+const DERIVE = { getDefaultValues: 2, getDefaultAtPath: 2, getEmptyValueAtPath: 0, rootDerives: 2 }
 const DERIVE_4 = {
   getDefaultValues: 8,
   getDefaultAtPath: 8,
-  getEmptyValueAtPath: 4,
+  getEmptyValueAtPath: 0,
   rootDerives: 8,
 }
 
@@ -469,6 +470,11 @@ const DERIVE_4 = {
  *   no verdict (`rootRefine` 2 -> 1, the wizard 8 -> 4) and skips the
  *   `syncSafe` rebuild only a verdict needs (`rootWalks` 2 -> 1, the wizard
  *   8 -> 4). A server still runs it, when serialization reads the errors.
+ * - #695, the authored-path set kept only where it is read: the store
+ *   records which paths the consumer authored for the schema-error filter
+ *   at preprocess and coerce leaves, and these fixtures hold none, so
+ *   construction no longer derives the blank baseline the set is diffed
+ *   against (`getEmptyValueAtPath` 1 -> 0, the wizard 4 -> 0).
  */
 const PINNED: Record<string, Record<AdapterName, unknown>> = {
   'fresh/plain': {

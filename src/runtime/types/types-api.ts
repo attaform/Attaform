@@ -670,7 +670,10 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * For a per-path query, compose with `getSchemasAtPath(path)`: each
    * candidate sub-schema exposes its own `needsAsyncValidation`, so
    * "does the cargo subtree contain async work?" is the union of the
-   * per-candidate answers, with no separate top-level overload.
+   * per-candidate answers, with no separate top-level overload. A root
+   * that answers `false` answers for every path, and the runtime then
+   * asks no sub-schema, so never answer `false` at the root of a tree
+   * where a sub-schema would answer `true`.
    */
   needsAsyncValidation?(): boolean
 
@@ -711,6 +714,20 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * that disables variant reshape and stub correction for the form.
    */
   hasDiscriminatedUnions?(): boolean
+  /**
+   * Whether `isPreprocessOrCoerceLeaf` can answer `true` at any path:
+   * the schema holds a preprocess-style normalizer or a coerce
+   * primitive somewhere. The store reads it once at construction.
+   * `false` lets it skip recording which paths the consumer authored,
+   * a set that is only read at such leaves.
+   *
+   * Optional, and an adapter that omits it is treated as holding one,
+   * which keeps that bookkeeping on. Never return `false` for a schema
+   * where `isPreprocessOrCoerceLeaf` answers `true` anywhere: verdicts
+   * at a path the consumer authored with `undefined` would then stay
+   * hidden.
+   */
+  hasPreprocessOrCoerce?(): boolean
 }
 /**
  * A discriminated union as the adapter reports it: the discriminator

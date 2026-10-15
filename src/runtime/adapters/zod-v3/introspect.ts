@@ -675,6 +675,7 @@ export function scanCapabilities(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
     asyncTransform: false,
     discriminatedUnion: false,
     containerOrRootRefine: false,
+    preprocessOrCoerce: false,
     mapOrSet: false,
   }
   walkCapabilities(schema, capabilities, new WeakSet<object>())
@@ -697,6 +698,8 @@ export function scanCapabilities(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
  *   way, its effects targeting the whole form.
  * - A `ZodDiscriminatedUnion` sets `discriminatedUnion`; a `ZodMap` or
  *   `ZodSet` sets `mapOrSet`.
+ * - A preprocess `ZodEffects` (`isPreprocessNode`) or a node passing
+ *   `isCoercePrimitive` sets `preprocessOrCoerce`.
  *
  * Transparent wrappers (Optional, Nullable, Default, Catch, Readonly,
  * Branded, Lazy) descend without flagging, a pipeline walks both sides,
@@ -718,6 +721,7 @@ function walkCapabilities(
   const candidate: unknown = schema
   if (typeof candidate !== 'object' || candidate === null || visited.has(candidate)) return
   visited.add(candidate)
+  if (isCoercePrimitive(schema)) capabilities.preprocessOrCoerce = true
 
   const typeName = getTypeName(schema) ?? ''
   switch (typeName) {
@@ -727,6 +731,7 @@ function walkCapabilities(
       else if ((kind === 'transform' || kind === 'preprocess') && isAsyncEffect(schema)) {
         capabilities.asyncTransform = true
       }
+      if (kind === 'preprocess') capabilities.preprocessOrCoerce = true
       const inner = unwrapEffectsSource(schema)
       if (
         !capabilities.containerOrRootRefine &&

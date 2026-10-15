@@ -1,6 +1,6 @@
 ---
 title: AbstractSchema
-description: The schema-agnostic contract the core consumes, 15 required methods plus 4 optional hooks covering defaults, shape, and validation. Implement it to wire any schema library into Attaform.
+description: The schema-agnostic contract the core consumes, 15 required methods plus 5 optional hooks covering defaults, shape, and validation. Implement it to wire any schema library into Attaform.
 metaRows:
   - label: Category
     value: Reference
@@ -10,7 +10,7 @@ metaRows:
   - label: Required methods
     value: 15
   - label: Optional hooks
-    value: 4 (metadata, async, container-refine, unions)
+    value: 5 (metadata, async, container-refine, unions, preprocess)
 ---
 
 # AbstractSchema
@@ -56,10 +56,11 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   needsAsyncValidation?(): boolean
   hasContainerOrRootRefine?(): boolean
   hasDiscriminatedUnions?(): boolean
+  hasPreprocessOrCoerce?(): boolean
 }
 ```
 
-Fifteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks, so omit them when your library doesn't model the feature.
+Fifteen required methods. Five optional hooks. The runtime fills in sensible fallbacks for the optional hooks, so omit them when your library doesn't model the feature.
 
 ## Defaults
 
@@ -171,6 +172,8 @@ Resolves schema-attached metadata (label, description, placeholder, full payload
 
 Return `true` if `validateAtPath` may need a Promise to surface every error this schema can produce. The runtime uses this to decide whether to schedule a one-shot construction-time async pass.
 
+The runtime also asks it of the sub-schemas `getSchemasAtPath` returns, to learn whether a field's validity has to wait for that pass. A root that answers `false` answers for every path, so the runtime asks no sub-schema. Never answer `false` at the root when a sub-schema would answer `true`.
+
 ### `hasContainerOrRootRefine(): boolean` _(optional)_
 
 `true` when the schema holds a refinement above leaf level: a cross-field equality, a sum constraint, anything whose verdict a leaf write could move. The runtime uses it to decide whether a leaf write needs a whole-form pass or can validate the leaf alone, so it buys a scoped validation instead of a full one.
@@ -182,6 +185,12 @@ Omitting it is treated as `() => true`, the conservative whole-form answer, whic
 `true` when the schema tree holds at least one discriminated union at any depth, arrays, tuples, records, and lazy schemas included. The store reads it once at construction: `false` lets every write skip the cross-variant ancestor guard and the variant-reshape dispatch entirely.
 
 Omitting it is treated as "contains unions", so the conservative per-write probes stay on. Never return `false` for a schema that does hold one, which would disable variant reshape for the whole form.
+
+### `hasPreprocessOrCoerce(): boolean` _(optional)_
+
+`true` when `isPreprocessOrCoerceLeaf` can answer `true` at some path: the schema holds a preprocess-style normalizer or a coercing primitive anywhere. The store reads it once at construction: `false` lets it skip recording which paths the consumer authored, a record only those leaves read.
+
+Omitting it is treated as "holds one", so the recording stays on. Never return `false` for a schema where `isPreprocessOrCoerceLeaf` answers `true` anywhere: an error at such a field the consumer set to `undefined` would then stay hidden.
 
 ## A minimal Valibot-ish adapter
 

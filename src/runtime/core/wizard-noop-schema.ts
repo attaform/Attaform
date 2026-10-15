@@ -63,6 +63,7 @@ export function buildNoopWizardSchema(): AbstractSchema<
     isRequiredAtPath: () => false,
     getUnionDiscriminatorAtPath: () => undefined,
     hasDiscriminatedUnions: () => false,
+    hasPreprocessOrCoerce: () => false,
   }
   return NOOP_SCHEMA
 }

@@ -856,3 +856,37 @@ Where the bytes went:
 
 Trimming: no rewrite of the lease reaches 29 B without dropping a
 release path, and every path is one of the leaks the tests pin.
+
+## #695 Spends Bytes: two construction cuts, 2026-10-15
+
+#695 SPENDS BYTES: 33,429 -> 33,500 measured (+71) against `main`
+(`5b5fc726`), and the budget moves 33_440 -> 33_510 (0.01 kB headroom).
+
+What it buys. Production A/B, 11 interleaved runs per cut, a 10-step
+wizard of 30-field pages:
+
+| cut, scenario                                | metric                        |
+| -------------------------------------------- | ----------------------------- |
+| authored-path set, issue shape, nothing read | v4 client -9%, v3 client -19% |
+| authored-path set, cubic shape, v4 cached    | client -11.5%, server -10.5%  |
+| per-path async check, cubic shape, v4 fresh  | server -12.4%, hydrate -16.1% |
+| per-path async check, cubic shape, v4 cached | server -9.7%, hydrate -22.0%  |
+
+Two runs of both cuts together, against `main`, put the cubic v4 fresh
+rows at -10% to -18% on client, server and hydrate, and the cached rows
+at flat to -16%.
+
+Where the bytes went:
+
+- the `preprocessOrCoerce` capability bit, set in the v4 walk, and the
+  factory's `hasPreprocessOrCoerce()` hook reporting it (about 24 B);
+- the store's `hasPreprocessOrCoerce` flag and its gates on
+  construction, `reset()`, async defaults and the write path (about
+  40 B, 7 B of it the write path);
+- the root answer to the per-path async check (7 B).
+
+Trimming: the walk calls the existing `isCoercePrimitive` and
+`isPreprocessNode` rather than inlining their tests (-26 B), and a
+short-circuit in the schema-error filter, which gave the same result,
+was dropped (-8 B). Leaving writes ungated would save 7 B and let the
+set grow on schemas that never read it.

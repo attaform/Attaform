@@ -1238,8 +1238,14 @@ starting-value check has run. All of it behind `__DEV__`.
   tell a sync refine from an async one, so every form with a refine runs the
   pass. On the cubic v3 shape it costs 4.0-4.2 ms per 10-step wizard, more than
   building the forms.
-- **Two internal cuts, no API** (the memo's options 1 and 3): derive the
-  authored-paths set only for a schema with a preprocess or coerce leaf (12%
-  of an unread form's construction), and let the per-path async check consult
-  the root's memoized capabilities before scanning a sub-schema (7% of
-  mounting the cubic v4 fresh wizard). Each needs its own A/B.
+- **Two internal cuts** (the memo's options 1 and 3), shipped in #695: the
+  authored-paths set is kept only for a schema with a preprocess or coerce
+  leaf (12% of an unread form's construction), and the per-path async check
+  takes the root's memoized answer before scanning a sub-schema (7% of
+  mounting the cubic v4 fresh wizard). The first needed one optional
+  `AbstractSchema` hook, `hasPreprocessOrCoerce()`, after all: the store has
+  no other way to learn the bit. Measured per cut against its base, 11
+  interleaved runs: the first took 9-19% off building an unread issue-shape
+  wizard, and the second 10-22% off server-rendering and hydrating the cubic
+  v4 wizard. The ledger entry in `scripts/EAGER-BUDGET-LEDGER.md` has the
+  table and the +71 B they cost.

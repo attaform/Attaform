@@ -40,7 +40,7 @@ import type { AbstractSchema } from '../../src/runtime/types/types-api'
  * member change fails `pnpm typecheck` there and the prose scan here.
  */
 const REQUIRED_COUNT = 15
-const OPTIONAL_COUNT = 4
+const OPTIONAL_COUNT = 5
 
 /** Every member the contract declares, required and optional. */
 type Members = keyof AbstractSchema<Record<string, unknown>, Record<string, unknown>>
@@ -76,12 +76,13 @@ describe('the AbstractSchema surface the docs publish', () => {
     >()
   })
 
-  it('declares exactly the 4 optional hooks, and no more', () => {
+  it('declares exactly the 5 optional hooks, and no more', () => {
     expectTypeOf<Exclude<Members, RequiredMembers>>().toEqualTypeOf<
       | 'getFieldMetaAtPath'
       | 'needsAsyncValidation'
       | 'hasContainerOrRootRefine'
       | 'hasDiscriminatedUnions'
+      | 'hasPreprocessOrCoerce'
     >()
   })
 

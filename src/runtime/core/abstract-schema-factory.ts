@@ -146,6 +146,13 @@ export interface SchemaCapabilities {
    * verdicts a whole-form pass would.
    */
   readonly containerOrRootRefine: boolean
+  /**
+   * A `z.preprocess(...)` node or a `z.coerce.X()` primitive at any depth,
+   * the two shapes `isPreprocessNode` and `isCoercePrimitive` detect. False
+   * means `isPreprocessOrCoerceLeaf` is false at every path, since a path
+   * resolves only to nodes the walk visits.
+   */
+  readonly preprocessOrCoerce: boolean
 }
 
 /**
@@ -611,6 +618,10 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
 
     hasDiscriminatedUnions(): boolean {
       return intro.capabilitiesOf(rootSchema).discriminatedUnion
+    },
+
+    hasPreprocessOrCoerce(): boolean {
+      return intro.capabilitiesOf(rootSchema).preprocessOrCoerce
     },
 
     getDefaultValues(config: GetDefaultValuesConfig<Form>): Form {

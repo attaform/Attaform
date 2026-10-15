@@ -65,7 +65,7 @@ This page is reference material, alphabetical-ish by purpose. Most consumers nev
 
 | Type                             | Source                  | Purpose                                                          |
 | -------------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 15-method + 4-optional contract custom adapters implement.   |
+| `AbstractSchema<Form, GetValue>` | runtime/types/types-api | The 15-method + 5-optional contract custom adapters implement.   |
 | `SchemaParseResult<Form>`        | runtime/types/types-api | What `validateAtPath` settles as: a verdict with no form key.    |
 | `SchemaParseSuccess<Form>`       | runtime/types/types-api | The `success: true` arm of `SchemaParseResult`.                  |
 | `SchemaParseErrorWithData<Form>` | runtime/types/types-api | Failed, but partial data came back with the errors.              |

@@ -37,6 +37,17 @@
 
 ### Fixed
 
+- **Components that reach a shared form release their share when they
+  unmount.** Every `injectForm()` call, and every `useForm({ key })`
+  mounted beside another consumer of the same key, builds its own caches
+  over the form and registers them with it, and nothing ever unregistered
+  them. Each visit to a page of such fields kept its field state, and
+  through it the inputs it had bound, alive for as long as the form was:
+  a page of 38 fields kept about 1.7 MB per visit. Each consumer now
+  releases what it registered when its component unmounts or its effect
+  scope stops, so memory stays flat however often the page is visited.
+  (#690)
+
 - **Register `transforms` and schema coercion apply to component
   writes.** A value a component emitted went straight to the write gate,
   so a `transforms: [...]` array never ran on it, and a text component

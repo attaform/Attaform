@@ -78,14 +78,15 @@ export type DynamicPathSweep = {
    * `PathKey` of a path the form no longer has, and deletes whatever it
    * files under that path. A cache keying by more than the path (a
    * shape sigil, say) deletes every variant; a key it never held is a
-   * no-op.
+   * no-op. Returns the release, which a registrant that does not live
+   * as long as the form must call.
    */
-  readonly onEvict: (evict: (key: PathKey) => void) => void
+  readonly onEvict: (evict: (key: PathKey) => void) => () => void
 }
 
 export function createDynamicPathSweep(deps: DynamicPathSweepDeps): DynamicPathSweep {
   const dynamicKeys = new Set<PathKey>()
-  const evictors: ((key: PathKey) => void)[] = []
+  const evictors = new Set<(key: PathKey) => void>()
 
   /**
    * A path no schema shape bounds: it traverses an array index or a
@@ -137,7 +138,10 @@ export function createDynamicPathSweep(deps: DynamicPathSweepDeps): DynamicPathS
       if (isDynamicPath(segments)) dynamicKeys.add(key)
     },
     onEvict(evict) {
-      evictors.push(evict)
+      evictors.add(evict)
+      return () => {
+        evictors.delete(evict)
+      }
     },
   }
 }

@@ -1,4 +1,4 @@
-import { computed, reactive, readonly, type Ref } from 'vue'
+import { computed, onScopeDispose, reactive, readonly, type Ref } from 'vue'
 import type {
   BlankPathsView,
   DisplayState,
@@ -18,6 +18,7 @@ import type {
 } from '../types/types-api'
 import type { DeepPartial, DefaultValuesInput, GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
+import type { DynamicPathSweep } from './dynamic-path-sweep'
 import { pickDefined } from './defaults'
 import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
@@ -184,7 +185,9 @@ export type BuildFormApiOptions = {
  *
  * Pure over `(FormStore, options)`. It touches neither the registry, nor
  * consumer ref-counts, nor the current Vue instance; those belong to the
- * caller.
+ * caller. The one thing it ties to the active effect scope is its own
+ * registrations on the store, which it drops when that scope disposes, the
+ * way a `watch` made in the same scope stops.
  */
 export function buildFormApi<Form extends GenericForm, GetValueFormType extends GenericForm = Form>(
   state: FormStore<Form, GetValueFormType>,
@@ -280,11 +283,33 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
     return metaBase as unknown as FormMetaBase
   }
 
+  // Every registration this API makes on the store goes through `lease`, and
+  // all of them are dropped together when the caller's scope disposes. The
+  // store outlives the API whenever another consumer shares the form, as with
+  // every `injectForm()` and every remount of a keyed `useForm`, and a
+  // registration left behind pins this API's caches for the life of the form:
+  // every field state it built, and through `element` the inputs it bound
+  // (#690). Without a scope there is no lifetime to bind to, so the
+  // registrations last as long as the store, and the `true` keeps Vue from
+  // warning about it. A released API that something still holds keeps reading
+  // and writing correctly; its caches are simply no longer swept.
+  const releases: (() => void)[] = []
+  const lease = (release: () => void): (() => void) => {
+    releases.push(release)
+    return release
+  }
+  onScopeDispose(() => {
+    for (const release of releases) release()
+  }, true)
+
   // One liveness sweep shared by every per-path cache in this form; the store
   // owns it. The surfaces below register their evictions into the same
   // registry, so there is one subscription and one liveness walk per candidate
   // rather than a set per cache. See `dynamic-path-sweep.ts`.
-  const pathSweep = state.pathSweep
+  const pathSweep: DynamicPathSweep = {
+    track: state.pathSweep.track,
+    onEvict: (evict) => lease(state.pathSweep.onEvict(evict)),
+  }
   const getRootFieldStateAt = buildFieldStateAccessor(
     state,
     formInstanceId,
@@ -895,7 +920,9 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // inner proxy and produce a fresh one keyed to the new target. The callable
   // proxy itself is identity-stable, so a consumer caching `form.values` holds
   // a stable reference whose data tracks the live form value.
-  const valuesProxy = buildValuesSurface(state.form, state.onFormChange)
+  const valuesProxy = buildValuesSurface(state.form, (listener) =>
+    lease(state.onFormChange(listener))
+  )
 
   // --- Per-field state proxy ---
   // Allocated once per `buildFormApi` call, so once per consumer. Each Proxy

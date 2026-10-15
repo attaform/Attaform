@@ -431,7 +431,12 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
   maxRecursionDepth: number
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
-    needsAsyncValidation: () => scanCapabilities(schema).asyncRefine,
+    // Async work of either kind, as the root's `needsAsyncValidation`
+    // counts it: the field's `valid` waits for the first async pass.
+    needsAsyncValidation: () => {
+      const { asyncRefine, asyncTransform } = scanCapabilities(schema)
+      return asyncRefine || asyncTransform
+    },
     getDefaultValues: () => deriveDefault(schema, true, maxRecursionDepth),
     getSchemasAtPath: () => [],
     validateAtPath: async (data: unknown) => {

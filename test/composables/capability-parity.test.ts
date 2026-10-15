@@ -11,6 +11,13 @@
  * entry re-validated the edited leaf alone and the refine did not run
  * again until submit. v4 counts both and shows the error as the user
  * types; v3 now does too.
+ *
+ * A leaf with an async transform. A field's `valid` waits for the first
+ * async pass when its sub-schema holds async work, as `meta.valid` does.
+ * The sub-schema v4 builds for a path counted only async refines, so
+ * the field read valid while the pass was still running and `meta.valid`
+ * read false. v3's sub-schemas, and both majors' roots, count the
+ * transform; v4's sub-schemas now do too.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { App } from 'vue'
@@ -85,6 +92,28 @@ describe.each(ADAPTERS)('a refine on a map re-runs as the user types ($name)', (
 
     await write(api, 'scores.ann', 90)
     expect(api.meta.valid).toBe(true)
+  })
+})
+describe.each(ADAPTERS)('a field with an async transform waits for the first pass ($name)', (a) => {
+  it('reads not valid until the first async pass settles, like meta.valid', async () => {
+    const schema = a.z.object({
+      code: a.z.string().transform(async (v: string) => {
+        await Promise.resolve()
+        return v
+      }),
+      name: a.z.string().min(1),
+    })
+    const { api, app } = makeMounter(a.useForm, schema, {
+      defaultValues: { code: 'x', name: 'ok' },
+    })()
+    apps.push(app)
+    expect(api.meta.valid).toBe(false)
+    expect(api.fields.code.valid).toBe(false)
+    // A sync-only sibling has nothing to wait on.
+    expect(api.fields.name.valid).toBe(true)
+    await settle()
+    expect(api.meta.valid).toBe(true)
+    expect(api.fields.code.valid).toBe(true)
   })
 })
 /* eslint-enable @typescript-eslint/no-explicit-any */

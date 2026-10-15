@@ -61,6 +61,14 @@
   an entry left the refine's error unshown until submit. Both now count,
   and the error shows as the user types, as on Zod v4. (#691)
 
+- **On Zod v4, a field with an async transform waits for its first
+  check.** A field's `valid` holds at `false` until the form's first
+  async pass settles when its schema has async work, the same wait
+  `meta.valid` makes. On Zod v4 only an async refine counted, so a field
+  with `.transform(async ...)` or `z.preprocess(async ...)` read valid
+  while `meta.valid` read false and the pass was still running. It now
+  waits, as it does on Zod v3. (#691)
+
 - **On Zod v3, checks after a `.pipe(...)` count from the first
   render.** Attaform runs a v3 schema's synchronous validations through
   a copy that keeps async refinements from throwing, and that copy kept

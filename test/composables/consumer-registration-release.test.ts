@@ -25,7 +25,9 @@
  * sibling pin holds the other side of the line: releasing one consumer
  * leaves every other consumer of the store subscribed, and an API that
  * something still holds after its release keeps reading and writing
- * correctly.
+ * correctly. Consumers under the same ancestor `useForm` share one API
+ * (`inject-form-shared-api.test.ts`), so that pin puts its two consumers
+ * under different ancestors.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -65,8 +67,16 @@ const schemaV3 = zV3.object({ name: zV3.string(), email: zV3.string(), city: zV3
 const schemaV4 = zV4.object({ name: zV4.string(), email: zV4.string(), city: zV4.string() })
 
 const adapters = [
-  { name: 'zod v3', provideForm: () => useFormV3({ schema: schemaV3, key: KEY }) },
-  { name: 'zod v4', provideForm: () => useFormV4({ schema: schemaV4, key: KEY }) },
+  {
+    name: 'zod v3',
+    provideForm: () => useFormV3({ schema: schemaV3, key: KEY }),
+    provideOtherForm: () => useFormV3({ schema: schemaV3, key: 'other' }),
+  },
+  {
+    name: 'zod v4',
+    provideForm: () => useFormV4({ schema: schemaV4, key: KEY }),
+    provideOtherForm: () => useFormV4({ schema: schemaV4, key: 'other' }),
+  },
 ] as const
 
 const apps: App[] = []
@@ -208,142 +218,154 @@ async function collect(): Promise<void> {
 const reachable = (refs: WeakRef<object>[]): number =>
   refs.filter((entry) => entry.deref() !== undefined).length
 
-describe.each(adapters)('$name: consumers of a shared store', ({ provideForm }) => {
-  it('an injectForm consumer releases every registration when it unmounts', async () => {
-    const show = ref(false)
-    const Page = pageOf(PATHS.map((path) => fieldFor(path)))
-    const store = mount(provideForm, () => (show.value ? h(Page) : null))
-    const live = countRegistrations(store)
-
-    show.value = true
-    await nextTick()
-    expect(live()).toBeGreaterThan(0)
-    show.value = false
-    await nextTick()
-    expect(live()).toBe(0)
-
-    await visit(show, 5)
-    expect(live()).toBe(0)
-  })
-
-  it("a keyed useForm's remount releases the previous mount's registrations", async () => {
-    const show = ref(false)
-    const Sidebar = defineComponent({
-      setup() {
-        provideForm()
-        return () => h('aside')
-      },
-    })
-    const store = mount(provideForm, () => (show.value ? h(Sidebar) : null))
-    const live = countRegistrations(store)
-
-    show.value = true
-    await nextTick()
-    expect(live()).toBeGreaterThan(0)
-    show.value = false
-    await nextTick()
-    expect(live()).toBe(0)
-
-    await visit(show, 5)
-    expect(live()).toBe(0)
-  })
-
-  it('releases with the effect scope the API was built in, ahead of its component', async () => {
-    let scope: EffectScope | undefined
-    const Panel = defineComponent({
-      setup() {
-        scope = effectScope()
-        scope.run(() => injectForm<Shape>(KEY))
-        return () => h('section')
-      },
-    })
-    const show = ref(false)
-    const store = mount(provideForm, () => (show.value ? h(Panel) : null))
-    const live = countRegistrations(store)
-
-    show.value = true
-    await nextTick()
-    expect(live()).toBeGreaterThan(0)
-    defined(scope).stop()
-    expect(live()).toBe(0)
-    expect(document.querySelector('section')).not.toBeNull()
-  })
-
-  it('releasing one consumer leaves a sibling subscribed, and a held API correct', async () => {
-    const consumers: { held?: Api | null; sibling?: Api | null } = {}
-    const Held = defineComponent({
-      setup() {
-        consumers.held = injectForm<Shape>(KEY)
-        return () => h('p', consumers.held?.fields.name.value)
-      },
-    })
-    const Sibling = defineComponent({
-      setup() {
-        consumers.sibling = injectForm<Shape>(KEY)
-        return () => h('p', { class: 'sibling' }, consumers.sibling?.fields.name.value)
-      },
-    })
-    const showHeld = ref(false)
-    const showSibling = ref(false)
-    const store = mount(provideForm, () => [
-      showSibling.value ? h(Sibling) : null,
-      showHeld.value ? h(Held) : null,
-    ])
-    const live = countRegistrations(store)
-
-    showSibling.value = true
-    await nextTick()
-    const siblingOnly = live()
-    showHeld.value = true
-    await nextTick()
-    expect(live()).toBeGreaterThan(siblingOnly)
-    showHeld.value = false
-    await nextTick()
-    expect(live()).toBe(siblingOnly)
-
-    const held = defined(consumers.held)
-    const sibling = defined(consumers.sibling)
-
-    // The sibling still reacts to a write, whichever API makes it.
-    held.setValue('name', 'Ada')
-    await nextTick()
-    expect(sibling.fields.name.value).toBe('Ada')
-    expect(document.querySelector('.sibling')?.textContent).toBe('Ada')
-
-    // The released API still reads the live form, through every surface.
-    sibling.setValue('email', 'ada@example.com')
-    expect(held.values().email).toBe('ada@example.com')
-    expect(held.fields.email.value).toBe('ada@example.com')
-    expect(held.errors.email).toEqual([])
-  })
-
-  describe.skipIf(!hasGc)('retention', () => {
-    const VISITS = 10
-
-    async function visitPage(fields: (built: Built) => Component[]): Promise<Built> {
-      const built: Built = { apis: [], inputs: [] }
+describe.each(adapters)(
+  '$name: consumers of a shared store',
+  ({ provideForm, provideOtherForm }) => {
+    it('an injectForm consumer releases every registration when it unmounts', async () => {
       const show = ref(false)
-      const Page = pageOf(fields(built))
-      mount(provideForm, () => (show.value ? h(Page) : null))
-      await visit(show, VISITS)
-      await collect()
-      return built
-    }
+      const Page = pageOf(PATHS.map((path) => fieldFor(path)))
+      const store = mount(provideForm, () => (show.value ? h(Page) : null))
+      const live = countRegistrations(store)
 
-    it('leaves no input of a page that never reaches the form reachable (control)', async () => {
-      // Proves the harness reports zero for the right reason before the
-      // run below reports zero for the fixed one.
-      const built = await visitPage((b) => PATHS.map((path) => plainFieldFor(path, b)))
-      expect(built.inputs.length).toBe(PATHS.length * VISITS)
-      expect(reachable(built.inputs)).toBe(0)
+      show.value = true
+      await nextTick()
+      expect(live()).toBeGreaterThan(0)
+      show.value = false
+      await nextTick()
+      expect(live()).toBe(0)
+
+      await visit(show, 5)
+      expect(live()).toBe(0)
     })
 
-    it('leaves no API or bound input of an injectForm page reachable after it unmounts', async () => {
-      const built = await visitPage((b) => PATHS.map((path) => fieldFor(path, b)))
-      expect(built.apis.length).toBe(PATHS.length * VISITS)
-      expect(built.inputs.length).toBe(PATHS.length * VISITS)
-      expect(reachable(built.apis)).toBe(0)
-      expect(reachable(built.inputs)).toBe(0)
+    it("a keyed useForm's remount releases the previous mount's registrations", async () => {
+      const show = ref(false)
+      const Sidebar = defineComponent({
+        setup() {
+          provideForm()
+          return () => h('aside')
+        },
+      })
+      const store = mount(provideForm, () => (show.value ? h(Sidebar) : null))
+      const live = countRegistrations(store)
+
+      show.value = true
+      await nextTick()
+      expect(live()).toBeGreaterThan(0)
+      show.value = false
+      await nextTick()
+      expect(live()).toBe(0)
+
+      await visit(show, 5)
+      expect(live()).toBe(0)
     })
-  })
-})
+
+    it('releases with the effect scope the API was built in, ahead of its component', async () => {
+      let scope: EffectScope | undefined
+      const Panel = defineComponent({
+        setup() {
+          scope = effectScope()
+          scope.run(() => injectForm<Shape>(KEY))
+          return () => h('section')
+        },
+      })
+      const show = ref(false)
+      const store = mount(provideForm, () => (show.value ? h(Panel) : null))
+      const live = countRegistrations(store)
+
+      show.value = true
+      await nextTick()
+      expect(live()).toBeGreaterThan(0)
+      defined(scope).stop()
+      expect(live()).toBe(0)
+      expect(document.querySelector('section')).not.toBeNull()
+    })
+
+    it('releasing one consumer leaves a sibling subscribed, and a held API correct', async () => {
+      const consumers: { held?: Api | null; sibling?: Api | null } = {}
+      const HeldForm = defineComponent({
+        setup() {
+          consumers.held = injectForm<Shape>(KEY)
+          return () => h('p', consumers.held?.fields.name.value)
+        },
+      })
+      // A `useForm` of its own above the held consumer gives it a different
+      // instance id from the sibling's, so the two hold separate APIs.
+      const Held = defineComponent({
+        setup() {
+          provideOtherForm()
+          return () => h(HeldForm)
+        },
+      })
+      const Sibling = defineComponent({
+        setup() {
+          consumers.sibling = injectForm<Shape>(KEY)
+          return () => h('p', { class: 'sibling' }, consumers.sibling?.fields.name.value)
+        },
+      })
+      const showHeld = ref(false)
+      const showSibling = ref(false)
+      const store = mount(provideForm, () => [
+        showSibling.value ? h(Sibling) : null,
+        showHeld.value ? h(Held) : null,
+      ])
+      const live = countRegistrations(store)
+
+      showSibling.value = true
+      await nextTick()
+      const siblingOnly = live()
+      showHeld.value = true
+      await nextTick()
+      expect(live()).toBeGreaterThan(siblingOnly)
+      showHeld.value = false
+      await nextTick()
+      expect(live()).toBe(siblingOnly)
+
+      const held = defined(consumers.held)
+      const sibling = defined(consumers.sibling)
+      expect(held).not.toBe(sibling)
+
+      // The sibling still reacts to a write, whichever API makes it.
+      held.setValue('name', 'Ada')
+      await nextTick()
+      expect(sibling.fields.name.value).toBe('Ada')
+      expect(document.querySelector('.sibling')?.textContent).toBe('Ada')
+
+      // The released API still reads the live form, through every surface.
+      sibling.setValue('email', 'ada@example.com')
+      expect(held.values().email).toBe('ada@example.com')
+      expect(held.fields.email.value).toBe('ada@example.com')
+      expect(held.errors.email).toEqual([])
+    })
+
+    describe.skipIf(!hasGc)('retention', () => {
+      const VISITS = 10
+
+      async function visitPage(fields: (built: Built) => Component[]): Promise<Built> {
+        const built: Built = { apis: [], inputs: [] }
+        const show = ref(false)
+        const Page = pageOf(fields(built))
+        mount(provideForm, () => (show.value ? h(Page) : null))
+        await visit(show, VISITS)
+        await collect()
+        return built
+      }
+
+      it('leaves no input of a page that never reaches the form reachable (control)', async () => {
+        // Proves the harness reports zero for the right reason before the
+        // run below reports zero for the fixed one.
+        const built = await visitPage((b) => PATHS.map((path) => plainFieldFor(path, b)))
+        expect(built.inputs.length).toBe(PATHS.length * VISITS)
+        expect(reachable(built.inputs)).toBe(0)
+      })
+
+      it('leaves no API or bound input of an injectForm page reachable after it unmounts', async () => {
+        const built = await visitPage((b) => PATHS.map((path) => fieldFor(path, b)))
+        expect(built.apis.length).toBe(PATHS.length * VISITS)
+        expect(built.inputs.length).toBe(PATHS.length * VISITS)
+        expect(reachable(built.apis)).toBe(0)
+        expect(reachable(built.inputs)).toBe(0)
+      })
+    })
+  }
+)

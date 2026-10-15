@@ -1,12 +1,14 @@
 import {
+  effectScope,
   getCurrentInstance,
   getCurrentScope,
   inject,
   onScopeDispose,
   onServerPrefetch,
   useId,
+  type EffectScope,
 } from 'vue'
-import { buildFormApi } from '../core/build-form-api'
+import { buildFormApi, type BuildFormApiOptions } from '../core/build-form-api'
 import type { FormStore } from '../core/create-form-store'
 import { RESERVED_KEY_PREFIX } from '../core/defaults'
 import { __DEV__ } from '../core/dev'
@@ -23,6 +25,22 @@ import { ambientProvideHistory } from './use-abstract-form'
  * deliver: such a consumer shares its `instanceId` with nothing.
  */
 let injectedInstanceCounter = 0
+
+/**
+ * One form API per store and inherited `formInstanceId`, shared by every
+ * `injectForm` call that resolves that store under the same ancestor
+ * `useForm`. Those calls would build identical APIs: `injectForm` passes
+ * no per-call options, and the instance id, which scopes focus and element
+ * lookups, is the ancestor's. So a page of fields that each call
+ * `injectForm` builds one API, with one set of field caches, not one per
+ * field. `users` counts the effect scopes holding it.
+ */
+type SharedApi = {
+  readonly api: UseFormReturnType<GenericForm>
+  readonly scope: EffectScope
+  users: number
+}
+const sharedApis = new WeakMap<FormStore<GenericForm>, Map<string, SharedApi>>()
 
 /** Options accepted by `injectForm` in place of a bare key string. */
 export type InjectFormInput = {
@@ -72,6 +90,10 @@ export type InjectFormInput = {
  * Pass the `Form` generic explicitly, since Vue's provide/inject erases
  * generics. The form stays alive for this component's lifetime and is
  * cleaned up once every consumer has unmounted.
+ *
+ * Components whose nearest `useForm`-calling ancestor is the same one get
+ * the same form object for the same form: `injectForm('cart')` in two of
+ * its descendants returns one form, with one set of field caches.
  */
 export function injectForm<Form extends GenericForm, GetValueFormType extends GenericForm = Form>(
   input?: FormKey | InjectFormInput
@@ -91,7 +113,7 @@ export function injectForm<Form extends GenericForm, GetValueFormType extends Ge
   if (instance !== null) ensureAttaformInstalled(instance.appContext.app)
   const registry = useRegistry()
 
-  const state = resolveState<Form>(key, registry)
+  const state = resolveState(key, registry)
   if (state === null) return null
 
   // Ref-count this consumer so the FormStore outlives every nested
@@ -114,31 +136,73 @@ export function injectForm<Form extends GenericForm, GetValueFormType extends Ge
 
   // Without this, a consumer reached through the context would get inert
   // `form.history` stubs even on a form that has history enabled.
-  const apiOptions: Parameters<typeof buildFormApi<Form, GetValueFormType>>[2] = {}
+  const apiOptions: BuildFormApiOptions = {}
   const history = state.modules.get('history') as HistoryModule | undefined
   if (history !== undefined) {
     apiOptions.history = history
   }
   // Inheriting the ancestor's instanceId is what keeps a parent's
   // submit-focus reaching inputs that a deep child registered through
-  // its own `register()` calls: both tag against the SAME instance.
+  // its own `register()` calls: both tag against the SAME instance. It
+  // also makes every such call's API the same one, so they share it.
   //
   // A fresh id is the fallback for a cross-tree keyed reach with no
   // ambient provide chain, and for having no Vue instance at all. Local
   // registrations are then isolated: the original `useForm()` call
   // site's `focusFirstError` cannot see them, though the consumer's own
-  // focus calls still work.
+  // focus calls still work. Such a consumer shares its id, and so its
+  // API, with nothing.
   const ambientInstanceId = getCurrentInstance() !== null ? inject(kFormInstanceId, null) : null
-  const formInstanceId =
-    ambientInstanceId ??
-    (getCurrentInstance() !== null
-      ? useId()
-      : `atta:form-instance-injected:${injectedInstanceCounter++}`)
-  return buildFormApi<Form, GetValueFormType>(
-    state as FormStore<Form, GetValueFormType>,
-    formInstanceId,
-    apiOptions
-  )
+  const api =
+    ambientInstanceId !== null
+      ? shareApi(state, ambientInstanceId, apiOptions)
+      : buildFormApi(
+          state,
+          getCurrentInstance() !== null
+            ? useId()
+            : `atta:form-instance-injected:${injectedInstanceCounter++}`,
+          apiOptions
+        )
+  // The registry and Vue's provide / inject hold every store as
+  // `GenericForm`, so the form's shape is the one the caller names.
+  return api as unknown as UseFormReturnType<Form, GetValueFormType>
+}
+
+/**
+ * The API the `injectForm` calls under one ancestor share. The first call
+ * builds it in a detached effect scope, so its registrations on the store
+ * outlive that caller; each caller's own scope holds a count, and the last
+ * one to dispose stops the scope, which releases them (#690).
+ */
+function shareApi(
+  state: FormStore<GenericForm>,
+  formInstanceId: string,
+  options: BuildFormApiOptions
+): UseFormReturnType<GenericForm> {
+  let instances = sharedApis.get(state)
+  if (instances === undefined) {
+    instances = new Map()
+    sharedApis.set(state, instances)
+  }
+  const byInstance = instances
+  let shared = byInstance.get(formInstanceId)
+  if (shared === undefined) {
+    const scope = effectScope(true)
+    const api = scope.run(() => buildFormApi(state, formInstanceId, options))
+    // `run` returns nothing only from a stopped scope, and this one is new.
+    if (api === undefined) return buildFormApi(state, formInstanceId, options)
+    shared = { api, scope, users: 0 }
+    byInstance.set(formInstanceId, shared)
+  }
+  const entry = shared
+  entry.users += 1
+  onScopeDispose(() => {
+    entry.users -= 1
+    if (entry.users > 0) return
+    entry.scope.stop()
+    byInstance.delete(formInstanceId)
+  })
+  return entry.api
 }
 
 /**
@@ -149,19 +213,19 @@ export function injectForm<Form extends GenericForm, GetValueFormType extends Ge
  * lookup is opportunistic and a component library built on `injectForm`
  * should not fill a consumer's console when no parent provided a form.
  */
-function resolveState<Form extends GenericForm>(
+function resolveState(
   key: FormKey | undefined,
   registry: AttaformRegistry
-): FormStore<Form> | null {
+): FormStore<GenericForm> | null {
   if (key !== undefined) {
-    const stored = registry.forms.get(key) as FormStore<Form> | undefined
+    const stored = registry.forms.get(key)
     if (stored === undefined) {
       warnMiss(`no form registered for key '${key}'`, registry.ssr, registry.forms)
       return null
     }
     return stored
   }
-  const ambient = inject(kFormContext, null) as FormStore<Form> | null
+  const ambient = inject(kFormContext, null)
   if (ambient === null) return null
   warnIfAmbientProviderHadDuplicates()
   return ambient

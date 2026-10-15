@@ -155,10 +155,20 @@
 - **A client hydrating server-rendered state no longer validates its
   forms.** The server's verdict arrives in the payload, so every form
   parsed its starting value only to throw the result away. That parse
-  is gone. On the same
-  wizard, hydrating got 34-68% faster with plain leaves and 13-38%
-  faster with leaves that run a nested parse inside a `superRefine`.
-  (#691)
+  is gone. On the same wizard, hydrating got 34-68% faster with plain
+  leaves and 13-38% faster with leaves that run a nested parse inside
+  a `superRefine`. (#691)
+
+- **Components under one `useForm` share the form `injectForm` gives
+  them.** Every `injectForm()` call built a form object of its own,
+  with its own field state, so a page of 38 fields that each reach the
+  form held 38 copies of it while mounted. Calls in components whose
+  nearest `useForm`-calling ancestor is the same one now get the same
+  form object, which lasts until the last of them unmounts. With that
+  page mounted, the heap the form accounts for went from about 1.7 MB
+  to about 0.95 MB. Two such calls now return the same object, so
+  `injectForm('cart') === injectForm('cart')` holds between them. A
+  component with no such ancestor still gets a form of its own. (#690)
 
 ## v0.30.1
 ### Fixed

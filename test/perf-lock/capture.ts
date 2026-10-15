@@ -15,11 +15,31 @@
  *     differ across v3/v4 and zod versions, so they are NOT an Attaform
  *     behavior. We lock the normalized structure (code + path) only.
  */
-import type { FieldState } from '../../src/runtime/types/types-api'
+import type { ErrorCell, FieldState } from '../../src/runtime/types/types-api'
 
 const REDACTED_ID = '<id>'
 const REDACTED_TS = '<ts>'
 const REDACTED_INSTANCE = '<instance>'
+
+/**
+ * JSON replacer that tags the three value types JSON flattens: a `Map` or
+ * `Set` would serialize as `{}`, losing its contents, and a `Date` would read
+ * the same as the ISO string it stringifies to. Each becomes a tagged record
+ * instead. Every other value serializes exactly as plain JSON does, so a
+ * golden holding none of the three is unchanged by the tagging.
+ *
+ * Reads `this[key]` because JSON has already run `Date#toJSON` by the time
+ * `value` arrives.
+ */
+function tagCollections(this: Record<string, unknown>, key: string, value: unknown): unknown {
+  const raw = this[key]
+  if (raw instanceof Date) {
+    return { $date: Number.isNaN(raw.getTime()) ? 'Invalid Date' : raw.toISOString() }
+  }
+  if (raw instanceof Map) return { $map: [...raw.entries()] }
+  if (raw instanceof Set) return { $set: [...raw.values()] }
+  return value
+}
 
 /**
  * Deep-snapshot an object/array value so a capture FREEZES it at this
@@ -28,7 +48,7 @@ const REDACTED_INSTANCE = '<instance>'
  */
 function snapshot<T>(value: T): T {
   if (value === null || typeof value !== 'object') return value
-  return JSON.parse(JSON.stringify(value)) as T
+  return JSON.parse(JSON.stringify(value, tagCollections)) as T
 }
 
 /** Form-level meta is a FieldState of the whole form plus submit counters. */
@@ -171,15 +191,46 @@ function captureList(
 }
 
 /**
+ * The store slice the first-read capture adds to the public surface: both
+ * error channels and the initial-validity gate. Reached through the
+ * registry, since the public surface merges the channels on read.
+ */
+export type StoreLike = {
+  readonly errorCells: ReadonlyMap<string, ErrorCell>
+  readonly firstValidationDone: { readonly value: boolean }
+}
+
+/**
+ * Capture the schema and user error channels per path, code and path only
+ * (messages dropped, as everywhere in this harness). Keys are the store's
+ * canonical path keys; the golden's key sort makes their order canonical.
+ */
+export function captureErrorChannels(store: StoreLike): Record<string, unknown> {
+  const channels: Record<string, unknown> = {}
+  for (const [key, cell] of store.errorCells) {
+    channels[key] = {
+      schema: cell.schema.map((e) => ({ code: e.code, path: snapshot(e.path) })),
+      user: cell.user.map((e) => ({ code: e.code, path: snapshot(e.path) })),
+    }
+  }
+  return channels
+}
+
+/**
  * Capture the full observable surface for a scenario: per-field state at each
  * declared path, the form-level meta, the blank-path set, and (when the
  * scenario declares arrays) the per-array list capture.
+ *
+ * With a `store`, the capture also records the per-path error channels and
+ * the `firstValidationDone` gate. The first-read mode passes it; the settled
+ * goldens predate it and are captured without.
  */
 export function captureForm(
   form: FormLike,
   fieldPaths: string[],
   arrays: ArraySpec[] = [],
-  normalizeKey: (key: string) => string = (k) => k
+  normalizeKey: (key: string) => string = (k) => k,
+  store?: StoreLike
 ): Record<string, unknown> {
   const fields: Record<string, unknown> = {}
   for (const path of fieldPaths) {
@@ -197,6 +248,10 @@ export function captureForm(
     const lists: Record<string, unknown> = {}
     for (const spec of arrays) lists[spec.path] = captureList(form, spec, normalizeKey)
     capture['lists'] = lists
+  }
+  if (store !== undefined) {
+    capture['errorChannels'] = captureErrorChannels(store)
+    capture['firstValidationDone'] = store.firstValidationDone.value
   }
   return capture
 }

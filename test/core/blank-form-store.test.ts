@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 // The two seed inputs speak different dialects, on purpose.
 // `initialBlankPaths` comes from the construction-time unset walker,
@@ -42,7 +43,7 @@ describe('FormStore: blank gate hook', () => {
   it('exposes both reactive and snapshot Sets, empty by default', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-1',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
     })
     expect(state.blankPaths.size).toBe(0)
     expect(state.originalBlankPaths.size).toBe(0)
@@ -51,7 +52,7 @@ describe('FormStore: blank gate hook', () => {
   it('seeds the reactive Set + originals snapshot from initialBlankPaths', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-2',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       initialBlankPaths: [incomeKey, nameKey],
     })
     expect(state.blankPaths.has(incomeKey)).toBe(true)
@@ -63,7 +64,7 @@ describe('FormStore: blank gate hook', () => {
   it('hydration.blankPaths overrides initialBlankPaths', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-3',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       initialBlankPaths: [incomeKey],
       hydration: {
         form: defaults,
@@ -82,21 +83,27 @@ describe('FormStore: blank gate hook', () => {
   it('hydration without blankPaths leaves the set empty', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-4',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       hydration: { form: defaults, schemaErrors: [], userErrors: [], fields: [] },
     })
     expect(state.blankPaths.size).toBe(0)
   })
 
   it('setValueAtPath with blank: true adds the path', () => {
-    const state = createFormStore<Form>({ formKey: 'atta-5', schema: fakeSchema(defaults) })
+    const state = createFormStore<Form>({
+      formKey: 'atta-5',
+      ...schemaOptions(fakeSchema(defaults)),
+    })
     const ok = state.setValueAtPath(['income'], 0, { blank: true })
     expect(ok).toBe(true)
     expect(state.blankPaths.has(incomeKey)).toBe(true)
   })
 
   it('subsequent write without blank meta removes the path (implicit unmark)', () => {
-    const state = createFormStore<Form>({ formKey: 'atta-6', schema: fakeSchema(defaults) })
+    const state = createFormStore<Form>({
+      formKey: 'atta-6',
+      ...schemaOptions(fakeSchema(defaults)),
+    })
     state.setValueAtPath(['income'], 0, { blank: true })
     expect(state.blankPaths.has(incomeKey)).toBe(true)
 
@@ -106,7 +113,10 @@ describe('FormStore: blank gate hook', () => {
   })
 
   it('marks blank even when storage value is unchanged (typing 0 over slim-default 0)', () => {
-    const state = createFormStore<Form>({ formKey: 'atta-7', schema: fakeSchema(defaults) })
+    const state = createFormStore<Form>({
+      formKey: 'atta-7',
+      ...schemaOptions(fakeSchema(defaults)),
+    })
     // Storage is 0 from defaults; mark with blank: true. The
     // identity short-circuit on Object.is(0, 0) would otherwise skip
     // the bookkeeping, but the gate-hook runs before that check.
@@ -115,7 +125,10 @@ describe('FormStore: blank gate hook', () => {
   })
 
   it('unmarks even when storage value is unchanged (typing 0 after marking)', () => {
-    const state = createFormStore<Form>({ formKey: 'atta-8', schema: fakeSchema(defaults) })
+    const state = createFormStore<Form>({
+      formKey: 'atta-8',
+      ...schemaOptions(fakeSchema(defaults)),
+    })
     state.setValueAtPath(['income'], 0, { blank: true })
     expect(state.blankPaths.has(incomeKey)).toBe(true)
     // Same value, no blank meta, should unmark.
@@ -126,7 +139,7 @@ describe('FormStore: blank gate hook', () => {
   it('does not mutate originalBlankPaths on regular writes', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-9',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       initialBlankPaths: [incomeKey],
     })
     state.setValueAtPath(['income'], 100, { blank: true })
@@ -140,7 +153,7 @@ describe('FormStore: reset', () => {
   it('reset() restores blankPaths from the originals snapshot', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-10',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       initialBlankPaths: [incomeKey],
     })
     // User clears the path (manual unmark via a non-transient write).
@@ -156,7 +169,7 @@ describe('FormStore: reset', () => {
   it('reset(args) drops the blank mark only at the paths args mention', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-11',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       initialBlankPaths: [incomeKey, nameKey],
     })
     state.reset({ income: 5 })
@@ -174,7 +187,7 @@ describe('FormStore: reset', () => {
   it('after reset(args) followed by reset(), the post-reset(args) baseline returns', () => {
     const state = createFormStore<Form>({
       formKey: 'atta-12',
-      schema: fakeSchema(defaults),
+      ...schemaOptions(fakeSchema(defaults)),
       initialBlankPaths: [incomeKey],
     })
     state.reset({ income: 5 })
@@ -187,7 +200,10 @@ describe('FormStore: reset', () => {
 
 describe('FormStore: reactive Set tracking', () => {
   it('Vue 3.5 reactive Set fires on .add() / .delete() / .has()', () => {
-    const state = createFormStore<Form>({ formKey: 'atta-13', schema: fakeSchema(defaults) })
+    const state = createFormStore<Form>({
+      formKey: 'atta-13',
+      ...schemaOptions(fakeSchema(defaults)),
+    })
     // Smoke-check that the Set is reactive enough to drive a watcher.
     // Direct .has() returns track membership lookups in 3.5.
     let observed = 0

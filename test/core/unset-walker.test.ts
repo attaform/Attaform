@@ -28,21 +28,25 @@ const keyFor = (segments: (string | number)[]): string => canonicalizePath(segme
 describe('walkUnsetSentinels: construction-time walk (synthesizes schema keys, auto-marks numeric)', () => {
   it('synthesizes schema-only keys and auto-marks the unspecified numeric leaf', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
-    const result = walkUnsetSentinels({ name: 'a' }, schema)
+    const result = walkUnsetSentinels({ name: 'a' }, schema, schema.getDefaultAtPath([]))
     expect(result.cleanedValues).toEqual({ name: 'a', age: 0 })
     expect(result.paths).toEqual([keyFor(['age'])])
   })
 
   it('does NOT auto-mark an unspecified string leaf (no storage/display divergence)', () => {
     const schema = adapterFor(z.object({ name: z.string(), nick: z.string() }))
-    const result = walkUnsetSentinels({ name: 'a' }, schema)
+    const result = walkUnsetSentinels({ name: 'a' }, schema, schema.getDefaultAtPath([]))
     expect(result.cleanedValues).toEqual({ name: 'a', nick: '' })
     expect(result.paths).toEqual([])
   })
 
   it('preserves an explicit consumer `undefined` key (does not fill from schema, does not mark)', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
-    const result = walkUnsetSentinels({ name: undefined, age: 5 }, schema)
+    const result = walkUnsetSentinels(
+      { name: undefined, age: 5 },
+      schema,
+      schema.getDefaultAtPath([])
+    )
     expect(result.cleanedValues).toEqual({ name: undefined, age: 5 })
     expect('name' in (result.cleanedValues as Record<string, unknown>)).toBe(true)
     expect(result.paths).toEqual([])
@@ -50,7 +54,7 @@ describe('walkUnsetSentinels: construction-time walk (synthesizes schema keys, a
 
   it('auto-marks every numeric leaf reachable from root when values is undefined', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
-    const result = walkUnsetSentinels(undefined, schema)
+    const result = walkUnsetSentinels(undefined, schema, schema.getDefaultAtPath([]))
     expect(result.cleanedValues).toBeUndefined()
     expect(result.paths).toEqual([keyFor(['age'])])
   })
@@ -58,7 +62,7 @@ describe('walkUnsetSentinels: construction-time walk (synthesizes schema keys, a
   it('is reference-stable when nothing is synthesized, marked, or substituted', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
     const values = { name: 'a', age: 5 }
-    const result = walkUnsetSentinels(values, schema)
+    const result = walkUnsetSentinels(values, schema, schema.getDefaultAtPath([]))
     expect(result.cleanedValues).toBe(values)
     expect(result.paths).toEqual([])
   })
@@ -106,7 +110,11 @@ describe('substituteUnsetSentinels: setValue-time walk (trusts caller, no synthe
 describe('unset-walker: contracts shared by both entry points', () => {
   it('expands an explicit unset leaf to the slim default and marks the path', () => {
     const schema = adapterFor(z.object({ name: z.string(), age: z.number() }))
-    const walked = walkUnsetSentinels({ name: 'a', age: unset }, schema)
+    const walked = walkUnsetSentinels(
+      { name: 'a', age: unset },
+      schema,
+      schema.getDefaultAtPath([])
+    )
     expect(walked.cleanedValues).toEqual({ name: 'a', age: 0 })
     expect(walked.paths).toEqual([keyFor(['age'])])
 
@@ -124,7 +132,7 @@ describe('unset-walker: contracts shared by both entry points', () => {
         ]),
       })
     )
-    const walked = walkUnsetSentinels({ notify: unset }, schema)
+    const walked = walkUnsetSentinels({ notify: unset }, schema, schema.getDefaultAtPath([]))
     const walkedNotify = walked.cleanedValues.notify as unknown as Record<string, unknown>
     expect(Object.keys(walkedNotify)).toEqual(['channel'])
     expect(walked.paths).toEqual([keyFor(['notify', 'channel'])])
@@ -138,7 +146,7 @@ describe('unset-walker: contracts shared by both entry points', () => {
   it('passes opaque leaves (Date) through unchanged', () => {
     const schema = adapterFor(z.object({ when: z.date() }))
     const when = new Date('2020-01-01T00:00:00.000Z')
-    const walked = walkUnsetSentinels({ when }, schema)
+    const walked = walkUnsetSentinels({ when }, schema, schema.getDefaultAtPath([]))
     expect(walked.cleanedValues.when).toBe(when)
     const substituted = substituteUnsetSentinels({ when }, [], schema)
     expect(substituted.cleanedValues.when).toBe(when)

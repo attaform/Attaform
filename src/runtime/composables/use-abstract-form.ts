@@ -322,9 +322,17 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
   // non-`unset` value opts a leaf out. TypeScript rejects `unset` at a
   // non-primitive leaf, and a plain-JS consumer who gets there anyway
   // gets a dev warn.
+  //
+  // The schema's defaults are derived once per construction and shared:
+  // the walker reads them at the root, and the store's baseline merges
+  // over them, or is them when no defaults were given. Never cached
+  // across constructions, since a `.default(fn)` or `.catch(fn)` factory
+  // can return a new value per call.
+  const schemaDefaults = schema.getDefaultValues({ useDefaultSchemaValues: true })
   const walked = walkUnsetSentinels(
     configuration.defaultValues,
-    schema as unknown as AbstractSchema<GenericForm, GenericForm>
+    schema as unknown as AbstractSchema<GenericForm, GenericForm>,
+    schemaDefaults
   )
   // A hydration payload's `blankPaths` is authoritative. The walker
   // still runs, to scrub `unset` symbols before they can reach storage,
@@ -343,6 +351,7 @@ function buildFreshState<F extends GenericForm, G extends GenericForm = F>(
     formKey: key,
     schema,
     defaultValues: walked.cleanedValues as DeepPartial<WriteShape<F>> | undefined,
+    schemaDefaults,
     hydration: pending,
     ssr: registry.ssr,
     ...pickDefined({

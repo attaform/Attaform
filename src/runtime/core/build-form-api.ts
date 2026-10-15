@@ -418,7 +418,8 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // about to set. `writeUnsetAt` below follows the same pattern.
       const walked = walkUnsetSentinels(
         next,
-        state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1]
+        state.schema as unknown as Parameters<typeof walkUnsetSentinels>[1],
+        state.schema.getDefaultAtPath([])
       )
       const ok = state.setValueAtPath([], walked.cleanedValues, writeMeta())
       if (!ok) return false

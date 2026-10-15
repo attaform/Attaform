@@ -6,6 +6,7 @@ import { canonicalizePath } from '../../src/runtime/core/paths'
 import type { ValidationError } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
 import { originalAt, pristineAt } from '../utils/store-path-probes'
+import { schemaOptions } from '../utils/store-options'
 
 type SignupForm = {
   email: string
@@ -25,7 +26,7 @@ const defaults: SignupForm = {
 function makeState(overrides?: Partial<{ formKey: string; defaultValues: Partial<SignupForm> }>) {
   return createFormStore<SignupForm>({
     formKey: overrides?.formKey ?? 'test',
-    schema: fakeSchema<SignupForm>(defaults),
+    ...schemaOptions(fakeSchema<SignupForm>(defaults)),
     defaultValues: overrides?.defaultValues,
   })
 }
@@ -400,7 +401,7 @@ describe('createFormStore', () => {
       type OddForm = GenericFormAlias & { 'profile.name': string }
       const oddDefaults: OddForm = { 'profile.name': 'literal-dot-key' }
       const oddSchema = fakeSchema<OddForm>(oddDefaults)
-      const state = createFormStore({ formKey: 'odd', schema: oddSchema })
+      const state = createFormStore({ formKey: 'odd', ...schemaOptions(oddSchema) })
       state.setSchemaErrorsForPath(
         ['profile.name'],
         [{ message: 'x', path: ['profile.name'], code: 'atta:test-fixture' }]

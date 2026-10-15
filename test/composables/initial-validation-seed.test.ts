@@ -9,6 +9,7 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { fakeSchema } from '../utils/fake-schema'
 import { assertNeverSettles } from '../utils/form-harness'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Initial validation seed: when a form's default values fail schema
@@ -426,7 +427,7 @@ describe('initial validation seed: hydration takes precedence', () => {
 
     const state = createFormStore<Form>({
       formKey: 'hyd',
-      schema: failingDefaultsSchema,
+      ...schemaOptions(failingDefaultsSchema),
       hydration: {
         form: { email: 'server@x.com', password: 'serverpw' },
         // Empty stores, hydration says the server saw a valid form.
@@ -476,7 +477,7 @@ describe('initial validation seed: hydration takes precedence', () => {
 
     const state = createFormStore<Form>({
       formKey: 'hyd2',
-      schema: failingDefaultsSchema,
+      ...schemaOptions(failingDefaultsSchema),
       hydration: {
         form: { email: 'a@a', password: 'irrelevant' },
         schemaErrors: [[emailKey, onlyServerError]],

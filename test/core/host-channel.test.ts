@@ -13,6 +13,7 @@ import type {
   RegisterOptions,
 } from '../../src/runtime/types/types-api'
 import type { GenericForm } from '../../src/runtime/types/types-core'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * The component-host write channel: a v-register component host's emits
@@ -69,7 +70,7 @@ describe.each(adapters)('component-host write channel [$name]', ({ adapt, schema
   ) {
     const formKey = `host-ch-${Math.random().toString(36).slice(2)}`
     const abstract = adapt(schema)(formKey, { maxRecursionDepth: 64 })
-    const state = createFormStore({ formKey, schema: abstract, defaultValues })
+    const state = createFormStore({ formKey, ...schemaOptions(abstract), defaultValues })
     const rv = buildRegister(state, 'host:inst')(['n'], options)
     const binding = arm ? armDomBinding(rv) : undefined
     const value = (): unknown => state.getValueAtPath(['n'])

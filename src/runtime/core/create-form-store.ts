@@ -808,6 +808,12 @@ export type CreateFormStoreOptions<F extends GenericForm, G extends GenericForm 
   readonly formKey: FormKey
   readonly schema: AbstractSchema<F, G>
   readonly defaultValues?: DeepPartial<WriteShape<F>> | undefined
+  /**
+   * `schema.getDefaultValues({ useDefaultSchemaValues: true })`, derived once
+   * by the caller for this construction and shared with its `unset`
+   * pre-pass. The baseline merges over it rather than deriving it again.
+   */
+  readonly schemaDefaults: F
   readonly hydration?: FormStoreHydration | undefined
   /**
    * When per-field validation runs. Default `'change'`. See `ValidateOn`. The
@@ -1138,18 +1144,20 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
  * `validateSync` renders on the result sees the filled form. That is what
  * keeps the construction and reset baselines byte-equivalent for one source.
  * Derivation only: no caller that just needs the value pays for a parse.
+ *
+ * `schemaDefaults` is the schema's own constraint-free derivation, derived
+ * once by the caller. With no source it IS the baseline, and with one the
+ * merge fills from it.
  */
 function computeBaseline<F extends GenericForm, G extends GenericForm = F>(
   schema: AbstractSchema<F, G>,
-  source: DeepPartial<WriteShape<F>> | undefined
+  source: DeepPartial<WriteShape<F>> | undefined,
+  schemaDefaults: F
 ): F {
-  const completed =
-    source === undefined
-      ? undefined
-      : (mergeStructural(schema, [], source) as DeepPartial<WriteShape<F>>)
+  if (source === undefined) return schemaDefaults
   return schema.getDefaultValues({
     useDefaultSchemaValues: true,
-    constraints: completed,
+    constraints: mergeStructural(schema, [], source, schemaDefaults) as DeepPartial<WriteShape<F>>,
   })
 }
 
@@ -1166,24 +1174,23 @@ function initialFirstValidationGate<F extends GenericForm, G extends GenericForm
 }
 
 /**
- * Rebuild `originals` from a fresh baseline value tree. `diffAndApply` visits
- * every leaf in declaration order, so construction's `ensureOrdinals: true`
- * gets `pathOrdinals` in schema-declaration order out of the same walk.
- * `reset()` passes `false`: ordinals never reset, so a path a reset baseline
- * introduces keeps the lazy first-encounter assignment and its slot for the
- * form's lifetime.
+ * Rebuild `originals` from a fresh baseline value tree, on `reset()` and when
+ * async defaults resolve. Construction seeds originals from its own walk,
+ * which also assigns `pathOrdinals`. This one leaves them alone: ordinals
+ * never reset, so a path a later baseline introduces keeps the lazy
+ * first-encounter assignment and its slot for the form's lifetime.
  */
 function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  baseline: unknown,
-  ensureOrdinals: boolean
+  baseline: unknown
 ): void {
   st.originals.clear()
   diffAndApply({}, baseline, [], (patch) => {
     if (patch.kind !== 'added') return
-    const { key } = canonicalizePath(patch.path)
-    st.originals.set(key, { segments: patch.path, value: patch.newValue })
-    if (ensureOrdinals) ensurePathOrdinal(st, key)
+    st.originals.set(canonicalizePath(patch.path).key, {
+      segments: patch.path,
+      value: patch.newValue,
+    })
   })
 }
 
@@ -3085,7 +3092,14 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
   ) as DeepPartial<WriteShape<F>>
   // Derivation only. The verdict belongs to the live form, and this value
   // seeds nothing but the dirty baseline.
-  seedOriginalsFromBaseline(st, computeBaseline(st.schema, st.defaultValues), false)
+  seedOriginalsFromBaseline(
+    st,
+    computeBaseline(
+      st.schema,
+      st.defaultValues,
+      st.schema.getDefaultValues({ useDefaultSchemaValues: true })
+    )
+  )
 }
 
 // --- Reset ---
@@ -3128,7 +3142,11 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // object after a reset would mutate the very baseline the next `reset()`
   // restores from.
   st.defaultValues = structuralSnapshot(resetSource)
-  const next = computeBaseline(st.schema, resetSource)
+  const next = computeBaseline(
+    st.schema,
+    resetSource,
+    st.schema.getDefaultValues({ useDefaultSchemaValues: true })
+  )
   // Rebuild `authoredPaths` against the post-reset baseline. Reset is a fresh
   // start, so the prior set is wiped and re-derived from the reset's
   // constraints argument and from the schema-default diff.
@@ -3144,8 +3162,8 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   st.removedSubtrees.clear()
   // Rebuild originals from the new baseline: it becomes the post-reset
   // pristine reference, so dirty reads false until the consumer mutates again.
-  // `ensureOrdinals` stays false, since ordinals never reset.
-  seedOriginalsFromBaseline(st, next, false)
+  // Ordinals never reset.
+  seedOriginalsFromBaseline(st, next)
   // Blank follows the same merge rule the values do. `originalBlankPaths` is
   // the durable record of which paths the consumer declared blank and
   // `blankPaths` is its live mirror. A path the reset argument NAMES has its
@@ -3490,7 +3508,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // The schema is ALWAYS consulted, because the schema-derived originals are
   // what carry pristine / dirty across an SSR round-trip. Only the starting
   // value prefers hydration data.
-  const schemaInitialData = computeBaseline(schema, defaultValues)
+  const schemaInitialData = computeBaseline(schema, defaultValues, options.schemaDefaults)
 
   // Paths where the consumer or the schema author declared a starting value.
   // The schema-error filter reads it to tell "missing user input" from
@@ -4043,14 +4061,35 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   rebuildAuthoredPaths(st, defaultValues, schemaInitialData)
 
-  // Populate originals by diffing empty-form to schema-initial. That shape is
-  // the schema's regardless of hydration, so pristine / dirty compares against
-  // what the form was supposed to start as. The same walk seeds `pathOrdinals`
-  // in schema-declaration order, since `diffAndApply` visits every leaf in it.
-  seedOriginalsFromBaseline(st, schemaInitialData, true)
+  // One walk of the baseline. It populates originals by diffing empty-form to
+  // schema-initial: that shape is the schema's regardless of hydration, so
+  // pristine / dirty compares against what the form was supposed to start as.
+  // It assigns `pathOrdinals` in schema-declaration order, since
+  // `diffAndApply` visits every leaf in it. And without hydration it seeds the
+  // field records: `initialData` is a structural copy of `schemaInitialData`,
+  // so its leaves are the baseline's leaves. A hydrating client takes its
+  // field records from the payload, which preserves the server-side
+  // timestamps and flags.
+  const initStamp = new Date().toISOString()
+  diffAndApply({}, schemaInitialData, [], (patch) => {
+    if (patch.kind !== 'added') return
+    const { key } = canonicalizePath(patch.path)
+    originals.set(key, { segments: patch.path, value: patch.newValue })
+    ensurePathOrdinal(st, key)
+    if (hydration === undefined) {
+      fields.set(key, {
+        path: patch.path,
+        updatedAt: initStamp,
+        connected: false,
+        focused: null,
+        blurred: null,
+        touched: false,
+        interacted: false,
+        blurredAfterInteraction: false,
+      })
+    }
+  })
 
-  // Populate fields from the hydration payload, which preserves the exact
-  // server-side timestamps and flags, or by walking `initialData` for leaves.
   if (hydration !== undefined) {
     for (const [rawKey, record] of hydration.fields) {
       if (typeof rawKey !== 'string' || !isHydratedFieldRecord(record)) {
@@ -4078,21 +4117,6 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       setErrorChannelForKey(st, rawKey as PathKey, 'user', errs)
     }
   } else {
-    const initStamp = new Date().toISOString()
-    diffAndApply({}, initialData, [], (patch) => {
-      if (patch.kind !== 'added') return
-      const { key } = canonicalizePath(patch.path)
-      fields.set(key, {
-        path: patch.path,
-        updatedAt: initStamp,
-        connected: false,
-        focused: null,
-        blurred: null,
-        touched: false,
-        interacted: false,
-        blurredAfterInteraction: false,
-      })
-    })
     // No hydration, so seed the schema side from the schema's synchronous
     // verdict on the starting value. Only this branch pays for the parse: a
     // hydrating client replays the server's verdict above instead.

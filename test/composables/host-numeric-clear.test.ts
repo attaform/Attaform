@@ -14,6 +14,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { useForm, type UseFormReturn } from '../../src/zod'
 import type { AbstractSchema } from '../../src/runtime/types/types-api'
 import type { GenericForm } from '../../src/runtime/types/types-core'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * A numeric leaf wrapped in a presentational component and bound by
@@ -81,7 +82,7 @@ describe.each(adapters)(
       // Materialize the curried adapter the way useAbstractForm does before
       // handing the store a real AbstractSchema.
       const abstract = adapt(schema)(formKey, { maxRecursionDepth: 64 })
-      const state = createFormStore({ formKey, schema: abstract, defaultValues })
+      const state = createFormStore({ formKey, ...schemaOptions(abstract), defaultValues })
       return { state, rv: buildRegister(state, 'host:inst')(['n']) }
     }
 
@@ -162,7 +163,7 @@ describe('hostModelValue: blank-aware :modelValue presentation', () => {
   function numericHost(defaultValues: GenericForm) {
     const formKey = `host-model-${Math.random().toString(36).slice(2)}`
     const abstract = zodAdapterV4(z.object({ n: z.number() }))(formKey, { maxRecursionDepth: 64 })
-    const state = createFormStore({ formKey, schema: abstract, defaultValues })
+    const state = createFormStore({ formKey, ...schemaOptions(abstract), defaultValues })
     return { state, rv: buildRegister(state, 'host:inst')(['n']) }
   }
 

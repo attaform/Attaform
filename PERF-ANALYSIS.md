@@ -702,7 +702,8 @@ Three reads:
    exposed, non-deferrable.
 2. **The originals walk is load-bearing, not deferrable.** `diffAndApply({}, schemaInitialData)`
    seeds `originals` (the dirty baseline) AND `pathOrdinals` in schema-declaration order in ONE
-   pass (`seedOriginalsFromBaseline`). `pathOrdinals` drives `form.meta.errors` SORT order, so
+   pass, which since #691 also seeds the field records of a form built without hydration.
+   `pathOrdinals` drives `form.meta.errors` SORT order, so
    deferring the walk would seed ordinals in error-_appearance_ order instead → `meta.errors`
    reorders → an observable change (constraint #1). Splitting it (eager ordinal-only walk + lazy
    value capture) still walks O(F) for the ordinals, so there is no net win.

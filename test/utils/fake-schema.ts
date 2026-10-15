@@ -10,7 +10,7 @@ import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-cor
  *
  * Usage:
  *   const schema = fakeSchema<MyForm>({ user: { name: 'alice', age: 30 } })
- *   const state = createFormStore({ formKey: 'test', schema })
+ *   const state = createFormStore({ formKey: 'test', ...schemaOptions(schema) })
  *
  * This schema:
  * - Accepts any form shape; no validation rules.

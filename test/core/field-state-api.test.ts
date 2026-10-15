@@ -7,13 +7,14 @@ import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
 import { createDomBinding } from '../../src/runtime/core/dom-binding'
 import { canonicalizePath } from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 type F = { email: string; profile: { name: string } }
 
 function makeAccessor() {
   const state = createFormStore<F>({
     formKey: 'fs',
-    schema: fakeSchema<F>({ email: 'initial@x', profile: { name: '' } }),
+    ...schemaOptions(fakeSchema<F>({ email: 'initial@x', profile: { name: '' } })),
   })
   // Stub out `getFormMetaBase`; these tests assert the underlying
   // field aggregation, not the derived display props. The predicate
@@ -312,10 +313,12 @@ describe('buildFieldStateAccessor: container aggregation', () => {
   function makeContainerAccessor() {
     const state = createFormStore<C>({
       formKey: 'cont',
-      schema: fakeSchema<C>({
-        pickup: { city: '', zip: '' },
-        delivery: { city: '' },
-      }),
+      ...schemaOptions(
+        fakeSchema<C>({
+          pickup: { city: '', zip: '' },
+          delivery: { city: '' },
+        })
+      ),
     })
     // Stub out `getFormMetaBase`; container-aggregation coverage here
     // asserts the base rollup, not the derived display props. Real-form

@@ -25,8 +25,9 @@
  *   clone     structuralSnapshot(schemaInitialData)            NON-deferrable
  *             per-instance isolation before form.value is exposed.
  *   walk      diffAndApply({}, schemaInitialData)              load-bearing
- *             seeds `originals` (the dirty baseline) AND `pathOrdinals` in
- *             schema-declaration order in ONE pass (`seedOriginalsFromBaseline`).
+ *             seeds `originals` (the dirty baseline), `pathOrdinals` in
+ *             schema-declaration order and, without hydration, the field
+ *             records, in ONE pass.
  *             pathOrdinals drives form.meta.errors SORT order, so deferring this
  *             walk would reorder meta.errors (observable), non-deferrable
  *             without a separate O(F) ordinal walk (no net win).

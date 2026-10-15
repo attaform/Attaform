@@ -10,6 +10,7 @@ import type {
   ValidationResponse,
 } from '../../src/runtime/types/types-api'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Drain the microtask queue + a Vue tick until the reactive validate()
@@ -46,7 +47,7 @@ describe('buildProcessForm', () => {
   function alwaysValid() {
     return createFormStore<Signup>({
       formKey: 'pf',
-      schema: fakeSchema<Signup>({ email: 'a@b', password: 'secret1!' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: 'a@b', password: 'secret1!' })),
     })
   }
 
@@ -65,7 +66,7 @@ describe('buildProcessForm', () => {
     })
     return createFormStore<Signup>({
       formKey: 'pf',
-      schema: fakeSchema<Signup>({ email: '', password: '' }, validator),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' }, validator)),
     })
   }
 
@@ -179,7 +180,7 @@ describe('buildProcessForm', () => {
       }
       const state = createFormStore<Signup>({
         formKey: 'pf',
-        schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
+        ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' }, throwingValidator)),
       })
       const { parse } = buildProcessForm(state)
 
@@ -227,7 +228,7 @@ describe('buildProcessForm', () => {
       }
       const state = createFormStore<Signup>({
         formKey: 'pf',
-        schema: fakeSchema<Signup>({ email: '', password: '' }, throwingValidator),
+        ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' }, throwingValidator)),
       })
       const { parse } = buildProcessForm(state)
 
@@ -570,7 +571,7 @@ describe('buildProcessForm', () => {
         releaseValidate = resolve
       })
       const schema = fakeSchema<Signup>({ email: '', password: '' }, async () => validatePromise)
-      const state = createFormStore<Signup>({ formKey: 'pf', schema })
+      const state = createFormStore<Signup>({ formKey: 'pf', ...schemaOptions(schema) })
       const { handleSubmit } = buildProcessForm(state)
 
       // Start a submit; awaits validation.
@@ -604,7 +605,7 @@ describe('buildProcessForm', () => {
         releaseValidate = resolve
       })
       const schema = fakeSchema<Signup>({ email: '', password: '' }, async () => validatePromise)
-      const state = createFormStore<Signup>({ formKey: 'pf', schema })
+      const state = createFormStore<Signup>({ formKey: 'pf', ...schemaOptions(schema) })
       const { handleSubmit } = buildProcessForm(state)
 
       const submitPromise = handleSubmit(async () => {})()

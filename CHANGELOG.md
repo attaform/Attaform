@@ -140,6 +140,18 @@
   a nested parse inside a `superRefine` spend their time there and show
   no measurable change. (#691)
 
+- **A form derives its schema's defaults once.** Building a form read
+  the schema's defaults up to three times: to find the number fields
+  that start blank, to fill the gaps in `defaultValues`, and for the
+  starting value. It now derives them once and shares them, and a form
+  with no `defaultValues` starts from them directly. Recording each
+  field's starting value and its field state takes one pass of the form
+  instead of two. On the same wizard with plain leaves, building and
+  server-rendering got 8-18% faster on Zod v3 and on Zod v4 schemas
+  built once and reused. A `.default(() => ...)` function now runs once
+  per form built, and a number field it starts at `0` is shown blank
+  exactly when it holds that `0`. (#691)
+
 ## v0.30.1
 ### Fixed
 

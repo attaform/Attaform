@@ -12,6 +12,8 @@
  *   form on a schema shares. `validateSync` is the construction verdict, so
  *   with `rootRefine` it shows whether a verdict was asked for and whether
  *   it parsed.
+ * - `rootDerives`: derivations of the schema's root default, read off the
+ *   same spies: every `getDefaultValues`, and a `getDefaultAtPath([])`.
  * - `rootWalks`: schema walks that visit the root node.
  *
  * Each count is taken at up to three moments: `mounted` (synchronously
@@ -127,6 +129,7 @@ type Moment = {
   validateSync: number
   getDefaultAtPath: number
   getEmptyValueAtPath: number
+  rootDerives: number
   rootWalks: number
 }
 
@@ -154,7 +157,18 @@ function instrument(adapter: Adapter, fixture: Fixture): Instrumented {
   const abstractSchema = adapter.zodAdapter(schema)('construction-work', {
     maxRecursionDepth: DEFAULT_MAX_RECURSION_DEPTH,
   })
-  const spies = SPIED_METHODS.map((method) => vi.spyOn(abstractSchema, method))
+  // Root derives are counted as each call arrives: the structural merge
+  // passes its live scratch path, which reads `[]` again once it returns.
+  const derives = { root: 0 }
+  const spies = SPIED_METHODS.map((method) => {
+    const original = abstractSchema[method].bind(abstractSchema)
+    return vi.spyOn(abstractSchema, method).mockImplementation((arg: any) => {
+      const derivesRoot =
+        method === 'getDefaultAtPath' ? arg.length === 0 : method === 'getDefaultValues'
+      if (derivesRoot) derives.root += 1
+      return original(arg)
+    })
+  })
   return {
     schema,
     abstractSchema,
@@ -165,6 +179,7 @@ function instrument(adapter: Adapter, fixture: Fixture): Instrumented {
       validateSync: spies[3]?.mock.calls.length ?? 0,
       getDefaultAtPath: spies[1]?.mock.calls.length ?? 0,
       getEmptyValueAtPath: spies[2]?.mock.calls.length ?? 0,
+      rootDerives: derives.root,
       rootWalks: rootWalkCounts.get(schema) ?? 0,
     }),
   }
@@ -179,6 +194,7 @@ function since(base: Moment, now: Moment): Moment {
     validateSync: now.validateSync - base.validateSync,
     getDefaultAtPath: now.getDefaultAtPath - base.getDefaultAtPath,
     getEmptyValueAtPath: now.getEmptyValueAtPath - base.getEmptyValueAtPath,
+    rootDerives: now.rootDerives - base.rootDerives,
     rootWalks: now.rootWalks - base.rootWalks,
   }
 }
@@ -191,6 +207,7 @@ function sum(moments: readonly Moment[]): Moment {
     validateSync: 0,
     getDefaultAtPath: 0,
     getEmptyValueAtPath: 0,
+    rootDerives: 0,
     rootWalks: 0,
   }
   for (const m of moments) {
@@ -200,6 +217,7 @@ function sum(moments: readonly Moment[]): Moment {
     total.validateSync += m.validateSync
     total.getDefaultAtPath += m.getDefaultAtPath
     total.getEmptyValueAtPath += m.getEmptyValueAtPath
+    total.rootDerives += m.rootDerives
     total.rootWalks += m.rootWalks
   }
   return total
@@ -368,13 +386,20 @@ async function wizard(adapter: Adapter): Promise<Record<string, unknown>> {
 }
 
 /**
- * One construction's derivation calls into the root AbstractSchema: one
- * starting-value derivation, the per-path default lookups of the structural
- * merge and the unset-sentinel walk, and the blank baseline the
+ * One construction's derivation calls into the root AbstractSchema: the
+ * schema's defaults, derived once and shared; the starting value derived
+ * over the fixture's `defaultValues`; the per-path default lookups below
+ * the root, one in the unset-sentinel walk (`address`) and one in the
+ * structural merge (the `tags` element); and the blank baseline the
  * authored-path diff reads. The verdict (`validateSync`) is pinned per row.
  */
-const DERIVE = { getDefaultValues: 1, getDefaultAtPath: 4, getEmptyValueAtPath: 1 }
-const DERIVE_4 = { getDefaultValues: 4, getDefaultAtPath: 16, getEmptyValueAtPath: 4 }
+const DERIVE = { getDefaultValues: 2, getDefaultAtPath: 2, getEmptyValueAtPath: 1, rootDerives: 2 }
+const DERIVE_4 = {
+  getDefaultValues: 8,
+  getDefaultAtPath: 8,
+  getEmptyValueAtPath: 4,
+  rootDerives: 8,
+}
 
 /**
  * The current counts, keyed `mode/fixture`, then adapter. Lower a number in
@@ -410,6 +435,16 @@ const DERIVE_4 = { getDefaultValues: 4, getDefaultAtPath: 16, getEmptyValueAtPat
  *   walks twice, the second walk being `syncSafe`'s one-time promise-safe
  *   rebuild of the schema for its sync parses (6 -> 2, wizard 20 -> 8),
  *   and a hydrating one once.
+ * - P4, the schema's defaults derived once per construction: the
+ *   unset-sentinel walk and the structural merge each derived the root
+ *   default, and the starting-value derivation derived it again. The
+ *   construction now derives it once, as `getDefaultValues` with no
+ *   constraints, and the walk and the merge read it (`rootDerives` 3 -> 2,
+ *   wizard 12 -> 8). That moves one call from `getDefaultAtPath` to
+ *   `getDefaultValues`: `getDefaultValues` 1 -> 2, `getDefaultAtPath`
+ *   4 -> 2, the two left resolving paths below the root. A form given no
+ *   `defaultValues` derives once where it derived twice, since its
+ *   starting value IS the schema's defaults.
  */
 const PINNED: Record<string, Record<AdapterName, unknown>> = {
   'fresh/plain': {

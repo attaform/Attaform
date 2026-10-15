@@ -696,9 +696,10 @@ Three reads:
    _redundant_ second pass. **Correction (#691):** this read first classed the whole cell as
    non-deferrable, on the premise that the parse produces `form.value`. It does not. Nothing
    needs the verdict until the form's error state is read, and a hydrating client, which
-   replays `schemaErrors` from the payload, parses and discards it. The #691 construction
-   program measures that half with `bench/construction.bench.ts` and
-   `scripts/construction-ab.mjs`. The clone is per-instance isolation before `form.value` is
+   replays `schemaErrors` from the payload, parses and discards it. #691 splits the two:
+   `getDefaultValues` derives and `validateSync` renders the verdict, so the cell above, measured
+   before the split, sums both. The program measures the verdict half with
+   `bench/construction.bench.ts` and `scripts/construction-ab.mjs`. The clone is per-instance isolation before `form.value` is
    exposed, non-deferrable.
 2. **The originals walk is load-bearing, not deferrable.** `diffAndApply({}, schemaInitialData)`
    seeds `originals` (the dirty baseline) AND `pathOrdinals` in schema-declaration order in ONE

@@ -14,8 +14,8 @@ import type { GenericForm } from '../../src/runtime/types/types-core'
  * numeric leaves; the setValue-time `substituteUnsetSentinels` trusts
  * the caller's shape and does neither) plus the contracts they SHARE
  * (explicit-unset expansion, DU stubbing, reference stability). Guards
- * the shared-core refactor that folds both onto one walker behind a
- * `synthesizeSchemaKeys` flag.
+ * the shared core both run on, which takes a synthesis context at the
+ * construction boundary and `null` at the setValue one.
  */
 function adapterFor(schema: z.ZodObject): AbstractSchema<GenericForm, GenericForm> {
   return zodV4Adapter(schema)('f', {

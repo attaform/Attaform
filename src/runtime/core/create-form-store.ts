@@ -3531,9 +3531,10 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // applies to a bad-disc write, and dev-warns once per bad path.
   //
   // One clone walk total: on a DU-carrying schema the stub rebuild is itself a
-  // fresh tree, so the snapshot above stays the pre-stub view that field
-  // records seed from and the stub pass produces the storage tree. Without
-  // discriminated unions the snapshot IS the storage tree.
+  // fresh tree, so the stub pass produces the storage tree from the snapshot
+  // above. Without discriminated unions the snapshot IS the storage tree.
+  // Field records seed from the pre-stub baseline, `schemaInitialData`, in
+  // the construction walk below.
   const hasDU = schema.hasDiscriminatedUnions?.() !== false
   const stubbedInitialData = hasDU
     ? (applyDuStubs(schema as AbstractSchema<unknown, unknown>, initialData, {

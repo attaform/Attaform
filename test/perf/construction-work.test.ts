@@ -22,9 +22,11 @@
  * microtasks drained). Every moment counts from just before the measured
  * construction, so a `warm` form's numbers exclude the form that warmed it.
  *
- * The numbers pin TODAY's work exactly. The #691 phases ratchet them down,
- * each editing a number only to lower it, in the commit that earns the
- * drop. A rise is a construction regression.
+ * The numbers pin TODAY's work exactly. The #691 phases ratchet them down
+ * in the commit that earns the drop. A rise is a construction regression
+ * unless that commit gives its reason; the history above `PINNED` lists
+ * each one, including a call that moved from one column to another while
+ * the work it counts fell.
  *
  * How each counter attaches, with no production hooks:
  * - Refinement runs, through the fixture's own `superRefine`s. A spy on
@@ -403,7 +405,7 @@ const DERIVE_4 = {
 
 /**
  * The current counts, keyed `mode/fixture`, then adapter. Lower a number in
- * the commit that earns it. A rise is a construction regression; the one
+ * the commit that earns it. A rise is a construction regression; each one
  * taken so far is listed below with its reason.
  *
  * What they showed on `main` (cf1d4638):

@@ -112,60 +112,42 @@
 
 ### Performance
 
-- **A client hydrating server-rendered state no longer validates its
-  forms a second time.** The server's verdict arrives in the payload and
-  replaces whatever construction computed, so every form parsed its
-  starting value only to throw the result away. That parse is gone. On a
-  10-step wizard of 30-field pages, in production builds, hydrating got
-  56-58% faster on Zod v4 and 28-36% faster on Zod v3 with plain leaves,
-  and 16-36% faster with leaves that run a nested parse inside a
-  `superRefine`. `reset()` likewise validates the restored values once
-  instead of twice. (#691)
-
-- **A Zod v4 schema's first validation skips the JIT compile.** Zod
-  compiles a fast path on an object schema's first synchronous parse,
-  which costs more than that one parse, so a schema built at runtime for
-  each mount paid for a compile it never used again. The construction
-  verdict now parses a schema's first time without compiling, and
-  compiles once the schema comes back. Building or server-rendering the
-  same wizard from freshly built schemas got 17-29% faster. (#691)
-
-- **A schema is walked once to learn what it holds.** Before it
-  validates anything, Attaform asks a schema whether it holds an async
-  refine or transform, a discriminated union, or a check on a container.
-  Each answer was its own walk of the schema, and some were asked again
-  for every form built on it. One walk now answers them all, once per
-  schema. On the same wizard with plain leaves, building and
-  server-rendering got 11-26% faster on both Zod majors; leaves that run
-  a nested parse inside a `superRefine` spend their time there and show
-  no measurable change. (#691)
-
-- **A form derives its schema's defaults once.** Building a form read
-  the schema's defaults up to three times: to find the number fields
-  that start blank, to fill the gaps in `defaultValues`, and for the
-  starting value. It now derives them once and shares them, and a form
-  with no `defaultValues` starts from them directly. Recording each
-  field's starting value and its field state takes one pass of the form
-  instead of two. On the same wizard with plain leaves, building and
-  server-rendering got 8-18% faster on Zod v3 and on Zod v4 schemas
-  built once and reused. A `.default(() => ...)` function now runs once
-  per form built, and a number field it starts at `0` is shown blank
-  exactly when it holds that `0`. (#691)
-
 - **A form validates its starting value when something first reads
-  it.** Building a form ran the schema over its starting value at once,
-  so a wizard paid for every step at mount, whichever one was on
-  screen. The check now runs the first time anything reads or writes
-  the form's errors (a template, `form.meta.valid`, a step rail, the
-  server serializing the page), and a form nothing reads never runs
-  it. Every read sees the verdict it saw before. On the same 10-step
-  wizard, with no step's errors read, building got 37-54% faster on
-  both Zod majors; a wizard whose rail reads every step's validity
-  builds as fast as before. A refinement's side effects, a log line or
-  a dev warning, now happen at that first read rather than inside
-  `useForm`. A Zod v3 schema with a refine runs its post-mount check
-  either way, and a form nothing reads before that check now skips the
-  first verdict, which the check replaces. (#691)
+  it, and building one does less work.** Building a form ran the
+  schema over its starting value at once, so a wizard paid for every
+  step at mount, whichever one was on screen. The check now runs the
+  first time anything reads or writes the form's errors (a template,
+  `form.meta.valid`, a step rail, the server serializing the page), and
+  a form nothing reads never runs it. Every read sees the verdict it
+  saw before. Around it, a schema is walked once to learn what it holds
+  (an async refine or transform, a discriminated union, a check on a
+  container), where each question was its own walk asked again for
+  every form; a form derives its schema's defaults once, where it
+  derived them up to three times; and a Zod v4 schema's first
+  validation skips the fast path Zod compiles on a first parse, which
+  cost more than the parse for a schema built per mount. On a 10-step
+  wizard of 30-field pages, in production builds, building the forms on
+  the client got 39-70% faster with no step's errors read, and
+  server-rendering them got 16-44% faster. With a step rail reading
+  every step's validity and leaves that run a nested parse inside a
+  `superRefine`, building got 12-23% faster on schemas built per
+  mount. (#691)
+
+  A refinement's side effects, a log line or a dev warning, now happen
+  at that first read rather than inside `useForm`. A `.default(() => ...)` function runs once per form built,
+  and a number field it starts at `0` is shown blank exactly when it
+  holds that `0`. `reset()` validates the restored values once instead
+  of twice. A Zod v3 schema with a refine runs its post-mount check
+  either way, and a form nothing reads before that check skips the
+  first verdict, which the check replaces.
+
+- **A client hydrating server-rendered state no longer validates its
+  forms.** The server's verdict arrives in the payload, so every form
+  parsed its starting value only to throw the result away. That parse
+  is gone. On the same
+  wizard, hydrating got 34-68% faster with plain leaves and 13-38%
+  faster with leaves that run a nested parse inside a `superRefine`.
+  (#691)
 
 ## v0.30.1
 ### Fixed

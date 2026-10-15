@@ -12,6 +12,10 @@ What this file is now: the measured evidence behind the guards that shipped.
 cite rows here by name (T4, P1, P2, P3, P4, P5, Bust 3), so the section
 headings are load-bearing anchors. Keep them.
 
+Section 4 records a later program on construction cost (#691, 2026-10), which
+reopened the construction verdict P4 had classed as irreducible, and holds its
+decision memo on the API options the issue raised.
+
 Bundle size was out of scope: that problem has its own program, in
 `SIZE-TEARDOWN.md`. This one covered wall-clock, allocations, render work and
 SSR/hydration cost.
@@ -65,7 +69,9 @@ cross-product of **scenarios x lifecycle phases**, capturing **four metrics** pe
 | S8  | **production-anchor** | Cubic Housing worst-case (TBD)          | real-world truth, audit story                  |
 
 > **Open:** S8 shape needs a real number from Cubic Housing (rough field count +
-> depth + arrays). Until then S2/S3 stand in as synthetics.
+> depth + arrays). Until then S2/S3 stand in as synthetics. For construction,
+> #691's `cubic` shape in `bench/lib/construction-forms.ts` (leaves whose
+> `superRefine` runs a nested parse, a rail reading every step) stands in.
 
 ### Lifecycle phases (measured per scenario)
 
@@ -100,7 +106,7 @@ information-theoretic floor for that operation.
 | P1  | Per-keystroke alloc churn (fresh `FieldValidationEntry` + `AbortController`)                     | `create-form-store.ts:2603-2604`            | new objects every keystroke, no pool              | reuse per-field entry                     | free / internal                           | ~2.88µs/keystroke removed                    | B SHIPPED (flag); A declined                                                                                                      |
 | P2  | Repeated walks (guard `getAtPath`, blur-dedup snapshot clones taken even when dedup can't apply) | `create-form-store.ts:2093-2116, 2693-2696` | redundant O(D)/O(scope) work                      | conditional                               | free / internal                           | guard ~0.32µs; clone CORE-P1a-scoped         | closed, non-prize                                                                                                                 |
 | P3  | Over-render (components re-render on unchanged slice)                                            | `field-state-api.ts:581`; `:1478`           | O(F) renders/keystroke (×2 on validateOn:change)  | O(1) for default predicate                | behavior-adjacent (formMeta contract)     | F× → 0 siblings/keystroke (fields)           | BUSTED 2026-06-09 (lazy formMeta + own-key blank)                                                                                 |
-| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | ~1.5% init; relocates onto keystroke         | closed, non-prize                                                                                                                 |
+| P4  | Deferrable init work beyond eager-optional bytes                                                 | init path                                   | unknown                                           | lazy-on-interaction                       | free / internal                           | ~1.5% init; relocates onto keystroke         | closed, non-prize; superseded by #691 (section 4)                                                                                 |
 | P5  | SSR per-field render cost at scale (exposed v3 `register()` O(F)/call → O(F²) wiring)            | `zod-v3/index.ts:1532` slim walk            | whole-root slim re-projection per path call       | memoise slim-projected root by identity   | free / internal                           | v3 wiring O(F²)→O(F); ~80×/call @F=500       | BUSTED 2026-06-09 (v3 slim-root memo)                                                                                             |
 
 > **Measured (matrix profile complete, 2026-06-09; T5 resolved 2026-06-10):** every
@@ -733,10 +739,21 @@ first use. The eager remainder P4 examined is either irreducible (derivation + c
 produce `form.value`, observed at the first SSR render) or load-bearing (the originals walk
 seeds declaration-order ordinals), and the deferrable slice it set out to size (authored-paths
 derivation) relocates onto the optimized keystroke path rather than eliminating work. The
-verdict parse beside the derivation is the exception read 1 corrects, and #691 takes it up.
+verdict parse beside the derivation is the exception read 1 corrects, and #691 deferred it
+(the superseding note below).
 `bench/init-decomposition.bench.ts` stands as the standing artifact and the documented map of
 where cold-construction time goes (the verdict parse, on both adapters, context for the
 banked-wins synthesis). The keystroke prizes banked remain T2 + T3 + P1 + P3.
+
+**Superseded by #691 (2026-10-15).** The non-prize verdict stands for the slices P4 sized, and
+not for construction as a whole. Its premise, that the eager remainder is irreducible, missed
+the construction verdict: the largest single cost in a profiled wizard build on `main`
+(cf1d4638), at about 40%. A hydrating client ran it only to replace its result with the
+server's, and nothing needs it before something reads the form's errors. #691 removed it from
+hydration (P2) and moved it to the first read or write of the form's errors (P5), so a form
+nothing reads never runs it. Reads 2 and 3 hold: the originals walk still seeds
+declaration-order ordinals at construction, and the authored-paths derivation is unchanged.
+Section 4 has the numbers.
 
 ### P5 measurement + bust: SSR emission floor, and a v3 form-wiring quadratic (2026-06-09)
 
@@ -934,7 +951,7 @@ non-action, each with its evidence retained as a standing artifact:
   byte-identical-required residual.
 - **P4: non-prize for the slice it sized.** Init is dominated by `getDefaultValues`, whose
   derivation produces the `form.value` SSR renders immediately and whose construction verdict
-  parse does not (P4 read 1 carries that correction; #691 takes the verdict up). The
+  parse does not (P4 read 1 carries that correction; #691 deferred the verdict, section 4). The
   `originals` walk is load-bearing (seeds declaration-order ordinals that drive `meta.errors`
   sort), and the authored-paths slice (~1.5% of init) merely relocates onto the just-optimized
   keystroke path.
@@ -996,3 +1013,233 @@ cost.
 The four governing constraints above still hold for any future perf work on
 Attaform, in particular the fourth: a bust ships with a standing benchmark guard
 AND a behavior lock, or it is not done.
+
+---
+
+## 4. Construction cost program (#691, 2026-10)
+
+Issue #691 reported that `useForm()` pays for its whole schema at construction,
+so a wizard that builds one form per step pays for every step before the first
+is on screen. It came from Cubic Housing's performance audit, where the
+application page's wizard held a 6x-throttled phone's main thread for 779 ms on
+load. This section records what construction spent, what each phase removed,
+the numbers on production builds, and the decision memo for the API options the
+issue raised. It supersedes P4's reading of the construction verdict as
+irreducible (see the note at the end of P4).
+
+### Where construction went (`main`, cf1d4638)
+
+A jsdom CPU profile of a 10-form wizard of 30-field pages, schemas built per
+mount, Zod v4:
+
+| share     | work                                                                                                                                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| about 40% | the construction verdict, one synchronous parse of the starting value that seeds the schema side of the form's errors; about half of it was Zod compiling its fast path on the schema's first parse                |
+| about 25% | value walks: the unset pre-pass derived the schema's defaults at every object node, the structural merge derived the root again, and two walks with the same patch sequence seeded the originals and field records |
+| about 17% | capability walks: up to five full walks of the schema per construction, two of them repeated unmemoized beside a memoized pair                                                                                     |
+| about 5%  | deriving the starting value itself                                                                                                                                                                                 |
+
+A hydrating client ran the verdict too, then replaced it with the server's from
+the payload.
+
+### What each phase changed
+
+Each phase's A/B ran `scripts/construction-ab.mjs` on production builds
+against the commit the phase started from, 9 runs; the full tables are in the
+commit bodies.
+
+| phase | commits                      | change                                                                                                                                                                            | A/B against the phase's start                                                                  |
+| ----- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| P0    | da9d0284                     | the behavior lock snaps every form at its first synchronous read too, over ten new scenarios; construction work counters (`test/perf/construction-work.test.ts`)                  | (none)                                                                                         |
+| P1    | d74903fe, ce903ba4, 05878e7b | `bench/construction.bench.ts` and `scripts/construction-ab.mjs`; stale construction-verdict claims corrected                                                                      | (none)                                                                                         |
+| P2    | 5b62e976                     | `AbstractSchema` split: `getDefaultValues` derives, `validateSync` validates; a hydrating client asks for no verdict, and a Zod v4 schema's first construction parse runs jitless | hydrate -16 to -58% on every row; fresh v4 client and server -17 to -29%                       |
+| P3    | 9524f84f                     | one memoized capability walk per root schema (`capabilitiesOf`)                                                                                                                   | issue shape client and server -11 to -26%, both majors; cubic shape within noise               |
+| P4    | 48287c68                     | the schema's defaults derived once per construction; originals and field records seeded in one walk                                                                               | issue shape client and server -8 to -18% (v3, and v4 cached); cubic shape within its spread    |
+| P5    | 9ed71b98                     | the verdict runs at the first read or write of the form's errors, so a form nothing reads never runs it                                                                           | nothing read: client -37 to -54%, both majors; a rail reading every step: no change past noise |
+| fixes | 882a00f4, 59bb3fa4, 474b2207 | Zod v3: a pipeline's output side runs in sync verdicts, and a refine on a `z.map` counts as a container refine; Zod v4: a field with an async transform waits for the first pass  | (behavior fixes, found on the way)                                                             |
+
+### `main` against HEAD
+
+`scripts/construction-ab.mjs`, production builds of `main` (cf1d4638) and the
+branch (0372f2bf; later commits change prose only), 9 runs of 20 alternating
+rounds, a 10-step wizard of 30-field pages. Each cell is base → head in ms (the
+median across runs of each side's fastest round), then the median per-run
+change and, in parentheses, its interquartile spread in percentage points. The
+change is the figure to read: it pairs rounds from the same stretch of machine
+time, which the two medians do not.
+
+| scenario        | client                   | server                   | hydrate                  |
+| --------------- | ------------------------ | ------------------------ | ------------------------ |
+| issue v4 fresh  | 6.64 → 2.05, -70.4% (4)  | 6.73 → 3.78, -44.1% (2)  | 6.30 → 2.03, -67.7% (3)  |
+| issue v4 cached | 2.82 → 0.96, -65.8% (6)  | 2.71 → 2.21, -18.2% (10) | 2.50 → 1.11, -58.4% (8)  |
+| issue v3 fresh  | 2.82 → 1.15, -59.7% (6)  | 2.67 → 2.33, -15.9% (20) | 2.44 → 1.21, -50.6% (2)  |
+| issue v3 cached | 1.88 → 1.08, -38.7% (19) | 1.87 → 1.36, -29.0% (8)  | 1.58 → 1.00, -33.7% (14) |
+| cubic v4 fresh  | 5.44 → 4.35, -23.1% (7)  | 5.54 → 4.20, -18.5% (11) | 6.35 → 3.53, -38.0% (41) |
+| cubic v4 cached | 4.29 → 3.86, -0.8% (13)  | 3.76 → 3.61, -2.6% (16)  | 3.78 → 3.12, -16.6% (13) |
+| cubic v3 fresh  | 3.54 → 3.24, -12.0% (8)  | 3.44 → 3.41, -5.5% (6)   | 3.12 → 2.62, -13.1% (10) |
+| cubic v3 cached | 3.64 → 3.21, -9.5% (5)   | 3.48 → 3.08, -6.3% (8)   | 3.42 → 2.75, -16.2% (17) |
+
+`issue` is #691's reproduction: six leaf kinds, no `defaultValues`, and a page
+that reads no form's errors at mount. `cubic` is the reporting application's
+shape: every leaf a `z.string()` whose `superRefine` runs a nested `safeParse`,
+complete blank `defaultValues`, and a step rail reading every step's validity,
+so every form is read at mount. `fresh` builds the schemas per mount, `cached`
+builds them once (`bench/lib/construction-forms.ts`).
+
+Five reads:
+
+1. **The control held.** `buildMs`, Zod's own schema building and identical
+   code on both sides, moved -1.1% to +1.6%. A row inside its own spread, or
+   within a few points of zero, has not moved.
+2. **A form nothing reads costs 39-70% less to build on the client.** The
+   verdict is gone from it, and the walks and derivations behind it shrank.
+3. **Hydrating costs 34-68% less (issue) and 13-38% less (cubic).** The
+   verdict a hydrating client used to discard is gone. The cubic v4 fresh row,
+   the shape of the audited page, has a wide spread (41pp); P2's own A/B put
+   the same row at -36%.
+4. **The server still validates every form**, since serializing the page reads
+   each form's errors, so its 16-44% (issue) comes from the walks, the
+   derivations and v4's jitless first parse.
+5. **The cubic shape reads every form at mount**, so it keeps every verdict on
+   the client and the server, and most of its time is the nested parse inside
+   each leaf's `superRefine`, which is the consumer's schema. Fresh v4 schemas
+   gain 18-23% from the jitless first parse and the walks; v4 cached client and
+   server rows sit within noise.
+
+One cost did not move: the cubic v3 rows drain 4.0-4.2 ms after mounting on
+both sides. Zod v3 flags every `.refine` as async, so a refined v3 form runs a
+post-mount async pass whether or not anything reads it. Since P5 that pass is
+the form's only construction parse, but on this shape it costs more than
+building the forms.
+
+### Work counters, `main` against HEAD
+
+`test/perf/construction-work.test.ts`, issue-style leaves; the `refined`
+fixture adds a counting `superRefine` on the root and on one leaf, so its root
+runs count verdict parses.
+
+| per construction                                       | Zod v4 | Zod v3                                                            |
+| ------------------------------------------------------ | ------ | ----------------------------------------------------------------- |
+| verdict parses, refined form nothing reads             | 1 → 0  | 2 → 1 (the post-mount async pass)                                 |
+| verdict parses, refined form on a hydrating client     | 1 → 0  | 2 → 1 (the same pass)                                             |
+| verdict parses, 4-step refined wizard reading one step | 4 → 1  | 8 → 4 (one async pass per step)                                   |
+| root walks, a schema's first form                      | 5 → 1  | 4-5 → 1, and 2 once read (the sync-safe copy a v3 verdict parses) |
+| root walks, a schema already used                      | 2 → 0  | 1 → 0                                                             |
+| root default derivations, form with `defaultValues`    | 3 → 2  | 3 → 2                                                             |
+
+### What the program left behind
+
+- `bench/construction.bench.ts` (dev build, trends) and
+  `scripts/construction-ab.mjs` (production builds, interleaved A/B, with a
+  `--profile` mode) over the shapes in `bench/lib/construction-forms.ts`.
+- The construction work counters above, which fail on any rise a commit does
+  not explain.
+- The behavior lock's first-read goldens, which snap every scenario
+  synchronously after mount as well as settled, on both adapters.
+- `test/composables/lazy-construction-verdict.test.ts`, which pins that writes,
+  array moves, `reset()` and `setErrors` before the first read leave the state a
+  form read at mount shows, and that the deferred verdict validates the pristine
+  starting value.
+
+### Decision memo: the API options #691 raised
+
+#691 also proposed four API-level levers. None shipped: each changes what a
+consumer writes or sees, so each is a decision for the maintainer rather than a
+refactor. Each is sized here against the code as it now stands, with one
+recommendation.
+
+**1. Dormant forms, or on-demand wizard steps.** A form declared at setup but
+built only when something first touches it (`useForm({ dormant: true })`), or
+a wizard slot that builds its step's form on the first visit.
+
+- _What it would save._ After P5 an unread form no longer validates, so a
+  dormant form saves only the rest of construction: 0.96-2.05 ms for the
+  10-form issue wizard on Zod v4 (cached and fresh schemas) and 1.08-1.15 ms on
+  v3, about 0.1-0.2 ms per 30-field form on the measuring machine. A profile of
+  an unread form (issue, v4, cached) splits that across producing what any read
+  needs: the derived starting value (13%), the walk that seeds originals and
+  field records (22%), the authored-paths derivation (12%), `buildFormApi`
+  (13%), and the store's reactive state.
+- _What it would cost._ Every read wakes a dormant form: rendering a field,
+  `form.values`, a rail's `valid`, a merged payload. The server serializes
+  every form and a hydrating client takes every form's state from the payload,
+  so on a server-rendered page every form wakes at once. It pays only for a
+  client-built form that nothing renders or reads, and it adds a state that
+  every entry point, the registry, devtools and `injectForm` must honour.
+- **Recommendation: no API.** The saving is a fraction of a millisecond per
+  form, and a step whose form need not exist before it is visited can already
+  build it in the step's own component. An internal cut reaches part of the
+  same work for every form, read or not, with no API: every read of the
+  authored-paths set is gated on `isPreprocessOrCoerceLeaf`, so a schema with
+  no preprocess or coerce leaf (one more bit in the memoized capability
+  record) never needs the set derived.
+
+**2. A schema thunk** (`useForm({ schema: () => buildSchema() })`), building
+the schema only when the form needs it.
+
+- _What it would save._ Construction derives the starting value from the
+  schema, and the first render shows that value, so a form that is built needs
+  its schema at once: a thunk defers the build only for a form that is never
+  built, which is option 1. The build is not small: one set of the 10 issue
+  pages costs 6.17 ms to build on Zod v4 (0.86 ms on v3), three times the
+  2.05 ms Attaform now spends building forms from them. What decides that cost
+  is how often a runtime-compiled schema is compiled: the same wizard on
+  schemas built once rather than per mount skips the build and constructs in
+  0.96 ms instead of 2.05 ms on v4 (issue, client).
+- **Recommendation: no thunk.** Cache a runtime-compiled schema by the
+  identity of its source (a `WeakMap` keyed by the spec object), so a remount
+  reuses the schema, Zod's compiled fast path and Attaform's per-schema memo
+  together. A short note on the dynamic-schemas docs page saying so is the
+  follow-up.
+
+**3. A "pending" validity for status rails.** `wizard.statuses[key].valid` and
+`meta.valid` reading a third state until the step's form has been validated, so
+a rail renders without forcing every step's verdict.
+
+- _What it would save._ On a server-rendered page, nothing: the server
+  serializes every form's errors, which runs every verdict, and since P2 the
+  hydrating client runs none, so the rail reads known validity for free. On a
+  client-built page (client-side navigation) the rail's reads are 54% of
+  mounting the cubic v4 fresh wizard in a CPU profile. The verdict is about a
+  quarter of that read; the rest aggregates each leaf's errors, checks each
+  path for async work through a sub-schema scan that is not memoized on a
+  fresh schema (P3 measured a per-node memo as a loss there), and reads
+  pristine state.
+- _What it would cost._ `valid` stops being a boolean on every form, and every
+  `if (!form.meta.valid)` in consumer code changes meaning. The same URL would
+  render its rail two ways, known on a server-rendered load and pending after
+  client-side navigation, and the rail would repaint as verdicts land.
+- **Recommendation: no pending state.** Make the validity read cheaper
+  instead, which keeps `valid` a boolean and helps every rail: the per-path
+  async check can ask the root's memoized capability record first and skip the
+  scan when the root holds no async work.
+
+**4. Dev-mode construction telemetry.** In the devtools inspector's Aggregates
+section (`core/devtools.ts`) and the Nuxt panel: the forms the registry has
+built, each form's schema leaf count, its construction time, and whether its
+starting-value check has run. All of it behind `__DEV__`.
+
+- _What it would cost._ Nothing in production: the shipped production build
+  and `check:eager` strip `__DEV__` code. In development, a `performance.now()`
+  pair and a counter per construction. Selecting a form in the inspector reads
+  its errors through `errorCells()`, which runs the deferred check, so the
+  telemetry has to read whether the check ran without running it.
+- **Recommendation: build it**, as a small follow-up. The audit behind #691
+  took a CPU profile to learn that a wizard built and validated every step at
+  mount; the inspector would have shown it.
+
+### Findings left for follow-ups
+
+- **Zod v3 bakes `.default(fn)` and `.catch(fn)`.** The promise-safe copy v3
+  parses synchronously (`zod-v3/strip-async.ts`) calls the consumer's factory
+  once and stores the value, so a v3 sync parse uses a frozen default. Passing
+  the original function through keeps it a factory.
+- **A refined Zod v3 form runs its post-mount async pass unread.** v3 cannot
+  tell a sync refine from an async one, so every form with a refine runs the
+  pass. On the cubic v3 shape it costs 4.0-4.2 ms per 10-step wizard, more than
+  building the forms.
+- **Two internal cuts, no API** (the memo's options 1 and 3): derive the
+  authored-paths set only for a schema with a preprocess or coerce leaf (12%
+  of an unread form's construction), and let the per-path async check consult
+  the root's memoized capabilities before scanning a sub-schema (7% of
+  mounting the cubic v4 fresh wizard). Each needs its own A/B.

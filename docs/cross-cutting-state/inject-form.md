@@ -198,6 +198,7 @@ Both resolution modes ref-count on the form's registry entry. In practice:
 - The form survives until every component that reached it unmounts.
 - Cleanup is automatic; no explicit dispose call from the consumer.
 - A form accessed only by `injectForm(key)` stays alive as long as at least one consumer is mounted, even if the original `useForm` owner unmounted first.
+- Components whose nearest `useForm`-calling ancestor is the same one share the form `injectForm` returns. In the example at the top, `ProfileFieldset.vue` and `StatusPill.vue` get the same form object, so a page of fields reaching one form builds one set of field state rather than one per field. That shared form lasts until the last of them unmounts. A component with no such ancestor, reaching a keyed form from elsewhere in the app, gets a form object of its own.
 
 ## When resolution fails
 

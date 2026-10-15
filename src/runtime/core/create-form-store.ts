@@ -1319,6 +1319,10 @@ function pathHasAsyncValidationByKey<F extends GenericForm, G extends GenericFor
   key: PathKey,
   segments: Path
 ): boolean {
+  // A sub-schema holds only async work its root holds, and the root's answer
+  // is a memoized lookup where a sub-schema's is a fresh walk. So a root that
+  // answers `false` answers for every path, with no candidate resolved.
+  if (st.schema.needsAsyncValidation?.() === false) return false
   const cached = st.pathAsyncCache.get(key)
   if (cached !== undefined) return cached
   // `getSchemasAtPath` returns every candidate sub-schema, DU variants and

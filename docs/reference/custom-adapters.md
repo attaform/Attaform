@@ -172,6 +172,8 @@ Resolves schema-attached metadata (label, description, placeholder, full payload
 
 Return `true` if `validateAtPath` may need a Promise to surface every error this schema can produce. The runtime uses this to decide whether to schedule a one-shot construction-time async pass.
 
+The runtime also asks it of the sub-schemas `getSchemasAtPath` returns, to learn whether a field's validity has to wait for that pass. A root that answers `false` answers for every path, so the runtime asks no sub-schema. Never answer `false` at the root when a sub-schema would answer `true`.
+
 ### `hasContainerOrRootRefine(): boolean` _(optional)_
 
 `true` when the schema holds a refinement above leaf level: a cross-field equality, a sum constraint, anything whose verdict a leaf write could move. The runtime uses it to decide whether a leaf write needs a whole-form pass or can validate the leaf alone, so it buys a scoped validation instead of a full one.

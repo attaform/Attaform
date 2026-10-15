@@ -9,13 +9,19 @@
  *   `setValue` and `reset()` record nothing. A schema with one keeps
  *   recording, and a verdict at a leaf the consumer authored with
  *   `undefined` still surfaces.
+ * - The per-path async check behind `valid`. A sub-schema holds only
+ *   async work its root holds, so a root with none answers for every
+ *   path and reading field state resolves no sub-schema. An async root
+ *   still resolves them, and its fields stay gated until the first
+ *   validation pass lands.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4, zodAdapter as zodAdapterV4 } from '../../src/zod-v4'
 import { useForm as useFormV3, zodAdapter as zodAdapterV3 } from '../../src/zod-v3'
+import { DEFAULT_MAX_RECURSION_DEPTH } from '../../src/runtime/core/defaults'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { getRegistryFromApp } from '../../src/runtime/core/registry'
 import { wait, waitUntil } from '../utils/form-harness'
@@ -30,6 +36,7 @@ type Adapter = (typeof ADAPTERS)[number]
 const apps: App[] = []
 afterEach(() => {
   while (apps.length > 0) apps.pop()?.unmount()
+  vi.restoreAllMocks()
 })
 
 let keySeq = 0
@@ -49,6 +56,13 @@ function mount(adapter: Adapter, schema: unknown, options: Record<string, unknow
   apps.push(app)
   const store: any = getRegistryFromApp(app).forms.get(key)
   return { api: handle.api, store }
+}
+
+/** The adapter's shared instance for `schema`, the one a form's store holds. */
+function sharedAbstract(adapter: Adapter, schema: unknown): any {
+  return adapter.zodAdapter(schema)('capability-gates', {
+    maxRecursionDepth: DEFAULT_MAX_RECURSION_DEPTH,
+  })
 }
 
 const INVALID_URL = '__invalid__'
@@ -102,6 +116,50 @@ for (const adapter of ADAPTERS) {
       api.setValue('url', undefined)
       await waitUntil(() => (api.errors.url.length > 0 ? true : null))
       expect(api.errors.url[0]?.message).toBe('Please enter a URL.')
+    })
+  })
+
+  describe(`${adapter.name}: the per-path async check`, () => {
+    const shape = () => ({
+      name: z.string().min(2),
+      address: z.object({ city: z.string(), zip: z.string().min(5) }),
+      tags: z.array(z.string()),
+    })
+
+    it('resolves no sub-schema when the root holds no async work', () => {
+      const schema = z.object(shape())
+      const abstract = sharedAbstract(adapter, schema)
+      const resolve = vi.spyOn(abstract, 'getSchemasAtPath')
+      const { api, store } = mount(adapter, schema, {
+        defaultValues: { name: 'x', address: { city: '', zip: '1' }, tags: ['a'] },
+      })
+      expect(store.schema).toBe(abstract)
+
+      expect(api.fields.name.valid).toBe(false)
+      expect(api.fields('address').valid).toBe(false)
+      expect(api.fields('tags').valid).toBe(true)
+      expect(api.meta.valid).toBe(false)
+      expect(resolve).not.toHaveBeenCalled()
+    })
+
+    it('still resolves them under an async root, and gates its fields', async () => {
+      const schema = z.object({
+        ...shape(),
+        handle: z.string().refine(async () => true),
+      })
+      const abstract = sharedAbstract(adapter, schema)
+      const resolve = vi.spyOn(abstract, 'getSchemasAtPath')
+      const { api, store } = mount(adapter, schema, {
+        defaultValues: { name: 'xy', address: { city: '', zip: '12345' }, tags: [], handle: 'h' },
+      })
+      expect(store.schema).toBe(abstract)
+
+      // The first async pass has not landed, so a field under async work
+      // cannot read valid yet.
+      expect(api.fields.handle.valid).toBe(false)
+      expect(resolve).toHaveBeenCalled()
+      await waitUntil(() => (api.fields.handle.valid ? true : null))
+      expect(api.meta.valid).toBe(true)
     })
   })
 }

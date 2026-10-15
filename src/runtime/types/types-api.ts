@@ -670,7 +670,10 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * For a per-path query, compose with `getSchemasAtPath(path)`: each
    * candidate sub-schema exposes its own `needsAsyncValidation`, so
    * "does the cargo subtree contain async work?" is the union of the
-   * per-candidate answers, with no separate top-level overload.
+   * per-candidate answers, with no separate top-level overload. A root
+   * that answers `false` answers for every path, and the runtime then
+   * asks no sub-schema, so never answer `false` at the root of a tree
+   * where a sub-schema would answer `true`.
    */
   needsAsyncValidation?(): boolean
 

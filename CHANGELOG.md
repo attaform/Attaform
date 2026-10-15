@@ -113,6 +113,16 @@
   compiles once the schema comes back. Building or server-rendering the
   same wizard from freshly built schemas got 17-29% faster. (#691)
 
+- **A schema is walked once to learn what it holds.** Before it
+  validates anything, Attaform asks a schema whether it holds an async
+  refine or transform, a discriminated union, or a check on a container.
+  Each answer was its own walk of the schema, and some were asked again
+  for every form built on it. One walk now answers them all, once per
+  schema. On the same wizard with plain leaves, building and
+  server-rendering got 11-26% faster on both Zod majors; leaves that run
+  a nested parse inside a `superRefine` spend their time there and show
+  no measurable change. (#691)
+
 ## v0.30.1
 ### Fixed
 

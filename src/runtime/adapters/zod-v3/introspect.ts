@@ -11,6 +11,7 @@
  * file pattern-matches on `_def`.
  */
 import type { z } from 'zod-v3'
+import type { SchemaCapabilities } from '../../core/abstract-schema-factory'
 import { callConsumerFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 import { isZodSchemaType } from './helpers'
@@ -464,9 +465,9 @@ export function isPreprocessNode(schema: z.ZodTypeAny): boolean {
  *    "Async refinement encountered during synchronous parse" throw.
  *
  * So this flags async transforms and preprocesses reliably, and returns
- * `false` for every refinement effect whatever the user fn does. Pair it
- * with `containsAsyncRefine`, which is conservative for exactly this
- * reason, to cover the refine side.
+ * `false` for every refinement effect whatever the user fn does.
+ * `capabilitiesOf` pairs it with an `asyncRefine` bit that is
+ * conservative for exactly this reason, to cover the refine side.
  */
 export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
   const def = readDef(schema)
@@ -478,183 +479,6 @@ export function isAsyncEffect(schema: z.ZodTypeAny): boolean {
   const fn = effect.transform
   if (typeof fn !== 'function') return false
   return (fn as { constructor: { name: string } }).constructor.name === 'AsyncFunction'
-}
-
-/**
- * True when the v3 schema tree carries a `.refine` anywhere, sync or
- * async. Conservative by necessity: v3 wraps the user predicate in a
- * sync closure (see `isAsyncEffect`), so the two cannot be told apart
- * without invoking the wrapper, and every refinement effect therefore
- * counts as potentially async. That is what keeps the runtime from
- * missing a post-mount async pass.
- *
- * It drives `needsAsyncValidation` alongside `containsAsyncTransform`. A
- * schema whose refines are all sync pays one extra post-mount
- * `safeParseAsync` of the same shape as the sync parse, and nothing a
- * consumer can observe beyond timing changes.
- *
- * `zod-v4/introspect.ts` has the same-named predicate in the same role,
- * except the v4 walker is exact, testing each check with `isAsyncCheck`.
- */
-export function containsAsyncRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  return walkForTarget(schema, 'refinement', seen ?? new WeakSet<object>())
-}
-
-/**
- * True iff the v3 schema tree holds a `z.map` or a `z.set` anywhere.
- *
- * Gates the issue-path rewrite in `normalize-issue-paths.ts`: v3 files
- * a map entry's issue under the entry INDEX and a set member's under
- * the member index, neither of which is a path Attaform addresses, so
- * those issues have to be re-filed before they reach the error stores.
- * A schema holding neither skips the rewrite entirely.
- */
-export function containsMapOrSet(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  return walkForTarget(schema, 'map-or-set', seen ?? new WeakSet<object>())
-}
-
-/**
- * True when the v3 schema tree holds a `ZodDiscriminatedUnion` at ANY
- * depth: the walk reaches unions inside arrays, tuples, records,
- * intersections, pipelines and cycle-capped lazy schemas. Asked once per
- * form at construction, to set the DU capability flag.
- */
-export function containsDiscriminatedUnion(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  return walkForTarget(schema, 'discriminated-union', seen ?? new WeakSet<object>())
-}
-
-/**
- * True when the v3 schema tree carries an async `.transform` or
- * `z.preprocess`. Statically accurate, unlike `containsAsyncRefine`: the
- * user's fn sits at `_def.effect.transform`, and `isAsyncEffect` reads
- * its `constructor.name` just as v4's `isAsyncCheck` does.
- *
- * It gates the construction verdict, `validateSync`, on its own,
- * because an async transform cannot be stripped: the transform's
- * output shape is load-bearing for the inner schema's input, so the
- * construction parse is skipped outright and the post-mount
- * `safeParseAsync` pass takes over. `zod-v4/introspect.ts` carries the same-named predicate.
- */
-export function containsAsyncTransform(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  return walkForTarget(schema, 'transform-or-preprocess', seen ?? new WeakSet<object>())
-}
-
-type SchemaWalkTarget =
-  'refinement' | 'transform-or-preprocess' | 'discriminated-union' | 'map-or-set'
-
-function walkForTarget(
-  schema: z.ZodTypeAny,
-  target: SchemaWalkTarget,
-  visited: WeakSet<object>
-): boolean {
-  const candidate = schema as unknown
-  if (typeof candidate !== 'object' || candidate === null) return false
-  if (visited.has(candidate)) return false
-  visited.add(candidate)
-
-  // A refinement effect counts as potentially async unconditionally, v3
-  // wrapping the user fn in a sync closure; a transform or preprocess
-  // needs a real AsyncFunction at the user payload, which is
-  // statically detectable. Recurse through the source either way, so a
-  // nested effect deeper in the tree still surfaces.
-  if (isZodSchemaType(schema, 'ZodEffects')) {
-    const kind = getEffectsKind(schema)
-    if (target === 'refinement' && kind === 'refinement') return true
-    if (
-      target === 'transform-or-preprocess' &&
-      (kind === 'transform' || kind === 'preprocess') &&
-      isAsyncEffect(schema)
-    ) {
-      return true
-    }
-    const inner = unwrapEffectsSource(schema)
-    return inner !== undefined && walkForTarget(inner, target, visited)
-  }
-
-  // Transparent wrappers: recurse without flagging.
-  if (
-    isZodSchemaType(schema, 'ZodOptional') ||
-    isZodSchemaType(schema, 'ZodNullable') ||
-    isZodSchemaType(schema, 'ZodDefault') ||
-    isZodSchemaType(schema, 'ZodCatch') ||
-    isZodSchemaType(schema, 'ZodReadonly')
-  ) {
-    const inner = unwrapInner(schema)
-    return inner !== undefined && walkForTarget(inner, target, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodBranded')) {
-    const inner = unwrapBranded(schema)
-    return inner !== undefined && walkForTarget(inner, target, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodLazy')) {
-    const inner = unwrapLazy(schema)
-    return inner !== undefined && walkForTarget(inner, target, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodPipeline')) {
-    const inSide = unwrapPipeIn(schema)
-    if (inSide !== undefined && walkForTarget(inSide, target, visited)) return true
-    const outSide = unwrapPipeOut(schema)
-    if (outSide !== undefined && walkForTarget(outSide, target, visited)) return true
-    return false
-  }
-
-  // Container types: recurse into children.
-  if (isZodSchemaType(schema, 'ZodObject')) {
-    for (const sub of Object.values(getObjectShape(schema))) {
-      if (walkForTarget(sub, target, visited)) return true
-    }
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodArray')) {
-    const elem = getArrayElement(schema)
-    return elem !== undefined && walkForTarget(elem, target, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodTuple')) {
-    for (const it of getTupleItems(schema)) {
-      if (walkForTarget(it, target, visited)) return true
-    }
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-    if (target === 'discriminated-union' && isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-      return true
-    }
-    for (const opt of getUnionOptions(schema)) {
-      if (walkForTarget(opt, target, visited)) return true
-    }
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodIntersection')) {
-    const left = getIntersectionLeft(schema)
-    if (left !== undefined && walkForTarget(left, target, visited)) return true
-    const right = getIntersectionRight(schema)
-    if (right !== undefined && walkForTarget(right, target, visited)) return true
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodRecord')) {
-    const keyType = getRecordKeyType(schema)
-    if (keyType !== undefined && walkForTarget(keyType, target, visited)) return true
-    const valueType = getRecordValueType(schema)
-    if (valueType !== undefined && walkForTarget(valueType, target, visited)) return true
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodSet')) {
-    if (target === 'map-or-set') return true
-    const elem = getSetValueType(schema)
-    return elem !== undefined && walkForTarget(elem, target, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodMap')) {
-    if (target === 'map-or-set') return true
-    // Both halves are real sub-schemas, so an async refine parked in a
-    // map's value type is reachable and has to be found like any other.
-    const keyType = getMapKeyType(schema)
-    if (keyType !== undefined && walkForTarget(keyType, target, visited)) return true
-    const valueType = getMapValueType(schema)
-    return valueType !== undefined && walkForTarget(valueType, target, visited)
-  }
-
-  // Leaves and unrecognised wrappers: nothing to descend into.
-  return false
 }
 
 /** ZodPipeline input schema. */
@@ -789,153 +613,247 @@ export function getChecks(schema: z.ZodTypeAny): readonly unknown[] {
 // ---------- Walkers ----------
 
 /**
- * True when the v3 tree carries a refine, transform or preprocess whose
- * target is a container (Object, Array, Tuple, Union, DU, Intersection,
- * Record or Set) or the root itself.
+ * v3's capabilities: the shared record plus `mapOrSet`.
  *
- * This is the runtime's per-keystroke scope cut. A tree whose effects
- * are all leaf-level can be re-validated at the edited subtree alone,
- * the subtree pass catching the leaf effect at the same depth. A
- * container effect can be moved by a SIBLING write, so it forces a
- * whole-form pass.
- *
- * A transparent wrapper (Optional, Nullable, Default, Catch, Readonly,
- * Branded, Lazy) peels through to its inner before the container test,
- * so `.refine` on `.optional()` over a `z.object(...)` is still
- * root-scoped. A pipeline walks both sides.
- *
- * It biases conservative: an unrecognised wrapper or a malformed leaf
- * answers `false` for THAT node while the recursion continues, so a
- * nested container effect still surfaces. A false negative costs only
- * the perf win, the caller's whole-form default keeping correctness.
+ * `asyncRefine` is conservative by necessity. v3 wraps the user
+ * predicate in a sync closure (see `isAsyncEffect`), so a sync refine
+ * and an async one cannot be told apart without invoking the wrapper,
+ * and every refinement effect counts as potentially async. That keeps
+ * the runtime from missing a post-mount async pass; a schema whose
+ * refines are all sync pays one extra post-mount `safeParseAsync` of the
+ * same shape as the sync parse, and nothing a consumer can observe
+ * beyond timing changes. For the same reason `validateSync` gates only
+ * on `asyncTransform`, which is statically accurate: the user's fn sits
+ * at `_def.effect.transform`, and `isAsyncEffect` reads its
+ * `constructor.name` as v4's `isAsyncCheck` does.
  */
-export function hasContainerOrRootRefine(schema: z.ZodTypeAny, seen?: WeakSet<object>): boolean {
-  const visited = seen ?? new WeakSet<object>()
-  const candidate = schema as unknown
-  if (typeof candidate !== 'object' || candidate === null) return false
-  if (visited.has(candidate)) return false
-  visited.add(candidate)
+export interface SchemaCapabilitiesV3 extends SchemaCapabilities {
+  /**
+   * A `z.map` or a `z.set` anywhere. Gates the issue-path rewrite in
+   * `normalize-issue-paths.ts`: v3 files a map entry's issue under the
+   * entry INDEX and a set member's under the member index, neither of
+   * which is a path Attaform addresses, so those issues have to be
+   * re-filed before they reach the error stores. A schema holding
+   * neither skips the rewrite entirely.
+   */
+  readonly mapOrSet: boolean
+}
 
-  // Peel transparent wrappers off the inner, so `.refine()` applied to
-  // `.optional()` over a container still reads as container-level.
-  if (isZodSchemaType(schema, 'ZodEffects')) {
-    const inner = unwrapEffectsSource(schema)
-    if (inner === undefined) return false
-    if (isContainerAfterWrapperPeel(inner)) return true
-    return hasContainerOrRootRefine(inner, visited)
-  }
+type Capabilities = { -readonly [K in keyof SchemaCapabilitiesV3]: boolean }
 
-  // Transparent wrappers: recurse into the inner without flagging.
-  if (
-    isZodSchemaType(schema, 'ZodOptional') ||
-    isZodSchemaType(schema, 'ZodNullable') ||
-    isZodSchemaType(schema, 'ZodDefault') ||
-    isZodSchemaType(schema, 'ZodCatch') ||
-    isZodSchemaType(schema, 'ZodReadonly')
-  ) {
-    const inner = unwrapInner(schema)
-    return inner !== undefined && hasContainerOrRootRefine(inner, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodBranded')) {
-    const inner = unwrapBranded(schema)
-    return inner !== undefined && hasContainerOrRootRefine(inner, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodLazy')) {
-    const inner = unwrapLazy(schema)
-    return inner !== undefined && hasContainerOrRootRefine(inner, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodPipeline')) {
-    const inSide = unwrapPipeIn(schema)
-    if (inSide !== undefined && hasContainerOrRootRefine(inSide, visited)) return true
-    const outSide = unwrapPipeOut(schema)
-    if (outSide !== undefined && hasContainerOrRootRefine(outSide, visited)) return true
-    return false
-  }
+/** What one `capabilitiesOf` walk carries from node to node. */
+type CapabilityWalk = {
+  readonly capabilities: Capabilities
+  /** Nodes walked outside any map. */
+  readonly visited: WeakSet<object>
+  /** Nodes walked only below a map; created at the first map. */
+  visitedUnderMap: WeakSet<object> | undefined
+}
 
-  // Container types: recurse into children.
-  if (isZodSchemaType(schema, 'ZodObject')) {
-    for (const sub of Object.values(getObjectShape(schema))) {
-      if (hasContainerOrRootRefine(sub, visited)) return true
-    }
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodArray')) {
-    const elem = getArrayElement(schema)
-    return elem !== undefined && hasContainerOrRootRefine(elem, visited)
-  }
-  if (isZodSchemaType(schema, 'ZodTuple')) {
-    for (const it of getTupleItems(schema)) {
-      if (hasContainerOrRootRefine(it, visited)) return true
-    }
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodUnion') || isZodSchemaType(schema, 'ZodDiscriminatedUnion')) {
-    for (const opt of getUnionOptions(schema)) {
-      if (hasContainerOrRootRefine(opt, visited)) return true
-    }
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodIntersection')) {
-    const left = getIntersectionLeft(schema)
-    if (left !== undefined && hasContainerOrRootRefine(left, visited)) return true
-    const right = getIntersectionRight(schema)
-    if (right !== undefined && hasContainerOrRootRefine(right, visited)) return true
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodRecord')) {
-    const keyType = getRecordKeyType(schema)
-    if (keyType !== undefined && hasContainerOrRootRefine(keyType, visited)) return true
-    const valueType = getRecordValueType(schema)
-    if (valueType !== undefined && hasContainerOrRootRefine(valueType, visited)) return true
-    return false
-  }
-  if (isZodSchemaType(schema, 'ZodSet')) {
-    const elem = getSetValueType(schema)
-    return elem !== undefined && hasContainerOrRootRefine(elem, visited)
-  }
+/** Answers already walked, keyed by the node each query started from. */
+const capabilityMemo = new WeakMap<object, SchemaCapabilitiesV3>()
 
-  // Leaves: no descendable structure, so no container effect possible.
-  return false
+/**
+ * Every capability bit for the v3 tree under `schema`, memoized per node
+ * for the life of the process: a root schema's questions are asked by
+ * every form built on it, by its verdict and by its issue re-filing.
+ *
+ * Only the node a query started from is memoized. Inside a lazy cycle a
+ * descendant's walk stops where it meets a node already visited, so
+ * what the walk saw below a descendant is not that descendant's answer.
+ */
+export function capabilitiesOf(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
+  let capabilities = capabilityMemo.get(schema)
+  if (capabilities === undefined) {
+    capabilities = scanCapabilities(schema)
+    const key: unknown = schema
+    if (typeof key === 'object' && key !== null) capabilityMemo.set(key, capabilities)
+  }
+  return capabilities
 }
 
 /**
+ * Every capability bit for the v3 tree under `schema`, from one walk and
+ * without the memo. A sub-schema built for one path query asks through
+ * this: it is asked once, and a `WeakMap` insert costs more than walking
+ * the few nodes under a path.
+ */
+export function scanCapabilities(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
+  const walk: CapabilityWalk = {
+    capabilities: {
+      asyncRefine: false,
+      asyncTransform: false,
+      discriminatedUnion: false,
+      containerOrRootRefine: false,
+      mapOrSet: false,
+    },
+    visited: new WeakSet<object>(),
+    visitedUnderMap: undefined,
+  }
+  walkCapabilities(schema, walk, false)
+  return walk.capabilities
+}
+
+/**
+ * The walk behind `scanCapabilities`. It walks the whole tree, as v4's
+ * does: a schema rarely earns every bit, so stopping early buys nothing.
+ *
+ * Per node:
+ * - A `ZodEffects` refinement sets `asyncRefine`, and a transform or
+ *   preprocess whose user fn is an `AsyncFunction` sets
+ *   `asyncTransform`. Either way the walk continues through the source,
+ *   so a nested effect deeper in the tree still surfaces.
+ * - A `ZodEffects` whose source is a container once transparent
+ *   wrappers are peeled (`isContainerAfterWrapperPeel`) sets
+ *   `containerOrRootRefine`, so `.refine()` applied to `.optional()` over
+ *   a `z.object(...)` reads as container-level. The root counts the same
+ *   way, its effects targeting the whole form.
+ * - A `ZodDiscriminatedUnion` sets `discriminatedUnion`; a `ZodMap` or
+ *   `ZodSet` sets `mapOrSet`.
+ *
+ * Transparent wrappers (Optional, Nullable, Default, Catch, Readonly,
+ * Branded, Lazy) descend without flagging, a pipeline walks both sides,
+ * and containers descend into every child. A map's key and value types
+ * are real sub-schemas, so an async refine parked in a map's value is
+ * reachable and found like any other; `containerOrRootRefine` alone is
+ * not collected below a map, which is what the per-keystroke scope cut
+ * has always read. A node shared between a map and the rest of the tree
+ * is walked again outside the map if the walk met it below one first,
+ * so it still answers for the outside one. Leaves and unrecognised
+ * wrappers have nothing to descend into.
+ *
+ * It dispatches on one `typeName` read per node and recurses in place,
+ * since a fresh schema pays this walk once per node at construction.
+ */
+function walkCapabilities(
+  schema: z.ZodTypeAny | undefined,
+  walk: CapabilityWalk,
+  underMap: boolean
+): void {
+  if (schema === undefined) return
+  const candidate: unknown = schema
+  if (typeof candidate !== 'object' || candidate === null || walk.visited.has(candidate)) return
+  if (underMap) {
+    walk.visitedUnderMap ??= new WeakSet<object>()
+    if (walk.visitedUnderMap.has(candidate)) return
+    walk.visitedUnderMap.add(candidate)
+  } else {
+    walk.visited.add(candidate)
+  }
+
+  const { capabilities } = walk
+  const typeName = getTypeName(schema) ?? ''
+  switch (typeName) {
+    case 'ZodEffects': {
+      const kind = getEffectsKind(schema)
+      if (kind === 'refinement') capabilities.asyncRefine = true
+      else if ((kind === 'transform' || kind === 'preprocess') && isAsyncEffect(schema)) {
+        capabilities.asyncTransform = true
+      }
+      const inner = unwrapEffectsSource(schema)
+      if (
+        !underMap &&
+        !capabilities.containerOrRootRefine &&
+        inner !== undefined &&
+        isContainerAfterWrapperPeel(inner)
+      ) {
+        capabilities.containerOrRootRefine = true
+      }
+      walkCapabilities(inner, walk, underMap)
+      return
+    }
+    case 'ZodOptional':
+    case 'ZodNullable':
+    case 'ZodDefault':
+    case 'ZodCatch':
+    case 'ZodReadonly':
+      walkCapabilities(unwrapInner(schema), walk, underMap)
+      return
+    case 'ZodBranded':
+      walkCapabilities(unwrapBranded(schema), walk, underMap)
+      return
+    case 'ZodLazy':
+      walkCapabilities(unwrapLazy(schema), walk, underMap)
+      return
+    case 'ZodPipeline':
+      walkCapabilities(unwrapPipeIn(schema), walk, underMap)
+      walkCapabilities(unwrapPipeOut(schema), walk, underMap)
+      return
+    case 'ZodObject':
+      for (const sub of Object.values(getObjectShape(schema))) {
+        walkCapabilities(sub, walk, underMap)
+      }
+      return
+    case 'ZodArray':
+      walkCapabilities(getArrayElement(schema), walk, underMap)
+      return
+    case 'ZodTuple':
+      for (const item of getTupleItems(schema)) walkCapabilities(item, walk, underMap)
+      return
+    case 'ZodUnion':
+    case 'ZodDiscriminatedUnion':
+      if (typeName === 'ZodDiscriminatedUnion') capabilities.discriminatedUnion = true
+      for (const option of getUnionOptions(schema)) walkCapabilities(option, walk, underMap)
+      return
+    case 'ZodIntersection':
+      walkCapabilities(getIntersectionLeft(schema), walk, underMap)
+      walkCapabilities(getIntersectionRight(schema), walk, underMap)
+      return
+    case 'ZodRecord':
+      walkCapabilities(getRecordKeyType(schema), walk, underMap)
+      walkCapabilities(getRecordValueType(schema), walk, underMap)
+      return
+    case 'ZodSet':
+      capabilities.mapOrSet = true
+      walkCapabilities(getSetValueType(schema), walk, underMap)
+      return
+    case 'ZodMap':
+      capabilities.mapOrSet = true
+      walkCapabilities(getMapKeyType(schema), walk, true)
+      walkCapabilities(getMapValueType(schema), walk, true)
+      return
+  }
+  // Leaves and unrecognised kinds: nothing to descend into.
+}
+
+const CONTAINER_TYPE_NAMES: ReadonlySet<string> = new Set([
+  'ZodObject',
+  'ZodArray',
+  'ZodTuple',
+  'ZodIntersection',
+  'ZodUnion',
+  'ZodDiscriminatedUnion',
+  'ZodRecord',
+  'ZodSet',
+])
+
+/**
  * Peel transparent wrappers up to `MAX_UNWRAP_STEPS`, then report
- * whether what is left is a container kind. `hasContainerOrRootRefine`
- * uses it to classify the inner side of a `ZodEffects`.
+ * whether what is left is a container kind. `capabilitiesOf` uses it to
+ * classify the inner side of a `ZodEffects` for `containerOrRootRefine`.
  */
 export function isContainerAfterWrapperPeel(schema: z.ZodTypeAny): boolean {
-  let cur: z.ZodTypeAny = schema
-  for (let i = 0; i < MAX_UNWRAP_STEPS; i++) {
-    if (
-      isZodSchemaType(cur, 'ZodOptional') ||
-      isZodSchemaType(cur, 'ZodNullable') ||
-      isZodSchemaType(cur, 'ZodDefault') ||
-      isZodSchemaType(cur, 'ZodCatch') ||
-      isZodSchemaType(cur, 'ZodReadonly')
-    ) {
-      const inner = unwrapInner(cur)
-      if (inner === undefined) return false
-      cur = inner
-    } else if (isZodSchemaType(cur, 'ZodBranded')) {
-      const inner = unwrapBranded(cur)
-      if (inner === undefined) return false
-      cur = inner
-    } else if (isZodSchemaType(cur, 'ZodLazy')) {
-      const inner = unwrapLazy(cur)
-      if (inner === undefined) return false
-      cur = inner
-    } else {
-      break
+  let cur: z.ZodTypeAny | undefined = schema
+  for (let i = 0; i < MAX_UNWRAP_STEPS && cur !== undefined; i++) {
+    const typeName = getTypeName(cur) ?? ''
+    switch (typeName) {
+      case 'ZodOptional':
+      case 'ZodNullable':
+      case 'ZodDefault':
+      case 'ZodCatch':
+      case 'ZodReadonly':
+        cur = unwrapInner(cur)
+        break
+      case 'ZodBranded':
+        cur = unwrapBranded(cur)
+        break
+      case 'ZodLazy':
+        cur = unwrapLazy(cur)
+        break
+      default:
+        return CONTAINER_TYPE_NAMES.has(typeName)
     }
   }
-  return (
-    isZodSchemaType(cur, 'ZodObject') ||
-    isZodSchemaType(cur, 'ZodArray') ||
-    isZodSchemaType(cur, 'ZodTuple') ||
-    isZodSchemaType(cur, 'ZodIntersection') ||
-    isZodSchemaType(cur, 'ZodUnion') ||
-    isZodSchemaType(cur, 'ZodDiscriminatedUnion') ||
-    isZodSchemaType(cur, 'ZodRecord') ||
-    isZodSchemaType(cur, 'ZodSet')
-  )
+  // A wrapper with nothing inside, or one past the peel cap.
+  return false
 }

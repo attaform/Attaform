@@ -229,7 +229,7 @@ describe('zod v3 adapter: getDefaultValues', () => {
     //
     // Parity note: v4's `validateSync` seeds sync-refinement errors at
     // construction by parsing the real schema, and skips that parse
-    // outright once `containsAsyncTransform` or `containsAsyncRefine`
+    // outright once its `asyncTransform` or `asyncRefine` capability
     // says the schema holds either. v3 reaches the same end state
     // through the throw its runtime wrapper for `.refine` raises.
     const schema = z.object({

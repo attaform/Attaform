@@ -448,8 +448,8 @@ describe('an async .refine that throws', () => {
    * recovery still runs; the promise is simply no longer unowned.
    *
    * The alternative considered and rejected was pre-stripping every
-   * schema containing any `.refine()`, since v3's `containsAsyncRefine`
-   * is conservative. That would have dropped sync-refine seeding at
+   * schema containing any `.refine()`, since v3's `asyncRefine`
+   * capability is conservative. That would have dropped sync-refine seeding at
    * mount for every form using a refinement, which the last two tests
    * here exist to protect.
    */

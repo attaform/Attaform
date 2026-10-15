@@ -43,13 +43,13 @@ import { deriveDefault, getDefaultValuesFromZodSchema } from './default-values'
 import type { SupportedRootSchema } from './types-root'
 import {
   assertZodVersion,
-  containsAsyncRefine,
-  containsAsyncTransform,
+  capabilitiesOf,
   getDiscriminatedOptions,
   getIntersectionLeft,
   getIntersectionRight,
   getUnionOptions,
   kindOf,
+  scanCapabilities,
   unwrapInner,
   unwrapLazy,
   unwrapPipe,
@@ -394,7 +394,8 @@ function validateSyncV4(rootSchema: z.ZodType, data: unknown): ValidationError[]
   // than an async-free twin's, so on SSR a submit button bound to
   // `meta.valid` renders enabled and then disables. The post-mount pass
   // is the source of truth for every verdict either way.
-  if (containsAsyncTransform(rootSchema) || containsAsyncRefine(rootSchema)) return []
+  const { asyncRefine, asyncTransform } = capabilitiesOf(rootSchema)
+  if (asyncRefine || asyncTransform) return []
 
   try {
     // `jitless` on a schema's first verdict: the first synchronous parse
@@ -430,7 +431,7 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
   maxRecursionDepth: number
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
-    needsAsyncValidation: () => containsAsyncRefine(schema),
+    needsAsyncValidation: () => scanCapabilities(schema).asyncRefine,
     getDefaultValues: () => deriveDefault(schema, true, maxRecursionDepth),
     getSchemasAtPath: () => [],
     validateAtPath: async (data: unknown) => {

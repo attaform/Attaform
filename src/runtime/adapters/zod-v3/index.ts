@@ -48,7 +48,7 @@ import type { TypeWithNullableDynamicKeys } from './types-zod'
 // `introspect.ts`.
 import { isZodSchemaType } from './helpers'
 import {
-  containsAsyncTransform,
+  capabilitiesOf,
   getEffectsKind,
   getIntersectionLeft,
   getIntersectionRight,
@@ -56,14 +56,13 @@ import {
   getUnionOptions,
   unwrapBranded,
   unwrapEffectsSource,
-  containsMapOrSet,
   unwrapInner,
   unwrapLazy,
   unwrapPipeIn,
 } from './introspect'
 import { slimPrimitivesV3 } from './slim-primitives'
 import { wrapAsyncSafeRefinements } from './strip-async'
-import { V3_INTROSPECTOR } from './walker-introspector'
+import { V3_INTROSPECTOR, V3_SUB_SCHEMA_INTROSPECTOR } from './walker-introspector'
 
 let warnedZodCodeMissing = false
 
@@ -163,13 +162,10 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
   // v3 files a map entry's issue at `[entryIndex, 'key' | 'value']` and
   // a set member's at its index, neither of which is a path the runtime
   // addresses; v4 files both where Attaform reads them. The rewrite
-  // below re-files them, and this flag keeps it free for the schemas
-  // that hold neither: one tree walk on a schema's first parse failure,
-  // then a lookup. Keyed by the schema NODE, not by the services
-  // instance: a path-scoped validation parses a sub-schema through this
-  // same instance, so one shared flag would answer for the root using
-  // whichever node happened to fail first.
-  const mapOrSetBySchema = new WeakMap<object, boolean>()
+  // below re-files them, and the `mapOrSet` capability keeps it free for
+  // the schemas that hold neither. It is asked of the node being parsed:
+  // a path-scoped validation parses a sub-schema through these same
+  // services.
   const refileIssues = (
     schema: z.ZodTypeAny,
     data: unknown,
@@ -181,12 +177,7 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     if (!issues.some((issue) => issue.path.some((segment) => typeof segment === 'number'))) {
       return issues
     }
-    let hasMapOrSet = mapOrSetBySchema.get(schema)
-    if (hasMapOrSet === undefined) {
-      hasMapOrSet = containsMapOrSet(schema)
-      mapOrSetBySchema.set(schema, hasMapOrSet)
-    }
-    if (!hasMapOrSet) return issues
+    if (!capabilitiesOf(schema).mapOrSet) return issues
     return normalizeIssuePaths(issues, schema, data, maxRecursionDepth, peelAllV3Wrappers)
   }
   /**
@@ -203,7 +194,7 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     // `safeParseAsync`. An async refine is NOT gated here: v3 cannot
     // tell a sync refine from an async one without invoking the
     // wrapper, so the parse below runs and the throw is the signal.
-    if (containsAsyncTransform(schema)) return []
+    if (capabilitiesOf(schema).asyncTransform) return []
     try {
       // Through `syncSafe`, because this is the parse that discovers an
       // async refinement by RUNNING it, and so the one that would leak
@@ -260,11 +251,11 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
     // A `getSchemasAtPath` consumer may probe any method on the result,
     // so a sub-schema comes back as a full recursive AbstractSchema: the
     // factory call rebuilds the whole surface against it, with its own
-    // per-form caches.
+    // per-form caches, and walks its capabilities without the memo.
     makeSubSchema: (sub, maxRecursionDepth) =>
       createAbstractSchema<z.ZodTypeAny, unknown, GetValueFormType>(
         sub,
-        V3_INTROSPECTOR,
+        V3_SUB_SCHEMA_INTROSPECTOR,
         buildV3Services<GenericForm, GetValueFormType>(maxRecursionDepth),
         { maxRecursionDepth }
       ),

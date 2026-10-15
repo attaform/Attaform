@@ -290,8 +290,10 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * list of failures: empty when the data passes.
    *
    * The runtime seeds the schema error channel with it whenever it
-   * establishes a baseline, at construction and on `reset()`, so a form
-   * starting from invalid defaults reads invalid from its first render.
+   * establishes a baseline: on the starting value, the first time
+   * anything reads or writes the form's errors, and on `reset()`. A form
+   * starting from invalid defaults therefore reads invalid from its
+   * first render.
    * A hydrating client never calls it, since the server's verdict
    * arrives with the payload.
    *
@@ -655,8 +657,8 @@ export type AbstractSchema<Form, GetValueFormType> = {
   /**
    * Whether `validateAtPath` MAY have to run asynchronously to surface
    * every error this schema can produce. The runtime asks at
-   * construction: `false` means the construction-time sync seed is
-   * authoritative and no extra microtask is spent, `true` queues a
+   * construction: `false` means the synchronous verdict on the starting
+   * value is authoritative and no extra microtask is spent, `true` queues a
    * one-shot full-form async pass so async-only verdicts (refinements,
    * transforms or pipes that resolve only through a Promise) surface
    * without waiting for a user mutation.

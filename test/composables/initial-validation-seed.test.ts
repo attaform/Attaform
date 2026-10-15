@@ -13,14 +13,15 @@ import { schemaOptions } from '../utils/store-options'
 
 /**
  * Initial validation seed: when a form's default values fail schema
- * validation, `schemaErrors` is populated immediately at construction
- * time (without requiring a user mutation or an explicit
- * `parse({ commit: true })` call).
+ * validation, `schemaErrors` holds that verdict from the first read, on
+ * the frame the form mounts (without requiring a user mutation or an
+ * explicit `parse({ commit: true })` call). The seed itself runs at that
+ * first read rather than inside `useForm` (#691).
  *
  * Two invariants locked here:
  *   1. Invalid defaults   → seed populates schemaErrors.
- *   2. Hydration provided → hydration replaces the seed wholesale;
- *      the server's snapshot is authoritative.
+ *   2. Hydration provided → no seed runs; the server's snapshot is
+ *      authoritative.
  */
 
 const tightSchema = z.object({
@@ -97,7 +98,7 @@ describe('initial validation seed', () => {
     expect(handle.api?.errors.email).toEqual([])
   })
 
-  it('populates schemaErrors at construction when defaults fail validation', () => {
+  it('populates schemaErrors from the first read when defaults fail validation', () => {
     // Pin: errors are a pure function of (value, schema) at all
     // times, including the frame the form mounts on. Empty defaults:
     // '' fails .email(), '' fails .min(8). Both surface in

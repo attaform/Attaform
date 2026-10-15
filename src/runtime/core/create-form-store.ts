@@ -421,8 +421,9 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * refine), so no construction errors land, and until the queued async pass
    * runs, frame 1 would paint the form valid a tick before the real verdict.
    * A sync-only schema's construction parse seeds its verdict synchronously,
-   * so its gate starts open. v3 reports every `.refine` as async, so a v3
-   * schema with a sync refine starts gated and seeded.
+   * before the first read of its errors returns, so its gate starts open. v3
+   * reports every `.refine` as async, so a v3 schema with a sync refine
+   * starts gated and seeded.
    *
    * `reset()` restores it to the same construction-time seed, so the post-reset
    * window gates exactly like the post-mount one.

@@ -183,9 +183,10 @@ function buildV3Services<Form extends GenericForm, GetValueFormType extends Gene
   /**
    * v3's construction verdict: one synchronous parse of the REAL schema,
    * so refines and container or leaf checks (`.min(n)`, `.max(n)`,
-   * `.email()`) seed at construction. v4's `validateSyncV4` is the
-   * equivalent arm. Its issues are re-filed like every other parse here,
-   * so a map entry's verdict lands at the path the runtime reads.
+   * `.email()`) seed the form's starting errors. v4's `validateSyncV4`
+   * is the equivalent arm. Its issues are re-filed like every other
+   * parse here, so a map entry's verdict lands at the path the runtime
+   * reads.
    */
   const validateSync = (schema: z.ZodTypeAny, data: unknown): ValidationError[] => {
     // An async transform cannot be stripped, its output shape being

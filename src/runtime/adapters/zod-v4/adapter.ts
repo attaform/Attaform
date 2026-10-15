@@ -373,7 +373,7 @@ const verdictRan = new WeakMap<object, true>()
 
 /**
  * v4's construction verdict: one synchronous parse of the REAL schema,
- * so refinement and check failures seed at construction.
+ * so refinement and check failures seed the form's starting errors.
  *
  * A schema carrying async work of any kind skips the parse and leaves
  * every verdict to the post-mount `safeParseAsync` pass. See the gate

@@ -149,7 +149,7 @@ For discriminated-union containers, return `{ discriminatorKey, getVariantDefaul
 
 ### `validateSync(data): ValidationError[]`
 
-Returns the schema's synchronous verdict on `data` as a whole form: one entry per failure, and `[]` when the data passes. The runtime calls it on the starting value at form creation and on `reset()`, so a form whose defaults break a rule (an empty required field, a too-short password) reads invalid from its first render. A client hydrating server-rendered state never calls it, since the server's verdict arrives with the payload.
+Returns the schema's synchronous verdict on `data` as a whole form: one entry per failure, and `[]` when the data passes. The runtime calls it on the starting value the first time anything reads or writes the form's errors, and on `reset()`, so a form whose defaults break a rule (an empty required field, a too-short password) reads invalid from its first render. A client hydrating server-rendered state never calls it, since the server's verdict arrives with the payload.
 
 Must NOT throw. When your library reaches a verdict only through a Promise, or a check throws, return `[]`: the optional `needsAsyncValidation` hook schedules the async pass that surfaces those errors a microtask later. A library with no synchronous parse returns `[]` every time.
 

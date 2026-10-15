@@ -161,11 +161,11 @@
   it. Every read sees the verdict it saw before. On the same 10-step
   wizard, with no step's errors read, building got 37-54% faster on
   both Zod majors; a wizard whose rail reads every step's validity
-  builds as fast as before. A refinement's side effects, a log line or a dev
-  warning, now happen at that first read rather than inside
-  `useForm`. A Zod v3 schema with a refine no longer validates its
-  starting value twice, since its post-mount check replaces the
-  first verdict before anything could read it. (#691)
+  builds as fast as before. A refinement's side effects, a log line or
+  a dev warning, now happen at that first read rather than inside
+  `useForm`. A Zod v3 schema with a refine runs its post-mount check
+  either way, and a form nothing reads before that check now skips the
+  first verdict, which the check replaces. (#691)
 
 ## v0.30.1
 ### Fixed

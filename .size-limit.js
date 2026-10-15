@@ -45,7 +45,7 @@ export default [
     // branches bump; the tripwires at the bottom of this file are what
     // prove a consumer importing less than all of it pays less.
     path: 'dist/index.mjs',
-    limit: '51.5 KB',
+    limit: '54.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -55,7 +55,7 @@ export default [
     // to dist/index.mjs by construction, so the two caps track together
     // and a divergence between them is itself the signal.
     path: 'dist/zod.mjs',
-    limit: '51.5 KB',
+    limit: '54.25 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

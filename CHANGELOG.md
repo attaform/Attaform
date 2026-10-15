@@ -170,6 +170,25 @@
   `injectForm('cart') === injectForm('cart')` holds between them. A
   component with no such ancestor still gets a form of its own. (#690)
 
+- **Forms skip work their schema can never use.** Attaform records
+  which fields you set, so that at a `z.preprocess` or `z.coerce` field
+  it can tell a blank it should keep quiet about from an `undefined`
+  you wrote on purpose. A schema with no such field now skips that
+  record: at construction, on `reset()` and on every write. And when a
+  schema's root holds no async refine or transform, `field.valid` no
+  longer inspects each field's own schema to learn whether to wait for
+  an async check. On a 10-step wizard of 30-field pages, in production
+  builds, building the forms got 9-19% faster with nothing read. With
+  a step rail reading every step's validity, on Zod v4 schemas built
+  per mount, server-rendering and hydrating got 10-18% faster. On Zod
+  v3, which treats every refine as possibly async, the second cut
+  applies to schemas with no refine. (#695)
+
+  A custom adapter opts in to the first with a new optional hook,
+  `hasPreprocessOrCoerce()`, and keeps today's behavior without it. Its
+  `needsAsyncValidation()` answering `false` at the root now answers
+  for every field under it.
+
 ## v0.30.1
 ### Fixed
 

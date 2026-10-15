@@ -4,30 +4,43 @@
  *
  * The matrix bench measures init END-TO-END (the `init flat` group). This
  * decomposes that number into the eager O(F.D) primitives construction runs,
- * each measured in isolation on the SAME schema, so P4's one deferral candidate
- * can be sized against the irreducible remainder.
+ * each measured in isolation on the SAME schema, so each deferral candidate can
+ * be sized against the irreducible remainder.
  *
- * Construction's eager O(F.D) work (create-form-store.ts:1228-1819), classified:
+ * Construction's eager O(F.D) work (`createFormStore`), classified:
  *
- *   parse     getDefaultValues({useDefaultSchemaValues:true})  NON-deferrable
- *             produces schemaInitialData, i.e. form.value, which SSR renders
- *             immediately. T6 lives here (v4 safeParse > v3).
+ *   parse     getDefaultValues, then validateSync              value NON-deferrable,
+ *             two calls timed together, as construction makes them.
+ *             getDefaultValues is the derivation (the default walk, plus the
+ *             structural repair walk when constraints are supplied): it parses
+ *             nothing and produces schemaInitialData, i.e. form.value, which
+ *             SSR renders immediately. validateSync then runs one synchronous
+ *             safeParse of the real schema for the construction verdict, which
+ *             seeds the schema error channel at t=0 and is the bulk of this
+ *             cell. Only the derivation is non-deferrable: nothing needs the
+ *             verdict until the form's error state is read, and a hydrating
+ *             client replays it from the payload. T6 lives in that parse (v4
+ *             safeParse > v3). bench/construction.bench.ts measures it end to
+ *             end (#691).
  *   clone     structuralSnapshot(schemaInitialData)            NON-deferrable
  *             per-instance isolation before form.value is exposed.
  *   walk      diffAndApply({}, schemaInitialData)              load-bearing
- *             seeds `originals` (the dirty baseline) AND `pathOrdinals` in
- *             schema-declaration order in ONE pass (create-form-store.ts:1814).
+ *             seeds `originals` (the dirty baseline), `pathOrdinals` in
+ *             schema-declaration order and, without hydration, the field
+ *             records, in ONE pass.
  *             pathOrdinals drives form.meta.errors SORT order, so deferring this
  *             walk would reorder meta.errors (observable), non-deferrable
  *             without a separate O(F) ordinal walk (no net win).
  *   baseline  getEmptyValueAtPath([])                          DEFERRABLE
  *             the blank value tree fed to walkAuthoredFromSchemaDiff to derive
- *             `authoredPaths`, which is consumed ONLY by filterAuthoredErrors
- *             (create-form-store.ts:2701), at field-VALIDATION time, never at
- *             mount. Construction-time validation is gated to async-strict,
- *             non-SSR schemas (:1904), so for the common sync form the FIRST
- *             filterAuthoredErrors call is the first keystroke. authoredPaths
- *             derivation is therefore dead init work until first interaction.
+ *             `authoredPaths`, which is consumed ONLY by `filterAuthoredErrors`,
+ *             at field-VALIDATION time. The construction verdict above seeds
+ *             unfiltered; the only construction-time pass that filters is the
+ *             queued async pass, which runs only for a schema with async work
+ *             and never on the server (`queueInitialAsyncValidation`). So for
+ *             the common sync form the FIRST filterAuthoredErrors call is the
+ *             first keystroke, and authoredPaths derivation is dead init work
+ *             until first interaction.
  *
  * DEFERRAL CEILING (what lazy-authoredPaths could remove from the sync init
  * path) = baseline + walkAuthoredFromSchemaDiff. That walk is module-local (not
@@ -69,17 +82,19 @@ test('init decomposition: eager O(F) primitives, deferrable vs not (P4)', async 
       const schemaInitialData = schema.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: undefined,
-        strict: true,
-      }).data
+      })
 
-      // NON-deferrable: produces form.value (SSR renders it). T6 lives here.
+      // Derivation (getDefaultValues: form.value, which SSR renders,
+      // NON-deferrable) plus the construction verdict (validateSync: the
+      // bulk, deferrable). T6 lives in the verdict parse.
       arms.push(
-        bench(`parse getDefaultValues F=${F} [${a.tag}]`, () => {
-          schema.getDefaultValues({
-            useDefaultSchemaValues: true,
-            constraints: undefined,
-            strict: true,
-          })
+        bench(`parse getDefaultValues+validateSync F=${F} [${a.tag}]`, () => {
+          schema.validateSync(
+            schema.getDefaultValues({
+              useDefaultSchemaValues: true,
+              constraints: undefined,
+            })
+          )
         })
       )
       // DEFERRABLE: blank baseline -> authoredPaths (consumed at validation only).

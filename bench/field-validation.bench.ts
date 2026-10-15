@@ -17,6 +17,7 @@
 import { test } from 'vitest'
 import { createFormStore } from '../src/runtime/core/create-form-store'
 import { fakeSchema } from '../test/utils/fake-schema'
+import { schemaOptions } from '../test/utils/store-options'
 
 type Form = { email: string; password: string; nickname: string }
 const defaults: Form = { email: '', password: '', nickname: '' }
@@ -24,7 +25,7 @@ const defaults: Form = { email: '', password: '', nickname: '' }
 function makeState(opts?: { validateOn?: 'change' | 'blur' | 'submit'; debounceMs?: number }) {
   return createFormStore<Form>({
     formKey: 'bench',
-    schema: fakeSchema<Form>(defaults),
+    ...schemaOptions(fakeSchema<Form>(defaults)),
     ...(opts?.validateOn !== undefined ? { validateOn: opts.validateOn } : {}),
     ...(opts?.debounceMs !== undefined ? { debounceMs: opts.debounceMs } : {}),
   })

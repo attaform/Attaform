@@ -22,14 +22,13 @@ import { V4_INTROSPECTOR } from './walker-introspector'
 export const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = PERMISSIVE_SLIM_KINDS
 
 /**
- * Walk a v4 schema, emitting the union of slim primitive kinds it
- * accepts. Clones once at the public boundary so callers get a
- * fresh mutable Set; the internal walk reuses frozen singletons for
- * leaf kinds.
+ * The union of slim primitive kinds a v4 schema accepts. The walk reuses
+ * frozen singletons for leaf kinds, and the set goes to the caller as it
+ * is rather than as a copy, so it is read-only.
  */
 export function slimPrimitivesOf(
   schema: z.ZodType,
   maxRecursionDepth: number
-): Set<SlimPrimitiveKind> {
-  return new Set(slimPrimitivesWalk(schema, V4_INTROSPECTOR, maxRecursionDepth))
+): ReadonlySet<SlimPrimitiveKind> {
+  return slimPrimitivesWalk(schema, V4_INTROSPECTOR, maxRecursionDepth)
 }

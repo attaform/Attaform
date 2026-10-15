@@ -12,6 +12,7 @@ import {
 } from '../../src/runtime/core/serialize'
 import { fakeSchema } from '../utils/fake-schema'
 import { originalAt, pristineAt } from '../utils/store-path-probes'
+import { schemaOptions } from '../utils/store-options'
 
 type Signup = { email: string; password: string }
 
@@ -21,7 +22,7 @@ function seedServerApp(formKey: string, initialEmail: string) {
   const registry = getRegistryFromApp(app)
   const state = createFormStore<Signup>({
     formKey,
-    schema: fakeSchema<Signup>({ email: initialEmail, password: '' }),
+    ...schemaOptions(fakeSchema<Signup>({ email: initialEmail, password: '' })),
   })
   registry.forms.set(formKey, state)
   return { app, state }
@@ -108,7 +109,7 @@ describe('hydrateAttaformState', () => {
 
     const rehydratedState = createFormStore<Signup>({
       formKey: 'rt2',
-      schema: fakeSchema<Signup>({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' })),
       hydration: pending,
     })
     // Client form value matches what the server wrote.
@@ -200,7 +201,7 @@ describe('hydration shape guard', () => {
 
     const state = createFormStore<Signup>({
       formKey: 'malformed-fields',
-      schema: fakeSchema<Signup>({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' })),
       hydration,
     })
 
@@ -233,14 +234,14 @@ describe('hydration shape guard', () => {
 
     const state = createFormStore<Signup>({
       formKey: 'malformed-errors',
-      schema: fakeSchema<Signup>({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' })),
       hydration,
     })
 
     // Only the valid 'email' entry made it into each side of the store.
-    expect(state.errorCells.size).toBe(1)
-    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('taken')
-    expect(state.errorCells.get(emailKey)?.user[0]?.message).toBe('taken')
+    expect(state.errorCells().size).toBe(1)
+    expect(state.errorCells().get(emailKey)?.schema[0]?.message).toBe('taken')
+    expect(state.errorCells().get(emailKey)?.user[0]?.message).toBe('taken')
   })
 
   it('warns once per malformed entry in dev mode', () => {
@@ -251,7 +252,7 @@ describe('hydration shape guard', () => {
 
     createFormStore<Signup>({
       formKey: 'warn-once',
-      schema: fakeSchema<Signup>({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' })),
       hydration,
     })
 

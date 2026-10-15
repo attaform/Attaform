@@ -127,16 +127,16 @@ const schema = z.object({
 })
 const form = useForm({ schema })
 
-// Before any user input, every one of these is an empty array
+// At mount, before any user input
 form.errors.optional // [] (empty slot is valid)
 form.errors.nullable // [] (null satisfies z.string().nullable())
 form.errors.defaulted // [] ('seed' satisfies z.string())
-form.errors.required // [] (nothing has validated yet)
+form.errors.required // [{ message: 'Name is required', … }] ('' fails .min(1))
 ```
 
 A static leaf's error read is always an array, empty when there is nothing to say, so branch on `.length` rather than on truthiness. See [`errors`](/docs/reading-the-form/errors) for where a `| undefined` genuinely does appear.
 
-`required` is the one to look at twice. `z.string().min(1)` does reject the `''` sitting in storage, but the list is empty until something validates, and under the default `validateOn: 'change'` that is the user's first keystroke. An error you expect to see at mount is the exception rather than the rule: the numeric blank auto-mark seeds one, a refinement does not. [When validation runs](/docs/validation/when-validation-runs) has the timing.
+`required` is the one to look at twice. `z.string().min(1)` rejects the `''` sitting in storage, and Attaform knows the verdict on the starting value from the first read, so the list already holds the error at mount and `form.meta.valid` reads `false`. What waits is the display: [`field.showErrors`](/docs/validation/showing-errors) stays `false` until a submit attempt or a blur after interaction, so the message never greets someone who has not typed yet. [When validation runs](/docs/validation/when-validation-runs#before-the-first-trigger) has the timing.
 
 The errors flow from the schema; the modifiers shape what counts as empty. A required `z.string()` with no modifier sees `''` and accepts it (an empty string _is_ a string). Add `.min(1, …)` to require a non-empty string; that's the schema speaking, not a side-channel.
 

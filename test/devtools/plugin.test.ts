@@ -7,6 +7,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { createRegistry, attachRegistryToApp } from '../../src/runtime/core/registry'
 import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Phase 5.10, Vue DevTools plugin contract tests.
@@ -147,7 +148,7 @@ describe('DevTools plugin: inspector + timeline wiring', () => {
     const { fakeSchema } = await import('../utils/fake-schema')
     const state = createFormStore<{ email: string }>({
       formKey: 'dev-tree',
-      schema: fakeSchema<{ email: string }>({ email: '' }),
+      ...schemaOptions(fakeSchema<{ email: string }>({ email: '' })),
     })
     registry.forms.set('dev-tree', state)
 
@@ -225,7 +226,7 @@ describe('DevTools plugin: raw values surface (dev-only)', () => {
     const { fakeSchema } = await import('../utils/fake-schema')
     const state = createFormStore<{ email: string; password: string }>({
       formKey: 'raw-form',
-      schema: fakeSchema({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema({ email: '', password: '' })),
     })
     state.applyFormReplacement({ email: 'alice@example.com', password: 'super-secret' })
     registry.forms.set('raw-form', state)
@@ -257,7 +258,7 @@ describe('DevTools plugin: raw values surface (dev-only)', () => {
     const { fakeSchema } = await import('../utils/fake-schema')
     const state = createFormStore<{ password: string }>({
       formKey: 'edit-allow',
-      schema: fakeSchema<{ password: string }>({ password: '' }),
+      ...schemaOptions(fakeSchema<{ password: string }>({ password: '' })),
     })
     state.applyFormReplacement({ password: 'original' })
     registry.forms.set('edit-allow', state)

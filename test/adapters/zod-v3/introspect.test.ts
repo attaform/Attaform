@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod-v3'
 import {
   assertZodVersion,
-  containsAsyncRefine,
-  containsAsyncTransform,
-  containsDiscriminatedUnion,
+  capabilitiesOf,
   getArrayElement,
   getCatchDefault,
   getChecks,
@@ -25,7 +23,6 @@ import {
   getTypeName,
   getUnionOptions,
   hasChecks,
-  hasContainerOrRootRefine,
   isAsyncEffect,
   isContainerAfterWrapperPeel,
   kindOf,
@@ -245,27 +242,27 @@ describe('refinement payload', () => {
   })
 })
 
-describe('hasContainerOrRootRefine', () => {
+describe('capabilitiesOf: containerOrRootRefine', () => {
   it('returns false for a flat schema with only leaf refines', () => {
     const schema = z.object({
       name: z.string().refine((v) => v.length > 0, 'name-invalid'),
       age: z.number().refine((v) => v >= 0, 'age-invalid'),
     })
-    expect(hasContainerOrRootRefine(schema)).toBe(false)
+    expect(capabilitiesOf(schema).containerOrRootRefine).toBe(false)
   })
 
   it('returns true when the root carries a refine', () => {
     const schema = z
       .object({ name: z.string(), other: z.string() })
       .refine(() => true, 'root-invariant')
-    expect(hasContainerOrRootRefine(schema)).toBe(true)
+    expect(capabilitiesOf(schema).containerOrRootRefine).toBe(true)
   })
 
   it('returns true when a nested container carries a refine', () => {
     const schema = z.object({
       profile: z.object({ first: z.string() }).refine(() => true, 'profile-invariant'),
     })
-    expect(hasContainerOrRootRefine(schema)).toBe(true)
+    expect(capabilitiesOf(schema).containerOrRootRefine).toBe(true)
   })
 
   it('isContainerAfterWrapperPeel sees through Optional/Nullable/Default to a container', () => {
@@ -289,8 +286,9 @@ describe('isAsyncEffect', () => {
     // v3's `.refine` stores a sync wrapper at `_def.effect.refinement`
     // that closes over the user predicate. The user fn's async-ness is
     // not statically observable; `isAsyncEffect` returns `false` for
-    // refinement effects unconditionally. `containsAsyncRefine` is the
-    // conservative full-tree probe (true for any refine).
+    // refinement effects unconditionally. `capabilitiesOf`'s
+    // `asyncRefine` is the conservative full-tree probe (true for any
+    // refine).
     expect(isAsyncEffect(z.string().refine(async () => Promise.resolve(true), 'x'))).toBe(false)
     expect(isAsyncEffect(z.string().refine(() => true, 'x'))).toBe(false)
   })
@@ -301,9 +299,11 @@ describe('isAsyncEffect', () => {
   })
 })
 
-describe('containsDiscriminatedUnion', () => {
+describe('capabilitiesOf: discriminatedUnion', () => {
   it('false for a plain object schema', () => {
-    expect(containsDiscriminatedUnion(z.object({ a: z.string(), b: z.number() }))).toBe(false)
+    expect(capabilitiesOf(z.object({ a: z.string(), b: z.number() })).discriminatedUnion).toBe(
+      false
+    )
   })
 
   it('true for a top-level discriminated union', () => {
@@ -311,7 +311,7 @@ describe('containsDiscriminatedUnion', () => {
       z.object({ kind: z.literal('a'), x: z.string() }),
       z.object({ kind: z.literal('b'), y: z.number() }),
     ])
-    expect(containsDiscriminatedUnion(du)).toBe(true)
+    expect(capabilitiesOf(du).discriminatedUnion).toBe(true)
   })
 
   it('true for a union nested under an object key', () => {
@@ -319,7 +319,7 @@ describe('containsDiscriminatedUnion', () => {
       z.object({ kind: z.literal('a'), x: z.string() }),
       z.object({ kind: z.literal('b'), y: z.number() }),
     ])
-    expect(containsDiscriminatedUnion(z.object({ notify: du }))).toBe(true)
+    expect(capabilitiesOf(z.object({ notify: du })).discriminatedUnion).toBe(true)
   })
 
   it('true for a union inside an array element (never-populated arrays still count)', () => {
@@ -327,23 +327,25 @@ describe('containsDiscriminatedUnion', () => {
       z.object({ kind: z.literal('a'), x: z.string() }),
       z.object({ kind: z.literal('b'), y: z.number() }),
     ])
-    expect(containsDiscriminatedUnion(z.object({ items: z.array(du) }))).toBe(true)
+    expect(capabilitiesOf(z.object({ items: z.array(du) })).discriminatedUnion).toBe(true)
   })
 
   it('false for a plain (non-discriminated) union', () => {
-    expect(containsDiscriminatedUnion(z.object({ v: z.union([z.string(), z.number()]) }))).toBe(
-      false
-    )
+    expect(
+      capabilitiesOf(z.object({ v: z.union([z.string(), z.number()]) })).discriminatedUnion
+    ).toBe(false)
   })
 })
 
-describe('containsAsyncRefine', () => {
+describe('capabilitiesOf: asyncRefine', () => {
   it('flags any leaf refine at the root: sync or async (v3 conservative)', () => {
     // v3 cannot statically distinguish sync from async refines; both
     // are treated as "potentially async" so the runtime never misses
     // the post-mount async pass.
-    expect(containsAsyncRefine(z.string().refine(async () => Promise.resolve(true)))).toBe(true)
-    expect(containsAsyncRefine(z.string().refine(() => true))).toBe(true)
+    expect(capabilitiesOf(z.string().refine(async () => Promise.resolve(true))).asyncRefine).toBe(
+      true
+    )
+    expect(capabilitiesOf(z.string().refine(() => true)).asyncRefine).toBe(true)
   })
 
   it('flags a refine nested under containers and wrappers', () => {
@@ -359,15 +361,16 @@ describe('containsAsyncRefine', () => {
         })
         .nullable(),
     })
-    expect(containsAsyncRefine(nested)).toBe(true)
+    expect(capabilitiesOf(nested).asyncRefine).toBe(true)
   })
 
   it('returns false for schemas without any ZodEffects refinements', () => {
-    expect(containsAsyncRefine(z.string())).toBe(false)
-    expect(containsAsyncRefine(z.object({ name: z.string(), age: z.number() }))).toBe(false)
+    expect(capabilitiesOf(z.string()).asyncRefine).toBe(false)
+    expect(capabilitiesOf(z.object({ name: z.string(), age: z.number() })).asyncRefine).toBe(false)
     // A bare transform (no refinement effects) doesn't trip the flag.
     expect(
-      containsAsyncRefine(z.object({ x: z.string().transform(async (v) => Promise.resolve(v)) }))
+      capabilitiesOf(z.object({ x: z.string().transform(async (v) => Promise.resolve(v)) }))
+        .asyncRefine
     ).toBe(false)
   })
 
@@ -377,34 +380,38 @@ describe('containsAsyncRefine', () => {
       .string()
       .refine(() => true)
       .brand<'Tag'>()
-    expect(containsAsyncRefine(pipeline)).toBe(true)
-    expect(containsAsyncRefine(branded)).toBe(true)
+    expect(capabilitiesOf(pipeline).asyncRefine).toBe(true)
+    expect(capabilitiesOf(branded).asyncRefine).toBe(true)
   })
 })
 
-describe('containsAsyncTransform', () => {
+describe('capabilitiesOf: asyncTransform', () => {
   it('flags an async transform / preprocess at the root', () => {
-    expect(containsAsyncTransform(z.string().transform(async (v) => Promise.resolve(v)))).toBe(true)
-    expect(containsAsyncTransform(z.preprocess(async (v) => Promise.resolve(v), z.string()))).toBe(
-      true
-    )
+    expect(
+      capabilitiesOf(z.string().transform(async (v) => Promise.resolve(v))).asyncTransform
+    ).toBe(true)
+    expect(
+      capabilitiesOf(z.preprocess(async (v) => Promise.resolve(v), z.string())).asyncTransform
+    ).toBe(true)
   })
 
   it('does not flag sync transforms / preprocess', () => {
-    expect(containsAsyncTransform(z.string().transform((v) => v))).toBe(false)
-    expect(containsAsyncTransform(z.preprocess((v) => v, z.string()))).toBe(false)
+    expect(capabilitiesOf(z.string().transform((v) => v)).asyncTransform).toBe(false)
+    expect(capabilitiesOf(z.preprocess((v) => v, z.string())).asyncTransform).toBe(false)
   })
 
   it('does not flag refinements (sync or async): those are the refine walker’s domain', () => {
-    expect(containsAsyncTransform(z.string().refine(async () => Promise.resolve(true)))).toBe(false)
-    expect(containsAsyncTransform(z.string().refine(() => true))).toBe(false)
+    expect(
+      capabilitiesOf(z.string().refine(async () => Promise.resolve(true))).asyncTransform
+    ).toBe(false)
+    expect(capabilitiesOf(z.string().refine(() => true)).asyncTransform).toBe(false)
   })
 
   it('flags an async transform nested under union options', () => {
     const schema = z.object({
       payload: z.union([z.string(), z.string().transform(async (v) => Promise.resolve(`${v}!`))]),
     })
-    expect(containsAsyncTransform(schema)).toBe(true)
+    expect(capabilitiesOf(schema).asyncTransform).toBe(true)
   })
 })
 

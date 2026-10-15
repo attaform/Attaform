@@ -22,6 +22,7 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
 import * as paths from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 type RowsForm = { rows: { c0: string; c1: string }[] }
 type GroupForm = { group: { keep: string; opt?: string } }
@@ -32,7 +33,7 @@ function rowsAccessor(rowCount: number) {
   const rows = Array.from({ length: rowCount }, () => ({ c0: '', c1: '' }))
   const state = createFormStore<RowsForm>({
     formKey: 'rows',
-    schema: fakeSchema<RowsForm>({ rows }),
+    ...schemaOptions(fakeSchema<RowsForm>({ rows })),
   })
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never
@@ -142,7 +143,7 @@ describe('container field-state aggregation: linear in array length', () => {
     // A naive value-diff that skipped undefined would silently drop it.
     const state = createFormStore<GroupForm>({
       formKey: 'group',
-      schema: fakeSchema<GroupForm>({ group: { keep: 'k' } }),
+      ...schemaOptions(fakeSchema<GroupForm>({ group: { keep: 'k' } })),
     })
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never

@@ -11,9 +11,7 @@
 import type { z } from 'zod'
 import type { SchemaIntrospector, SharedZodKind } from '../../core/abstract-schema-factory'
 import {
-  containsAsyncRefine,
-  containsAsyncTransform,
-  containsDiscriminatedUnion,
+  capabilitiesOf,
   getArrayElement,
   getCatchDefault,
   getDefaultValue,
@@ -32,7 +30,6 @@ import {
   getTupleItems,
   getUnionOptions,
   hasCatchValue,
-  hasContainerOrRootRefine,
   isCoercePrimitive,
   isPreprocessNode,
   kindOf,
@@ -53,10 +50,7 @@ export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
   getLiteralValues,
   isPreprocessNode,
   isCoercePrimitive,
-  containsAsyncRefine,
-  containsAsyncTransform,
-  containsDiscriminatedUnion,
-  hasContainerOrRootRefine,
+  capabilitiesOf,
 
   // Walker accessors (D2 / D3 / D5).
   getArrayElement: (schema) => {

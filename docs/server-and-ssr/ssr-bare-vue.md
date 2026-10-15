@@ -122,7 +122,7 @@ Same surfaces as the [Nuxt path](/docs/server-and-ssr/ssr-nuxt):
 NOT on the wire:
 
 - History chain (each session walks its own undo timeline).
-- In-flight validation. Only settled errors ride the wire, and the client runs its own mount-time pass either way, which re-derives the schema half from the hydrated values and lands on the same errors. A field carrying an [async refinement](/docs/validation/async-refinements) pays for that pass.
+- In-flight validation. Only settled errors ride the wire. The client takes the server's schema errors as its starting verdict and runs no check of its own at mount, except the post-mount async pass for a schema with async work, which the server never runs. A field carrying an [async refinement](/docs/validation/async-refinements) pays for that pass on the client.
 
 ## Vite plugin
 

@@ -142,6 +142,10 @@ describe.each(flatAdapters)(
       document.body.appendChild(root)
       app.mount(root)
       apps.push(app)
+      // Read the errors as a template showing them would. The starting
+      // value's verdict runs at that first read, so it lands in the
+      // baseline instead of in the first write below.
+      void api.meta.errors
       await drainMicrotasks()
       const runsAtMount = runs()
 
@@ -180,6 +184,10 @@ describe.each(flatAdapters)(
       document.body.appendChild(root)
       app.mount(root)
       apps.push(app)
+      // Read the errors as a template showing them would. The starting
+      // value's verdict runs at that first read, so it lands in the
+      // baseline instead of in the first write below.
+      void api.meta.errors
       await drainMicrotasks()
       const runsAtMount = runs()
 
@@ -222,6 +230,10 @@ describe.each(refineAdapters)(
       document.body.appendChild(root)
       app.mount(root)
       apps.push(app)
+      // Read the errors as a template showing them would. The starting
+      // value's verdict runs at that first read, so it lands in the
+      // baseline instead of in the first write below.
+      void api.meta.errors
       await drainMicrotasks()
       const runsAtMount = runs()
 

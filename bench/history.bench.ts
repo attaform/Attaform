@@ -15,6 +15,7 @@ import { test } from 'vitest'
 import { createFormStore } from '../src/runtime/core/create-form-store'
 import { historyPlugin } from '../src/history'
 import { fakeSchema } from '../test/utils/fake-schema'
+import { schemaOptions } from '../test/utils/store-options'
 
 type Form = Record<string, unknown>
 
@@ -30,7 +31,7 @@ test('history: applyFormReplacement with / without history', async ({ bench }) =
   const disabled = bench('history disabled — applyFormReplacement baseline', () => {
     const state = createFormStore<Form>({
       formKey: 'bench',
-      schema: fakeSchema<Form>(defaults100),
+      ...schemaOptions(fakeSchema<Form>(defaults100)),
     })
     state.setValueAtPath(['field0'], 'mutated')
     state.setValueAtPath(['field1'], 'mutated')
@@ -40,7 +41,7 @@ test('history: applyFormReplacement with / without history', async ({ bench }) =
   const enabled = bench('history enabled — 3 mutations, 3 snapshots pushed', () => {
     const state = createFormStore<Form>({
       formKey: 'bench',
-      schema: fakeSchema<Form>(defaults100),
+      ...schemaOptions(fakeSchema<Form>(defaults100)),
     })
     const history = historyPlugin().attach(state)
     state.setValueAtPath(['field0'], 'mutated')

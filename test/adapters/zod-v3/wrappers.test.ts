@@ -24,7 +24,9 @@ describe('zod v3 adapter: bounded wrapper recursion', () => {
     // bails conservatively at the 64-step cap rather than recursing
     // through all 500.
     const adapter = zodAdapter(root)('f', { maxRecursionDepth: 64 })
-    expect(() => adapter.getDefaultValues({ useDefaultSchemaValues: true })).not.toThrow()
+    expect(() =>
+      adapter.validateSync(adapter.getDefaultValues({ useDefaultSchemaValues: true }))
+    ).not.toThrow()
   })
 
   it('honours .default() inside a moderate .refine() chain', () => {
@@ -34,9 +36,9 @@ describe('zod v3 adapter: bounded wrapper recursion', () => {
     }
     const root = z.object({ token: schema })
     const adapter = zodAdapter(root)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ token: 'seed' })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect(data).toEqual({ token: 'seed' })
   })
 
   it('does not hang when peeling a deep optional/nullable chain', () => {
@@ -46,7 +48,9 @@ describe('zod v3 adapter: bounded wrapper recursion', () => {
     }
     const root = z.object({ chained: schema })
     const adapter = zodAdapter(root)('f', { maxRecursionDepth: 64 })
-    expect(() => adapter.getDefaultValues({ useDefaultSchemaValues: true })).not.toThrow()
+    expect(() =>
+      adapter.validateSync(adapter.getDefaultValues({ useDefaultSchemaValues: true }))
+    ).not.toThrow()
   })
 
   it('terminates the slim-primitive walk on a deep optional chain', () => {
@@ -67,9 +71,9 @@ describe('zod v3 adapter: transparent wrapper kinds', () => {
       count: z.number().readonly(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ handle: '', count: 0 })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect(data).toEqual({ handle: '', count: 0 })
   })
 
   it('produces a default for a ZodBranded leaf', () => {
@@ -78,9 +82,9 @@ describe('zod v3 adapter: transparent wrapper kinds', () => {
       seq: z.number().brand<'Seq'>(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ id: '', seq: 0 })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect(data).toEqual({ id: '', seq: 0 })
   })
 
   it('produces a default for a ZodPipeline (uses input schema)', () => {
@@ -88,13 +92,12 @@ describe('zod v3 adapter: transparent wrapper kinds', () => {
       email: z.string().pipe(z.string().email()),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    // Pass `strict: false` so the slim-parse rebuilds a checks-free
-    // copy for default extraction. Strict mode (the default) would
-    // surface the `email` validation rejection of `''`.
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     // Input schema default (pre-transform) is `''`.
-    expect(result.success).toBe(true)
-    expect((result.data as { email: string }).email).toBe('')
+    expect((data as { email: string }).email).toBe('')
+    // The verdict runs both sides of the pipe, so the output side's
+    // `.email()` rejects `''`, as it does on v4.
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([['email']])
   })
 
   it('honours .default() through a ZodReadonly wrapper', () => {
@@ -102,8 +105,8 @@ describe('zod v3 adapter: transparent wrapper kinds', () => {
       role: z.string().default('user').readonly(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ role: 'user' })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ role: 'user' })
   })
 
   it('honours .default() through a ZodBranded wrapper', () => {
@@ -111,8 +114,8 @@ describe('zod v3 adapter: transparent wrapper kinds', () => {
       handle: z.string().default('anon').brand<'Handle'>(),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ handle: 'anon' })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ handle: 'anon' })
   })
 
   it('walks getDefaultAtPath through a ZodPipeline + ZodReadonly chain', () => {
@@ -135,9 +138,9 @@ describe('zod v3 adapter: ZodCatch fallback', () => {
       count: z.number().catch(42),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ handle: 'anonymous', count: 42 })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(adapter.validateSync(data)).toEqual([])
+    expect(data).toEqual({ handle: 'anonymous', count: 42 })
   })
 
   it('honours .catch() over .default() when both are present', () => {
@@ -150,8 +153,8 @@ describe('zod v3 adapter: ZodCatch fallback', () => {
       role: z.string().default('user').catch('guest'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-    expect(result.data).toEqual({ role: 'guest' })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+    expect(data).toEqual({ role: 'guest' })
   })
 
   it('skips the catch fallback when useDefaultSchemaValues is false (v4 parity)', () => {
@@ -159,11 +162,11 @@ describe('zod v3 adapter: ZodCatch fallback', () => {
       handle: z.string().catch('anonymous'),
     })
     const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({ useDefaultSchemaValues: false })
+    const data = adapter.getDefaultValues({ useDefaultSchemaValues: false })
     // Aligned with v4 (size-teardown P7): `useDefaultSchemaValues:
     // false` means "show the leaf empty", `.catch()` is a
     // default-like wrapper, so the inner leaf's bare empty wins.
-    expect((result.data as { handle: string }).handle).toBe('')
+    expect((data as { handle: string }).handle).toBe('')
   })
 
   it('walks getDefaultAtPath through a ZodCatch on an object', () => {

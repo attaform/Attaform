@@ -1,9 +1,5 @@
 import type { Path } from '../../src/runtime/core/paths'
-import type {
-  AbstractSchema,
-  SchemaDefaultsResult,
-  SchemaParseResult,
-} from '../../src/runtime/types/types-api'
+import type { AbstractSchema, SchemaParseResult } from '../../src/runtime/types/types-api'
 import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-core'
 
 /**
@@ -14,12 +10,14 @@ import type { DeepPartial, GenericForm } from '../../src/runtime/types/types-cor
  *
  * Usage:
  *   const schema = fakeSchema<MyForm>({ user: { name: 'alice', age: 30 } })
- *   const state = createFormStore({ formKey: 'test', schema })
+ *   const state = createFormStore({ formKey: 'test', ...schemaOptions(schema) })
  *
  * This schema:
  * - Accepts any form shape; no validation rules.
  * - Uses the provided `defaults` as the initial state.
  * - `validateAtPath` always reports success.
+ * - `validateSync` reports no failures, so a fake form mounts and resets
+ *   clean; a custom `validator` is consulted by `validateAtPath` only.
  * - `getSchemasAtPath` returns `[]` (no path-specific subschemas).
  *
  * For tests that need validation failure cases, pass a custom `validator`.
@@ -35,13 +33,11 @@ export function fakeSchema<F extends GenericForm>(
   ) => SchemaParseResult<F> | Promise<SchemaParseResult<F>>
 ): AbstractSchema<F, F> {
   const schema: AbstractSchema<F, F> = {
-    getDefaultValues(config): SchemaDefaultsResult<F> {
-      const merged = mergeDeepPartial(defaults, config.constraints as DeepPartial<F>) as F
-      return {
-        data: merged,
-        errors: undefined,
-        success: true,
-      }
+    getDefaultValues(config): F {
+      return mergeDeepPartial(defaults, config.constraints as DeepPartial<F>) as F
+    },
+    validateSync() {
+      return []
     },
     isPreprocessOrCoerceLeaf(path) {
       // fakeSchema doesn't model preprocess / coerce wrappers, so the

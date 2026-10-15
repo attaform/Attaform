@@ -13,8 +13,8 @@
  *   - `AbstractSchemaServices<Schema, Form, GetValueFormType>`: the delegates
  *     for everything that genuinely diverges per Zod version, namely path
  *     walking, default-value derivation, the `getDefaultValues` flow, the
- *     wrapper peeling tied to each version's wrapper set, field-meta
- *     resolution and the `safeParse` boundary.
+ *     construction verdict, the wrapper peeling tied to each version's
+ *     wrapper set, field-meta resolution and the `safeParse` boundary.
  *
  * The split is what keeps the introspector reusable by any other walker,
  * slim-primitives and default-values among them, without dragging the
@@ -34,7 +34,6 @@ import type {
   UnionDiscriminatorContext,
   ValidationError,
   ValidateOptions,
-  SchemaDefaultsResult,
   SchemaParseResult,
   SchemaFactoryOptions,
 } from '../types/types-api'
@@ -115,13 +114,48 @@ function isOpaqueKind(kind: SharedZodKind | string): boolean {
 }
 
 /**
+ * What a schema tree holds, as far as the runtime's capability questions go.
+ * An adapter answers every member from one walk of the tree
+ * (`SchemaIntrospector.capabilitiesOf`).
+ */
+export interface SchemaCapabilities {
+  /**
+   * A refine whose predicate can run asynchronously. v3 is conservative and
+   * flags every `.refine`, its inner sync wrapper hiding the user function; v4
+   * is exact, inspecting `def.checks[].def.fn.constructor.name`. Either way the
+   * runtime reads it to decide whether a construction-time async pass is
+   * needed.
+   */
+  readonly asyncRefine: boolean
+  /**
+   * A `.transform(asyncFn)` or `z.preprocess(asyncFn, …)`, detectable
+   * statically in both adapters through the user function's
+   * `constructor.name`. Disjoint from `asyncRefine`: refines and transforms
+   * live in different slots.
+   */
+  readonly asyncTransform: boolean
+  /**
+   * A discriminated union at any depth. Drives the store's per-form DU
+   * capability flag.
+   */
+  readonly discriminatedUnion: boolean
+  /**
+   * A refine at a container node (object, array, tuple, union, discriminated
+   * union, intersection, record, map, set) or at the root. False means every
+   * refine is leaf-local, so per-keystroke subtree validation catches the same
+   * verdicts a whole-form pass would.
+   */
+  readonly containerOrRootRefine: boolean
+}
+
+/**
  * Pure schema-shape accessors, consulted to branch on structural facts about a
  * node. Every member is side-effect-free and idempotent.
  *
  * `kindOf` returns the discriminant, and the structural accessors each read a
- * single field of the node's def shape. The boolean predicates summarise
- * tree-walking detections the adapters already expose and memoise at the
- * AbstractSchema level, so calling one per construction is cheap.
+ * single field of the node's def shape. `capabilitiesOf` summarises the
+ * tree-walking detections in one walk, which the adapter memoizes for a root
+ * schema, so asking it per construction is a lookup.
  */
 export interface SchemaIntrospector<Schema> {
   /** Discriminant on schema shape. Adapters may return extra kinds. */
@@ -162,33 +196,12 @@ export interface SchemaIntrospector<Schema> {
    */
   isCoercePrimitive(schema: Schema): boolean
   /**
-   * True iff the schema tree contains a refine whose predicate can run
-   * asynchronously. v3 is conservative and flags every `.refine`, its inner
-   * sync wrapper hiding the user function; v4 is exact, inspecting
-   * `def.checks[].def.fn.constructor.name`. Either way the runtime reads it to
-   * decide whether a construction-time async pass is needed.
+   * The capabilities of the tree under `schema`, from one walk. The answer is
+   * a pure function of the tree, so an adapter memoizes it per node for the
+   * life of the process wherever the same node is asked again, as a root
+   * schema is by every form built on it.
    */
-  containsAsyncRefine(schema: Schema): boolean
-  /**
-   * True iff the schema tree contains a `.transform(asyncFn)` or
-   * `z.preprocess(asyncFn, …)`, detectable statically in both adapters through
-   * the user function's `constructor.name`. Disjoint from
-   * `containsAsyncRefine`: refines and transforms live in different slots.
-   */
-  containsAsyncTransform(schema: Schema): boolean
-  /**
-   * True iff any refine fires at a container node (object, array, tuple, union,
-   * discriminated union, intersection, record, set) or at the root. False means
-   * every refine is leaf-local, so per-keystroke subtree validation catches the
-   * same verdicts a whole-form pass would.
-   */
-  hasContainerOrRootRefine(schema: Schema): boolean
-  /**
-   * True iff the schema tree holds at least one discriminated union at
-   * any depth. Drives the store's per-form DU capability flag; queried
-   * once at construction.
-   */
-  containsDiscriminatedUnion(schema: Schema): boolean
+  capabilitiesOf(schema: Schema): SchemaCapabilities
 
   // --- Walker accessors ---
   // Consumed by the shared `core/walk-*` walkers, so the path-walking,
@@ -306,8 +319,11 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    * `getNestedSchemasAtPath`, its path walker already inlining the peeling.
    */
   getNestedSchemasInSlimMode(schema: Schema, path: Path, maxRecursionDepth: number): Schema[]
-  /** Returns the slim-primitive accept-set of a single sub-schema. */
-  slimPrimitivesOf(schema: Schema, maxRecursionDepth: number): Set<SlimPrimitiveKind>
+  /**
+   * The slim-primitive accept-set of a single sub-schema. Read-only: the walk
+   * hands back shared singletons for leaf kinds, not a copy.
+   */
+  slimPrimitivesOf(schema: Schema, maxRecursionDepth: number): ReadonlySet<SlimPrimitiveKind>
   /**
    * The schema's prescribed default at the given root. `getDefaultAtPath` calls
    * it with `useDefault=true` to honour `.default(x)`, and
@@ -316,15 +332,23 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    */
   deriveDefault(schema: Schema, useDefault: boolean, maxRecursionDepth: number): unknown
   /**
-   * The construction-time default-values flow. v3 runs a validate-then-fix loop
-   * against a slim schema and then parses the real one; v4 parses the real
-   * schema against the derived data. Both honour `config.constraints`.
+   * The starting-value derivation behind `getDefaultValues`. Both adapters
+   * parse nothing here: the default walk, then, when `config.constraints` is
+   * supplied, a merge and the structural repair walk.
    */
   runGetDefaults(
     schema: Schema,
     config: GetDefaultValuesConfig<Form>,
     maxRecursionDepth: number
-  ): SchemaDefaultsResult<Form>
+  ): Form
+  /**
+   * The synchronous whole-form verdict behind `validateSync`: one parse of
+   * the real schema, so refinement and check failures seed the schema error
+   * channel. MUST NOT throw. v4 skips the parse for a schema with an async
+   * refine or an async transform; v3 skips it only for an async transform,
+   * and returns `[]` when the parse throws over an async refine.
+   */
+  validateSync(schema: Schema, data: unknown): ValidationError[]
   /**
    * Peels `.optional()` and `.nullable()` only when the inner is structurally
    * fillable: an object, array, tuple, record, union or intersection, or a
@@ -497,12 +521,6 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
   // the contract returns a `ReadonlySet`: the answer belongs to the schema,
   // not to the caller.
   const slimKindsCache = new Map<PathKey, ReadonlySet<SlimPrimitiveKind>>()
-  // Memoised one-shot tree walks. The store queries `needsAsyncValidation` at
-  // construction, driving the async seed, and `hasContainerOrRootRefine` per
-  // keystroke, driving the subtree-against-whole-form scope cut.
-  let asyncValidationFlag: boolean | null = null
-  let containerRefineFlag: boolean | null = null
-  let discriminatedUnionFlag: boolean | null = null
 
   /**
    * The segment kind that can spell a key of the map `schema`, or
@@ -583,23 +601,24 @@ export function createAbstractSchema<Schema, Form, GetValueFormType>(
 
   const abstractSchema: AbstractSchema<Form, GetValueFormType> = {
     needsAsyncValidation(): boolean {
-      asyncValidationFlag ??=
-        intro.containsAsyncRefine(rootSchema) || intro.containsAsyncTransform(rootSchema)
-      return asyncValidationFlag
+      const { asyncRefine, asyncTransform } = intro.capabilitiesOf(rootSchema)
+      return asyncRefine || asyncTransform
     },
 
     hasContainerOrRootRefine(): boolean {
-      containerRefineFlag ??= intro.hasContainerOrRootRefine(rootSchema)
-      return containerRefineFlag
+      return intro.capabilitiesOf(rootSchema).containerOrRootRefine
     },
 
     hasDiscriminatedUnions(): boolean {
-      discriminatedUnionFlag ??= intro.containsDiscriminatedUnion(rootSchema)
-      return discriminatedUnionFlag
+      return intro.capabilitiesOf(rootSchema).discriminatedUnion
     },
 
-    getDefaultValues(config: GetDefaultValuesConfig<Form>): SchemaDefaultsResult<Form> {
+    getDefaultValues(config: GetDefaultValuesConfig<Form>): Form {
       return services.runGetDefaults(rootSchema, config, maxRecursionDepth)
+    },
+
+    validateSync(data: unknown): ValidationError[] {
+      return services.validateSync(rootSchema, data)
     },
 
     getDefaultAtPath(path) {

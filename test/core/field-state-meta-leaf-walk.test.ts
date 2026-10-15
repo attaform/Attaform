@@ -17,13 +17,14 @@ import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildFieldStateAccessor } from '../../src/runtime/core/field-state-api'
 import * as paths from '../../src/runtime/core/paths'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 function makeWideForm(leafCount: number) {
   const defaults: Record<string, string> = {}
   for (let i = 0; i < leafCount; i++) defaults[`f${i}`] = ''
   const state = createFormStore<Record<string, string>>({
     formKey: 'wide',
-    schema: fakeSchema<Record<string, string>>(defaults),
+    ...schemaOptions(fakeSchema<Record<string, string>>(defaults)),
   })
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
   const getFormMetaBase = () => ({ submissionAttempts: 0 }) as never

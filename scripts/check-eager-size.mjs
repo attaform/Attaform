@@ -210,12 +210,11 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 33,758 B measured. Last moved UP, 33_450 -> 34_050, by the
-// E4 heap-and-hot-paths phase (2026-09-16): +608 B of eager for -22% of a
-// form's heap, -36% on a read-swept 100-leaf form, and a 400-row
-// `form.list()` going from 278 ms per keystroke to 7.4 ms. Against `main`
-// the branch is still 750 B smaller. See the ledger for the full pricing.
-const BUDGET_GZ = 33_320
+// Currently at 33,387 B measured. Last moved UP, 33_320 -> 33_400, by
+// #691's lazy construction verdict (2026-10-15): +129 B of eager so that a
+// form nothing reads never validates its starting value. See the ledger
+// for the full pricing.
+const BUDGET_GZ = 33_400
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

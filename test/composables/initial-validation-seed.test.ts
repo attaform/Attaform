@@ -9,17 +9,19 @@ import { useForm } from '../../src/zod'
 import type { UseFormReturn } from '../../src/zod'
 import { fakeSchema } from '../utils/fake-schema'
 import { assertNeverSettles } from '../utils/form-harness'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * Initial validation seed: when a form's default values fail schema
- * validation, `schemaErrors` is populated immediately at construction
- * time (without requiring a user mutation or an explicit
- * `parse({ commit: true })` call).
+ * validation, `schemaErrors` holds that verdict from the first read, on
+ * the frame the form mounts (without requiring a user mutation or an
+ * explicit `parse({ commit: true })` call). The seed itself runs at that
+ * first read rather than inside `useForm` (#691).
  *
  * Two invariants locked here:
  *   1. Invalid defaults   → seed populates schemaErrors.
- *   2. Hydration provided → hydration replaces the seed wholesale;
- *      the server's snapshot is authoritative.
+ *   2. Hydration provided → no seed runs; the server's snapshot is
+ *      authoritative.
  */
 
 const tightSchema = z.object({
@@ -96,7 +98,7 @@ describe('initial validation seed', () => {
     expect(handle.api?.errors.email).toEqual([])
   })
 
-  it('populates schemaErrors at construction when defaults fail validation', () => {
+  it('populates schemaErrors from the first read when defaults fail validation', () => {
     // Pin: errors are a pure function of (value, schema) at all
     // times, including the frame the form mounts on. Empty defaults:
     // '' fails .email(), '' fails .min(8). Both surface in
@@ -399,18 +401,16 @@ describe('initial validation seed: async-refine schema', () => {
 
 describe('initial validation seed: hydration takes precedence', () => {
   it('skips the seed when hydration is provided (server is authoritative)', () => {
-    // Hand-roll a fakeSchema whose getDefaultValues reports a failure,
+    // Hand-roll a fakeSchema whose validateSync reports a failure,
     // proves the seed code path WOULD fire if hydration weren't
     // taking precedence. Hydration carries an explicit empty errors
     // slot, modelling "the server validated and decided it was OK."
     type Form = { email: string; password: string }
     const failingDefaultsSchema = fakeSchema<Form>({ email: '', password: '' })
-    failingDefaultsSchema.getDefaultValues = (config) => ({
-      data: {
-        email: config.constraints?.email ?? '',
-        password: config.constraints?.password ?? '',
-      },
-      errors: [
+    let verdicts = 0
+    failingDefaultsSchema.validateSync = () => {
+      verdicts++
+      return [
         {
           path: ['email'],
           message: 'seeded email error',
@@ -423,14 +423,12 @@ describe('initial validation seed: hydration takes precedence', () => {
           formKey: 'hyd',
           code: 'atta:test-fixture',
         },
-      ],
-      success: false,
-      formKey: 'hyd',
-    })
+      ]
+    }
 
     const state = createFormStore<Form>({
       formKey: 'hyd',
-      schema: failingDefaultsSchema,
+      ...schemaOptions(failingDefaultsSchema),
       hydration: {
         form: { email: 'server@x.com', password: 'serverpw' },
         // Empty stores, hydration says the server saw a valid form.
@@ -442,7 +440,9 @@ describe('initial validation seed: hydration takes precedence', () => {
       },
     })
 
-    expect(state.errorCells.size).toBe(0)
+    expect(state.errorCells().size).toBe(0)
+    // The hydrating client never computes the verdict it would discard.
+    expect(verdicts).toBe(0)
   })
 
   it('replays hydrated schema errors verbatim, ignoring the seed', () => {
@@ -451,25 +451,20 @@ describe('initial validation seed: hydration takes precedence', () => {
     // shape wins: the seed doesn't get to add its own entries on top.
     type Form = { email: string; password: string }
     const failingDefaultsSchema = fakeSchema<Form>({ email: '', password: '' })
-    failingDefaultsSchema.getDefaultValues = () => ({
-      data: { email: '', password: '' },
-      errors: [
-        {
-          path: ['email'],
-          message: 'seed should not appear',
-          formKey: 'hyd2',
-          code: 'atta:test-fixture',
-        },
-        {
-          path: ['password'],
-          message: 'seed should not appear',
-          formKey: 'hyd2',
-          code: 'atta:test-fixture',
-        },
-      ],
-      success: false,
-      formKey: 'hyd2',
-    })
+    failingDefaultsSchema.validateSync = () => [
+      {
+        path: ['email'],
+        message: 'seed should not appear',
+        formKey: 'hyd2',
+        code: 'atta:test-fixture',
+      },
+      {
+        path: ['password'],
+        message: 'seed should not appear',
+        formKey: 'hyd2',
+        code: 'atta:test-fixture',
+      },
+    ]
 
     const onlyServerError = [
       {
@@ -483,7 +478,7 @@ describe('initial validation seed: hydration takes precedence', () => {
 
     const state = createFormStore<Form>({
       formKey: 'hyd2',
-      schema: failingDefaultsSchema,
+      ...schemaOptions(failingDefaultsSchema),
       hydration: {
         form: { email: 'a@a', password: 'irrelevant' },
         schemaErrors: [[emailKey, onlyServerError]],
@@ -492,7 +487,7 @@ describe('initial validation seed: hydration takes precedence', () => {
       },
     })
 
-    expect(state.errorCells.size).toBe(1)
-    expect(state.errorCells.get(emailKey)?.schema[0]?.message).toBe('server email rejection')
+    expect(state.errorCells().size).toBe(1)
+    expect(state.errorCells().get(emailKey)?.schema[0]?.message).toBe('server email rejection')
   })
 })

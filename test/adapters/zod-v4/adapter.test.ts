@@ -11,9 +11,9 @@ describe('zod v4 adapter', () => {
         active: z.boolean(),
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-      expect(result.success).toBe(true)
-      expect(result.data).toEqual({ email: '', age: 0, active: false })
+      const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
+      expect(adapter.validateSync(data)).toEqual([])
+      expect(data).toEqual({ email: '', age: 0, active: false })
     })
 
     it('honors .default() values', () => {
@@ -22,8 +22,10 @@ describe('zod v4 adapter', () => {
         count: z.number().default(5),
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-      expect(result.data).toEqual({ role: 'user', count: 5 })
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
+        role: 'user',
+        count: 5,
+      })
     })
 
     it('optional fields default to undefined', () => {
@@ -32,27 +34,28 @@ describe('zod v4 adapter', () => {
         nickname: z.string().optional(),
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-      expect(result.data).toEqual({ email: '', nickname: undefined })
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
+        email: '',
+        nickname: undefined,
+      })
     })
 
     it('nullable fields default to null', () => {
       const schema = z.object({ profile: z.string().nullable() })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      const result = adapter.getDefaultValues({ useDefaultSchemaValues: true })
-      expect(result.data).toEqual({ profile: null })
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({ profile: null })
     })
 
     it('arrays default to empty', () => {
       const schema = z.object({ tags: z.array(z.string()) })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({ tags: [] })
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({ tags: [] })
     })
 
     it('enums default to the first value', () => {
       const schema = z.object({ color: z.enum(['red', 'green', 'blue']) })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
         color: 'red',
       })
     })
@@ -60,7 +63,7 @@ describe('zod v4 adapter', () => {
     it('literal fields default to the literal value', () => {
       const schema = z.object({ kind: z.literal('user') })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
         kind: 'user',
       })
     })
@@ -73,7 +76,7 @@ describe('zod v4 adapter', () => {
         }),
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true }).data).toEqual({
+      expect(adapter.getDefaultValues({ useDefaultSchemaValues: true })).toEqual({
         profile: { name: '', age: 0 },
       })
     })
@@ -84,11 +87,11 @@ describe('zod v4 adapter', () => {
         count: z.number(),
       })
       const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-      const result = adapter.getDefaultValues({
+      const data = adapter.getDefaultValues({
         useDefaultSchemaValues: true,
         constraints: { email: 'seeded@x' },
       })
-      expect(result.data).toEqual({ email: 'seeded@x', count: 0 })
+      expect(data).toEqual({ email: 'seeded@x', count: 0 })
     })
 
     describe('an async sibling defers the whole construction verdict', () => {
@@ -104,15 +107,15 @@ describe('zod v4 adapter', () => {
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
         })
         const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-        const result = adapter.getDefaultValues({
+        const data = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { word: '', email: 'a@b.com' },
         })
-        expect(result.success).toBe(true)
-        expect(result.errors).toBeUndefined()
+        const errors = adapter.validateSync(data)
+        expect(errors).toEqual([])
       })
 
-      it('returns success when the sync portion is clean but async refines exist', () => {
+      it('returns no errors when the sync portion is clean but async refines exist', () => {
         // The same answer from the other direction: nothing to report
         // either way while async work is outstanding.
         const schema = z.object({
@@ -120,45 +123,46 @@ describe('zod v4 adapter', () => {
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
         })
         const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-        const result = adapter.getDefaultValues({
+        const data = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { word: 'hello', email: 'a@b.com' },
         })
-        expect(result.success).toBe(true)
-        expect(result.errors).toBeUndefined()
+        const errors = adapter.validateSync(data)
+        expect(errors).toEqual([])
       })
 
       it('a FAILING sync sibling is not seeded when an async refine is present', () => {
         // The async gate is whole-schema: an obviously failing sync
-        // default still returns success, because the construction
-        // parse never ran.
+        // default still returns no errors, because the verdict parse
+        // never ran.
         const schema = z.object({
           word: z.string().refine((v) => v.length > 0, 'word required'),
           email: z.email().refine(async (v) => Promise.resolve(v !== 'taken@x.com'), 'taken'),
         })
         const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-        const result = adapter.getDefaultValues({
+        const data = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { word: '', email: 'a@b.com' },
         })
-        expect(result.success).toBe(true)
-        expect(result.errors).toBeUndefined()
+        const errors = adapter.validateSync(data)
+        expect(errors).toEqual([])
       })
 
-      it('pure-async schema with clean defaults regression: still returns success', () => {
+      it('pure-async schema with clean defaults regression: still returns no errors', () => {
         // Regression: schemas with only async refines and no sync
-        // failures must continue to return success at construction.
-        // The sync-only retry strips the async refine and parses
-        // clean.
+        // failures must continue to read clean at construction.
+        // `validateSync` skips the parse for a schema holding an async
+        // refine and returns `[]`.
         const schema = z.object({
           email: z.email().refine(async () => Promise.resolve(true), 'never fires'),
         })
         const adapter = zodAdapter(schema)('f', { maxRecursionDepth: 64 })
-        const result = adapter.getDefaultValues({
+        const data = adapter.getDefaultValues({
           useDefaultSchemaValues: false,
           constraints: { email: 'a@b.com' },
         })
-        expect(result.success).toBe(true)
+        const errors = adapter.validateSync(data)
+        expect(errors).toEqual([])
       })
     })
   })

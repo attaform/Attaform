@@ -480,17 +480,11 @@ describe('useForm: reset() re-derives schema errors against the post-reset state
     // the user to read step titles flipping green and even click
     // Next.
     //
-    // Why the post-reset sync re-derive can't surface refinement
-    // errors here:
-    //   - zod-v4 adapter's `getDefaultValues` STRIPS refinements
-    //     (slim parse) → returns success:true with no .min / .email
-    //     errors.
-    //   - `schema.validateAtPath(form, undefined, { sync: true })`
-    //     calls `rootSchema.safeParse(data)` which THROWS when the
-    //     schema contains an always-running async refine (the
-    //     demo's `cargo.items.superRefine(async ...)`). The
-    //     adapter's catch falls through to async-only, returns
-    //     Promise, and the library's sync-validate skips.
+    // Why the post-reset sync re-seed can't surface refinement
+    // errors here: zod-v4's `validateSync` skips its parse for a
+    // schema with an async refine (the demo's
+    // `cargo.items.superRefine(async ...)`) and returns no failures,
+    // so no .min / .email error seeds synchronously.
     //
     // So `schemaErrors` stays empty between sync reset() return and
     // the re-queued async pass landing. The ONLY thing keeping

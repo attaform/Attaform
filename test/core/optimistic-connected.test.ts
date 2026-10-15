@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { createFormStore } from '../../src/runtime/core/create-form-store'
 import { buildRegister } from '../../src/runtime/core/register-api'
 import { fakeSchema } from '../utils/fake-schema'
+import { schemaOptions } from '../utils/store-options'
 
 type F = { email: string; note: string }
 
 function makeForm(opts: { ssr: boolean }) {
   const state = createFormStore<F>({
     formKey: 'opt',
-    schema: fakeSchema<F>({ email: '', note: '' }),
+    ...schemaOptions(fakeSchema<F>({ email: '', note: '' })),
     ssr: opts.ssr,
   })
   return { state, register: buildRegister(state, 'test:inst') }

@@ -49,23 +49,34 @@ import { isUnset } from './unset'
  * through unchanged. An array, tuple or record under an explicit `unset`
  * gets the falsy concrete (`[]`, the slim tuple, `{}`) and no per-element
  * marks; per-element opt-in is still `[unset, unset]`.
+ *
+ * `rootDefault` is the schema's default at the root, which the caller
+ * derives (see `Synthesis`).
  */
 export function walkUnsetSentinels<T>(
   values: T,
-  schema: AbstractSchema<GenericForm, GenericForm>
+  schema: AbstractSchema<GenericForm, GenericForm>,
+  rootDefault: unknown
 ): { cleanedValues: T; paths: PathKey[] } {
   const paths: PathKey[] = []
   // No defaults supplied: auto-mark every primitive leaf reachable from
   // the schema's slim root default. `cleanedValues` stays `undefined` so
   // createFormStore keeps taking its "no user defaults" path.
   if (values === undefined) {
-    const rootSlim = schema.getDefaultAtPath([])
-    walkUnspecified(rootSlim, [], paths)
+    walkUnspecified(rootDefault, [], paths)
     return { cleanedValues: undefined as unknown as T, paths }
   }
-  const cleaned = walkCore(values as unknown, [], schema, paths, true)
+  const cleaned = walkCore(values as unknown, [], schema, paths, { rootDefault })
   return { cleanedValues: cleaned as T, paths }
 }
+
+/**
+ * The construction boundary's synthesis context. `rootDefault` is the
+ * schema's default at the root, the tree `getDefaultAtPath([])` derives,
+ * passed in so a construction derives it once and shares it with its
+ * baseline. The walk resolves only the object paths below the root.
+ */
+type Synthesis = { readonly rootDefault: unknown }
 
 /**
  * `true` for a value the walkers descend into: a plain record or an
@@ -85,15 +96,15 @@ function isRecursable(value: unknown): boolean {
 
 /**
  * Shared depth-first walker behind both unset-walker entry points.
- * `synthesizeSchemaKeys` selects the boundary:
+ * `synthesis` selects the boundary:
  *
- *   - `true` (construction-time `walkUnsetSentinels`): an unspecified key
+ *   - present (construction-time `walkUnsetSentinels`): an unspecified key
  *     falls through to `walkUnspecified` on the schema's slim default so
  *     numeric leaves auto-mark, and an object path also synthesizes
  *     schema-only keys so a partially-supplied object marks the leaves it
  *     omitted. An explicit consumer `undefined` at a key is preserved
  *     rather than filled.
- *   - `false` (setValue-time `substituteUnsetSentinels`): the caller's
+ *   - `null` (setValue-time `substituteUnsetSentinels`): the caller's
  *     shape is authoritative, so no auto-marking and no schema-only key
  *     synthesis, and `undefined` / `null` pass through untouched.
  *
@@ -107,7 +118,7 @@ function walkCore(
   segments: Segment[],
   schema: AbstractSchema<GenericForm, GenericForm>,
   paths: PathKey[],
-  synthesizeSchemaKeys: boolean
+  synthesis: Synthesis | null
 ): unknown {
   if (isUnset(input)) {
     return expandUnsetAt(segments, schema, paths)
@@ -116,7 +127,7 @@ function walkCore(
   // the schema's slim default so primitive leaves get marked; otherwise
   // the caller's `undefined` is authoritative and passes through.
   if (input === undefined) {
-    if (synthesizeSchemaKeys) {
+    if (synthesis !== null) {
       const slim = schema.getDefaultAtPath(segments)
       return walkUnspecified(slim, segments, paths)
     }
@@ -132,7 +143,7 @@ function walkCore(
       // Read once and compare against that read: an index can be an
       // accessor, and reading twice would invoke it twice.
       const original = readConsumerIndex(input, i)
-      const walked = walkCore(original, [...segments, i], schema, paths, synthesizeSchemaKeys)
+      const walked = walkCore(original, [...segments, i], schema, paths, synthesis)
       out[i] = walked
       if (walked !== original) mutated = true
     }
@@ -149,10 +160,10 @@ function walkCore(
     let keys: Iterable<string> = inputKeys
     let mutated = false
     let inputKeysSet: Set<string> | null = null
-    if (synthesizeSchemaKeys) {
+    if (synthesis !== null) {
       inputKeysSet = new Set(inputKeys)
       const allKeys = new Set<string>(inputKeys)
-      const slim = schema.getDefaultAtPath(segments)
+      const slim = segments.length === 0 ? synthesis.rootDefault : schema.getDefaultAtPath(segments)
       if (isPlainRecord(slim)) {
         for (const k of Object.keys(slim)) allKeys.add(k)
       }
@@ -181,12 +192,12 @@ function walkCore(
       // schema's slim default. The semantics differ, and so does the
       // schema-error filter's reading: the path lands in `authoredPaths`
       // and validation runs against undefined.
-      if (synthesizeSchemaKeys && orig === undefined && inputKeysSet?.has(key) === true) {
+      if (synthesis !== null && orig === undefined && inputKeysSet?.has(key) === true) {
         safeAssign(out, key, undefined)
         mutated = true
         continue
       }
-      const walked = walkCore(orig, [...segments, key], schema, paths, synthesizeSchemaKeys)
+      const walked = walkCore(orig, [...segments, key], schema, paths, synthesis)
       safeAssign(out, key, walked)
       if (walked !== orig) mutated = true
     }
@@ -259,7 +270,7 @@ export function substituteUnsetSentinels<T>(
   schema: AbstractSchema<GenericForm, GenericForm>
 ): { cleanedValues: T; paths: PathKey[] } {
   const paths: PathKey[] = []
-  const cleaned = walkCore(value as unknown, [...prefix], schema, paths, false)
+  const cleaned = walkCore(value as unknown, [...prefix], schema, paths, null)
   return { cleanedValues: cleaned as T, paths }
 }
 

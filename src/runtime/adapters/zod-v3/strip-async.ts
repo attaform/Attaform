@@ -24,6 +24,7 @@ import {
   unwrapInner,
   unwrapLazy,
   unwrapPipeIn,
+  unwrapPipeOut,
 } from './introspect'
 import { isZodSchemaType } from './helpers'
 import {
@@ -33,6 +34,7 @@ import {
   rebuildEffects,
   rebuildLazy,
   rebuildObject,
+  rebuildPipeline,
   rebuildRecord,
   rebuildSet,
   rebuildTuple,
@@ -156,13 +158,16 @@ function walkEffects(schema: z.ZodTypeAny): z.ZodTypeAny {
       return rebuildLazy(s, stripped)
     }
     if (isZodSchemaType(s, 'ZodPipeline')) {
-      // Pipelines carry transforms whose output shape is load-bearing
-      // for the downstream schema's input. The Path-A fallback only
-      // runs after the original parse already threw, so leaving pipes
-      // in place would re-throw on retry; recurse the input side
-      // alone so the parse can proceed against the structural shape.
+      // Both sides stay. The output side's checks are part of the
+      // verdict (`z.string().pipe(z.string().email())` rejects `''`
+      // there), and a refinement on either side is one this pass has to
+      // make safe. An async transform in a pipe still throws on a sync
+      // parse, exactly as it does unwrapped, and the caller's async path
+      // takes over.
       const inSide = unwrapPipeIn(s)
-      return inSide === undefined ? s : recurse(inSide)
+      const outSide = unwrapPipeOut(s)
+      if (inSide === undefined || outSide === undefined) return s
+      return rebuildPipeline(s, recurse(inSide), recurse(outSide))
     }
 
     // Containers: recurse children + carry the container-level checks.

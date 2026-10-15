@@ -12,6 +12,7 @@ import { hydrateAttaformState, renderAttaformState } from '../../src/runtime/cor
 import { historyPlugin } from '../../src/history'
 import { fakeSchema } from '../utils/fake-schema'
 import type { Json, ValidationError } from '../../src/runtime/types/types-api'
+import { schemaOptions } from '../utils/store-options'
 
 /**
  * `ValidationError.data` is an opaque JSON passthrough: the consumer
@@ -44,7 +45,7 @@ describe('ValidationError.data: serialise / hydrate round-trip', () => {
     const registry = getRegistryFromApp(serverApp)
     const state = createFormStore<Signup>({
       formKey: 'data-rt',
-      schema: fakeSchema<Signup>({ email: 'a@a', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: 'a@a', password: '' })),
     })
     registry.forms.set('data-rt', state)
 
@@ -81,7 +82,7 @@ describe('ValidationError.data: serialise / hydrate round-trip', () => {
 
     const client = createFormStore<Signup>({
       formKey: 'data-rt',
-      schema: fakeSchema<Signup>({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' })),
       hydration: pending,
     })
 
@@ -95,7 +96,7 @@ describe('ValidationError.data: serialise / hydrate round-trip', () => {
     const registry = getRegistryFromApp(serverApp)
     const state = createFormStore<Signup>({
       formKey: 'data-null',
-      schema: fakeSchema<Signup>({ email: 'a@a', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: 'a@a', password: '' })),
     })
     registry.forms.set('data-null', state)
 
@@ -113,7 +114,7 @@ describe('ValidationError.data: serialise / hydrate round-trip', () => {
 
     const client = createFormStore<Signup>({
       formKey: 'data-null',
-      schema: fakeSchema<Signup>({ email: '', password: '' }),
+      ...schemaOptions(fakeSchema<Signup>({ email: '', password: '' })),
       hydration: pending,
     })
 

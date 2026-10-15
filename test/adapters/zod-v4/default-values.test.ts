@@ -104,38 +104,39 @@ describe('getDefaultValuesFromZodSchema: refinement-heavy schemas', () => {
   })
 })
 
-describe('zodAdapter.getDefaultValues: refinement enforcement', () => {
+describe('zodAdapter.validateSync: refinement enforcement', () => {
   it('surfaces refinement errors via the outer rootSchema pass', () => {
-    // The contract: the *adapter's* getDefaultValues runs the
-    // FULL schema (refinements intact) over the derived data. When
-    // defaults fail, errors flow back so `createFormStore` can seed
-    // `schemaErrors` at construction.
+    // The contract: the adapter's `validateSync` runs the FULL schema
+    // (refinements intact) over the value `getDefaultValues` derived.
+    // When defaults fail, the errors flow back so `createFormStore` can
+    // seed `schemaErrors` at construction.
     const schema = z.object({ email: z.string().email() })
     const adapter = zodAdapter(schema)('test-form', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: undefined,
     })
-    expect(result.success).toBe(false)
-    expect(result.errors?.[0]?.path).toEqual(['email'])
+    const errors = adapter.validateSync(data)
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors[0]?.path).toEqual(['email'])
   })
 
   it('an async refine degrades gracefully (no construction-time errors)', () => {
-    // Async refines can't be surfaced synchronously, `safeParse` throws
-    // on them. The adapter catches the throw and returns success so the
-    // form still mounts. Async refines fire on first user mutation via
-    // `validateAtPath` (which uses `safeParseAsync`), or via an explicit
-    // `parse({ commit: true })` call after mount.
+    // Async refines can't be surfaced synchronously. `validateSync`
+    // skips the parse for a schema holding one and returns `[]`, so the
+    // form still mounts clean. Async refines fire on first user
+    // mutation via `validateAtPath` (which uses `safeParseAsync`), or
+    // via an explicit `parse({ commit: true })` call after mount.
     const schema = z.object({
       email: z.email().refine(async () => Promise.resolve(true), 'taken'),
     })
     const adapter = zodAdapter(schema)('test-form', { maxRecursionDepth: 64 })
-    const result = adapter.getDefaultValues({
+    const data = adapter.getDefaultValues({
       useDefaultSchemaValues: true,
       constraints: undefined,
     })
-    expect(result.success).toBe(true)
-    expect(result.errors).toBeUndefined()
+    const errors = adapter.validateSync(data)
+    expect(errors).toEqual([])
   })
 })
 

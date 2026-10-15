@@ -827,3 +827,32 @@ Where the bytes went:
 Against `main` (`cf1d4638`, 33,261 B) the branch is +126 B. PR #692
 (#690) separately spends +57 B of `main`'s headroom, so whichever of
 the two merges second rebalances against this entry.
+
+## #690 Spends Bytes: scope-bound store registrations, 2026-10-15
+
+#690 SPENDS BYTES: 33,387 -> 33,429 measured (+42) on `main` with #693
+merged, and the budget moves 33_400 -> 33_440 (0.01 kB headroom). This
+is the rebalance the #691 P5 entry above names: #692 measured +57 B
+against `cf1d4638`, and merged second.
+
+What it buys. Every API `buildFormApi` builds registered five evictors
+with the store's liveness sweep and one `onFormChange` listener, and
+nothing released them. The store outlives the API whenever another
+consumer shares the form, which is every `injectForm()` and every
+remount of a keyed `useForm`, so each consumer pinned its field states,
+and through them the inputs it bound, for the life of the form. A page
+of 38 `injectForm` + `v-register` fields kept about 1.7 MB per visit;
+it now stays flat however often the page is visited, pinned by exact
+registration counts and WeakRef + forced-GC retention tests on both
+adapters.
+
+Where the bytes went:
+
+- the lease in `buildFormApi`: an array of releases, the wrapped
+  `onEvict` and `onFormChange` registrations, and the `onScopeDispose`
+  that drops them all;
+- `DynamicPathSweep.onEvict` returning its release, with the evictors
+  held in a `Set` so one can be deleted.
+
+Trimming: no rewrite of the lease reaches 29 B without dropping a
+release path, and every path is one of the leaks the tests pin.

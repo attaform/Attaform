@@ -316,9 +316,14 @@ export interface AbstractSchemaServices<Schema, Form, GetValueFormType> {
    */
   deriveDefault(schema: Schema, useDefault: boolean, maxRecursionDepth: number): unknown
   /**
-   * The construction-time default-values flow. v3 runs a validate-then-fix loop
-   * against a slim schema and then parses the real one; v4 parses the real
-   * schema against the derived data. Both honour `config.constraints`.
+   * The construction-time default-values flow. Both adapters derive the
+   * starting value without parsing anything (the default walk, then, when
+   * `config.constraints` is supplied, a merge and the structural repair walk),
+   * then parse the real schema against it once, synchronously, so refinement
+   * and check failures seed the schema error channel at construction. v4 skips
+   * that parse for a schema with an async refine or an async transform; v3
+   * skips it only for an async transform, and mounts clean when the parse
+   * throws over an async refine.
    */
   runGetDefaults(
     schema: Schema,

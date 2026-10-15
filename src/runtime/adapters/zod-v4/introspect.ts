@@ -314,7 +314,7 @@ export function getIntersectionRight(schema: z.ZodType): z.ZodType | undefined {
  * as a `(ctx) => value` function on `def.catchValue`, and this invokes it
  * with a placeholder context. A catch function that inspects `ctx.input`
  * or `ctx.error` during default derivation is rare; if one throws, the
- * result is `undefined` and the validate-then-fix loop finds a fallback.
+ * result is `undefined`, and the derivation takes that as the slot's default.
  */
 export function getCatchDefault(schema: z.ZodType): unknown {
   const def = readDef(schema)

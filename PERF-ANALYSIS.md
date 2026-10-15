@@ -669,15 +669,15 @@ before implementation.**
 
 The ledger flagged "deferrable init work beyond eager-optional bytes" at an unknown cost.
 Probed with `bench/init-decomposition.bench.ts`: the eager O(F·D) primitives construction
-runs (`create-form-store.ts:1228-1819`), each isolated on the same flat schema, both adapters.
+runs (`createFormStore`), each isolated on the same flat schema, both adapters.
 Same primitive-bench discipline as P1/P2: the matrix `init flat` group measures init
-end-to-end; this decomposes that number so the one deferral candidate can be sized against the
+end-to-end; this decomposes that number so each deferral candidate can be sized against the
 irreducible remainder. Mean ms/op at F=500 (the decisive scale; all four cells are ~O(F)
 across F={5,50,500}):
 
 | primitive (F=500, ms)                  | classification | v4    | v3    |
 | -------------------------------------- | -------------- | ----- | ----- |
-| `getDefaultValues` (parse)             | NON-deferrable | 1.796 | 0.333 |
+| `getDefaultValues` (derive + verdict)  | see read 1     | 1.796 | 0.333 |
 | `structuralSnapshot` (clone)           | NON-deferrable | 0.048 | 0.048 |
 | `diffAndApply` (originals + ordinals)  | load-bearing   | 0.014 | 0.014 |
 | `getEmptyValueAtPath` (blank baseline) | DEFERRABLE     | 0.078 | 0.054 |
@@ -685,24 +685,35 @@ across F={5,50,500}):
 
 Three reads:
 
-1. **The parse dominates and is non-deferrable.** `getDefaultValues` is 93% (v4) / 74% (v3) of
-   the eager-primitive cost; it produces `schemaInitialData`, i.e. `form.value`, which SSR
-   renders immediately, so it can't be deferred. It is also exactly T6's domain (v4's `safeParse`
-   is ~5.4× the v3 cost at F=500); T3 already removed the _redundant_ second pass, and this
-   residual single parse is irreducible. The clone is per-instance isolation before `form.value`
-   is exposed, also non-deferrable.
+1. **`getDefaultValues` dominates, and most of it is the verdict, not the value.** It is 93%
+   (v4) / 74% (v3) of the eager-primitive cost, and it does two things. The derivation (the
+   default walk, plus the structural repair walk when constraints are supplied) parses nothing
+   and produces `schemaInitialData`, i.e. `form.value`, which SSR renders immediately, so it
+   can't be deferred. Then one synchronous `safeParse` of the real schema renders the
+   construction verdict, which seeds the schema error channel at t=0 (v4 skips it for a schema
+   with an async refine or transform, v3 only for an async transform). That parse is T6's
+   domain (v4's `safeParse` is ~5.4× the v3 cost at F=500), and T3 already removed the
+   _redundant_ second pass. **Correction (#691):** this read first classed the whole cell as
+   non-deferrable, on the premise that the parse produces `form.value`. It does not. Nothing
+   needs the verdict until the form's error state is read, and a hydrating client, which
+   replays `schemaErrors` from the payload, parses and discards it. The #691 construction
+   program measures that half with `bench/construction.bench.ts` and
+   `scripts/construction-ab.mjs`. The clone is per-instance isolation before `form.value` is
+   exposed, non-deferrable.
 2. **The originals walk is load-bearing, not deferrable.** `diffAndApply({}, schemaInitialData)`
    seeds `originals` (the dirty baseline) AND `pathOrdinals` in schema-declaration order in ONE
-   pass (`:1814`). `pathOrdinals` drives `form.meta.errors` SORT order, so deferring the walk
-   would seed ordinals in error-_appearance_ order instead → `meta.errors` reorders → an
-   observable change (constraint #1). Splitting it (eager ordinal-only walk + lazy value capture)
-   still walks O(F) for the ordinals, so there is no net win.
-3. **The one clean deferral candidate is ~1.5% of init AND relocates rather than eliminates.**
-   `getEmptyValueAtPath([])` feeds `walkAuthoredFromSchemaDiff` to derive `authoredPaths`, which is
-   consumed ONLY by `filterAuthoredErrors` (`:2701`), at field-VALIDATION time, never at mount
-   (construction-time validation is gated to async-strict, non-SSR schemas, `:1904`). So for the
-   common sync form it is dead init work until the first interaction. The deferral ceiling
-   (baseline + the authored two-tree diff, the latter bounded by the `walk` cell at ≤0.014 ms) is
+   pass (`seedOriginalsFromBaseline`). `pathOrdinals` drives `form.meta.errors` SORT order, so
+   deferring the walk would seed ordinals in error-_appearance_ order instead → `meta.errors`
+   reorders → an observable change (constraint #1). Splitting it (eager ordinal-only walk + lazy
+   value capture) still walks O(F) for the ordinals, so there is no net win.
+3. **The authored-paths deferral candidate is ~1.5% of init AND relocates rather than
+   eliminates.** `getEmptyValueAtPath([])` feeds `walkAuthoredFromSchemaDiff` to derive
+   `authoredPaths`, which is consumed ONLY by `filterAuthoredErrors`, at field-VALIDATION time.
+   The construction verdict seeds unfiltered; the only construction-time pass that filters is
+   the queued async pass (`queueInitialAsyncValidation`), which runs only for a schema with
+   async work and never on the server. So for the common sync form it is dead init work until
+   the first interaction. The deferral ceiling (baseline + the authored two-tree diff, the latter
+   bounded by the `walk` cell at ≤0.014 ms) is
    ~0.08–0.09 ms (v4) / ~0.05–0.07 ms (v3): ~4–5% of the eager primitives on v4, ~12–15% on v3
    (v3's cheaper parse makes the fixed baseline a larger slice), but only **~1.5% of end-to-end
    init** (the matrix `init flat` F=500 is ~5.4 ms v4 / ~3.5 ms v3, incl. the SSR mount). And the
@@ -715,14 +726,15 @@ Three reads:
 
 **P4 closed, non-prize.** Construction is already lazy where laziness helps: `pathAsyncCache`,
 the on-demand `fields` / `elements` / `schemaErrors` / `userErrors` / `fieldValidationCounts`
-Maps, and the optional modules (history / persistence / multi-tab, the eager-optional bundle
-work) are all populated on first use. The eager remainder is either irreducible (parse + clone +
-DU-stub produce `form.value`, observed at the first SSR render) or load-bearing (the originals
-walk seeds declaration-order ordinals), and the sole deferrable slice (authored-paths derivation)
-relocates onto the optimized keystroke path rather than eliminating work.
+Maps, and the optional modules (history, the eager-optional bundle work) are all populated on
+first use. The eager remainder P4 examined is either irreducible (derivation + clone + DU-stub
+produce `form.value`, observed at the first SSR render) or load-bearing (the originals walk
+seeds declaration-order ordinals), and the deferrable slice it set out to size (authored-paths
+derivation) relocates onto the optimized keystroke path rather than eliminating work. The
+verdict parse beside the derivation is the exception read 1 corrects, and #691 takes it up.
 `bench/init-decomposition.bench.ts` stands as the standing artifact and the documented map of
-where cold-construction time goes (the parse, on both adapters, context for the banked-wins
-synthesis). The keystroke prizes banked remain T2 + T3 + P1 + P3.
+where cold-construction time goes (the verdict parse, on both adapters, context for the
+banked-wins synthesis). The keystroke prizes banked remain T2 + T3 + P1 + P3.
 
 ### P5 measurement + bust: SSR emission floor, and a v3 form-wiring quadratic (2026-06-09)
 
@@ -918,10 +930,12 @@ non-action, each with its evidence retained as a standing artifact:
 - **P2: non-prize.** The DU guard walk is ~0.32 µs (below the perceptibility bar, and a fix
   adds adapter surface); the blur-dedup clone was already narrowed by CORE-P1a, leaving a
   byte-identical-required residual.
-- **P4: non-prize.** Init is parse-dominated (non-deferrable, it produces the `form.value`
-  SSR renders immediately) and the `originals` walk is load-bearing (seeds declaration-order
-  ordinals that drive `meta.errors` sort); the sole deferrable slice (~1.5% of init) merely
-  relocates onto the just-optimized keystroke path.
+- **P4: non-prize for the slice it sized.** Init is dominated by `getDefaultValues`, whose
+  derivation produces the `form.value` SSR renders immediately and whose construction verdict
+  parse does not (P4 read 1 carries that correction; #691 takes the verdict up). The
+  `originals` walk is load-bearing (seeds declaration-order ordinals that drive `meta.errors`
+  sort), and the authored-paths slice (~1.5% of init) merely relocates onto the just-optimized
+  keystroke path.
 
 **Parked, reference-first (deliberately not banked).** One lever would change observable
 behavior, so it is gated on a reference-before-change loop-in:
@@ -958,7 +972,10 @@ against the merge base by `scripts/bench-delta.mjs`): `matrix.bench.ts` carries
 the workload matrix above. `alloc-churn`, `walk-snapshot`, `init-decomposition`,
 `ssr-per-field`, `value-tree-access`, `field-validation`, `field-arrays`,
 `keystroke`, `paths`, `reset`, `submit-lifecycle`, `errors-materialization`,
-`discriminated-union` and `history` cover the rest.
+`discriminated-union` and `history` cover the rest. `construction` measures what a
+wizard's forms cost to build on the client, on the server and while hydrating (#691),
+and `scripts/construction-ab.mjs` measures the same shapes on production builds of two
+revisions, interleaved.
 
 **Behavior locks** (`test/perf-lock/`): `behavior-lock.test.ts` freezes every
 observable across the matrix against `__golden__`, so an internal refactor is

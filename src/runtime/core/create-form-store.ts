@@ -410,10 +410,14 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * side, because no errors at frame 1 means "not checked yet", not "checked
    * and clean".
    *
-   * The window it closes: where the slim default-derivation parse strips
-   * refinements (`.refine`, `.superRefine`, async validators) the slim parse
-   * passes, no construction errors land, and the queued microtask has not run,
-   * so frame 1 would paint the form valid a tick before the real verdict.
+   * The window it closes: a schema with async work gets no verdict from the
+   * construction parse (v4 skips it for an async refine or transform; v3 skips
+   * it for an async transform and mounts clean when it throws over an async
+   * refine), so no construction errors land, and until the queued async pass
+   * runs, frame 1 would paint the form valid a tick before the real verdict.
+   * A sync-only schema's construction parse seeds its verdict synchronously,
+   * so its gate starts open. v3 reports every `.refine` as async, so a v3
+   * schema with a sync refine starts gated and seeded.
    *
    * `reset()` restores it to the same construction-time seed, so the post-reset
    * window gates exactly like the post-mount one.
@@ -1131,8 +1135,9 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
  * constraints pre-merge through `mergeStructural` BEFORE `getDefaultValues`,
  * so a partial constraint against a tuple shape (`coords: [42]` for
  * `z.tuple([_, _, _])`) is padded with position defaults before the adapter's
- * validate-then-fix loop sees it, and the adapter's verdict is rendered
- * against the filled form. That is what keeps the construction and reset
+ * derivation and structural repair walk see it, and the adapter's verdict,
+ * its one synchronous parse of the real schema, is rendered against the
+ * filled form. That is what keeps the construction and reset
  * responses byte-equivalent for one source.
  */
 function computeBaselineResponse<F extends GenericForm, G extends GenericForm = F>(
@@ -1222,11 +1227,10 @@ function rebuildAuthoredPaths<F extends GenericForm, G extends GenericForm = F>(
     walkAuthoredFromConstraints(constraints, [], st.authoredPaths)
   }
   // The diff needs only the schema's BLANK baseline value tree, every
-  // `.default()` skipped, not a validated parse of it. `getEmptyValueAtPath`
-  // is the raw walk, structurally identical here to a slim-mode
-  // `getDefaultValues({ useDefaultSchemaValues: false })` because the blank
-  // tree round-trips through the slim parse unchanged, and it skips that
-  // pass's schema clone and double `safeParse`. Locked by
+  // `.default()` skipped, not a verdict on it. `getEmptyValueAtPath([])` is
+  // the raw default walk, the same value
+  // `getDefaultValues({ useDefaultSchemaValues: false })` derives when no
+  // constraints are supplied, without that call's verdict parse. Locked by
   // `test/core/authored-baseline-equivalence.test.ts`.
   const slimBaseline = st.schema.getEmptyValueAtPath([])
   walkAuthoredFromSchemaDiff(schemaWithDefaultsData, slimBaseline, [], st.authoredPaths)
@@ -3174,14 +3178,14 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   if (!resetResponse.success) {
     replaceErrorChannel(st, 'schema', resetResponse.errors)
   }
-  // `getDefaultValues` strips refinements before parsing, because it produces
-  // usable starting data rather than refinement-level verdicts, so a `.min(1)`
-  // or `.email()` failure on the post-reset defaults does NOT surface through
-  // the re-derive above. A synchronous full-schema parse against the post-reset
-  // value populates those immediately, with no window where step titles flip
-  // green between `reset()` returning and the async pass landing. An async-only
-  // verdict cannot surface this way, since the adapter returns a Promise; the
-  // `queueMicrotask` below covers it.
+  // The re-derive above already seeded the verdict `getDefaultValues`
+  // returned. Both Zod adapters parse the real schema there, so for a schema
+  // they can parse synchronously this pass parses it a second time. For an
+  // adapter whose `getDefaultValues` returns no verdict, it is what surfaces
+  // a `.min(1)` or `.email()` failure on the post-reset defaults immediately,
+  // with no window where step titles flip green between `reset()` returning
+  // and the async pass landing. An async-only verdict cannot surface this way,
+  // since the adapter returns a Promise; the `queueMicrotask` below covers it.
   //
   // Construction has the same gap, but its flash is invisible: the form mounts
   // before the user is looking and errors land within a microtask.

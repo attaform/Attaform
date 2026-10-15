@@ -26,13 +26,12 @@ import { createAttaform } from '../../src/runtime/core/plugin'
  * completes (via the construction-time microtask queue).
  */
 
-// Reproduction: the SLIM schema (used at construction to derive defaults)
-// strips `.refine` predicates, so a `.refine` failure on the supplied
-// defaults goes unnoticed at construction. The FULL schema with the
-// refinement only runs as a queued microtask post-mount (when the
-// schema declares async work) or on the next user mutation (sync-only
-// schemas). Either way, frame 1 sees an empty error map and the form
-// looks "valid" until the real validation lands.
+// Reproduction: a schema with an async refine skips the construction
+// parse, so a refine failure on the supplied defaults goes unnoticed at
+// construction and lands only with the async pass. Frame 1 sees an
+// empty error map, and without the gate the form looks "valid" until
+// that pass lands. A sync refine differs: the construction parse runs
+// it and seeds its failure synchronously.
 const asyncSchema = z
   .object({
     reference: z.string(),
@@ -105,9 +104,9 @@ describe('initial validity gating: async-refinement schema (the demo case)', () 
   it('meta.valid is false synchronously after mount, before the async pass lands', () => {
     const { app, api } = mountAsync()
     apps.push(app)
-    // Slim parse stripped the refinement → no errors seeded at
-    // construction. The full-schema microtask is queued but hasn't
-    // run yet. Without the gate, this asserts `true`: the bug.
+    // The async refine skipped the construction parse, so no errors
+    // were seeded at construction, and the async pass has not run.
+    // Without the gate, this asserts `true`: the bug.
     expect(api.meta.valid).toBe(false)
   })
 
@@ -177,10 +176,10 @@ describe('initial validity gating: sync-refinement schema', () => {
   it('a sync schema: meta.valid is false synchronously after mount', () => {
     const { app, api } = mountSync()
     apps.push(app)
-    // Sync schemas don't queue construction-time async validation in
-    // the current code, so frame 1 sees no errors AT ALL. The gate
-    // catches this case: the form has never been validated, even
-    // though the slim parse "succeeded" trivially.
+    // A sync schema queues no construction-time async pass, but its
+    // construction parse runs the refine and seeds the failure, so
+    // frame 1 already carries the error: `valid` is false from that
+    // seed, with the gate open.
     expect(api.meta.valid).toBe(false)
   })
 })
@@ -194,9 +193,9 @@ describe('initial validity gating: sync-refinement schema', () => {
 // question used by green-checkmark UX patterns).
 describe('initial validity gating: asymmetry between valid and field.valid', () => {
   // Schema with a plain `z.string()` leaf living alongside a leaf
-  // that does carry an async refine directly. Slim parse strips
-  // the refine → construction sees no errors. The form-wide gate
-  // is active because the schema declares async work, but the
+  // that does carry an async refine directly. The async refine skips
+  // the construction parse, so construction seeds no errors. The
+  // form-wide gate is active because the schema declares async work, but the
   // per-path resolver lets us split the answer: `word` resolves
   // synchronously (its sub-schema has no async), `asyncField`
   // gates (its sub-schema does).

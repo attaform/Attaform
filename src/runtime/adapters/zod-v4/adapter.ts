@@ -6,10 +6,12 @@
  * between them and the `AbstractSchema` contract.
  *
  * It holds parity with the v3 adapter on three fronts:
- * `getDefaultValues`' validate-then-fix loop, delegated to
- * `default-values.ts`, with a DU-aware first-option fallback for
- * invalid_type issues; `getSchemasAtPath`' DU-aware path walk; and
- * `validateAtPath`'s per-branch parse with aggregated errors.
+ * `getDefaultValues`' derivation, delegated to `default-values.ts`
+ * (the default walk, then the DU-aware structural repair walk when
+ * constraints are supplied, parsing nothing), followed by one
+ * synchronous parse of the real schema for the construction verdict;
+ * `getSchemasAtPath`' DU-aware path walk; and `validateAtPath`'s
+ * per-branch parse with aggregated errors.
  */
 import type { z } from 'zod'
 import type {

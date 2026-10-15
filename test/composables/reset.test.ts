@@ -482,9 +482,9 @@ describe('useForm: reset() re-derives schema errors against the post-reset state
     //
     // Why the post-reset sync re-derive can't surface refinement
     // errors here:
-    //   - zod-v4 adapter's `getDefaultValues` STRIPS refinements
-    //     (slim parse) → returns success:true with no .min / .email
-    //     errors.
+    //   - zod-v4 adapter's `getDefaultValues` skips its construction
+    //     parse for a schema with an async refine → returns
+    //     success:true with no .min / .email errors.
     //   - `schema.validateAtPath(form, undefined, { sync: true })`
     //     calls `rootSchema.safeParse(data)` which THROWS when the
     //     schema contains an always-running async refine (the

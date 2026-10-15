@@ -750,8 +750,8 @@ export function getDefaultValue(schema: z.ZodTypeAny): unknown {
  * as a `(ctx) => value` function on `_def.catchValue`, as v4 does, and
  * this invokes it with a placeholder context. A catch function that
  * inspects `ctx.input` or `ctx.error` during default derivation is rare;
- * if one throws, the result is `undefined` and the validate-then-fix
- * loop finds a fallback.
+ * if one throws, the result is `undefined`, and the derivation takes
+ * that as the slot's default.
  *
  * This helper collapses a legitimate `undefined` and a missing wrapper
  * into the same answer, so pair it with `hasCatchValue` to tell them

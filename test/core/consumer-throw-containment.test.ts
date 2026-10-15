@@ -546,6 +546,34 @@ describe('an async .refine that throws', () => {
     expect(seen).toEqual([])
   })
 
+  it('is contained on v3 when the async refine sits on a pipeline output side', async () => {
+    // The sync verdict runs both sides of a pipe, so a refine on the
+    // output side is discovered by running it, like any other, at mount
+    // and again on `reset()`. Its promise needs the same handling.
+    const seen: unknown[] = []
+    const capture = (e: unknown) => seen.push(e)
+    process.off('unhandledRejection', onRejection)
+    process.on('unhandledRejection', capture)
+    try {
+      const schema = zV3.object({
+        a: zV3.string().pipe(
+          zV3.string().refine(async () => {
+            await Promise.resolve()
+            throw new Error('consumer boom')
+          })
+        ),
+      })
+      const { api } = muted(() => makeMounter(useFormV3, schema)())
+      await drain()
+      muted(() => api.reset())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    } finally {
+      process.off('unhandledRejection', capture)
+      process.on('unhandledRejection', onRejection)
+    }
+    expect(seen).toEqual([])
+  })
+
   it('still seeds a SYNC refine error at mount', async () => {
     // The counterweight the whole mechanism was chosen to protect.
     // Pre-stripping every schema with a refinement would have closed

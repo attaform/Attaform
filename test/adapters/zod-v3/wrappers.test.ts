@@ -95,10 +95,9 @@ describe('zod v3 adapter: transparent wrapper kinds', () => {
     const data = adapter.getDefaultValues({ useDefaultSchemaValues: true })
     // Input schema default (pre-transform) is `''`.
     expect((data as { email: string }).email).toBe('')
-    // v3's `validateSync` parses through `syncSafe`, whose rebuild keeps
-    // only a pipeline's input side, so the output side's `.email()` does
-    // not run in this verdict. v4 reports `['email']` for the same schema.
-    expect(adapter.validateSync(data)).toEqual([])
+    // The verdict runs both sides of the pipe, so the output side's
+    // `.email()` rejects `''`, as it does on v4.
+    expect(adapter.validateSync(data).map((e) => e.path)).toEqual([['email']])
   })
 
   it('honours .default() through a ZodReadonly wrapper', () => {

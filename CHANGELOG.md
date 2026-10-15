@@ -52,6 +52,16 @@
 
 ### Fixed
 
+- **On Zod v3, checks after a `.pipe(...)` count from the first
+  render.** Attaform runs a v3 schema's synchronous validations through
+  a copy that keeps async refinements from throwing, and that copy kept
+  only a pipeline's input side. The checks on its output side, such as
+  the `.email()` in `z.string().pipe(z.string().email())`, never ran on
+  the construction verdict, on `reset()`, or on a discriminated union's
+  synchronous pass, so a form mounted with `''` read valid until its
+  first edit. Both sides now run, and the form reads the error from the
+  first render, as on Zod v4. (#691)
+
 - **On Zod v3, a `z.map` entry's starting-value error lands on the
   entry.** When a form's default values broke a check inside a map entry,
   the construction-time verdict filed the error at the entry's position

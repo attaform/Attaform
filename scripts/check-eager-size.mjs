@@ -210,11 +210,11 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 33,387 B measured. Last moved UP, 33_320 -> 33_400, by
-// #691's lazy construction verdict (2026-10-15): +129 B of eager so that a
-// form nothing reads never validates its starting value. See the ledger
-// for the full pricing.
-const BUDGET_GZ = 33_400
+// Currently at 33,429 B measured. Last moved UP, 33_400 -> 33_440, by
+// #690's scope-bound store registrations (2026-10-15): +42 B of eager so
+// that a component sharing a form releases what it registered on the store
+// when it unmounts. See the ledger for the full pricing.
+const BUDGET_GZ = 33_440
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

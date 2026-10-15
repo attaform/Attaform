@@ -52,6 +52,17 @@
 
 ### Fixed
 
+- **Components that reach a shared form release their share when they
+  unmount.** Every `injectForm()` call, and every `useForm({ key })`
+  mounted beside another consumer of the same key, builds its own caches
+  over the form and registers them with it, and nothing ever unregistered
+  them. Each visit to a page of such fields kept its field state, and
+  through it the inputs it had bound, alive for as long as the form was:
+  a page of 38 fields kept about 1.7 MB per visit. Each consumer now
+  releases what it registered when its component unmounts or its effect
+  scope stops, so memory stays flat however often the page is visited.
+  (#690)
+
 - **On Zod v3, a refine on a `z.map` runs again as the user types.**
   Each keystroke re-validates only the edited field when every check in
   the schema sits on a leaf, and the whole form otherwise. Zod v3 never

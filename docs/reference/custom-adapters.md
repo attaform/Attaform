@@ -1,6 +1,6 @@
 ---
 title: Custom schema adapters
-description: Implement the AbstractSchema contract (15 required methods plus 4 optional hooks) to wire any schema library into Attaform. Defaults, shape introspection, validation.
+description: Implement the AbstractSchema contract (15 required methods plus 5 optional hooks) to wire any schema library into Attaform. Defaults, shape introspection, validation.
 metaRows:
   - label: Category
     value: Reference
@@ -10,7 +10,7 @@ metaRows:
   - label: Required methods
     value: 15
   - label: Optional hooks
-    value: 4 (metadata, async, container-refine, unions)
+    value: 5 (metadata, async, container-refine, unions, preprocess)
 ---
 
 # Custom schema adapters
@@ -56,10 +56,11 @@ type AbstractSchema<Form, GetValueFormType = Form> = {
   needsAsyncValidation?(): boolean
   hasContainerOrRootRefine?(): boolean
   hasDiscriminatedUnions?(): boolean
+  hasPreprocessOrCoerce?(): boolean
 }
 ```
 
-Fifteen required methods. Four optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
+Fifteen required methods. Five optional hooks. The runtime fills in sensible fallbacks for the optional hooks; omit them when your library doesn't model the feature.
 
 ## Defaults
 
@@ -182,6 +183,12 @@ Omitting it is treated as `() => true`, the conservative whole-form answer, whic
 `true` when the schema tree holds at least one discriminated union at any depth, arrays, tuples, records, and lazy schemas included. The store reads it once at construction: `false` lets every write skip the cross-variant ancestor guard and the variant-reshape dispatch entirely.
 
 Omitting it is treated as "contains unions", so the conservative per-write probes stay on. Never return `false` for a schema that does hold one, which would disable variant reshape for the whole form.
+
+### `hasPreprocessOrCoerce(): boolean` _(optional)_
+
+`true` when `isPreprocessOrCoerceLeaf` can answer `true` at some path: the schema holds a preprocess-style normalizer or a coercing primitive anywhere. The store reads it once at construction: `false` lets it skip recording which paths the consumer authored, a record only those leaves read.
+
+Omitting it is treated as "holds one", so the recording stays on. Never return `false` for a schema where `isPreprocessOrCoerceLeaf` answers `true` anywhere: an error at such a field the consumer set to `undefined` would then stay hidden.
 
 ## A minimal Valibot-ish adapter
 

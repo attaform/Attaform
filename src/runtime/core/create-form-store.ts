@@ -1134,6 +1134,14 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
    * construction-time stub correction outright.
    */
   readonly hasDU: boolean
+  /**
+   * Per-form preprocess / coerce capability flag, taken once at construction
+   * from `schema.hasPreprocessOrCoerce?.()`, where an absent method reads as
+   * `true`. `authoredPaths` is only read where `isPreprocessOrCoerceLeaf`
+   * holds, so `false` leaves the set empty: construction, `reset()`, writes
+   * and async defaults skip deriving it.
+   */
+  readonly hasPreprocessOrCoerce: boolean
 
   // --- mutable scalars (plain fields; never read reactively) ---
   nextOrdinal: number
@@ -1235,13 +1243,15 @@ function queueInitialAsyncValidation<F extends GenericForm, G extends GenericFor
  * defaults. Construction and `reset()` both replace the form's pristine
  * reference, so the authoring set has to follow. Idempotent: clear, then
  * repopulate from the constraints argument and from a diff of the schema's
- * with-defaults data against its blank baseline.
+ * with-defaults data against its blank baseline. A schema with no preprocess
+ * or coerce leaf skips it, the set having no reader there.
  */
 function rebuildAuthoredPaths<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   constraints: unknown,
   schemaWithDefaultsData: unknown
 ): void {
+  if (!st.hasPreprocessOrCoerce) return
   st.authoredPaths.clear()
   if (constraints !== undefined) {
     walkAuthoredFromConstraints(constraints, [], st.authoredPaths)
@@ -1995,20 +2005,24 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   // must surface verdicts, the first is the no-value-yet stub the filter
   // exists to suppress. Marking before the identity short-circuit is what
   // covers `setValue('url', undefined)` over an already-undefined leaf.
-  const wasAuthoredBefore = st.authoredPaths.has(pathKey)
-  if (arrayOpRemap !== null && Array.isArray(value)) {
-    // The array container itself is authored, the consumer having written it
-    // through a field-array op. Existing elements keep their marks, relocated
-    // with the op by the structural-op bookkeeping, so only the fresh elements
-    // need a walk.
-    if (path.length > 0) st.authoredPaths.add(pathKey)
-    for (const idx of arrayOpRemap.fresh) {
-      walkAuthoredFromConstraints(value[idx], [...path, idx], st.authoredPaths)
+  // A schema with no such leaf never reads the set (`hasPreprocessOrCoerce`).
+  let newlyAuthored = false
+  if (st.hasPreprocessOrCoerce) {
+    const wasAuthoredBefore = st.authoredPaths.has(pathKey)
+    if (arrayOpRemap !== null && Array.isArray(value)) {
+      // The array container itself is authored, the consumer having written
+      // it through a field-array op. Existing elements keep their marks,
+      // relocated with the op by the structural-op bookkeeping, so only the
+      // fresh elements need a walk.
+      if (path.length > 0) st.authoredPaths.add(pathKey)
+      for (const idx of arrayOpRemap.fresh) {
+        walkAuthoredFromConstraints(value[idx], [...path, idx], st.authoredPaths)
+      }
+    } else {
+      walkAuthoredFromConstraints(value, path, st.authoredPaths)
     }
-  } else {
-    walkAuthoredFromConstraints(value, path, st.authoredPaths)
+    newlyAuthored = !wasAuthoredBefore && st.authoredPaths.has(pathKey)
   }
-  const newlyAuthored = !wasAuthoredBefore && st.authoredPaths.has(pathKey)
 
   // Structural-completeness invariant: every write must leave the form
   // satisfying the slim schema. Two ingress points to fill.
@@ -4042,6 +4056,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     fieldValidationMode,
     fieldValidationDebounceMs,
     hasDU,
+    hasPreprocessOrCoerce: schema.hasPreprocessOrCoerce?.() !== false,
     fieldValidationState,
     formChangeListeners,
     submitSuccessListeners,

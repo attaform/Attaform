@@ -711,6 +711,20 @@ export type AbstractSchema<Form, GetValueFormType> = {
    * that disables variant reshape and stub correction for the form.
    */
   hasDiscriminatedUnions?(): boolean
+  /**
+   * Whether `isPreprocessOrCoerceLeaf` can answer `true` at any path:
+   * the schema holds a preprocess-style normalizer or a coerce
+   * primitive somewhere. The store reads it once at construction.
+   * `false` lets it skip recording which paths the consumer authored,
+   * a set that is only read at such leaves.
+   *
+   * Optional, and an adapter that omits it is treated as holding one,
+   * which keeps that bookkeeping on. Never return `false` for a schema
+   * where `isPreprocessOrCoerceLeaf` answers `true` anywhere: verdicts
+   * at a path the consumer authored with `undefined` would then stay
+   * hidden.
+   */
+  hasPreprocessOrCoerce?(): boolean
 }
 /**
  * A discriminated union as the adapter reports it: the discriminator

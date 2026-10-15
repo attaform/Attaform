@@ -15,18 +15,27 @@
  * intersections, catch and default wrappers, a node shared between a
  * map and the rest of the tree) and over generated trees that mix those
  * kinds with sync and async refines, transforms and preprocesses.
+ *
+ * `preprocessOrCoerce` joined the record later (#695). Its oracle is the
+ * same kind of separate walk, and one more property ties it to the
+ * question it answers for the store: wherever `isPreprocessOrCoerceLeaf`
+ * holds, the root's bit is set.
  */
 import { fc, test } from '@fast-check/vitest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
+import { zodAdapter as zodAdapterV4 } from '../../src/runtime/adapters/zod-v4'
 import {
   capabilitiesOf as capabilitiesOfV4,
   getChecks,
   isAsyncCheck,
+  isCoercePrimitive as isCoercePrimitiveV4,
+  isPreprocessNode as isPreprocessNodeV4,
   kindOf,
   scanCapabilities as scanCapabilitiesV4,
 } from '../../src/runtime/adapters/zod-v4/introspect'
+import { zodAdapter as zodAdapterV3 } from '../../src/runtime/adapters/zod-v3'
 import {
   capabilitiesOf as capabilitiesOfV3,
   getArrayElement,
@@ -42,7 +51,9 @@ import {
   getTupleItems,
   getUnionOptions,
   isAsyncEffect,
+  isCoercePrimitive as isCoercePrimitiveV3,
   isContainerAfterWrapperPeel,
+  isPreprocessNode as isPreprocessNodeV3,
   scanCapabilities as scanCapabilitiesV3,
   unwrapBranded,
   unwrapEffectsSource,
@@ -52,6 +63,7 @@ import {
   unwrapPipeOut,
 } from '../../src/runtime/adapters/zod-v3/introspect'
 import { isZodSchemaType } from '../../src/runtime/adapters/zod-v3/helpers'
+import { SET_MEMBER_SEGMENT } from '../../src/runtime/core/paths'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -117,10 +129,16 @@ function oracleV4(schema: any) {
       if (!V4_CONTAINER.some((key) => def[key] !== undefined)) return false
       return getChecks(node).length > 0
     }),
+    preprocessOrCoerce: walk((node) => isCoercePrimitiveV4(node) || isPreprocessNodeV4(node)),
   }
 }
 
-type V3Target = 'refinement' | 'transform-or-preprocess' | 'discriminated-union' | 'map-or-set'
+type V3Target =
+  | 'refinement'
+  | 'transform-or-preprocess'
+  | 'discriminated-union'
+  | 'map-or-set'
+  | 'preprocess-or-coerce'
 
 const V3_WRAPPERS = ['ZodOptional', 'ZodNullable', 'ZodDefault', 'ZodCatch', 'ZodReadonly'] as const
 
@@ -129,8 +147,10 @@ function walkForTargetV3(schema: any, target: V3Target, visited: WeakSet<object>
   if (visited.has(schema)) return false
   visited.add(schema)
   const next = (child: any) => child !== undefined && walkForTargetV3(child, target, visited)
+  if (target === 'preprocess-or-coerce' && isCoercePrimitiveV3(schema)) return true
   if (isZodSchemaType(schema, 'ZodEffects')) {
     const kind = getEffectsKind(schema)
+    if (target === 'preprocess-or-coerce' && isPreprocessNodeV3(schema)) return true
     if (target === 'refinement' && kind === 'refinement') return true
     if (
       target === 'transform-or-preprocess' &&
@@ -219,6 +239,7 @@ function oracleV3(schema: any) {
     asyncTransform: walk('transform-or-preprocess'),
     discriminatedUnion: walk('discriminated-union'),
     containerOrRootRefine: containerOrRootRefineV3(schema, new WeakSet()),
+    preprocessOrCoerce: walk('preprocess-or-coerce'),
     mapOrSet: walk('map-or-set'),
   }
 }
@@ -256,6 +277,15 @@ function corpus(z: any, record: (value: any) => any): Record<string, any> {
     'a sync preprocess': z.object({ a: z.preprocess((v: unknown) => v, z.string()) }),
     'an async preprocess': z.object({
       a: z.preprocess(async (v: unknown) => Promise.resolve(v), z.string()),
+    }),
+    'a coerce leaf': z.object({ n: z.coerce.number() }),
+    'a coerce leaf in a union': z.object({ v: z.union([z.string(), z.coerce.number()]) }),
+    'a coerce leaf under a map': z.object({ m: z.map(z.string(), z.coerce.date()) }),
+    'a preprocess under a record': z.object({
+      r: record(z.preprocess((v: unknown) => v, z.number())),
+    }),
+    'a preprocess under a lazy': z.object({
+      l: z.lazy(() => z.object({ p: z.preprocess((v: unknown) => v, z.string()) })),
     }),
     'a pipe with a refined output': z.object({
       a: z.string().pipe(z.string().refine(asyncCheck)),
@@ -314,6 +344,7 @@ const ADAPTERS = [
     record: (value: any) => zV4.record(zV4.string(), value),
     capabilitiesOf: (schema: any): Record<string, boolean> => ({ ...capabilitiesOfV4(schema) }),
     oracle: oracleV4,
+    build: (schema: any) => zodAdapterV4(schema)('f', { maxRecursionDepth: 64 }),
   },
   {
     name: 'zod-v3',
@@ -321,6 +352,7 @@ const ADAPTERS = [
     record: (value: any) => zV3.record(value),
     capabilitiesOf: (schema: any): Record<string, boolean> => ({ ...capabilitiesOfV3(schema) }),
     oracle: oracleV3,
+    build: (schema: any) => zodAdapterV3(schema)('f', { maxRecursionDepth: 64 }),
   },
 ] as const
 
@@ -339,6 +371,7 @@ function arbitrarySchema(z: any, record: (value: any) => any, depth: number): fc
     () => z.string().transform(async (v: string) => Promise.resolve(v)),
     () => z.preprocess((v: unknown) => v, z.string()),
     () => z.preprocess(async (v: unknown) => Promise.resolve(v), z.string()),
+    () => z.coerce.number(),
     () => z.string().pipe(z.string().min(1)),
     () => z.string().brand('B'),
     () => z.string().catch(''),
@@ -382,6 +415,26 @@ function arbitrarySchema(z: any, record: (value: any) => any, depth: number): fc
   )
 }
 
+/**
+ * Segments the generated trees address: object keys, the discriminator
+ * and variant key, the map-beside-object keys, tuple and array indices,
+ * the set-member segment, and a key nothing declares (records and maps
+ * accept any).
+ */
+const PATH_SEGMENT = fc.constantFrom<string | number>(
+  'k0',
+  'k1',
+  'k2',
+  'kind',
+  'v',
+  'm',
+  'o',
+  0,
+  1,
+  SET_MEMBER_SEGMENT,
+  'x'
+)
+
 describe('capabilitiesOf (#691)', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -404,6 +457,20 @@ describe('capabilitiesOf (#691)', () => {
           expect(adapter.capabilitiesOf(schema)).toEqual(adapter.oracle(schema))
         }
       )
+
+      test.prop([
+        arbitrarySchema(adapter.z, adapter.record, 3),
+        fc.array(fc.array(PATH_SEGMENT, { maxLength: 5 }), { minLength: 1, maxLength: 20 }),
+      ])('sets the root bit wherever isPreprocessOrCoerceLeaf holds', (schema, tails) => {
+        // The store reads the bit to skip its authored-path bookkeeping, which
+        // is only consulted where `isPreprocessOrCoerceLeaf` holds. A path can
+        // only resolve to nodes the walk visits, so the bit covers every one.
+        const abstract = adapter.build(adapter.z.object({ root: schema }))
+        const bit = abstract.hasPreprocessOrCoerce?.()
+        for (const tail of tails) {
+          if (abstract.isPreprocessOrCoerceLeaf(['root', ...tail])) expect(bit).toBe(true)
+        }
+      })
 
       it('walks a node once, then answers from the memo', () => {
         const schema = adapter.z.object({

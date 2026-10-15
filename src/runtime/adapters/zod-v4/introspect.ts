@@ -259,7 +259,7 @@ export function unwrapPipeIn(schema: z.ZodType): z.ZodType | undefined {
  * does NOT wrap coerce in a pipe; the flag is what drives `safeParse` to
  * cast. True for any schema whose def opted in, whatever its kind.
  */
-export function isCoercePrimitive(schema: z.ZodType): boolean {
+export function isCoercePrimitive(schema: unknown): boolean {
   return readDef(schema)?.coerce === true
 }
 
@@ -269,10 +269,8 @@ export function isCoercePrimitive(schema: z.ZodType): boolean {
  * reads it beside `isCoercePrimitive` to pass raw consumer writes
  * through the wrapped subtree verbatim.
  */
-export function isPreprocessNode(schema: z.ZodType): boolean {
-  if (kindOf(schema) !== 'pipe') return false
-  const pipeIn = unwrapPipeIn(schema)
-  return pipeIn !== undefined && kindOf(pipeIn) === 'transform'
+export function isPreprocessNode(schema: unknown): boolean {
+  return kindOf(schema) === 'pipe' && kindOf(readDef(schema)?.in) === 'transform'
 }
 
 /** A pipe's output side, the `inner` of `z.preprocess(fn, inner)`. */
@@ -500,6 +498,7 @@ export function capabilitiesOf(schema: z.ZodType): SchemaCapabilities {
  *   async-only: a sync `safeParse` invokes it, gets a promise back, and
  *   a rejection inside it goes unhandled.
  * - `discriminatedUnion`: `kindOf` reads `'discriminated-union'`.
+ * - `preprocessOrCoerce`: `isCoercePrimitive` or `isPreprocessNode`.
  * - `containerOrRootRefine`: the node carries checks and holds one of
  *   `CONTAINER_SLOTS`. A `.refine` added on top of a transparent wrapper
  *   lands its check on the WRAPPER node, so the wrapper's own
@@ -514,6 +513,7 @@ export function scanCapabilities(schema: z.ZodType): SchemaCapabilities {
     asyncTransform: false,
     discriminatedUnion: false,
     containerOrRootRefine: false,
+    preprocessOrCoerce: false,
   }
   walkCapabilities(schema, capabilities, new WeakSet<object>())
   return capabilities
@@ -554,6 +554,7 @@ function walkCapabilities(
     capabilities.asyncTransform = true
   }
   if (kindOf(node) === 'discriminated-union') capabilities.discriminatedUnion = true
+  if (isCoercePrimitive(node) || isPreprocessNode(node)) capabilities.preprocessOrCoerce = true
 
   for (const key of DESCEND_SINGLE) walkCapabilities(def[key], capabilities, visited)
   for (const key of DESCEND_RECORD) {

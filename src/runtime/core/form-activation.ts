@@ -36,7 +36,7 @@ export async function runFactoryAndApply<F extends GenericForm, G extends Generi
     // schema-error filter surfaces verdicts at preprocess / coerce
     // paths the factory named with explicit undefined (same contract
     // as the sync `defaultValues` argument applied at construction).
-    walkAuthoredFromConstraints(value, [], st.authoredPaths)
+    if (st.hasPreprocessOrCoerce) walkAuthoredFromConstraints(value, [], st.authoredPaths)
     const full = mergeSparseHydration(
       toRaw(st.form.value) as F,
       value,

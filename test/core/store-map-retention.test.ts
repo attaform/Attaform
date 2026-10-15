@@ -66,9 +66,11 @@ function settle(form: Probe, path: string, empty: unknown, times = 200): void {
   for (let i = 0; i < times; i++) form.setValue(path, empty)
 }
 
+// The coerce leaves keep `authoredPaths` in play: a schema with no
+// preprocess or coerce leaf records no authored paths at all (#695).
 describe('the store releases per-path bookkeeping when a container shrinks', () => {
   it('emptying a 200-row array drops the rows it no longer has', () => {
-    const schema = z.object({ rows: z.array(z.object({ a: z.string(), b: z.string() })) })
+    const schema = z.object({ rows: z.array(z.object({ a: z.string(), b: z.coerce.string() })) })
     const { form, store, app } = mountWithStore(schema, { rows: [] })
     form.setValue(
       'rows',
@@ -76,6 +78,7 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     )
     expect(store.fields.size).toBeGreaterThanOrEqual(400)
     expect(store.originals.size).toBeGreaterThanOrEqual(400)
+    expect(store.authoredPaths.size).toBeGreaterThanOrEqual(400)
 
     form.setValue('rows', [])
     settle(form, 'rows', [])
@@ -90,8 +93,10 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
   })
 
   it('churning record keys does not accumulate an entry per key ever held', () => {
-    const schema = z.object({ prefs: z.record(z.string(), z.string()) })
+    const schema = z.object({ prefs: z.record(z.string(), z.coerce.string()) })
     const { form, store, app } = mountWithStore(schema, { prefs: {} })
+    form.setValue('prefs', { k: 'v' })
+    expect(store.authoredPaths.size).toBeGreaterThan(1)
     for (let i = 0; i < 200; i++) {
       form.setValue('prefs', { [`k${i}`]: `v${i}` })
     }

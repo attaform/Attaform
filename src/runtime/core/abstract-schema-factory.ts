@@ -141,7 +141,7 @@ export interface SchemaCapabilities {
   readonly discriminatedUnion: boolean
   /**
    * A refine at a container node (object, array, tuple, union, discriminated
-   * union, intersection, record, set) or at the root. False means every
+   * union, intersection, record, map, set) or at the root. False means every
    * refine is leaf-local, so per-keystroke subtree validation catches the same
    * verdicts a whole-form pass would.
    */

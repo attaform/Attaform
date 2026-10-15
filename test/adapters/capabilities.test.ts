@@ -203,7 +203,12 @@ function containerOrRootRefineV3(schema: any, visited: WeakSet<object>): boolean
     return next(getRecordKeyType(schema)) || next(getRecordValueType(schema))
   }
   if (isZodSchemaType(schema, 'ZodSet')) return next(getSetValueType(schema))
-  // No ZodMap arm: this walk never looked below a map.
+  // This walk had no ZodMap arm: a refine on a map entry's object never
+  // counted, so a keystroke inside the entry skipped it (#691, d7). It
+  // looks below a map now, as v4's always has.
+  if (isZodSchemaType(schema, 'ZodMap')) {
+    return next(getMapKeyType(schema)) || next(getMapValueType(schema))
+  }
   return false
 }
 

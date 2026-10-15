@@ -52,6 +52,15 @@
 
 ### Fixed
 
+- **On Zod v3, a refine on a `z.map` runs again as the user types.**
+  Each keystroke re-validates only the edited field when every check in
+  the schema sits on a leaf, and the whole form otherwise. Zod v3 never
+  looked inside a map for that test and did not count a map as a
+  container, so a refine on an entry's object (`a` must equal `b`) or on
+  the map itself (no score over 100) read as leaf-local: editing inside
+  an entry left the refine's error unshown until submit. Both now count,
+  and the error shows as the user types, as on Zod v4. (#691)
+
 - **On Zod v3, checks after a `.pipe(...)` count from the first
   render.** Attaform runs a v3 schema's synchronous validations through
   a copy that keeps async refinements from throwing, and that copy kept

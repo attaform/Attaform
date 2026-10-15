@@ -641,15 +641,6 @@ export interface SchemaCapabilitiesV3 extends SchemaCapabilities {
 
 type Capabilities = { -readonly [K in keyof SchemaCapabilitiesV3]: boolean }
 
-/** What one `capabilitiesOf` walk carries from node to node. */
-type CapabilityWalk = {
-  readonly capabilities: Capabilities
-  /** Nodes walked outside any map. */
-  readonly visited: WeakSet<object>
-  /** Nodes walked only below a map; created at the first map. */
-  visitedUnderMap: WeakSet<object> | undefined
-}
-
 /** Answers already walked, keyed by the node each query started from. */
 const capabilityMemo = new WeakMap<object, SchemaCapabilitiesV3>()
 
@@ -679,19 +670,15 @@ export function capabilitiesOf(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
  * the few nodes under a path.
  */
 export function scanCapabilities(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
-  const walk: CapabilityWalk = {
-    capabilities: {
-      asyncRefine: false,
-      asyncTransform: false,
-      discriminatedUnion: false,
-      containerOrRootRefine: false,
-      mapOrSet: false,
-    },
-    visited: new WeakSet<object>(),
-    visitedUnderMap: undefined,
+  const capabilities: Capabilities = {
+    asyncRefine: false,
+    asyncTransform: false,
+    discriminatedUnion: false,
+    containerOrRootRefine: false,
+    mapOrSet: false,
   }
-  walkCapabilities(schema, walk, false)
-  return walk.capabilities
+  walkCapabilities(schema, capabilities, new WeakSet<object>())
+  return capabilities
 }
 
 /**
@@ -713,35 +700,25 @@ export function scanCapabilities(schema: z.ZodTypeAny): SchemaCapabilitiesV3 {
  *
  * Transparent wrappers (Optional, Nullable, Default, Catch, Readonly,
  * Branded, Lazy) descend without flagging, a pipeline walks both sides,
- * and containers descend into every child. A map's key and value types
- * are real sub-schemas, so an async refine parked in a map's value is
- * reachable and found like any other; `containerOrRootRefine` alone is
- * not collected below a map, which is what the per-keystroke scope cut
- * has always read. A node shared between a map and the rest of the tree
- * is walked again outside the map if the walk met it below one first,
- * so it still answers for the outside one. Leaves and unrecognised
- * wrappers have nothing to descend into.
+ * and containers descend into every child, a map's key and value types
+ * included: an entry is a path, so a refine on an entry's object is a
+ * container refine like any other, and an async refine parked in a
+ * map's value is found like any other. Leaves and unrecognised wrappers
+ * have nothing to descend into.
  *
  * It dispatches on one `typeName` read per node and recurses in place,
  * since a fresh schema pays this walk once per node at construction.
  */
 function walkCapabilities(
   schema: z.ZodTypeAny | undefined,
-  walk: CapabilityWalk,
-  underMap: boolean
+  capabilities: Capabilities,
+  visited: WeakSet<object>
 ): void {
   if (schema === undefined) return
   const candidate: unknown = schema
-  if (typeof candidate !== 'object' || candidate === null || walk.visited.has(candidate)) return
-  if (underMap) {
-    walk.visitedUnderMap ??= new WeakSet<object>()
-    if (walk.visitedUnderMap.has(candidate)) return
-    walk.visitedUnderMap.add(candidate)
-  } else {
-    walk.visited.add(candidate)
-  }
+  if (typeof candidate !== 'object' || candidate === null || visited.has(candidate)) return
+  visited.add(candidate)
 
-  const { capabilities } = walk
   const typeName = getTypeName(schema) ?? ''
   switch (typeName) {
     case 'ZodEffects': {
@@ -752,14 +729,13 @@ function walkCapabilities(
       }
       const inner = unwrapEffectsSource(schema)
       if (
-        !underMap &&
         !capabilities.containerOrRootRefine &&
         inner !== undefined &&
         isContainerAfterWrapperPeel(inner)
       ) {
         capabilities.containerOrRootRefine = true
       }
-      walkCapabilities(inner, walk, underMap)
+      walkCapabilities(inner, capabilities, visited)
       return
     }
     case 'ZodOptional':
@@ -767,50 +743,50 @@ function walkCapabilities(
     case 'ZodDefault':
     case 'ZodCatch':
     case 'ZodReadonly':
-      walkCapabilities(unwrapInner(schema), walk, underMap)
+      walkCapabilities(unwrapInner(schema), capabilities, visited)
       return
     case 'ZodBranded':
-      walkCapabilities(unwrapBranded(schema), walk, underMap)
+      walkCapabilities(unwrapBranded(schema), capabilities, visited)
       return
     case 'ZodLazy':
-      walkCapabilities(unwrapLazy(schema), walk, underMap)
+      walkCapabilities(unwrapLazy(schema), capabilities, visited)
       return
     case 'ZodPipeline':
-      walkCapabilities(unwrapPipeIn(schema), walk, underMap)
-      walkCapabilities(unwrapPipeOut(schema), walk, underMap)
+      walkCapabilities(unwrapPipeIn(schema), capabilities, visited)
+      walkCapabilities(unwrapPipeOut(schema), capabilities, visited)
       return
     case 'ZodObject':
       for (const sub of Object.values(getObjectShape(schema))) {
-        walkCapabilities(sub, walk, underMap)
+        walkCapabilities(sub, capabilities, visited)
       }
       return
     case 'ZodArray':
-      walkCapabilities(getArrayElement(schema), walk, underMap)
+      walkCapabilities(getArrayElement(schema), capabilities, visited)
       return
     case 'ZodTuple':
-      for (const item of getTupleItems(schema)) walkCapabilities(item, walk, underMap)
+      for (const item of getTupleItems(schema)) walkCapabilities(item, capabilities, visited)
       return
     case 'ZodUnion':
     case 'ZodDiscriminatedUnion':
       if (typeName === 'ZodDiscriminatedUnion') capabilities.discriminatedUnion = true
-      for (const option of getUnionOptions(schema)) walkCapabilities(option, walk, underMap)
+      for (const option of getUnionOptions(schema)) walkCapabilities(option, capabilities, visited)
       return
     case 'ZodIntersection':
-      walkCapabilities(getIntersectionLeft(schema), walk, underMap)
-      walkCapabilities(getIntersectionRight(schema), walk, underMap)
+      walkCapabilities(getIntersectionLeft(schema), capabilities, visited)
+      walkCapabilities(getIntersectionRight(schema), capabilities, visited)
       return
     case 'ZodRecord':
-      walkCapabilities(getRecordKeyType(schema), walk, underMap)
-      walkCapabilities(getRecordValueType(schema), walk, underMap)
+      walkCapabilities(getRecordKeyType(schema), capabilities, visited)
+      walkCapabilities(getRecordValueType(schema), capabilities, visited)
       return
     case 'ZodSet':
       capabilities.mapOrSet = true
-      walkCapabilities(getSetValueType(schema), walk, underMap)
+      walkCapabilities(getSetValueType(schema), capabilities, visited)
       return
     case 'ZodMap':
       capabilities.mapOrSet = true
-      walkCapabilities(getMapKeyType(schema), walk, true)
-      walkCapabilities(getMapValueType(schema), walk, true)
+      walkCapabilities(getMapKeyType(schema), capabilities, visited)
+      walkCapabilities(getMapValueType(schema), capabilities, visited)
       return
   }
   // Leaves and unrecognised kinds: nothing to descend into.
@@ -824,6 +800,7 @@ const CONTAINER_TYPE_NAMES: ReadonlySet<string> = new Set([
   'ZodUnion',
   'ZodDiscriminatedUnion',
   'ZodRecord',
+  'ZodMap',
   'ZodSet',
 ])
 

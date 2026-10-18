@@ -187,6 +187,19 @@ describe.each(ADAPTERS)('recorded write stamps ($name)', (adapter) => {
     expect(seen).toEqual([['a', 'b', 'c']])
   })
 
+  it('two writes in one millisecond each move updatedAt forward', () => {
+    const { form } = mount(adapter)
+    vi.setSystemTime(T1)
+    const fired = syncFirings(form, () => {
+      form.setValue('note', 'y')
+      form.setValue('note', 'z')
+    })
+
+    expect(fired).toBe(2)
+    expect(form.meta.updatedAt).toBe(iso(T1 + 1))
+    expect(form.fields(['note']).updatedAt).toBe(iso(T1 + 1))
+  })
+
   it('a write that changes nothing stamps nothing', () => {
     const { form } = mount(adapter)
     vi.setSystemTime(T1)
@@ -282,5 +295,47 @@ describe.each(ADAPTERS)('recorded write stamps across SSR ($name)', (adapter) =>
     expect(handle.form.values.tags).toEqual(['a'])
     expect(handle.form.fields(['tags']).updatedAt).toBe(iso(T1))
     expect(handle.form.meta.updatedAt).toBe(iso(T1))
+  })
+
+  it('a client whose clock runs behind the server still stamps each write later', async () => {
+    const key = 'stamps-ssr-skew'
+    const handle: { form?: any } = {}
+    const makeApp = (ssr: boolean): App => {
+      const App = defineComponent({
+        setup() {
+          handle.form = adapter.useForm({
+            schema: makeSchema(adapter.z),
+            key,
+            defaultValues: defaults(),
+            validateOn: 'submit',
+          })
+          return () => h('div')
+        },
+      })
+      const app = ssr ? createSSRApp(App) : createApp(App)
+      return app.use(createAttaform({ ssr }))
+    }
+
+    vi.setSystemTime(T1)
+    const server = makeApp(true)
+    await renderToString(server)
+    vi.setSystemTime(T2)
+    handle.form.setValue('note', 'server')
+    const payload = JSON.parse(JSON.stringify(renderAttaformState(server)))
+
+    // The client's clock reads two seconds behind the server's.
+    vi.setSystemTime(T0)
+    const client = makeApp(false)
+    hydrateAttaformState(client, payload)
+    client.mount(document.createElement('div'))
+    apps.push(client)
+    expect(handle.form.meta.updatedAt).toBe(iso(T2))
+
+    handle.form.setValue('tags', ['a'])
+    expect(handle.form.meta.updatedAt).toBe(iso(T2 + 1))
+    expect(handle.form.fields(['tags']).updatedAt).toBe(iso(T2 + 1))
+    handle.form.setValue('note', 'client')
+    expect(handle.form.meta.updatedAt).toBe(iso(T2 + 2))
+    expect(handle.form.fields(['note']).updatedAt).toBe(iso(T2 + 2))
   })
 })

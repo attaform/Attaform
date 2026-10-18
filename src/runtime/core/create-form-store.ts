@@ -1162,6 +1162,12 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
 
   // --- mutable scalars (plain fields; never read reactively) ---
   nextOrdinal: number
+  /**
+   * The latest stamp any record of the form has held, hydrated ones
+   * included, or `''` before the first. `writeInstant` stamps every write
+   * after it, so `updatedAt` moves forward even when the clock does not.
+   */
+  latestStamp: string
   scheduleEpoch: number
   lastCommittedEpoch: number
   transformTokenSeq: number
@@ -1586,6 +1592,32 @@ function settleTransforms<F extends GenericForm, G extends GenericForm = F>(
   })
 }
 
+/**
+ * The instant a write is recorded at: the clock, or one millisecond past the
+ * latest stamp the form holds when the clock does not read past it. A client
+ * hydrating a server's stamps can run behind the server's clock, and two
+ * writes can land in one millisecond; either way the write still reads as the
+ * latest, so `meta.updatedAt` never stands still or moves backwards under a
+ * value change. ISO 8601 stamps compare lexically.
+ */
+function writeInstant<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): string {
+  const clock = new Date().toISOString()
+  if (clock > st.latestStamp) return clock
+  // A hydrated stamp is any string, so one that is no date leaves the clock.
+  const after = new Date(Date.parse(st.latestStamp) + 1)
+  return Number.isNaN(after.getTime()) ? clock : after.toISOString()
+}
+
+// Keep `latestStamp` at the latest stamp a record has held.
+function noteStamp<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  stamp: string | null
+): void {
+  if (stamp !== null && stamp > st.latestStamp) st.latestStamp = stamp
+}
+
 function touchFieldRecord<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   pathKey: PathKey,
@@ -1593,6 +1625,7 @@ function touchFieldRecord<F extends GenericForm, G extends GenericForm = F>(
   patch: Partial<Omit<FieldRecord, 'path'>>
 ): void {
   const current = st.fields.get(pathKey)
+  if (patch.updatedAt !== undefined) noteStamp(st, patch.updatedAt)
   st.fields.set(pathKey, {
     path,
     updatedAt: patch.updatedAt ?? current?.updatedAt ?? null,
@@ -2111,7 +2144,7 @@ function applyFormReplacement<F extends GenericForm, G extends GenericForm = F>(
   next: F,
   meta?: WriteMeta
 ): void {
-  applyFormReplacementWithPath(st, next, meta, null, new Date().toISOString())
+  applyFormReplacementWithPath(st, next, meta, null, writeInstant(st))
 }
 
 // Fast path for a single `setValue` whose target leaf already exists: mutate
@@ -2534,7 +2567,7 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   }
   // The instant this write is recorded at, taken once the write is known to
   // change the value.
-  const now = writeStamp ?? new Date().toISOString()
+  const now = writeStamp ?? writeInstant(st)
   applyTargetedWrite(
     st,
     path,
@@ -2741,7 +2774,7 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
       appliedSync = true
     }
   }
-  applyFormReplacementWithPath(st, nextForm, meta, null, writeStamp ?? new Date().toISOString())
+  applyFormReplacementWithPath(st, nextForm, meta, null, writeStamp ?? writeInstant(st))
   for (const k of newBlankPaths) st.blankPaths.add(k)
   if (reshapeMode === 'change' && !appliedSync) {
     scheduleFieldValidation(st, parentPath, false /* debounced */, meta?.instance)
@@ -3703,7 +3736,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // One instant for the whole reset: the replacement below and the history
   // clear further down record under the same stamp, so `meta.updatedAt`
   // moves once.
-  const now = new Date().toISOString()
+  const now = writeInstant(st)
   // Replace the form in one shot; history still sees it through
   // `formChangeListeners`.
   applyFormReplacementWithPath(st, next, undefined, null, now)
@@ -3759,6 +3792,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // record takes the stamp, and a container with no record of its own reads
   // its leaves, which all hold it, so the whole form reads the reset as its
   // latest write.
+  noteStamp(st, now)
   for (const [pathKey, record] of st.fields) {
     st.fields.set(pathKey, withClearedHistoryFlags(record, now))
   }
@@ -3817,7 +3851,7 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   const { key: targetKey, segments: targetSegments } = canonicalizePath(path)
   // One instant for the whole reset, so the restore write and the history
   // clear below record together and `meta.updatedAt` moves once.
-  const now = new Date().toISOString()
+  const now = writeInstant(st)
 
   // Drop union memory at or under `targetSegments`: it is the user's prior
   // typed state at a discriminator that no longer corresponds to anything
@@ -4594,6 +4628,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     arrayBookkeeping,
     skipErrorSeed: () => errorStore(false),
     nextOrdinal: 0,
+    latestStamp: '',
     scheduleEpoch: 0,
     lastCommittedEpoch: 0,
     transformTokenSeq: 0,
@@ -4699,6 +4734,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         interacted: false,
         blurredAfterInteraction: false,
       })
+      noteStamp(st, initStamp)
     }
   })
 
@@ -4709,6 +4745,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         continue
       }
       fields.set(rawKey as PathKey, record)
+      noteStamp(st, record.updatedAt)
     }
     // Hydration takes the construction seed's place, which is why the error
     // store above holds none here: the server already authored whatever error

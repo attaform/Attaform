@@ -113,7 +113,7 @@ form.fields('rows').showErrors // true: the removal broke min(2)
 form.meta.updatedAt // the removal's timestamp
 ```
 
-A survivor keeps its own `updatedAt` when a removal or a reorder moves it to a new index, and a write that changes nothing stamps nothing.
+A survivor keeps its own `updatedAt` when a removal or a reorder moves it to a new index, and a write that changes nothing stamps nothing. Every write that changes a value reads later than the one before it: two writes in the same millisecond, or a write on a device whose clock runs behind the server that rendered the page, take one millisecond past the latest stamp the form holds.
 
 ### Value reads
 

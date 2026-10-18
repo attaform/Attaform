@@ -1433,8 +1433,9 @@ export type MetaTrackerValue = {
   /**
    * ISO timestamp of the most recent write at this path or under it,
    * counting the form's creation. A removal is a write too, so the stamp
-   * never moves backwards. `null` only for a path never written or no
-   * longer present.
+   * never moves backwards, and every write reads later than the one before
+   * it, whatever the device's clock says. `null` only for a path never
+   * written or no longer present.
    */
   updatedAt: string | null
   /** Value as it arrived, before any transforms. Distinguishes a parse-coerced read from raw user input. */
@@ -2535,7 +2536,11 @@ export type FieldState<Value = unknown> = {
    * a container's stamp moves forward when a row leaves and never moves
    * backwards. A survivor keeps its own stamp when a removal or a reorder
    * moves it to a new index, and a write that changes nothing stamps
-   * nothing. `null` only for a path never written or no longer present.
+   * nothing. Every write that changes a value reads later than the one
+   * before it: two writes in one millisecond, or a write on a device whose
+   * clock runs behind the server that rendered the page, take one
+   * millisecond past the latest stamp the form holds. `null` only for a
+   * path never written or no longer present.
    */
   readonly updatedAt: string | null
   /**

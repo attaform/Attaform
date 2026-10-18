@@ -108,6 +108,19 @@
   the bare page keeps the step and writes it in place. Custom `restore`
   and `persist` callbacks run as before. (#712)
 
+- **Under vue-router, the wizard's history entries keep the router's
+  record.** The default `?step=` sync wrote each entry with an empty
+  state, and vue-router keeps its own address, position and scroll on
+  every entry, writing that address back onto the entry it leaves when
+  it next navigates. So a link away rewrote the step's entry, and Back
+  landed on another step. After a Back onto a step, the next link away
+  wrote `<origin>undefined`, which a browser refuses as cross-origin and
+  vue-router then loads as a page, taking the user off the site. With
+  vue-router installed (Nuxt included), the wizard now writes through
+  the router's own history, without a navigation: no guard or
+  middleware runs. With no router, a replace keeps the entry's state and
+  a new entry starts with none. (#712)
+
 - **A setup that resumes after its component was dropped keeps
   nothing registered.** A `setup()` that resumed after an `await` once
   Vue had dropped its component, such as a page replaced under

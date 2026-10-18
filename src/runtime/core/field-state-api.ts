@@ -420,6 +420,11 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // collection separate from the reduction below lets the rollup stay a plain
   // `for...of` whose `let` accumulators narrow normally: accumulators mutated
   // from inside the walk callback read as never-reassigned to the checker.
+  // The errors at and under this prefix, gathered before the walk so the walk
+  // can mark each one a present leaf owns; see `descendantErrorRevealed`.
+  // `form.fields(p).errors`, `form.errors(p)` and `form.meta.errors` all read
+  // through `errorBucketsAt`, so the three surfaces cannot differ.
+  const errorsByKey = errorBucketsAt(state, segments, key)
   const descendantLeaves: { key: PathKey; segments: Path }[] = []
   visitActiveLeafPaths(value, segments, (leafSegments) => {
     const { key: leafKey } = keyForSegments(leafSegments)
@@ -431,6 +436,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   })
   for (const { key: leafKey, segments: leafSeg } of descendantLeaves) {
     const leafRecord = state.fields.get(leafKey)
+    const leafErrors = errorsByKey.get(leafKey)
+    if (leafErrors !== undefined) leafErrors.walked = true
     // The by-key variants skip the canonicalize round-trip, `leafKey` being
     // the canonical key for `leafSeg`, which keeps the per-leaf walk
     // allocation-free on the meta hot path.
@@ -515,12 +522,10 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     pristine = false
     dirty = true
   }
-  // Aggregate errors at this prefix. `form.fields(p).errors`, `form.errors(p)`
-  // and `form.meta.errors` all read through this one helper, so the three
-  // surfaces cannot differ, and the active-variant filter uses the same
-  // `hasAtPath` gate the descendant walk did. `valid` derives from the same
-  // source, so the two fields can never disagree.
-  const errorBuckets = errorBucketsAt(state, segments, key)
+  // The aggregated errors, in schema-declaration order. The active-variant
+  // filter uses the same `hasAtPath` gate the descendant walk did, and
+  // `valid` derives from the same source, so the two can never disagree.
+  const errorBuckets = sortErrorBuckets(errorsByKey)
   const errors = flattenErrorBuckets(errorBuckets)
   // Descendant display rollup: does any error UNDER this container have its
   // owning field's reveal gate open? It iterates the aggregated errors rather
@@ -775,9 +780,11 @@ function descendantErrorRevealed<F extends GenericForm>(
       for (const leaf of blurredLeafSegments) if (isPathPrefix(ePath, leaf)) return true
       // Or on the record at the error's own path, which holds the blur
       // history of descendants a removal took away and of a directive bound
-      // to a container. For a present leaf the walk read that record already,
-      // so this adds no dependency there, and its flag is false, or the leaf
-      // prefix above would have opened the gate.
+      // to a container. A present leaf's record the walk counted already: had
+      // it the flag, the leaf prefix above would have opened the gate. So only
+      // a path the walk did not visit is read, and an error on a present leaf,
+      // the common case, costs no reactive read.
+      if (bucket.walked) continue
       ownHistory ??= state.fields.get(bucket.key)?.blurredAfterInteraction === true
       if (ownHistory) return true
     }
@@ -799,11 +806,26 @@ export function aggregateErrorsAt<F extends GenericForm>(
   prefix: Path,
   prefixKey: PathKey
 ): ValidationError[] {
-  return flattenErrorBuckets(errorBucketsAt(state, prefix, prefixKey))
+  return flattenErrorBuckets(sortErrorBuckets(errorBucketsAt(state, prefix, prefixKey)))
 }
 
-/** One path's errors, under the key of the error cell they came from. */
-type ErrorBucket = { readonly key: PathKey; readonly errors: ValidationError[] }
+/**
+ * One path's errors, under the key of the error cell they came from, with the
+ * path's ordinal. `walked` marks a path the container's leaf walk visited.
+ */
+type ErrorBucket = {
+  readonly key: PathKey
+  readonly ordinal: number
+  readonly errors: ValidationError[]
+  walked: boolean
+}
+
+const NO_ERROR_BUCKETS: ReadonlyMap<PathKey, ErrorBucket> = new Map()
+
+function sortErrorBuckets(buckets: ReadonlyMap<PathKey, ErrorBucket>): ErrorBucket[] {
+  if (buckets.size <= 1) return [...buckets.values()]
+  return [...buckets.values()].sort((a, b) => a.ordinal - b.ordinal)
+}
 
 function flattenErrorBuckets(buckets: readonly ErrorBucket[]): ValidationError[] {
   if (buckets.length === 0) return []
@@ -812,20 +834,21 @@ function flattenErrorBuckets(buckets: readonly ErrorBucket[]): ValidationError[]
 }
 
 /**
- * The errors `aggregateErrorsAt` returns, one bucket per path in
- * schema-declaration order, each keyed so a caller can read that path's
- * state without minting its key again.
+ * The errors `aggregateErrorsAt` returns, one bucket per path, by the path's
+ * key, so a caller can find a path's errors and read its state without
+ * minting the key again. `sortErrorBuckets` puts them in schema-declaration
+ * order.
  */
 function errorBucketsAt<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
   prefix: Path,
   prefixKey: PathKey
-): ErrorBucket[] {
+): ReadonlyMap<PathKey, ErrorBucket> {
   const candidates = state.errorWindowAt(prefix, prefixKey)
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) return NO_ERROR_BUCKETS
   const formValue = state.form.value
   const cells = state.errorCells()
-  const buckets = new Map<number, ErrorBucket>()
+  const buckets = new Map<PathKey, ErrorBucket>()
   for (const { key, segments } of candidates) {
     // The index window is a superset (it is a key-range, not a prefix
     // test), so membership is still decided here.
@@ -854,18 +877,16 @@ function errorBucketsAt<F extends GenericForm>(
     const userList = cell?.user
     const total = (schemaList?.length ?? 0) + (blankList?.length ?? 0) + (userList?.length ?? 0)
     if (total === 0) continue
-    const ordinal = state.ensurePathOrdinal(key)
-    let bucket = buckets.get(ordinal)
+    let bucket = buckets.get(key)
     if (bucket === undefined) {
-      bucket = { key, errors: [] }
-      buckets.set(ordinal, bucket)
+      bucket = { key, ordinal: state.ensurePathOrdinal(key), errors: [], walked: false }
+      buckets.set(key, bucket)
     }
     if (schemaList !== undefined) bucket.errors.push(...schemaList)
     if (blankList !== undefined) bucket.errors.push(...blankList)
     if (userList !== undefined) bucket.errors.push(...userList)
   }
-  if (buckets.size <= 1) return [...buckets.values()]
-  return [...buckets.entries()].sort(([a], [b]) => a - b).map(([, bucket]) => bucket)
+  return buckets
 }
 
 // One frozen empty array shared by every "no elements bound" read, so

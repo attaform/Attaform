@@ -1629,8 +1629,8 @@ function writeInstant<F extends GenericForm, G extends GenericForm = F>(
   const clock = new Date().toISOString()
   if (clock > st.latestStamp) return clock
   // A hydrated stamp is any string, so one that is no date leaves the clock.
-  const after = new Date(Date.parse(st.latestStamp) + 1)
-  return Number.isNaN(after.getTime()) ? clock : after.toISOString()
+  const after = new Date(new Date(st.latestStamp).getTime() + 1)
+  return Number.isFinite(after.getTime()) ? after.toISOString() : clock
 }
 
 // Keep `latestStamp` at the latest stamp a record has held.

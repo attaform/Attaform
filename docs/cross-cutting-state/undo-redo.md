@@ -82,6 +82,7 @@ Every form value mutation: `setValue`, `register`-backed input edits, any array 
 - The form value.
 - The error map at the time of the captured position.
 - The `blankPaths` set (so cleared-but-defaulted numeric fields keep showing as empty after an undo, instead of resurrecting their slim default).
+- Which row is which. The array helpers move each row's baseline with the row, and a position puts that arrangement back with the value, so undoing a `remove`, `swap` or `move` reads `dirty: false` the moment the rows are back where they started.
 
 What's NOT captured:
 
@@ -129,12 +130,12 @@ After `clear()`: `canUndo === false`, `canRedo === false`, `size === 1`. The cur
 
 ## Interactions
 
-- **`reset()`** is itself a mutation; the pre-reset state stays one undo away. Consumers who want a hard wipe call `form.history.clear()` after `reset()`, or pop a confirmation dialog before calling `reset()`.
+- **`reset()`** is itself a mutation; the pre-reset state stays one undo away, and reads `dirty` against the post-reset baseline. Consumers who want a hard wipe call `form.history.clear()` after `reset()`, or pop a confirmation dialog before calling `reset()`.
 - **Live field validation** still runs on undo / redo; the restored state validates like any other.
 
 ## Memory
 
-The default `max: 128` keeps at most 128 reachable positions across the undo + redo halves combined. Bump it for editors with long histories; drop it for memory-constrained targets. Internally history is a snapshot ring buffer: each position holds a full structural copy of the form value plus the error entries live at that moment, so memory scales with `max × form size` and recording a position is a straight clone with no diffing work on the keystroke path. When a fresh mutation would exceed the cap, the oldest position falls off the front.
+The default `max: 128` keeps at most 128 reachable positions across the undo + redo halves combined. Bump it for editors with long histories; drop it for memory-constrained targets. Internally history is a snapshot ring buffer: each position holds a full structural copy of the form value plus the error entries and row bookkeeping live at that moment, so memory scales with `max × form size` and recording a position is a straight clone with no diffing work on the keystroke path. When a fresh mutation would exceed the cap, the oldest position falls off the front.
 
 ## Where to next
 

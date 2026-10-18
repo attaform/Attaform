@@ -1,7 +1,7 @@
 import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
-import type { ElementRecord, FieldRecord } from '../core/store-records'
+import type { ElementRecord, FieldRecord, StructureSnapshot } from '../core/store-records'
 
 export type { FieldMetaPayload, ResolvedFieldMeta }
 import type {
@@ -947,8 +947,11 @@ export type HistoryKernel = {
   readonly blankPaths: Set<PathKey>
   readonly errorCells: () => Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
+  onReset(listener: () => void): () => void
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
+  captureStructure(): StructureSnapshot
+  restoreStructure(snapshot: StructureSnapshot): void
 }
 
 /**

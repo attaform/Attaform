@@ -38,7 +38,7 @@ import {
   type IndexRemap,
   type VariantMemory,
 } from './array-engine'
-import type { FieldRecord, OriginalsRecord } from './store-records'
+import type { FieldRecord, OriginalsRecord, StructureSnapshot } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
 import {
@@ -570,6 +570,20 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * empty is skipped.
    */
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
+
+  /**
+   * The per-element bookkeeping as it stands, for a history position to put
+   * back with its value (see `StructureSnapshot`). The entries are copied,
+   * and the records they hold are never mutated in place, so the snapshot
+   * stays detached from the live store.
+   */
+  captureStructure(): StructureSnapshot
+  /**
+   * Put a `captureStructure()` back, before the value it was taken with is
+   * restored, so the write that restores it compares each row against its
+   * own baseline. Every reading it can change is woken.
+   */
+  restoreStructure(snapshot: StructureSnapshot): void
 
   /**
    * Merged read of the cell at `path`, in schema -> blank -> user order:
@@ -1241,9 +1255,18 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
   // container's readings gate each present leaf on its entry, so emptying it
   // first dropped every reading at once, and a `flush: 'sync'` observer saw
   // the whole form read unwritten and pristine before it refilled.
-  for (const [key, entry] of seeded) st.originals.set(key, entry)
+  replaceOriginals(st, seeded)
+}
+
+// Replace `originals` with `next` in place, the new entries first, then the
+// keys `next` lacks; see `seedOriginalsFromBaseline` for why not clear first.
+function replaceOriginals<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  next: ReadonlyMap<PathKey, OriginalsRecord>
+): void {
+  for (const [key, entry] of next) st.originals.set(key, entry)
   for (const key of [...toRaw(st.originals).keys()]) {
-    if (!seeded.has(key)) st.originals.delete(key)
+    if (!next.has(key)) st.originals.delete(key)
   }
 }
 
@@ -1696,28 +1719,9 @@ function holdRemovedStamps<F extends GenericForm, G extends GenericForm = F>(
   patches: readonly Patch[],
   next: unknown
 ): void {
-  const records = toRaw(st.fields)
-  const baselines = toRaw(st.originals)
-  const held = new Map<PathKey, { readonly segments: Path; stamp: string }>()
-  // Hold `path` cut to `depth` segments and each ancestor of it that `next`
-  // keeps, at `leaf`'s stamp. A leaf with no baseline takes no part in any
-  // reading.
-  const hold = (path: Path, depth: number, leaf: Path): void => {
-    const { key: leafKey } = keyForSegments(leaf)
-    const stamp = baselines.has(leafKey) ? records.get(leafKey)?.updatedAt : null
-    if (stamp === null || stamp === undefined) return
-    let kept = false
-    for (let at = depth; at >= 0; at--) {
-      const segments = path.slice(0, at)
-      // Once a container stays, every container above it does.
-      if (!kept && !hasAtPath(next, segments)) continue
-      kept = true
-      const { key } = keyForSegments(segments)
-      const current = held.get(key)
-      if (current === undefined) held.set(key, { segments, stamp })
-      else if (stamp > current.stamp) current.stamp = stamp
-    }
-  }
+  const held: Holds = new Map()
+  const hold = (path: Path, depth: number, leaf: Path): void =>
+    noteHold(st, held, next, path, depth, leaf)
   for (const patch of patches) {
     if (patch.kind === 'added') continue
     const { oldValue, path } = patch
@@ -1738,8 +1742,47 @@ function holdRemovedStamps<F extends GenericForm, G extends GenericForm = F>(
       hold(path, path.length - 1, path)
     }
   }
+  applyHolds(st, held)
+}
+
+/** The containers a hold raises, each with the stamp it takes. */
+type Holds = Map<PathKey, { readonly segments: Path; stamp: string }>
+
+// Note in `held` that `path` cut to `depth` segments, and each container above
+// it that `next` keeps, holds at `leaf`'s stamp. A leaf with no baseline takes
+// no part in any reading. Records are read raw, so a write made from inside an
+// effect subscribes it to nothing.
+function noteHold<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  held: Holds,
+  next: unknown,
+  path: Path,
+  depth: number,
+  leaf: Path
+): void {
+  const { key: leafKey } = keyForSegments(leaf)
+  const stamp = toRaw(st.originals).has(leafKey) ? toRaw(st.fields).get(leafKey)?.updatedAt : null
+  if (stamp === null || stamp === undefined) return
+  let kept = false
+  for (let at = depth; at >= 0; at--) {
+    const segments = path.slice(0, at)
+    // Once a container stays, every container above it does.
+    if (!kept && !hasAtPath(next, segments)) continue
+    kept = true
+    const { key } = keyForSegments(segments)
+    const current = held.get(key)
+    if (current === undefined) held.set(key, { segments, stamp })
+    else if (stamp > current.stamp) current.stamp = stamp
+  }
+}
+
+// Raise each held container's own record to its stamp.
+function applyHolds<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  held: Holds
+): void {
   for (const [key, { segments, stamp }] of held) {
-    if ((records.get(key)?.updatedAt ?? '') < stamp) {
+    if ((toRaw(st.fields).get(key)?.updatedAt ?? '') < stamp) {
       touchFieldRecord(st, key, segments, { updatedAt: stamp })
     }
   }
@@ -3289,6 +3332,49 @@ function restoreErrorCells<F extends GenericForm, G extends GenericForm = F>(
   }
 }
 
+function captureStructure<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>
+): StructureSnapshot {
+  return {
+    identity: st.arrayIdentity.snapshot(),
+    originals: [...toRaw(st.originals)],
+    originalBlank: [...st.originalBlankPaths],
+    removed: [...st.removedPaths],
+  }
+}
+
+function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  snapshot: StructureSnapshot
+): void {
+  const originals = new Map(snapshot.originals)
+  // A present leaf the snapshot holds no baseline for leaves with the value
+  // written next, and a reading stops walking it as its baseline goes, so the
+  // containers above it are held first, as for a write that takes a leaf away
+  // (see `holdRemovedStamps`).
+  const raw = toRaw(st.form.value)
+  const held: Holds = new Map()
+  for (const [key, { segments }] of toRaw(st.originals)) {
+    if (!originals.has(key) && hasAtPath(raw, segments)) {
+      noteHold(st, held, raw, segments, segments.length - 1, segments)
+    }
+  }
+  applyHolds(st, held)
+  st.arrayIdentity.restore(snapshot.identity)
+  replaceOriginals(st, originals)
+  st.originalBlankPaths.clear()
+  for (const key of snapshot.originalBlank) st.originalBlankPaths.add(key)
+  // `removedPaths` is a plain Map, so the paths leaving it and the paths
+  // coming back are pulsed alike.
+  const pulsed = [...st.removedPaths.values()]
+  st.removedPaths.clear()
+  for (const [key, segments] of snapshot.removed) {
+    st.removedPaths.set(key, segments)
+    pulsed.push(segments)
+  }
+  if (pulsed.length > 0) pulseStructure(st.structureSignal, pulsed)
+}
+
 // --- Merged read ---
 
 function getErrorsForPath<F extends GenericForm, G extends GenericForm = F>(
@@ -3862,7 +3948,8 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // Variant memory is UX state, so a fresh start drops it too; otherwise a
   // post-reset switch surfaces variant values from before the reset.
   st.variantMemory.clear()
-  // Notify subscribers; the history module clears its stack here. Throws are
+  // Notify subscribers; the history module re-captures its current
+  // position's structure here, against the new baseline. Throws are
   // isolated so one bad subscriber cannot block the others.
   for (const listener of st.resetListeners) {
     try {
@@ -4698,6 +4785,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
       ),
     clearUserErrors: (path) => clearErrorChannel(st, 'user', path),
     restoreErrorCells: bind(restoreErrorCells),
+    captureStructure: bind(captureStructure),
+    restoreStructure: bind(restoreStructure),
     getErrorsForPath: bind(getErrorsForPath),
     ensurePathOrdinal: bind(ensurePathOrdinal),
     noteDomConnected: bind(noteDomConnected),

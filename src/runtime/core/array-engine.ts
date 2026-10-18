@@ -32,7 +32,7 @@ import {
   type Segment,
 } from './paths'
 import { safeAssign } from './safe-assign'
-import type { FieldRecord, OriginalsRecord } from './store-records'
+import type { FieldRecord, IdentityOrders, OriginalsRecord } from './store-records'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 
@@ -361,6 +361,13 @@ export type ArrayIdentity = {
    * Called on `reset()` so a form reads structurally pristine afterward.
    */
   rebaselineAll(): void
+  /** A copy of every tracked array's tokens and baseline, for history. */
+  snapshot(): IdentityOrders
+  /**
+   * Put a `snapshot()` back whole, the arrays it did not track included,
+   * which go untracked again. Every array either side tracked is reported.
+   */
+  restore(orders: IdentityOrders): void
 }
 
 /**
@@ -515,7 +522,32 @@ export function createArrayIdentity(
       }
       if (rebased.length > 0) onChange(rebased)
     },
+
+    snapshot() {
+      return { tokens: copyLists(tokens), baselines: copyLists(baselines) }
+    },
+
+    restore(orders) {
+      const keys = new Set([...tokens.keys(), ...orders.tokens.keys()])
+      // Copied in, since `ensure` grows and trims a live list in place.
+      tokens.clear()
+      for (const [key, ids] of orders.tokens) tokens.set(key, [...ids])
+      baselines.clear()
+      for (const [key, ids] of orders.baselines) baselines.set(key, [...ids])
+      const restored: Path[] = []
+      for (const key of keys) {
+        const segs = segmentsForPathKey(key)
+        if (segs !== null) restored.push(segs)
+      }
+      if (restored.length > 0) onChange(restored)
+    },
   }
+}
+
+function copyLists(lists: ReadonlyMap<PathKey, readonly string[]>): Map<PathKey, string[]> {
+  const out = new Map<PathKey, string[]>()
+  for (const [key, ids] of lists) out.set(key, [...ids])
+  return out
 }
 
 // --- Variant memory ---

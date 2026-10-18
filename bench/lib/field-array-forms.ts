@@ -12,10 +12,16 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { z as zod } from 'zod'
+
 export type Post = { title: string; body: string; tags: string[] }
 
-/** A list of posts, each with two leaves and an empty list of its own. */
-export function fieldArraySchema(z: any): any {
+/**
+ * A list of posts, each with two leaves and an empty list of its own. Typed
+ * against zod v4's `z`, which the bench passes, so its form is typed; the A/B
+ * script passes either adapter's, both building it with the same calls.
+ */
+export function fieldArraySchema(z: typeof zod) {
   return z.object({
     posts: z.array(
       z.object({

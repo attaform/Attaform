@@ -58,6 +58,7 @@ import {
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
   callConsumerFn,
+  consumerExtensible,
   consumerKeys,
   consumerSymbolKeys,
   readConsumerIndex,
@@ -1019,13 +1020,17 @@ function walkDuStubs(
  * would break the variant-memory snapshot and JSON serialization, and surface
  * through `Object.getOwnPropertySymbols(values.x)`.
  *
- * Returns the input unchanged when the tree holds no symbols, allocating only
- * along a spine that contains a stripped node, so the common case is free.
+ * A frozen or sealed array or plain object is copied too: the form edits what
+ * it stores in place, and an edit to one fails, so every later write under it
+ * would be lost.
+ *
+ * Returns the input unchanged when the tree holds neither, allocating only
+ * along a spine that contains a copied node, so the common case is free.
  */
 function stripSymbolsDeep(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) {
-    let mutated = false
+    let mutated = !consumerExtensible(value)
     const out: unknown[] = new Array(value.length)
     for (let i = 0; i < value.length; i++) {
       // Read once: an array index can be an accessor too, and a second read
@@ -1046,7 +1051,7 @@ function stripSymbolsDeep(value: unknown): unknown {
   // throw before any property is touched, which per-key guarding cannot catch.
   const symKeys = consumerSymbolKeys(value)
   const stringKeys = consumerKeys(value)
-  let mutated = symKeys.length > 0
+  let mutated = symKeys.length > 0 || !consumerExtensible(value)
   const out: Record<string, unknown> = {}
   const src = value as Record<string, unknown>
   for (const k of stringKeys) {

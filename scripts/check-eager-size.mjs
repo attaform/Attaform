@@ -210,12 +210,13 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 33,500 B measured. Last moved UP, 33_440 -> 33_510, by
-// #695's two construction cuts (2026-10-15): +71 B of eager so that a form
-// whose schema holds no preprocess or coerce leaf skips its authored-path
-// bookkeeping, and a sync root answers the per-path async check. See the
-// ledger for the full pricing.
-const BUDGET_GZ = 33_510
+// Currently at 35,869 B measured. Last moved UP, 33_510 -> 35_879, by
+// #705's recorded removals (2026-10-18): +2,369 B of eager so that every
+// write, a removal included, moves `updatedAt` forward, a container keeps
+// the interaction history and `dirty` of the fields it lost, a write that
+// only moves an empty container lands, and undo restores which row is
+// which. See the ledger for the full pricing.
+const BUDGET_GZ = 35_879
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

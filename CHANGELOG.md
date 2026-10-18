@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.31.1
 ### Added
 
 - **A declared browser floor: Safari 12.1 (iOS 12.2), Chrome 71,

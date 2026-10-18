@@ -210,12 +210,11 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 33,500 B measured. Last moved UP, 33_440 -> 33_510, by
-// #695's two construction cuts (2026-10-15): +71 B of eager so that a form
-// whose schema holds no preprocess or coerce leaf skips its authored-path
-// bookkeeping, and a sync root answers the per-path async check. See the
-// ledger for the full pricing.
-const BUDGET_GZ = 33_510
+// Currently at 33,521 B measured. Last moved UP, 33_510 -> 33_531, by
+// #704's browser floor (2026-10-18): +21 B of eager so that Attaform loads
+// on Safari before 16.4 and on iOS 15, with no lookbehind, `Object.hasOwn`
+// or BigInt literal in the build. See the ledger for the full pricing.
+const BUDGET_GZ = 33_531
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

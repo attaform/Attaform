@@ -24,6 +24,7 @@ import { looseToNumber } from './vue-shared-shim'
 import { wrapWithTransforms } from './assigner-pipeline'
 import { withInheritedModifiers } from './inherited-modifiers'
 import type { PathKey } from './paths'
+import { safeOwnHas } from './safe-assign'
 import type { HostChannel, HostModifiers, RegisterValue } from '../types/types-api'
 
 function commit(rv: RegisterValue, raw: unknown, modifiers: HostModifiers): boolean {
@@ -82,7 +83,7 @@ export function createHostChannel(): HostChannel {
         payload === null ||
         payload instanceof Event ||
         !('value' in payload) ||
-        !Object.hasOwn(payload, 'value')
+        !safeOwnHas(payload, 'value')
       ) {
         return false
       }

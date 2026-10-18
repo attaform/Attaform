@@ -2,6 +2,7 @@ import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 import { getAtPath } from './path-walker'
 import { mapSegmentKeys, type Segment } from './paths'
+import { safeOwnHas } from './safe-assign'
 
 /**
  * Live keys for the form data at a container path. Powers
@@ -44,7 +45,7 @@ export function liveKeysAtPath<F extends GenericForm>(
  * O(1) membership test: does the live container at `segments` currently
  * hold `key`? The truthful descend gate in `surface-proxy.ts` calls this
  * per access, so it avoids materialising the full key list that
- * `liveKeysAtPath` builds: an array bounds check or an `Object.hasOwn`,
+ * `liveKeysAtPath` builds: an array bounds check or a `safeOwnHas`,
  * not an allocate-and-scan. Semantics match `liveKeysAtPath`: an array
  * index is present iff it's a canonical in-bounds integer string
  * (`'0'`, `'1'`, …, no leading zeros), a map entry iff the map holds
@@ -77,7 +78,7 @@ export function liveContainerHasKey<F extends GenericForm>(
     return Number.isInteger(index) && index >= 0 && String(index) === key && value.has(index)
   }
   if (value instanceof Set) return false
-  return Object.hasOwn(value as Record<string, unknown>, key)
+  return safeOwnHas(value, key)
 }
 
 /**

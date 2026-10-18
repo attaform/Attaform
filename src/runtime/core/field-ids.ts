@@ -22,12 +22,16 @@ const TOKEN_LENGTH = 7
  */
 export function readableFormKeyStem(formKey: string): string {
   if (formKey === '' || formKey.startsWith(ANONYMOUS_FORM_KEY_PREFIX)) return ANON_STEM
-  // The trailing-trim branch uses a negative lookbehind so it can only
-  // start matching at the boundary BEFORE a run of hyphens. The naive
-  // `-+$` shape (CodeQL js/polynomial-redos) tries to start matching at
-  // every position in a long internal hyphen run and walks to `$` from
-  // each, giving O(n²) worst-case on inputs like `a---…---b`.
-  const sanitized = formKey.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|(?<!-)-+$/g, '')
+  // Trims leading and trailing hyphens in linear time. The trailing
+  // branch consumes the one non-hyphen character before the run and
+  // writes it back through `$1` (the leading branch captures nothing,
+  // so `$1` is empty there). A match can therefore only start on that
+  // character: a start inside a hyphen run fails at `[^-]` at once, so
+  // each run is walked from one position. The naive `-+$` shape (CodeQL
+  // js/polynomial-redos) starts at every position of a long internal
+  // run and walks to its end from each, O(n²) on inputs like `a---…---b`.
+  // No lookbehind: Safari parses one only from 16.4 (#704).
+  const sanitized = formKey.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|([^-])-+$/g, '$1')
   return sanitized === '' ? ANON_STEM : sanitized
 }
 

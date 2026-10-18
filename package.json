@@ -58,6 +58,7 @@
     "bench:delta": "node scripts/bench-delta.mjs",
     "check:bundled-types": "node scripts/check-bundled-types.mjs",
     "check:doc-snippets": "node scripts/check-doc-snippets.mjs",
+    "check:browser-floor": "node scripts/check-browser-floor.mjs",
     "check:comment-only": "node scripts/check-comment-only.mjs",
     "check:site": "pnpm dev:prepare && pnpm --filter attaform-site typecheck",
     "fallow": "DO_NOT_TRACK=1 FALLOW_TELEMETRY=0 npx --yes fallow@2.88.3 --score",

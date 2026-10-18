@@ -890,3 +890,29 @@ Trimming: the walk calls the existing `isCoercePrimitive` and
 short-circuit in the schema-error filter, which gave the same result,
 was dropped (-8 B). Leaving writes ungated would save 7 B and let the
 set grow on schemas that never read it.
+
+## #704 Spends Bytes: the browser floor, 2026-10-18
+
+#704 SPENDS BYTES: 33,500 -> 33,521 measured (+21) against `main`
+(`90339f3d`), and the budget moves 33_510 -> 33_531 (0.01 kB headroom).
+
+What it buys. Every form loads on Safari 12.1 (iOS 12.2) and up. On
+`main` a regex lookbehind in the form-key stem, which Safari parses only
+from 16.4, failed the whole module on iOS 15, so no form on the page
+ran. The floor is a standing gate, `check:browser-floor`, which costs no
+bytes.
+
+Where the bytes went, each measured by putting that change back to
+`main`:
+
+- `typeof v === 'bigint' && !v` and a guarded `BigInt(0)` in place of
+  four `0n` literals (+35 B);
+- the trailing-hyphen trim, `/^-+|([^-])-+$/g` replaced by `'$1'` in
+  place of the lookbehind (+1 B);
+- `safeOwnHas` in place of `Object.hasOwn` at six sites (-15 B: the
+  helper was already in the bundle, and its name minifies).
+
+Trimming: one shared helper for the two guarded `BigInt(0)` sites
+measured 4 B more than the two inline copies, which gzip already folds.
+The `typeof BigInt` guard stays, since it is what lets the gate prove
+the call never runs without BigInt.

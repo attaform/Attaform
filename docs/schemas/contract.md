@@ -145,6 +145,27 @@ import { useForm } from 'attaform'
 
 `attaform/zod` is the same surface named explicitly. `attaform/zod-v3` and `attaform/zod-v4` pin one adapter outright: never rewritten, never carrying the other. That makes them the lean import on tooling the plugin does not cover, as well as the pin for a project staying on Zod v3. The consumer-facing surface is identical across all four; the parsing engine and metadata walker differ to match each major's internals.
 
+### Zod Mini
+
+`zod/mini` works on every v4 entry: `attaform`, `attaform/zod` and `attaform/zod-v4`. Mini builds the same Zod 4 schemas as classic `zod`, written as functions where classic chains methods, and Attaform reads the schema itself rather than any method on it. A mini schema gets the same reactive form as its classic twin: the same API, the same inferred types, and the same defaults, errors and metadata.
+
+```ts
+import { useForm, withMeta } from 'attaform'
+import * as z from 'zod/mini'
+
+const schema = z.object({
+  email: withMeta(z.email('Enter a valid email'), { label: 'Email address' }),
+  nickname: z.optional(z.string().check(z.describe('What friends call you'))),
+  age: z.number().check(z.minimum(18, 'You must be 18 or older')),
+})
+
+const form = useForm({ schema, key: 'profile' })
+```
+
+Attaform imports nothing from `zod` at runtime, so choosing mini keeps classic out of your bundle.
+
+Messages are the one thing to set up yourself. Classic `zod` loads its English locale when it is imported, and `zod/mini` leaves locales to you, so a check with no message of its own reports `Invalid input`. Pass each check its message, as the schema above does, or load a locale once at startup with `z.config(z.locales.en())`.
+
 ### What the adapters accept
 
 Attaform carries a value it cannot describe rather than refusing it. Anything Zod can express as a **value** is a leaf Attaform will hold, validate, and hand back by identity, including types it has no structural knowledge of.

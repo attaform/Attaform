@@ -3,6 +3,7 @@ import type { ValidationError } from '../types/types-api'
 import type { GenericForm } from '../types/types-core'
 import type { FormState } from './create-form-store'
 import { walkAuthoredFromConstraints } from './unset-walker'
+import { structuralSnapshot } from './diff-apply'
 import { AttaformErrorCode } from './error-codes'
 import { mergeSparseHydration } from './merge-hydration'
 import { ROOT_PATH, ROOT_PATH_KEY } from './paths'
@@ -30,7 +31,10 @@ export async function runFactoryAndApply<F extends GenericForm, G extends Generi
   // below. (`hydrating` was already flipped true, synchronously, by
   // `fireFactory`.)
   try {
-    const value = await factory()
+    // A copy, so the form's in-place writes never reach the object the
+    // factory handed back, which the consumer may still hold in a fetch
+    // cache or a store. Sync `defaultValues` are copied for the same reason.
+    const value = structuralSnapshot(await factory())
     // The factory's resolved value is the consumer's late-bound
     // `defaultValues`. Mark every leaf inside it as authored so the
     // schema-error filter surfaces verdicts at preprocess / coerce

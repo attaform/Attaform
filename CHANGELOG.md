@@ -2,7 +2,30 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **`zod/mini` schemas build a typed form.** Passing a `zod/mini` schema
+  to `useForm` failed to compile with TS2589 and TS2769, since the v4
+  signatures named classic's `ZodObject`, `ZodRecord` and
+  `ZodDiscriminatedUnion`. Every public type that takes a v4 schema now
+  constrains on Zod's core internals, which classic and mini share, so a
+  mini object, record or discriminated-union root binds on `attaform`,
+  `attaform/zod` and `attaform/zod-v4`, and its `values`, `setValue` and
+  `fields` types match its classic twin's exactly. A v3 schema still
+  binds the v3 overload. (#703)
+
+- **A `zod/mini` form behaves like its classic twin.** A
+  `z.describe(...)` description read `undefined`, since Attaform read
+  classic's `.description` getter, which mini schemas lack. It now reads
+  Zod's global registry first (Zod 4.1.13 and later), where classic and
+  mini both write it. And a described or `z.meta(...)` mini container
+  counted as a container refine, so each keystroke parsed the whole form
+  where the classic twin re-validated only the edited field. Checks that
+  only attach metadata no longer count. A new parity suite runs one
+  scenario over classic and mini twins, from defaults and errors through
+  `handleSubmit`. The schema contract page documents Zod Mini, including
+  the one setup step mini leaves to you: a locale or a message per
+  check. (#703)
 
 ## v0.31.0
 ### Breaking

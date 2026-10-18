@@ -17,6 +17,7 @@ import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
 import { useWizard } from '../../src/runtime/composables/use-wizard'
+import { untilNotPending, untilSettled } from '../utils/form-harness'
 
 /**
  * `form.interact(path?)`, programmatic simulation of a full
@@ -88,7 +89,7 @@ type FormWithInteract = {
   interact: (path?: string | readonly (string | number)[]) => Promise<void>
   touch: (path?: string | readonly (string | number)[]) => void
   fields: (path?: string | readonly (string | number)[]) => FieldLike
-  meta: { validating: boolean; submissionAttempts: number; showErrors: boolean }
+  meta: { validating: boolean; busy: boolean; submissionAttempts: number; showErrors: boolean }
   setValue: (path: string, value: unknown) => boolean
   values: (path?: string | readonly (string | number)[]) => unknown
   parse: (path?: string | { commit?: boolean }, options?: { commit?: boolean }) => Promise<unknown>
@@ -391,11 +392,8 @@ describe('earned success: a real user who edits and reverts', () => {
     input.value = 'ada@team.dev'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     input.dispatchEvent(new Event('blur', { bubbles: true }))
-    for (let i = 0; i < 20; i++) {
-      await nextTick()
-      if (!api.meta.validating) break
-    }
-    await nextTick()
+    await untilSettled(api)
+    await untilNotPending(() => api.fields('email'))
 
     const f = api.fields('email')
     expect(f.interacted).toBe(true)
@@ -528,11 +526,8 @@ describe('form.interact: survives unmount', () => {
     input.value = 'real@example.com'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     input.dispatchEvent(new Event('blur', { bubbles: true }))
-    for (let i = 0; i < 20; i++) {
-      await nextTick()
-      if (!api.meta.validating) break
-    }
-    await nextTick()
+    await untilSettled(api)
+    await untilNotPending(() => api.fields('email'))
     expect(api.fields('email').showErrors).toBe(false)
   })
 

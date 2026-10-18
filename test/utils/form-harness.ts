@@ -180,6 +180,24 @@ export async function untilSettled(form: SettleProbe): Promise<void> {
   await waitUntil(() => (form.meta.busy ? null : true), SETTLE_TIMEOUT_MS)
 }
 
+/** The slice of a field state `untilNotPending` reads. */
+type DisplayProbe = { readonly displayState: string }
+
+/**
+ * Wait until the state `read` returns no longer shows the spinner, so a pin
+ * of the settled verdict reads that verdict. A run that outlives its
+ * show-delay puts the spinner up, and the spinner stays for its
+ * minimum-visible window after the run settles. The show-delay is 120 ms,
+ * and 16 ms once the field is blurred, so a loaded machine reaches it on any
+ * run. Expiry throws, as `waitUntil` does.
+ *
+ * A pin that asserts the spinner never showed, such as one after a skipped
+ * run, must not wait here first.
+ */
+export async function untilNotPending(read: () => DisplayProbe | undefined): Promise<void> {
+  await waitUntil(() => (read()?.displayState === 'pending' ? null : true), SETTLE_TIMEOUT_MS)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyUseForm = (opts: any) => any
 

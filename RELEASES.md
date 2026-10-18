@@ -1,5 +1,15 @@
 # Releases
 
+## v0.31.2 (2026-10-18)
+
+## What's Changed
+* fix(form): the #705 follow-ups: container original, interact on an empty list, history records, array-op speed (#709) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/713
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.31.1...v0.31.2
+
+---
+
 ## v0.31.1 (2026-10-18)
 
 ## What's Changed

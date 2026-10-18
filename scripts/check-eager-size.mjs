@@ -210,11 +210,11 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 33,521 B measured. Last moved UP, 33_510 -> 33_531, by
-// #704's browser floor (2026-10-18): +21 B of eager so that Attaform loads
-// on Safari before 16.4 and on iOS 15, with no lookbehind, `Object.hasOwn`
-// or BigInt literal in the build. See the ledger for the full pricing.
-const BUDGET_GZ = 33_531
+// Currently at 33,567 B measured. Last moved UP, 33_531 -> 33_577, by
+// #703's zod/mini parity (2026-10-18): +46 B of eager so that a mini
+// schema reads its description and a described mini container keeps
+// per-keystroke field validation. See the ledger for the full pricing.
+const BUDGET_GZ = 33_577
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

@@ -95,8 +95,8 @@ type FormWithInteract = {
   reset: () => void
 }
 
-function asInteractable<F>(form: F): F & FormWithInteract {
-  return form as unknown as F & FormWithInteract
+function asInteractable<F>(form: F): FormWithInteract & F {
+  return form as unknown as FormWithInteract & F
 }
 
 // The seed is invalid everywhere, so any leaf that opens its gate

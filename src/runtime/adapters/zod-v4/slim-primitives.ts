@@ -14,9 +14,9 @@
  * resolves leaf candidates via `getNestedZodSchemasAtPath` and unions
  * `slimPrimitivesOf` across them.
  */
-import type { z } from 'zod'
 import type { SlimPrimitiveKind } from '../../types/types-api'
 import { PERMISSIVE_SLIM_KINDS, slimPrimitivesWalk } from '../../core/walk-slim-primitives'
+import type { ZodV4Node } from './introspect'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 export const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = PERMISSIVE_SLIM_KINDS
@@ -27,7 +27,7 @@ export const PERMISSIVE: ReadonlySet<SlimPrimitiveKind> = PERMISSIVE_SLIM_KINDS
  * is rather than as a copy, so it is read-only.
  */
 export function slimPrimitivesOf(
-  schema: z.ZodType,
+  schema: ZodV4Node,
   maxRecursionDepth: number
 ): ReadonlySet<SlimPrimitiveKind> {
   return slimPrimitivesWalk(schema, V4_INTROSPECTOR, maxRecursionDepth)

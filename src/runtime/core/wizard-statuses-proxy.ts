@@ -3,6 +3,7 @@ import {
   buildCallableReadonlySnapshotProxy,
   type CallableReadonlySnapshotProxy,
 } from './callable-readonly-snapshot-proxy'
+import { safeOwnHas } from './safe-assign'
 import type { FormStatus, WizardStatusesProxy } from '../types/types-wizard'
 
 /**
@@ -55,6 +56,6 @@ export function buildWizardStatusesProxy<S extends Record<string, FormStatus>>(
     resolveCall: (arg) =>
       (statuses[String(arg) as keyof S] as ComputedRef<FormStatus> | undefined)?.value,
     ownKeys: () => Object.keys(statuses),
-    hasKey: (key) => Object.hasOwn(statuses, key),
+    hasKey: (key) => safeOwnHas(statuses, key),
   }) as WizardStatusesProxy<S> & CallableReadonlySnapshotProxy<S>
 }

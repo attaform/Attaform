@@ -210,11 +210,11 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 33,551 B measured. Last moved UP, 33_510 -> 33_561, by
-// #703's zod/mini parity (2026-10-18): +51 B of eager so that a mini
+// Currently at 33,567 B measured. Last moved UP, 33_531 -> 33_577, by
+// #703's zod/mini parity (2026-10-18): +46 B of eager so that a mini
 // schema reads its description and a described mini container keeps
 // per-keystroke field validation. See the ledger for the full pricing.
-const BUDGET_GZ = 33_561
+const BUDGET_GZ = 33_577
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

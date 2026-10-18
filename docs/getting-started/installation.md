@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install Attaform with one command. Optional setup sections cover the Nuxt module, the Vue 3 plugin, and the Vite plugin.
+description: Install Attaform with one command. Optional setup covers the Nuxt module, the Vue 3 plugin, the Vite plugin, and the browser floor.
 ---
 
 # Installation
@@ -106,6 +106,40 @@ export default defineConfig({
 ```
 
 Everything outside that set stays an explicit import: the plugin (`createAttaform`), the `unset` sentinel and its `isUnset` guard, and the bring-your-own-adapter `useAbstractForm` from `attaform/abstract`. Those have no component affinity: they read the same in a store, a util module, or a server route, so they do not earn a slot in every component's scope. A registered auto-import always loses to an explicit or local binding of the same name, so opting out is only needed when you'd rather keep the names out of global scope entirely.
+
+## Browser support
+
+Attaform runs on Safari 12.1 (iOS 12.2), Chrome 71, Firefox 69, and Edge 79, and on everything newer. That reaches every iPhone from the 5s on, with no polyfills to install: every built-in Attaform calls already ships in those browsers. Each build is parsed against that floor before it ships, so the line holds from release to release.
+
+Attaform ships ES2020 syntax and leaves the lowering to your bundler, so an app aimed at current browsers pays nothing for the reach. To serve the whole floor, set the build target. On Vite:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { attaform } from 'attaform/vite'
+
+export default defineConfig({
+  plugins: [vue(), attaform()],
+  build: {
+    target: ['es2019', 'safari12'],
+  },
+})
+```
+
+On Nuxt, the same setting lives under `vite.build.target`:
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['attaform/nuxt'],
+  vite: {
+    build: {
+      target: ['es2019', 'safari12'],
+    },
+  },
+})
+```
 
 ## Optional: Agent skill
 

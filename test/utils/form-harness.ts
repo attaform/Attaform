@@ -145,6 +145,41 @@ export async function awaitSettle(): Promise<void> {
   await nextTick()
 }
 
+/**
+ * Let every queued microtask run. One macrotask boundary drains the whole
+ * microtask queue, microtasks queued while it drains included, so work made
+ * only of promise chains has finished past it: a validation run that nothing
+ * holds, a pass queued with `queueMicrotask`. It is an ordering point rather
+ * than a time budget, so it holds however loaded the machine is.
+ */
+export async function flushMicrotasks(): Promise<void> {
+  await wait(0)
+}
+
+/** The slice of a form handle `untilSettled` reads. */
+type SettleProbe = { readonly meta: { readonly busy: boolean } }
+
+/**
+ * The poll budget for a wait on in-flight work to settle, `untilSettled`'s
+ * included. Work made of promise chains has settled by the first poll, and a
+ * display hold ends on its own timer within a few hundred milliseconds, so
+ * the budget runs out only on work that is stuck. Two budgets fit inside
+ * Vitest's 5 s test timeout, so the expiry that names the condition lands
+ * before the timeout that names nothing.
+ */
+export const SETTLE_TIMEOUT_MS = 2000
+
+/**
+ * Wait until no validation run and no async transform is in flight anywhere
+ * in `form`, which `form.meta.busy` reports. The microtask flush comes first,
+ * so a run queued as a microtask, such as the construction-time pass, has
+ * started before `busy` is polled. Expiry throws, as `waitUntil` does.
+ */
+export async function untilSettled(form: SettleProbe): Promise<void> {
+  await flushMicrotasks()
+  await waitUntil(() => (form.meta.busy ? null : true), SETTLE_TIMEOUT_MS)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyUseForm = (opts: any) => any
 

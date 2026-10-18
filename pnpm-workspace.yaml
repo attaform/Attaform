@@ -90,6 +90,15 @@ overrides:
   # /sitemap.xml 500. Scoped to devframe so @nuxt/test-utils keeps its own
   # h3 v2 (the h3-next alias) for the e2e suite.
   'devframe>h3': 1.15.11
+  # Hold nuxt-og-image on the release that renders the docs site's social
+  # cards correctly. 6.10 stops passing the page description to the card
+  # template and keys every route to one card file, so once cards differ
+  # per page, each page can show another page's card (#727). Every
+  # @nuxtjs/seo 5.3.x declares `^6.7.8`, so the newer copy arrives on any
+  # lockfile re-resolution, and ignoring @nuxtjs/seo releases would not
+  # stop it. A literal version, so `pnpm check:security-floors` also
+  # asserts it stays the single copy. Lift it as part of #727.
+  nuxt-og-image: 6.7.8
   # Security floors for dev-only transitive dependencies. Attaform ships
   # zero runtime dependencies (package.json `dependencies` is empty), so
   # none of these reach a consumer install; they harden the build / test /
@@ -133,17 +142,19 @@ overrides:
   #                    `{a},b}` rewrite), again patched in each major.
   #                    Pulled by minimatch / glob across the lint + test
   #                    toolchain.
-  #   devalue ^5.9.3   clears GHSA-r9w8-h9r3-54w4 and -j22f-vq7h-c4qm (both
+  #   devalue@^5 ^5.9.3
+  #                    clears GHSA-r9w8-h9r3-54w4 and -j22f-vq7h-c4qm (both
   #                    high: custom ArrayBuffer revivers bypass typed-array
   #                    allocation checks; `stringify` / `uneval` serialize
   #                    shared memory), GHSA-4q55-j62x-fr9h and
   #                    -hx4r-w6wj-j8fg (medium: null-prototype keys slip the
   #                    `__proto__` rejection; sparse-array CPU amplification
   #                    in `uneval`) and GHSA-wf3x-273g-mvxv (low, eager
-  #                    allocation from sparse arrays). The root
-  #                    devDependency carries ^5.9.3 as well, but raising it
-  #                    left nuxt, @nuxt/nitro-server and nuxt-og-image on
-  #                    their locked 5.9.2 until this floor moved them too.
+  #                    allocation from sparse arrays). All five stop at
+  #                    5.9.2, so the floor is scoped to the 5.x line. An
+  #                    unscoped `devalue: ^5.9.3` replaced every range in the
+  #                    tree, and held nuxt 4.6.1 and @nuxt/nitro-server on
+  #                    devalue 5 against their own `^6.0.2`.
   #   esbuild ^0.28.1  clears GHSA-g7r4-m6w7-qqqr (arbitrary file read via
   #                    the dev server on Windows, real for a Windows
   #                    maintainer, not just a theoretical). Also pins the
@@ -279,7 +290,7 @@ overrides:
   '@tiptap/core': ^3.30.4
   'brace-expansion@^2': ^2.1.7
   'brace-expansion@^5': ^5.0.12
-  devalue: ^5.9.3
+  'devalue@^5': ^5.9.3
   esbuild: ^0.28.1
   fast-uri: ^3.1.6
   fflate: ^0.7.5

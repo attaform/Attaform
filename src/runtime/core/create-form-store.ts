@@ -4852,9 +4852,9 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
         interacted: false,
         blurredAfterInteraction: false,
       })
-      noteStamp(st, initStamp)
     }
   })
+  if (fields.size > 0) noteStamp(st, initStamp)
 
   if (hydration !== undefined) {
     for (const [rawKey, record] of hydration.fields) {

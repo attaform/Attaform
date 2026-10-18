@@ -295,7 +295,9 @@ function isPrimitiveOrEmpty(value: unknown): boolean {
  * display), null and undefined never auto-mark for the same reason.
  */
 function isSlimNumericPrimitive(value: unknown): boolean {
-  return value === 0 || value === 0n
+  // `0n` is the one falsy bigint. Spelled without the literal, which is a
+  // parse-time SyntaxError before Safari 14 and fails the whole module.
+  return value === 0 || (typeof value === 'bigint' && !value)
 }
 
 /**
@@ -312,7 +314,10 @@ function isSlimNumericPrimitive(value: unknown): boolean {
 export function blankForKind(slimDefault: unknown): unknown {
   if (typeof slimDefault === 'string') return ''
   if (typeof slimDefault === 'number') return 0
-  if (typeof slimDefault === 'bigint') return 0n
+  // Built, not written as a literal: a BigInt literal is a parse-time
+  // SyntaxError before Safari 14. The `typeof` guard is what lets
+  // `check:browser-floor` prove the call never runs without BigInt.
+  if (typeof slimDefault === 'bigint') return typeof BigInt === 'function' ? BigInt(0) : undefined
   if (typeof slimDefault === 'boolean') return false
   if (slimDefault === null) return null
   return undefined

@@ -82,13 +82,6 @@ import { resolveCoerceEnabled } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
 import { walkAuthoredFromConstraints, walkUnspecified } from './unset-walker'
 
-/**
- * A value that holds descendant leaves: an array or a plain object. The dirty
- * machinery treats anything else (primitive, `undefined`, `null`) as a leaf, so
- * replacing a container with one of those drops a whole subtree at once.
- */
-const isContainer = (value: unknown): boolean => Array.isArray(value) || isPlainRecord(value)
-
 // Hydration shape guards. A rolling deploy or a stale cache can hand the
 // client an SSR payload whose record shape differs from its own, and the
 // hydration loop's casts would admit it; the crash then surfaces at a later
@@ -664,18 +657,19 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * insert or removal) against its construction / reset baseline. The
    * structural half of `dirty`: per-element baselines travel with their
    * element across a mutation, so a positional value comparison alone cannot
-   * see the shape change.
+   * see the shape change. `key` is the canonical key of `path`.
    */
-  hasStructuralChangeUnder(path: Path): boolean
+  hasStructuralChangeUnder(path: Path, key: PathKey): boolean
   /**
-   * Whether a baseline-present container under `path` was replaced wholesale
-   * by a non-container (`setValue('profile', undefined)` and the like) and is
-   * still absent. The other half of removal-driven `dirty`: every leaf in such
-   * a subtree vanishes at once, so neither the present-leaf walk nor the array
-   * tracker sees the loss. Self-filters by current liveness, so a refilled
-   * path stops counting.
+   * Whether a path under `path` that held a real baseline value was removed
+   * and is still absent: a dropped key, an emptied container, a row a
+   * wholesale write took away. The other half of removal-driven `dirty`: the
+   * present-leaf walk never visits an absent leaf, and the array tracker
+   * follows only array lengths and orders. A path a later write brought back
+   * stops counting, and the present-leaf walk judges it instead. `key` is the
+   * canonical key of `path`.
    */
-  hasRemovedSubtreeUnder(path: Path): boolean
+  hasRemovedSubtreeUnder(path: Path, key: PathKey): boolean
   getFieldRecord(path: Path): FieldRecord | undefined
 
   /**
@@ -1118,7 +1112,12 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
   readonly cleanupHooks: (() => void)[]
   readonly authoredPaths: Set<PathKey>
   readonly arrayIdentity: ArrayIdentity
-  readonly removedSubtrees: Set<PathKey>
+  readonly removedPaths: Map<PathKey, Path>
+  /**
+   * Change signal for the store's structural bookkeeping, the array identity
+   * tracker and `removedPaths`; see `pulseStructure`. Always empty.
+   */
+  readonly structureSignal: Set<PathKey>
   readonly variantMemory: VariantMemory
   readonly pathOrdinals: Map<PathKey, number>
   readonly pathSnapshots: Map<PathKey, unknown>
@@ -1596,16 +1595,27 @@ function stampContainers<F extends GenericForm, G extends GenericForm = F>(
   containers: readonly Path[],
   now: string
 ): void {
+  eachAncestorOnce(containers, (key, segments) => {
+    if ((st.fields.get(key)?.updatedAt ?? '') < now) {
+      touchFieldRecord(st, key, segments, { updatedAt: now })
+    }
+  })
+}
+
+// Visit each of `paths` and every ancestor of each up to the root (`[]`),
+// each path once.
+function eachAncestorOnce(
+  paths: readonly Path[],
+  visit: (key: PathKey, segments: Path) => void
+): void {
   const seen = new Set<PathKey>()
-  for (const path of containers) {
+  for (const path of paths) {
     for (let depth = path.length; depth >= 0; depth--) {
       const { key, segments } = keyForSegments(path.slice(0, depth))
       // An ancestor already visited had its own ancestors visited with it.
       if (seen.has(key)) break
       seen.add(key)
-      if ((st.fields.get(key)?.updatedAt ?? '') < now) {
-        touchFieldRecord(st, key, segments, { updatedAt: now })
-      }
+      visit(key, segments)
     }
   }
 }
@@ -1677,6 +1687,23 @@ function releaseRemovedRecords<F extends GenericForm, G extends GenericForm = F>
 }
 
 /**
+ * Note a path a write took away as removed when the baseline held a real
+ * value there, and queue it in `notify` for the write's structural signal. A
+ * path seeded with the absence baseline (it appeared at runtime) is not a
+ * loss, so leaving again lands it back at pristine.
+ */
+function noteRemovedBaseline<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  segments: Path,
+  notify: Path[]
+): void {
+  if (st.originals.get(key)?.value === undefined) return
+  st.removedPaths.set(key, segments)
+  notify.push(segments)
+}
+
+/**
  * A typed array helper's write: the mutated array's canonical path and the
  * index permutation its op decoded to.
  */
@@ -1696,11 +1723,12 @@ type StructuralOp = { readonly path: Path; readonly remap: IndexRemap }
 //
 // Every patched path is stamped with `now`. Two kinds of patch take a
 // different road. One whose path the write took away has nothing left to
-// stamp: its record is released, and the container it left is stamped with
-// its ancestors (see `stampContainers`). And under a typed array op the diff
-// is positional, a removal at index 0 reading as a change at every later
-// index, so its patches say nothing about which elements were written. The
-// array is stamped with its ancestors, and the structural-op bookkeeping
+// stamp: its record is released, the container it left is stamped with its
+// ancestors (see `stampContainers`), and a real baseline value there is noted
+// as removed, for `dirty` (see `removedPaths`). And under a typed array op
+// the diff is positional, a removal at index 0 reading as a change at every
+// later index, so its patches say nothing about which elements were written.
+// The array is stamped with its ancestors, and the structural-op bookkeeping
 // stamps the fresh elements and carries every survivor's own records to its
 // new index. A write with no patches changed no value and stamps nothing.
 function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
@@ -1712,6 +1740,11 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
 ): void {
   const arrayOpPath = structuralOp?.path
   const reshaped: Path[] = []
+  const removed: Path[] = []
+  // Paths whose patch can resize an array holding them: a leaf appearing or
+  // leaving, or a container (or `null`) swapped for another value. A typed
+  // array op replays its own permutation instead, below.
+  const resizing: Path[] = []
   // Read raw, so a write made from inside an effect subscribes it to nothing.
   const raw = toRaw(st.form.value)
   for (const patch of patches) {
@@ -1733,9 +1766,18 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
       arrayOpPath !== undefined &&
       segments.length > arrayOpPath.length &&
       isPathPrefix(arrayOpPath, segments)
+    if (
+      structuralOp === null &&
+      (patch.kind !== 'changed' ||
+        typeof patch.oldValue === 'object' ||
+        typeof patch.newValue === 'object')
+    ) {
+      resizing.push(segments)
+    }
     if (!positional) {
       if (patch.kind === 'removed' && !hasAtPath(raw, segments)) {
         reshaped.push(releaseRemovedRecords(st, segments, raw))
+        noteRemovedBaseline(st, key, segments, removed)
       } else {
         touchFieldRecord(st, key, segments, { updatedAt: now })
         // A container replaced by a value of another shape (`null` over an
@@ -1750,6 +1792,8 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
           diffAndApply(patch.oldValue, undefined, segments, (gone) => {
             if (!hasAtPath(raw, gone.path)) {
               reshaped.push(releaseRemovedRecords(st, gone.path, raw))
+              const goneAt = canonicalizePath(gone.path)
+              noteRemovedBaseline(st, goneAt.key, goneAt.segments, removed)
             }
           })
         }
@@ -1776,6 +1820,11 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
   }
   if (arrayOpPath !== undefined && patches.length > 0) reshaped.push(arrayOpPath)
   if (reshaped.length > 0) stampContainers(st, reshaped, now)
+  if (removed.length > 0) pulseStructure(st.structureSignal, removed)
+  // A write with no op to follow resizes arrays by position, at any depth
+  // under what it wrote: a whole-array `setValue`, a parent object, a
+  // whole-form replacement such as a history restore.
+  if (resizing.length > 0) st.arrayIdentity.realignContaining(resizing)
   if (structuralOp !== null) {
     st.arrayBookkeeping.applyStructuralOp(structuralOp.path, structuralOp.remap, now)
   }
@@ -2270,12 +2319,11 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   // resizes the array in place. On an array's first track this is the only
   // chance to capture its baseline length: realigning afterwards would anchor
   // the already-resized order, and a shrink on a never-rendered array would
-  // read structurally pristine and fail to dirty the form (#420). The
-  // post-write realign then advances the current order while the baseline
-  // stays put, so the length delta surfaces through
-  // `hasStructuralChangeUnder`. Idempotent once the array is tracked, and it
-  // mirrors what the `arrayOp` branch gets free from the remap's recorded
-  // pre-op length.
+  // read structurally pristine and fail to dirty the form (#420). The commit
+  // tail's realign then advances the current order while the baseline stays
+  // put, so the length delta surfaces through `hasStructuralChangeUnder`.
+  // Idempotent once the array is tracked, and it mirrors what the `arrayOp`
+  // branch gets free from the remap's recorded pre-op length.
   if (arrayOpRemap === null && Array.isArray(value) && Array.isArray(currentValue)) {
     st.arrayIdentity.realign(path)
   }
@@ -2303,19 +2351,9 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   // A raw whole-array setValue clears all memory under the array path instead,
   // because its identity bookkeeping was lost wholesale and memory keyed by
   // absolute index would bleed onto the new occupants of those indices at a
-  // future variant switch.
+  // future variant switch. Its tokens realign by position in the commit tail.
   if (arrayOpRemap === null && Array.isArray(value) && Array.isArray(currentValue)) {
     st.variantMemory.clearUnderPath(path)
-    st.arrayIdentity.realign(path)
-  } else if (isContainer(currentValue) && !isContainer(value)) {
-    // A baseline-present container dropped to a non-container. Record the path
-    // so the container dirty check still fires for the vanished subtree; see
-    // `removedSubtrees`. Gated on real baseline presence, so an optional
-    // section that was empty at construction, then added, then cleared again,
-    // lands back at pristine rather than reading dirty.
-    if (subtreeHadRealBaseline(st, path, currentValue)) {
-      st.removedSubtrees.add(pathKey)
-    }
   }
   const effectiveModeAfterWrite = meta?.instance?.validateOn ?? st.fieldValidationMode
   if (effectiveModeAfterWrite === 'change') {
@@ -3439,6 +3477,23 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // start, so the prior set is wiped and re-derived from the reset's
   // constraints argument and from the schema-default diff.
   rebuildAuthoredPaths(st, resetSource, next)
+  // Blank follows the same merge rule the values do. `originalBlankPaths` is
+  // the durable record of which paths the consumer declared blank and
+  // `blankPaths` is its live mirror. A path the reset argument NAMES has its
+  // membership re-decided by that argument, so it drops out here and the
+  // public `reset` wrapper re-adds it if the caller marked it `unset`. A path
+  // the argument says nothing about keeps the membership it had. Clearing both
+  // sets wholesale instead would drop construction-time blank membership
+  // permanently, leaving a later bare `reset()` restoring the values but not
+  // the blanks (#576).
+  //
+  // Settled before any reactive write below: Vue cannot see this set, so a
+  // `flush: 'sync'` reader those writes wake must find it final.
+  if (nextDefaultValues !== undefined) {
+    const mentioned = new Set<PathKey>()
+    walkAuthoredFromConstraints(nextDefaultValues, [], mentioned)
+    for (const key of mentioned) st.originalBlankPaths.delete(key)
+  }
   // One instant for the whole reset: the replacement below and the history
   // clear further down record under the same stamp, so `meta.updatedAt`
   // moves once.
@@ -3449,27 +3504,18 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // Re-anchor array identity baselines to the post-reset shape, so a reorder
   // or removal made before the reset stops reading as a structural change.
   st.arrayIdentity.rebaselineAll()
-  // The post-reset value is the new baseline, so any subtree dropped before
-  // this reset is no longer a removal to flag.
-  st.removedSubtrees.clear()
+  // The post-reset value is the new baseline, so any path dropped before this
+  // reset is no longer a removal to flag.
+  if (st.removedPaths.size > 0) {
+    const cleared = [...st.removedPaths.values()]
+    st.removedPaths.clear()
+    pulseStructure(st.structureSignal, cleared)
+  }
   // Rebuild originals from the new baseline: it becomes the post-reset
   // pristine reference, so dirty reads false until the consumer mutates again.
   // Ordinals never reset.
   seedOriginalsFromBaseline(st, next)
-  // Blank follows the same merge rule the values do. `originalBlankPaths` is
-  // the durable record of which paths the consumer declared blank and
-  // `blankPaths` is its live mirror. A path the reset argument NAMES has its
-  // membership re-decided by that argument, so it drops out here and the
-  // public `reset` wrapper re-adds it if the caller marked it `unset`. A path
-  // the argument says nothing about keeps the membership it had. Clearing both
-  // sets wholesale instead would drop construction-time blank membership
-  // permanently, leaving a later bare `reset()` restoring the values but not
-  // the blanks (#576).
-  if (nextDefaultValues !== undefined) {
-    const mentioned = new Set<PathKey>()
-    walkAuthoredFromConstraints(nextDefaultValues, [], mentioned)
-    for (const key of mentioned) st.originalBlankPaths.delete(key)
-  }
+  // The live blank set re-mirrors the durable one settled above.
   st.blankPaths.clear()
   for (const key of st.originalBlankPaths) {
     st.blankPaths.add(key)
@@ -3718,45 +3764,52 @@ function isPristineAtPathByKey<F extends GenericForm, G extends GenericForm = F>
 
 function hasStructuralChangeUnder<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  path: Path
+  path: Path,
+  key: PathKey
 ): boolean {
+  // Subscribe to `pulseStructure` at this path.
+  void st.structureSignal.has(key)
   return st.arrayIdentity.hasStructuralChangeUnder(path)
 }
 
-// Did the subtree at `prefix`, whose pre-write value is `removedValue`, hold
-// any leaf from the construction / reset baseline: a real recorded value,
-// rather than the absence baseline seeded for a runtime-added path? Bounded to
-// the subtree being dropped by enumerating its own leaves, so it walks only
-// what `setValue` is removing, on the rare container-to-non-container write.
-function subtreeHadRealBaseline<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  prefix: Path,
-  removedValue: unknown
-): boolean {
-  let had = false
-  diffAndApply(removedValue, undefined, prefix, (patch) => {
-    if (had || patch.kind !== 'removed') return
-    const record = st.originals.get(canonicalizePath(patch.path).key)
-    if (record?.value !== undefined) had = true
+/**
+ * Wake the containers reading the store's structural bookkeeping at or above
+ * each of `paths`. That bookkeeping, the array identity tracker and
+ * `removedPaths`, lives in plain collections Vue cannot see. A container's
+ * dirty reading consults it after its leaf walk, and a `flush: 'sync'`
+ * observer evaluates that reading in the middle of a write, after the value
+ * moved and before the bookkeeping caught up. Without a signal the reading
+ * settles on the stale answer and nothing wakes it again.
+ *
+ * The signal is a reactive Set kept empty: a reader tracks its own key with
+ * `has`, and a pulse adds and deletes the key, which fires that key's readers
+ * alone. So a change wakes only the containers whose answer it can turn, and
+ * a row never wakes when a sibling row's array moves. Nothing is stored, so
+ * nothing outlives a path.
+ */
+function pulseStructure(signal: Set<PathKey>, paths: readonly Path[]): void {
+  eachAncestorOnce(paths, (key) => {
+    signal.add(key)
+    signal.delete(key)
   })
-  return had
 }
 
 function hasRemovedSubtreeUnder<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  prefix: Path
+  prefix: Path,
+  key: PathKey
 ): boolean {
-  if (st.removedSubtrees.size === 0) return false
-  for (const key of st.removedSubtrees) {
-    const segments = segmentsForPathKey(key)
-    if (segments === null) continue
+  // Subscribe to `pulseStructure` at this path.
+  void st.structureSignal.has(key)
+  if (st.removedPaths.size === 0) return false
+  const raw = toRaw(st.form.value)
+  for (const segments of st.removedPaths.values()) {
     if (!isPathPrefix(prefix, segments)) continue
-    // Skip a recorded path a later write refilled with a container: the
-    // present-leaf walk judges that one instead, an identical refill reading
-    // pristine and a changed one dirtying, so only a still-absent subtree
-    // counts as removed here. Read raw, since the accompanying write already
-    // fired the dirty walk's own dep on this path.
-    if (isContainer(getAtPath(toRaw(st.form.value), segments))) continue
+    // Skip a path a later write brought back: the present-leaf walk judges
+    // that one instead, an identical value reading pristine and a changed one
+    // dirtying. Read raw: the walk already depends on the nearest present
+    // container above it, whose keys that write changes.
+    if (hasAtPath(raw, segments)) continue
     return true
   }
   return false
@@ -3860,24 +3913,31 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   const form = ref(stubbedInitialData) as Ref<F>
 
+  // Wakes the containers reading the identity tracker and `removedPaths`
+  // below when either changes; see `pulseStructure`.
+  const structureSignal = shallowReactive(new Set<PathKey>())
+
   // Operation-maintained per-element identity. It reads the live array length
   // to seed and realign token lists by position for writes it cannot follow,
   // while a structural mutation replays its permutation onto the tokens
   // through `applyOp`.
-  const arrayIdentity = createArrayIdentity((arraySegs) => {
-    // Read the length off the RAW form value, so this lookup registers no
-    // reactive dependency. The identity-token read runs inside every array
-    // element's FieldState computed, so tracking the length here would couple
-    // all N element rollups to it and make one append or remove re-walk
-    // O(N x M). An element's state depends only on its own subtree: a
-    // structural op that changes which element sits at a slot also changes that
-    // slot's value reference, since the field-array helpers relocate element
-    // references in place, which fires the element's own value dep and re-runs
-    // exactly its rollup. The length only seeds and bounds-checks the token
-    // list.
-    const v = getAtPath(toRaw(form.value), arraySegs)
-    return Array.isArray(v) ? v.length : 0
-  })
+  const arrayIdentity = createArrayIdentity(
+    (arraySegs) => {
+      // Read the length off the RAW form value, so this lookup registers no
+      // reactive dependency. The identity-token read runs inside every array
+      // element's FieldState computed, so tracking the length here would
+      // couple all N element rollups to it and make one append or remove
+      // re-walk O(N x M). An element's state depends only on its own subtree:
+      // a structural op that changes which element sits at a slot also changes
+      // that slot's value reference, since the field-array helpers relocate
+      // element references in place, which fires the element's own value dep
+      // and re-runs exactly its rollup. The length only seeds and
+      // bounds-checks the token list.
+      const v = getAtPath(toRaw(form.value), arraySegs)
+      return Array.isArray(v) ? v.length : 0
+    },
+    (arrayPaths) => pulseStructure(structureSignal, arrayPaths)
+  )
 
   // Per-path state. Vue's collection handlers make a read of one key track
   // that key only, so a change to one field does not invalidate computeds
@@ -3933,17 +3993,19 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     OriginalsRecord
   >
 
-  // Paths where a baseline-present container was replaced wholesale by a
-  // non-container, as in `setValue('profile', undefined)`. Every leaf under
-  // such a path vanishes at once, so the present-leaf dirty walk cannot see
-  // the loss and the array identity tracker, which follows only array-to-array
-  // writes, does not apply. This set is how a container removal still dirties
-  // the form (#420, the non-array sibling of an array shrink).
+  // Paths a write took away that held a real baseline value, each with its
+  // segments: a dropped key, every leaf of an emptied or nulled container, a
+  // row a wholesale array write cut off. The present-leaf dirty walk never
+  // visits an absent leaf and the array identity tracker follows only lengths
+  // and orders, so this is how such a loss still dirties every container
+  // above it (#420, #705). A path a later write brings back stops counting,
+  // read by current presence. An entry follows its row across a typed array
+  // op and leaves with a removed one, and `reset()` clears them all. Bounded
+  // by the baseline's own leaves.
   //
-  // A plain Set is enough: reactivity rides on the form-value mutation that
-  // always accompanies such a write, and the membership read self-filters by
-  // current liveness. Cleared on `reset()`.
-  const removedSubtrees = new Set<PathKey>()
+  // A plain Map: `pulseStructure` carries its changes to the containers
+  // reading it.
+  const removedPaths = new Map<PathKey, Path>()
 
   // Blank bookkeeping. The reactive Set holds paths whose display should be
   // EMPTY over a real slim default, and the snapshot mirrors construction-time
@@ -4212,6 +4274,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     blankPaths,
     originalBlankPaths,
     authoredPaths,
+    removedPaths,
+    notifyStructure: (paths) => pulseStructure(structureSignal, paths),
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
@@ -4292,7 +4356,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     cleanupHooks,
     authoredPaths,
     arrayIdentity,
-    removedSubtrees,
+    removedPaths,
+    structureSignal,
     variantMemory,
     pathOrdinals,
     pathSnapshots,

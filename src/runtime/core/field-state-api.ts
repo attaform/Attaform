@@ -478,15 +478,15 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // because per-element state including that baseline travels with the element.
   // The positional leaf walk above cannot see it, so consult the identity
   // tracker's order comparison.
-  if (!dirty && state.hasStructuralChangeUnder(segments)) {
+  if (!dirty && state.hasStructuralChangeUnder(segments, key)) {
     pristine = false
     dirty = true
   }
-  // A baseline-present object or array replaced wholesale by a non-container
-  // drops every leaf under it at once, so the positional walk never visits the
-  // vanished leaves and the array tracker, which follows array-to-array only,
-  // cannot see it. Ask the store whether such a subtree is still absent.
-  if (!dirty && state.hasRemovedSubtreeUnder(segments)) {
+  // A removal takes its leaves out of the positional walk, and the array
+  // tracker follows only lengths and orders: a dropped key, an emptied or
+  // nulled container. Ask the store whether a path under this one that held a
+  // real baseline value is still absent.
+  if (!dirty && state.hasRemovedSubtreeUnder(segments, key)) {
     pristine = false
     dirty = true
   }

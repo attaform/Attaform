@@ -808,10 +808,12 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
       // the walker-discovered paths. A direct add is safe, the new baseline
       // having just been established, so there is no history conflict. Mirror
       // each into `originalBlankPaths` too, so the post-reset pristine
-      // reference holds them as part of the baseline.
+      // reference holds them as part of the baseline. That one first: Vue
+      // cannot see it, so a `flush: 'sync'` reader the reactive add wakes
+      // must find it already there.
       for (const pathKey of walked.paths) {
-        state.blankPaths.add(pathKey)
         state.originalBlankPaths.add(pathKey as PathKey)
+        state.blankPaths.add(pathKey)
       }
     }
   }

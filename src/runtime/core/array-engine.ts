@@ -341,6 +341,13 @@ export type ArrayIdentity = {
   /** Realign a tracked array's tokens to its current length by position. */
   realign(arraySegs: Path): void
   /**
+   * Realign, by position, every tracked array holding one of `paths` or
+   * under one: the arrays a write with no `arrayOp` to follow may have
+   * resized, at any depth under what it wrote (a parent object, a whole-form
+   * replacement, a history restore).
+   */
+  realignContaining(paths: readonly Path[]): void
+  /**
    * Whether any tracked array under `prefix` differs from its baseline element
    * order, by length or by a reordered identity sequence. It backs the
    * structural component of `dirty`: once per-element state follows its
@@ -355,7 +362,20 @@ export type ArrayIdentity = {
   rebaselineAll(): void
 }
 
-export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number): ArrayIdentity {
+/**
+ * `onChange` hears every write-path change that can turn an answer of
+ * `hasStructuralChangeUnder`, with the array paths it moved, so the store can
+ * notify the containers reading them: the token lists are plain Maps Vue
+ * cannot see. Two changes report nothing. The lazy realign behind a `tokenAt`
+ * read runs inside a reader, and its length change is a write's removed or
+ * added leaves, which the dirty walk sees on its own. `realign` anchors an
+ * array right before the write that resizes it, whose own value change wakes
+ * the readers.
+ */
+export function createArrayIdentity(
+  getArrayLength: (arraySegs: Path) => number,
+  onChange: (arrayPaths: readonly Path[]) => void
+): ArrayIdentity {
   // Token lists keyed by array PathKey, each parallel to its array.
   const tokens = new Map<PathKey, string[]>()
   // Baseline token order per array, captured on first track and re-anchored
@@ -368,8 +388,14 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
   const allocate = (): string => `k${(counter++).toString(36)}`
 
   // Bring the token list for `arrayKey` in line with `expectedLen`,
-  // by position: seed fresh when untracked, grow the tail with fresh
-  // tokens, or drop a shrunk tail. Returns the live list.
+  // by position: seed fresh when untracked, grow the tail, or drop a shrunk
+  // tail. Returns the live list.
+  //
+  // A grown slot the baseline order still holds takes the baseline's token
+  // there, unless an element followed by an op carries it now: identity by
+  // position is all a wholesale write leaves, and a write that shrinks an
+  // array and grows it back to its baseline then reads structurally pristine,
+  // the value walk judging the elements.
   function ensure(arrayKey: PathKey, expectedLen: number): string[] {
     let ids = tokens.get(arrayKey)
     const firstTrack = ids === undefined
@@ -377,7 +403,13 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
       ids = []
       tokens.set(arrayKey, ids)
     }
-    while (ids.length < expectedLen) ids.push(allocate())
+    if (ids.length < expectedLen) {
+      const baseline = baselines.get(arrayKey)
+      while (ids.length < expectedLen) {
+        const anchored = baseline?.[ids.length]
+        ids.push(anchored !== undefined && !ids.includes(anchored) ? anchored : allocate())
+      }
+    }
     if (ids.length > expectedLen) ids.length = expectedLen
     // Anchor the baseline the first time the array is seen, before any
     // operation permutes it: that snapshot is its construction-time order.
@@ -411,18 +443,50 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
       const arrayKey = canonicalizePath(arraySegs).key
       const ids = ensure(arrayKey, remap.oldLen)
       tokens.set(arrayKey, permuteList(ids, remap, allocate))
+      onChange([arraySegs])
     },
 
     applyRemap(arrayPath, remap) {
       if (remap.moved.size === 0 && remap.vacated.size === 0 && remap.fresh.size === 0) return
       // Both stores relocate the same way; the token lists themselves
-      // don't embed their path, so the value passes through unchanged.
-      migrateMapSubtree(tokens, arrayPath, remap, (value) => value)
+      // don't embed their path, so the value passes through unchanged. A
+      // nested array leaving one element slot for another changes the answer
+      // at both, so each is reported from where it was and where it lands.
+      const moved: Path[] = []
+      for (const hit of collectKeysAtIndices(tokens.keys(), arrayPath, remapAffects(remap))) {
+        moved.push(hit.segments)
+      }
+      migrateMapSubtree(tokens, arrayPath, remap, (value, segments) => {
+        moved.push(segments)
+        return value
+      })
       migrateMapSubtree(baselines, arrayPath, remap, (value) => value)
+      if (moved.length > 0) onChange(moved)
     },
 
     realign(arraySegs) {
       ensure(canonicalizePath(arraySegs).key, getArrayLength(arraySegs))
+    },
+
+    realignContaining(paths) {
+      if (tokens.size === 0 || paths.length === 0) return
+      const resized: Path[] = []
+      for (const [arrayKey, ids] of tokens) {
+        const segs = segmentsForPathKey(arrayKey)
+        // An array holding a patched path, or inside a container a patch
+        // replaced wholesale.
+        if (
+          segs === null ||
+          !paths.some((path) => isPathPrefix(segs, path) || isPathPrefix(path, segs))
+        ) {
+          continue
+        }
+        const len = getArrayLength(segs)
+        if (ids.length === len) continue
+        ensure(arrayKey, len)
+        resized.push(segs)
+      }
+      if (resized.length > 0) onChange(resized)
     },
 
     hasStructuralChangeUnder(prefix) {
@@ -440,12 +504,15 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
       // tracked array to its post-reset length by position first and anchor
       // that order as the new baseline. Otherwise a reset that changes a length
       // reads structurally dirty on the next access.
+      const rebased: Path[] = []
       for (const arrayKey of [...tokens.keys()]) {
         const segs = segmentsForPathKey(arrayKey)
         if (segs === null) continue
         const ids = ensure(arrayKey, getArrayLength(segs))
         baselines.set(arrayKey, [...ids])
+        rebased.push(segs)
       }
+      if (rebased.length > 0) onChange(rebased)
     },
   }
 }
@@ -633,6 +700,13 @@ export type ArrayBookkeepingDeps = {
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
   readonly authoredPaths: Set<PathKey>
+  /** The store's removed baseline paths, each held with its segments. */
+  readonly removedPaths: Map<PathKey, Path>
+  /**
+   * The store's structural signal: tells every container at or above each
+   * path that its structural dirty answer may have changed.
+   */
+  readonly notifyStructure: (paths: readonly Path[]) => void
   readonly fieldValidationCounts: Map<PathKey, number>
   readonly fieldValidatingSince: Map<PathKey, number>
   readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
@@ -674,8 +748,9 @@ export type ArrayBookkeeping = {
    *     `path`), `blankPaths`, the `originals` / `originalBlankPaths`
    *     dirty baseline (a moved element keeps its OWN dirty verdict; a
    *     structural change still dirties the form through the identity
-   *     tracker's order comparison), `authoredPaths` (the "consumer
-   *     wrote here" mark), and the validation streak anchors + counts
+   *     tracker's order comparison), the removed baseline paths under
+   *     each element, `authoredPaths` (the "consumer wrote here" mark),
+   *     and the validation streak anchors + counts
    *     (`fieldValidatingSince` leads `fieldValidationCounts`, keeping
    *     `validatingSince !== null` an outer bracket around `count > 0`
    *     for synchronous readers). Nested arrays' own identity tokens
@@ -715,6 +790,8 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     blankPaths,
     originalBlankPaths,
     authoredPaths,
+    removedPaths,
+    notifyStructure,
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
@@ -729,6 +806,23 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
 
   function migrateElementState(arrayPath: Path, remap: IndexRemap): void {
     if (remap.moved.size === 0 && remap.vacated.size === 0) return
+    // The plain sets go first. Vue cannot see them, so a `flush: 'sync'`
+    // reader re-evaluating on one of the reactive moves below must find them
+    // already relocated, or it settles on the old membership and nothing
+    // wakes it again.
+    migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    migrateSetSubtree(authoredPaths, arrayPath, remap)
+    // A removed baseline path under a row is that row's own loss, so it moves
+    // with the row and leaves with a removed one. Every slot it leaves or
+    // lands at reads differently, so each is told, once the rest has moved.
+    const removedMoved: Path[] = []
+    for (const hit of collectKeysAtIndices(removedPaths.keys(), arrayPath, remapAffects(remap))) {
+      removedMoved.push(hit.segments)
+    }
+    migrateMapSubtree(removedPaths, arrayPath, remap, (_, segments) => {
+      removedMoved.push(segments)
+      return segments
+    })
     // The removed elements' records are about to drop, so their interaction
     // history moves to the array and its ancestors first, before the
     // relocation below deletes them.
@@ -759,8 +853,6 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       value: record.value,
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
-    migrateSetSubtree(originalBlankPaths, arrayPath, remap)
-    migrateSetSubtree(authoredPaths, arrayPath, remap)
     // The validation-streak anchor leads its count, mirroring
     // `incFieldValidation`: relocating `fieldValidatingSince` before
     // `fieldValidationCounts` keeps `validatingSince !== null` an outer bracket
@@ -774,6 +866,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     // across an outer-array mutation (no token leak, no collision on the
     // new occupant of a vacated slot).
     arrayIdentity.applyRemap(arrayPath, remap)
+    if (removedMoved.length > 0) notifyStructure(removedMoved)
   }
 
   function seedFreshElement(arrayPath: Path, freshIndex: number, now: string): void {

@@ -8,14 +8,21 @@ import type { Path } from '../../src/runtime/core/paths'
 function harness() {
   const arrays = new Map<string, unknown[]>()
   const worldKey = (segs: Path) => segs.join('|')
-  const id = createArrayIdentity((segs) => {
-    const a = arrays.get(worldKey(segs))
-    return Array.isArray(a) ? a.length : 0
-  })
+  // Every change report the tracker makes, one entry per array path.
+  const reported: string[] = []
+  const id = createArrayIdentity(
+    (segs) => {
+      const a = arrays.get(worldKey(segs))
+      return Array.isArray(a) ? a.length : 0
+    },
+    (paths) => {
+      for (const segs of paths) reported.push(worldKey(segs))
+    }
+  )
   const setArr = (segs: Path, next: unknown[]) => arrays.set(worldKey(segs), next.slice())
   const tokens = (segs: Path) =>
     (arrays.get(worldKey(segs)) ?? []).map((_, i) => id.tokenAt(segs, i))
-  return { id, setArr, tokens }
+  return { id, setArr, tokens, reported }
 }
 
 const ITEMS: Path = ['items']
@@ -155,5 +162,62 @@ describe('createArrayIdentity', () => {
     const ta = [id.tokenAt(A, 0), id.tokenAt(A, 1)]
     const tb = [id.tokenAt(B, 0), id.tokenAt(B, 1)]
     expect(new Set([...ta, ...tb]).size).toBe(4)
+  })
+
+  it('reports each write-path change that can turn a structural answer, and no read', () => {
+    const { id, setArr, tokens, reported } = harness()
+    setArr(ITEMS, ['a', 'b', 'c'])
+    // A first track anchors its baseline, and a read that realigns lazily
+    // runs inside a reader: nothing to report.
+    tokens(ITEMS)
+    setArr(ITEMS, ['a', 'b', 'c', 'd'])
+    tokens(ITEMS)
+    expect(reported).toEqual([])
+    setArr(ITEMS, ['a', 'b'])
+    id.realignContaining([['items', 3, 'x']])
+    expect(reported).toEqual(['items'])
+    // Nothing resized: nothing to report.
+    id.realignContaining([['items', 0]])
+    expect(reported).toEqual(['items'])
+    id.applyOp(ITEMS, remapForOp({ kind: 'swap', a: 0, b: 1 }, 2))
+    expect(reported).toEqual(['items', 'items'])
+    id.rebaselineAll()
+    expect(reported).toEqual(['items', 'items', 'items'])
+  })
+
+  it('reports a nested array from the element slot it leaves and the one it lands at', () => {
+    const { id, setArr, reported } = harness()
+    const inner: Path = ['items', 0, 'tags']
+    setArr(['items'], [{}, {}])
+    setArr(inner, ['x'])
+    id.realign(inner)
+    id.applyRemap(['items'], remapForOp({ kind: 'swap', a: 0, b: 1 }, 2))
+    expect(reported).toEqual(['items|0|tags', 'items|1|tags'])
+  })
+
+  it('realigns by position back onto the baseline tokens a wholesale shrink dropped', () => {
+    const { id, setArr, tokens } = harness()
+    setArr(ITEMS, ['a', 'b', 'c'])
+    const baseline = tokens(ITEMS)
+    setArr(ITEMS, ['a'])
+    id.realignContaining([ITEMS])
+    setArr(ITEMS, ['a', 'b', 'c'])
+    id.realignContaining([ITEMS])
+    expect(tokens(ITEMS)).toEqual(baseline)
+  })
+
+  it('never reuses a baseline token an op moved to another slot', () => {
+    const { id, setArr, tokens } = harness()
+    setArr(ITEMS, ['a', 'b', 'c'])
+    const [k0, k1, k2] = tokens(ITEMS)
+    setArr(ITEMS, ['b', 'c'])
+    id.applyOp(ITEMS, remapForOp({ kind: 'remove', index: 0 }, 3))
+    expect(tokens(ITEMS)).toEqual([k1, k2])
+    setArr(ITEMS, ['b', 'c', 'd'])
+    id.realignContaining([ITEMS])
+    const grown = tokens(ITEMS)
+    // Slot 2's baseline token is k2, which the element at slot 1 carries.
+    expect(grown.slice(0, 2)).toEqual([k1, k2])
+    expect([k0, k1, k2]).not.toContain(grown[2])
   })
 })

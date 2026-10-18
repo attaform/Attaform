@@ -276,6 +276,16 @@ jobs:
       - name: Check bundle size
         run: pnpm check:size
 
+      # The declared browser floor (Safari 12.1 / iOS 12.2, Chrome 71,
+      # Firefox 69, Edge 79, no polyfills). Parses every browser-reachable
+      # chunk of both dist flavors and fails on syntax no bundler can lower
+      # (a regex lookbehind, a BigInt literal), a global outside the
+      # allowlist, or a prototype method newer than the floor. The tests
+      # run on a current Node, so this is the only place an old engine's
+      # view of the dist is checked. Reuses the `dist/` prepack above.
+      - name: Check browser floor
+        run: pnpm check:browser-floor
+
       # Non-gating attribution, not a gate: `check:eager` below is the
       # gate. This writes the per-PR eager delta against the merge base
       # to the run summary, because the budget alone only ever showed the

@@ -41,7 +41,20 @@ const wizard = useWizard({
 
 The default write picks its history mode per navigation. A genuine step change calls `history.pushState`, so the step earns a real entry and the browser's Back and Forward buttons walk the flow one step at a time. Writing the step the URL is already effectively on calls `replaceState` instead, canonicalizing in place: a bare `/checkout` resolves to the first step, so stamping `?step=<first>` onto it at construction is bookkeeping rather than a navigation. That split is what keeps Back off a dead entry showing the step the user is already looking at, and it keeps the Forward stack alive across a Back round trip.
 
+Under vue-router (Nuxt included), the write goes through the router's own history, so each entry carries the record vue-router keeps on the entries it writes: its address, its position, the entries either side and its scroll. A link away and the browser's Back then return to the step the user left, and scroll restores as it does for any other page. The write is not a navigation: no guard or middleware runs, and `useRoute().query.step` keeps the value of the last navigation, so read the active step from `wizard.currentStep`.
+
 Every navigation records an entry, including the wizard's own `back()`. Clicking the wizard's Back button pushes the earlier step onto the stack rather than popping the later one, so a browser Back press after it returns the user to the step they just left. If that is not the shape you want, own the write with a custom `persist`, as in [Replacing instead of pushing](#replacing-instead-of-pushing) below.
+
+## Pages kept by `<KeepAlive>`
+
+The address belongs to the page on screen, and the default sync follows it there. A wizard reads and writes `?step=` from the moment its component mounts, and pauses whenever `<KeepAlive>` takes its page off screen:
+
+- While its page is hidden, the wizard leaves the address alone. A Back or Forward on another page does not move it, and a step change made meanwhile (a submit that settles after the user moved on, a `goTo()` from a watcher) stays in memory until the page comes back.
+- A Back or Forward moves the wizard only when it lands on the wizard's own path. The browser fires `popstate` before the router takes a page off screen, so a Back off the page leaves the wizard on its step.
+- When the page comes back, the wizard catches up. If a Back or Forward moved the page's address to another of its steps, the wizard follows it. If its step changed while hidden, it writes the step with the same push or replace split it uses on screen. If the user came back through a link to the bare page, the wizard keeps its step and writes it onto that entry in place.
+- The first write waits for mount too, so a page still resolving under `<Suspense>` when the user moves on writes nothing onto the page that replaced it.
+
+None of it needs configuration, and a wizard outside any component (a test, a composable called in an effect scope) syncs as before. Custom `restore` and `persist` callbacks run exactly as they always have: a callback owns its source, so it decides when to touch it.
 
 ## SSR hand-off
 
@@ -147,6 +160,8 @@ Each wizard owns its own search param, so the two never collide, and each keeps 
 
 The `typeof window` guards keep the helper from crashing on the server, but they do not make it server-aware: a custom `restore` replaces the integration's server-side resolver, so a deep link renders step one on the first byte and corrects on hydration. Under vue-router (Nuxt included), skip the helper and read the route instead. `useRoute().query` is already reactive and already resolved on the server, so a `restore` that pulls the step off it keeps both the first byte and the Back button, while `router.push` in `persist` owns the history entry. Narrow the value on the way out: a query param can repeat, so `route.query[name]` is not a `string` until you say it is.
 
+Like any custom pair, the helper runs whether or not its page is on screen. On a page kept by `<KeepAlive>`, have both callbacks check that the page is shown and the address is on its path, which is what the default does for you (see [Pages kept by `<KeepAlive>`](#pages-kept-by-keepalive)).
+
 ## Replacing instead of pushing
 
 Walking the steps with Back is the right default for a page-level flow, and the wrong one for a wizard inside a modal, where the user expects Back to close the surrounding page in a single press. Swap in a custom `persist` that always replaces, so the URL still reflects the step but the history stack never grows:
@@ -164,6 +179,8 @@ const wizard = useWizard({
 ```
 
 The default `restore` still reads the URL at construction and still listens for `popstate`, so a reload or a shared link lands on the right step. Only the stack behavior changes: there is one entry for the whole wizard, and Back leaves the page.
+
+Under vue-router (Nuxt included), write through the router instead: `router.replace({ query: { ...router.currentRoute.value.query, step } })`, with `const router = useRouter()` taken in setup. vue-router writes its own address back onto an entry each time it leaves it, so a `replaceState` made behind its back is undone by the next link away. `router.replace` is a navigation, so route guards and middleware run on each step.
 
 ## Where to next
 

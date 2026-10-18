@@ -13,6 +13,7 @@ import type { FormStore } from '../core/create-form-store'
 import { RESERVED_KEY_PREFIX } from '../core/defaults'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { buildOutsideEndedScope } from '../core/ended-scope'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kFormContext, kFormInstanceId, useRegistry, type AttaformRegistry } from '../core/registry'
 import type { FormKey, HistoryModule, UseFormReturnType } from '../types/types-api'
@@ -98,6 +99,9 @@ export type InjectFormInput = {
 export function injectForm<Form extends GenericForm, GetValueFormType extends GenericForm = Form>(
   input?: FormKey | InjectFormInput
 ): UseFormReturnType<Form, GetValueFormType> | null {
+  const rebuilt = buildOutsideEndedScope(() => injectForm<Form, GetValueFormType>(input))
+  if (rebuilt !== undefined) return rebuilt
+
   // `injectForm('cart')` is the documented shortcut; the object form is
   // what the Vite transform emits. Both reach the same lookup.
   const key: FormKey | undefined = typeof input === 'string' ? input : input?.key

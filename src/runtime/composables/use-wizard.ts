@@ -5,6 +5,9 @@ import {
   getCurrentScope,
   inject,
   nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
   onScopeDispose,
   provide,
   reactive,
@@ -17,6 +20,7 @@ import {
 import { __DEV__ } from '../core/dev'
 import { ANONYMOUS_WIZARD_KEY_PREFIX } from '../core/defaults'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { buildOutsideEndedScope } from '../core/ended-scope'
 import { AttaformErrorCode } from '../core/error-codes'
 import { SubmitErrorHandlerError, toError } from '../core/errors'
 import {
@@ -28,7 +32,7 @@ import { resolveTrichotomy } from '../core/resolve-default-values'
 import { callConsumerFn, reportConsumerThrow } from '../core/consumer-code'
 import { isLazyMarker } from '../core/wizard-lazy'
 import { isGateMarker } from '../core/wizard-gate'
-import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
+import { createWizardHistory, findRouterHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
 import { useAbstractForm, type AmbientProvideEntry } from './use-abstract-form'
@@ -154,6 +158,9 @@ function asHandleSubmitSource(form: AnyForm): Pick<UseFormReturnType<GenericForm
 export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   options: WizardOptions & { readonly steps: S }
 ): UseWizardReturnType<S> {
+  const rebuilt = buildOutsideEndedScope(() => useWizard<S>(options))
+  if (rebuilt !== undefined) return rebuilt
+
   // A misshapen `steps` must never crash the surrounding app. The dev
   // error surfaces the misconfiguration and the runtime continues
   // degenerate: `currentStep` undefined, navigation refuses,
@@ -1084,13 +1091,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // `useRoute()` in the module's runtime plugin, then `window.location`'s
   // search param mirrored through a ref that updates on popstate.
   //
-  // The default persist writes back through `core/wizard-history.ts`. The
-  // handle is built only when the consumer has disabled neither `restore`
-  // nor `persist`, so an embed that opts out, or passes its own handlers,
+  // The default persist writes back through `core/wizard-history.ts`,
+  // through the app's vue-router history when it has one. The handle is
+  // built only when the consumer has disabled neither `restore` nor
+  // `persist`, so an embed that opts out, or passes its own handlers,
   // never touches the DOM History API.
+  const instance = getCurrentInstance()
   const wantsDefaultUrlSync = options.restore !== false || options.persist !== false
   const historyHandle = wantsDefaultUrlSync
-    ? createWizardHistory(DEFAULT_STEP_PARAM)
+    ? createWizardHistory(
+        DEFAULT_STEP_PARAM,
+        instance === null
+          ? undefined
+          : findRouterHistory(instance.appContext.config.globalProperties)
+      )
     : NOOP_WIZARD_HISTORY
   const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
 
@@ -1101,7 +1115,22 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   const initialUrlValue =
     injectedResolver !== null ? injectedResolver(DEFAULT_STEP_PARAM) : historyHandle.read()
   urlMirror.value = initialUrlValue
+
+  // The default sync reads and writes the address only while the wizard
+  // is on screen (#712). A component's wizard is on screen from mount on,
+  // except while `<KeepAlive>` has it deactivated: a kept page outlives
+  // its time on screen, and meanwhile the address belongs to whichever
+  // page is shown. A wizard outside any component is always on screen.
+  let onScreen = instance === null || (instance.isMounted && !instance.isDeactivated)
+  // The step the address named when the wizard last read or wrote it, so
+  // coming back on screen can tell a Back or Forward made meanwhile from a
+  // step change made in memory.
+  let addressSeen = initialUrlValue
+  // Set when the default persist skips a write off screen.
+  let unwritten = false
   historyHandle.subscribe((value) => {
+    if (!onScreen) return
+    addressSeen = value
     urlMirror.value = value
   })
 
@@ -1132,6 +1161,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           }
         : (state: WizardRestoreState): void => {
             if (state.step === undefined) return
+            if (!onScreen) {
+              unwritten = true
+              return
+            }
             // An absent or unknown `?step=` resolves to the first step,
             // so a bare `/wizard` is the same EFFECTIVE page as
             // `?step=<first>`. Writing the step already effectively on
@@ -1144,6 +1177,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
               current !== undefined && isCompiledKey(current) ? current : firstKey()
             if (state.step === effectiveCurrent) historyHandle.replace(state.step)
             else historyHandle.push(state.step)
+            addressSeen = state.step
           }
 
   // --- Initial active key resolution ------------------------------------
@@ -1240,9 +1274,7 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
           }
           return
         }
-        if (step === activeKey.value) return
-        const landing = commitActiveKey(step)
-        if (!visited.value.includes(landing)) visited.value.push(landing)
+        followStep(step)
       }
     )
   }
@@ -1262,9 +1294,10 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
     )
     // Replace the URL once at construction so a fresh load reflects the
     // active step; it is idempotent when the URL already named the right
-    // key, the watcher's diff owning steady state. The `initialKey`
-    // guard covers the degenerate path, where there is no step to
-    // persist.
+    // key, the watcher's diff owning steady state. The default persist
+    // holds the write until the wizard is on screen, which in a component
+    // is at mount. The `initialKey` guard covers the degenerate path,
+    // where there is no step to persist.
     if (
       initialKey !== undefined &&
       initialKey !== initialUrlValue &&
@@ -1274,6 +1307,59 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
       persistCallback({ step: initialKey })
       urlMirror.value = initialKey
     }
+  }
+
+  function followStep(step: FormKey): void {
+    if (step === activeKey.value) return
+    const landing = commitActiveKey(step)
+    if (!visited.value.includes(landing)) visited.value.push(landing)
+  }
+
+  // Coming on screen settles what the default sync left alone off screen.
+  // A setup's first write waits for it too, so a setup whose component
+  // never mounts, such as one still resolving under `<Suspense>` when the
+  // reader moved on, writes nothing onto the page that replaced it.
+  function comeOnScreen(): void {
+    if (onScreen) return
+    onScreen = true
+    historyHandle.claim()
+    const address = historyHandle.read()
+    const moved = address !== addressSeen
+    addressSeen = address
+    const step = activeKey.value
+    if (moved && consumerRestore === undefined && address !== undefined && isCompiledKey(address)) {
+      // Back or Forward moved this page's address to another step of the
+      // wizard meanwhile. It is the reader's latest navigation, so it wins
+      // over a step change made in memory, as a popstate on screen would.
+      unwritten = false
+      lastPersisted = address
+      urlMirror.value = address
+      followStep(address)
+      return
+    }
+    if (consumerPersist !== undefined || step === '' || step === address) {
+      unwritten = false
+      return
+    }
+    if (!moved && !unwritten) return
+    unwritten = false
+    lastPersisted = step
+    if (moved) {
+      // The address names no step of this wizard (a link to the bare page,
+      // say), and its entry is this page's, so the step goes on it in place.
+      historyHandle.replace(step)
+      addressSeen = step
+    } else {
+      persistCallback?.({ step })
+    }
+  }
+
+  if (instance !== null && historyHandle !== NOOP_WIZARD_HISTORY) {
+    onMounted(comeOnScreen)
+    onActivated(comeOnScreen)
+    onDeactivated(() => {
+      onScreen = false
+    })
   }
 
   // --- Lifecycle state --------------------------------------------------

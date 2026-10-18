@@ -17,6 +17,7 @@ import {
 } from '../core/defaults'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { buildOutsideEndedScope } from '../core/ended-scope'
 import { InvalidUseFormConfigError, ReservedFormKeyError } from '../core/errors'
 import type { FieldState } from '../core/field-state-api'
 import { getComputedSchema } from '../core/get-computed-schema'
@@ -84,6 +85,11 @@ export function useAbstractForm<
   ) {
     throw new InvalidUseFormConfigError()
   }
+
+  const rebuilt = buildOutsideEndedScope(() =>
+    useAbstractForm<Form, GetValueFormType, ReadForm, K>(configuration, options)
+  )
+  if (rebuilt !== undefined) return rebuilt
 
   const key = resolveFormKey(configuration.key)
 

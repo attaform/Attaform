@@ -85,7 +85,7 @@ import {
   setAtPathWithSchemaFill,
   tryInPlaceLeafWrite,
 } from './path-walker'
-import { isShadowedKey, safeAssign } from './safe-assign'
+import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 import { __DEV__ } from './dev'
 import { resolveCoerceEnabled } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
@@ -3839,6 +3839,33 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
       st.schema.getDefaultValues({ useDefaultSchemaValues: true })
     )
   )
+  // A list `value` names replaced the live one wholesale, so its rows are the
+  // new baseline's rows by position, and its order re-anchors. A list it
+  // leaves out keeps its rows and how the consumer arranged them.
+  st.arrayIdentity.rebaseline((segments) => holdsListAt(value, segments))
+  // A removal counts against a baseline value. One the new baseline lacks
+  // took nothing away.
+  const dropped: Path[] = []
+  for (const [key, segments] of st.removedPaths) {
+    if (st.originals.get(key)?.value !== undefined) continue
+    st.removedPaths.delete(key)
+    dropped.push(segments)
+  }
+  if (dropped.length > 0) pulseStructure(st.structureSignal, dropped)
+}
+
+// Whether `value` holds a list at `segments` or above it: one a sparse merge
+// takes wholesale, with everything under it.
+function holdsListAt(value: unknown, segments: Path): boolean {
+  let node = value
+  for (const segment of segments) {
+    if (Array.isArray(node)) return true
+    if (!isPlainRecord(node) || typeof segment !== 'string' || !safeOwnHas(node, segment)) {
+      return false
+    }
+    node = safeOwnRead(node, segment)
+  }
+  return Array.isArray(node)
 }
 
 // --- Reset ---
@@ -3916,7 +3943,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   applyFormReplacementWithPath(st, next, undefined, null, now)
   // Re-anchor array identity baselines to the post-reset shape, so a reorder
   // or removal made before the reset stops reading as a structural change.
-  st.arrayIdentity.rebaselineAll()
+  st.arrayIdentity.rebaseline(() => true)
   // The post-reset value is the new baseline, so any path dropped before this
   // reset is no longer a removal to flag.
   if (st.removedPaths.size > 0) {

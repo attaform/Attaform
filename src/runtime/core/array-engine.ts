@@ -357,10 +357,11 @@ export type ArrayIdentity = {
    */
   hasStructuralChangeUnder(prefix: Path): boolean
   /**
-   * Re-anchor every tracked array's baseline order to its current order.
-   * Called on `reset()` so a form reads structurally pristine afterward.
+   * Re-anchor the baseline order of each tracked array `covers` accepts to its
+   * current order. `reset()` takes them all and resolved async defaults the
+   * arrays they replaced, so the form reads structurally pristine there.
    */
-  rebaselineAll(): void
+  rebaseline(covers: (arraySegs: Path) => boolean): void
   /** A copy of every tracked array's tokens and baseline, for history. */
   snapshot(): IdentityOrders
   /**
@@ -507,15 +508,15 @@ export function createArrayIdentity(
       return false
     },
 
-    rebaselineAll() {
-      // Reset replaces the form wholesale with no `arrayOp`, so realign each
-      // tracked array to its post-reset length by position first and anchor
-      // that order as the new baseline. Otherwise a reset that changes a length
-      // reads structurally dirty on the next access.
+    rebaseline(covers) {
+      // The new baseline lands with no `arrayOp`, so realign each array to its
+      // new length by position first and anchor that order. Otherwise a
+      // baseline that changes a length reads structurally dirty on the next
+      // access.
       const rebased: Path[] = []
       for (const arrayKey of [...tokens.keys()]) {
         const segs = segmentsForPathKey(arrayKey)
-        if (segs === null) continue
+        if (segs === null || !covers(segs)) continue
         const ids = ensure(arrayKey, getArrayLength(segs))
         baselines.set(arrayKey, [...ids])
         rebased.push(segs)

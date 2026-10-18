@@ -187,7 +187,7 @@
     "@vue/typescript-plugin": "^3.2.7",
     "cheerio": "^1.2.0",
     "chokidar-cli": "^3.0.0",
-    "devalue": "^5.9.3",
+    "devalue": "^6.0.2",
     "eslint": "^10.2.1",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-vue": "^10.9.0",

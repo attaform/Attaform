@@ -258,6 +258,17 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "agreed": false,
+          "contact": {
+            "email": "",
+            "phone": ""
+          },
+          "profile": {
+            "first": "",
+            "last": ""
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,
@@ -534,6 +545,17 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "agreed": false,
+          "contact": {
+            "email": "",
+            "phone": ""
+          },
+          "profile": {
+            "first": "",
+            "last": ""
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -810,6 +832,17 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "agreed": false,
+          "contact": {
+            "email": "",
+            "phone": ""
+          },
+          "profile": {
+            "first": "",
+            "last": ""
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -1101,6 +1134,17 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "agreed": false,
+          "contact": {
+            "email": "",
+            "phone": ""
+          },
+          "profile": {
+            "first": "",
+            "last": ""
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,

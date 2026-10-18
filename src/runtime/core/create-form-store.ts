@@ -533,6 +533,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean
   getValueAtPath(path: Path): unknown
   /**
+   * The value `path` started as, for a container's `original`: the baseline
+   * at `path`, each array index followed to the slot its element held there.
+   * `undefined` for an element added since and for a path the baseline lacks.
+   * Frozen, since every read shares it.
+   */
+  getOriginalAtPath(path: Path): unknown
+  /**
    * Stable identity for the array element at `path`, the token the array
    * engine maintains across structural mutations. Empty for anything that is
    * not an array element (a record entry, a fixed-object field, a container,
@@ -1130,6 +1137,14 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
    * save while reporting `dirty: false` over the stale values (#576).
    */
   defaultValues: DeepPartial<WriteShape<F>> | undefined
+  /**
+   * The value the form started as, the tree `originals` is seeded from. Set
+   * at construction, by `reset()` and when async defaults resolve, and read
+   * only through `getOriginalAtPath`, which freezes what it hands out. It may
+   * share structure with `defaultValues`, which is only ever read, and never
+   * with the form, so no write reaches it.
+   */
+  baselineValue: unknown
   readonly ssrPrefetch: CreateFormStoreOptions<F, G>['ssrPrefetch']
   readonly rememberVariants: boolean
   readonly fieldValidationMode: ValidateOn
@@ -3156,6 +3171,47 @@ function getValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   return getAtPath(st.form.value, path)
 }
 
+// Freeze a baseline subtree on its way to a reader, so nothing a consumer
+// does with it reaches the baseline. Only this freezes a node, once its
+// subtree is frozen, so a frozen node ends the walk. A write copies a frozen
+// value it is handed (see `stripSymbolsDeep`), so one written back lands as a
+// copy.
+function freezeBaseline(value: unknown): unknown {
+  if (Object.isFrozen(value)) return value
+  if (Array.isArray(value)) {
+    for (const item of value) freezeBaseline(item)
+    return Object.freeze(value)
+  }
+  if (isPlainRecord(value)) {
+    for (const k of Object.keys(value)) freezeBaseline(safeOwnRead(value, k))
+    return Object.freeze(value)
+  }
+  return value
+}
+
+function getOriginalAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): unknown {
+  let node = st.baselineValue
+  for (let i = 0; i < path.length; i++) {
+    const segment = path[i]
+    if (Array.isArray(node)) {
+      const at =
+        typeof segment === 'number'
+          ? st.arrayIdentity.baselineIndexOf(path.slice(0, i), segment)
+          : -1
+      if (at < 0) return undefined
+      node = node[at]
+    } else if (isPlainRecord(node) && typeof segment === 'string') {
+      node = safeOwnRead(node, segment)
+    } else {
+      return undefined
+    }
+  }
+  return freezeBaseline(node)
+}
+
 // --- Errors ---
 // One tagged store, each path's cell segregating the two sources that can put
 // an error there: `schema` is the validation pipeline, `user` is `setErrors`.
@@ -3835,15 +3891,14 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
     )
   ) as DeepPartial<WriteShape<F>>
   // Derivation only. The verdict belongs to the live form, and this value
-  // seeds nothing but the dirty baseline.
-  seedOriginalsFromBaseline(
-    st,
-    computeBaseline(
-      st.schema,
-      st.defaultValues,
-      st.schema.getDefaultValues({ useDefaultSchemaValues: true })
-    )
+  // seeds nothing but the dirty baseline. It shares structure only with the
+  // fresh `st.defaultValues` above, which the form never holds.
+  st.baselineValue = computeBaseline(
+    st.schema,
+    st.defaultValues,
+    st.schema.getDefaultValues({ useDefaultSchemaValues: true })
   )
+  seedOriginalsFromBaseline(st, st.baselineValue)
   // A list `value` names replaced the live one wholesale, so its rows are the
   // new baseline's rows by position, and its order re-anchors. A list it
   // leaves out keeps its rows and how the consumer arranged them.
@@ -3906,16 +3961,15 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // the same instant, and a Discard button rolls the form back across a save it
   // had already made (#576).
   //
-  // Snapshotted, so the stored defaults share no structure with what lands in
-  // form storage below: `computeBaseline` hands back the source by
-  // reference when it is already structurally complete, and `setValue` writes
-  // leaves IN PLACE. Without the copy, the first edit to an array or nested
-  // object after a reset would mutate the very baseline the next `reset()`
-  // restores from.
+  // Snapshotted, so the stored defaults, and the baseline `next` derives from
+  // them, share no structure with the consumer's argument. `computeBaseline`
+  // hands back its source by reference when it is already structurally
+  // complete, so `next` shares structure with the stored defaults, and the
+  // form takes a copy of it below.
   st.defaultValues = structuralSnapshot(resetSource)
   const next = computeBaseline(
     st.schema,
-    resetSource,
+    st.defaultValues,
     st.schema.getDefaultValues({ useDefaultSchemaValues: true })
   )
   // Rebuild `authoredPaths` against the post-reset baseline. Reset is a fresh
@@ -3944,8 +3998,9 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // moves once.
   const now = writeInstant(st)
   // Replace the form in one shot; history still sees it through
-  // `formChangeListeners`.
-  applyFormReplacementWithPath(st, next, undefined, null, now)
+  // `formChangeListeners`. A copy: `setValue` writes leaves in place, and
+  // `next` stays the baseline the next `reset()` and `original` read.
+  applyFormReplacementWithPath(st, structuralSnapshot(next), undefined, null, now)
   // Re-anchor array identity baselines to the post-reset shape, so a reorder
   // or removal made before the reset stops reading as a structural change.
   st.arrayIdentity.rebaseline(() => true)
@@ -3959,6 +4014,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // Rebuild originals from the new baseline: it becomes the post-reset
   // pristine reference, so dirty reads false until the consumer mutates again.
   // Ordinals never reset.
+  st.baselineValue = next
   seedOriginalsFromBaseline(st, next)
   // The live blank set re-mirrors the durable one settled above.
   st.blankPaths.clear()
@@ -4823,6 +4879,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // the literal they passed from mutating the form's defaults from outside.
     // `reset()` snapshots for a harder reason, where an alias IS reachable.
     defaultValues: ownDefaultValues,
+    // The form holds a copy of it, or the hydration payload.
+    baselineValue: schemaInitialData,
     ssrPrefetch,
     rememberVariants,
     fieldValidationMode,
@@ -4861,6 +4919,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     applyFormReplacement: bind(applyFormReplacement),
     setValueAtPath: bind(setValueAtPath),
     getValueAtPath: bind(getValueAtPath),
+    getOriginalAtPath: bind(getOriginalAtPath),
     arrayElementKey: bind(arrayElementKey),
     reset: bind(reset),
     resetField: bind(resetField),

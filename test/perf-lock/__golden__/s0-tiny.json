@@ -250,6 +250,13 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "a": "",
+          "b": "",
+          "c": 0,
+          "d": false,
+          "e": ""
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,
@@ -502,6 +509,13 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "a": "",
+          "b": "",
+          "c": 0,
+          "d": false,
+          "e": ""
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -768,6 +782,13 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "a": "",
+          "b": "",
+          "c": 0,
+          "d": false,
+          "e": ""
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -1034,6 +1055,13 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "a": "",
+          "b": "",
+          "c": 0,
+          "d": false,
+          "e": ""
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -1313,6 +1341,13 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "a": "",
+          "b": "",
+          "c": 0,
+          "d": false,
+          "e": ""
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,

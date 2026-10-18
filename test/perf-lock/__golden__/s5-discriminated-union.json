@@ -76,6 +76,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,
@@ -172,6 +178,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -268,6 +280,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -372,6 +390,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -468,6 +492,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -572,6 +602,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,
@@ -676,6 +712,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,
@@ -780,6 +822,12 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "payment": {
+            "cardNumber": "",
+            "kind": "card"
+          }
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,

@@ -117,12 +117,31 @@ A survivor keeps its own `updatedAt` when a removal or a reorder moves it to a n
 
 ### Value reads
 
-The data sitting at this path right now, and what it was at hydration.
+The data sitting at this path right now, and what it started as.
 
-| Property   | Type | Meaning                                                        |
-| ---------- | ---- | -------------------------------------------------------------- |
-| `value`    | `T`  | Current leaf value (same as `form.values.<path>`).             |
-| `original` | `T`  | Hydration-time value; `dirty` flips when `value !== original`. |
+| Property   | Type | Meaning                                                                                                                                                                            |
+| ---------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value`    | `T`  | Current value (same as `form.values.<path>`).                                                                                                                                      |
+| `original` | `T`  | The value the path started as: the defaults, re-seated by `reset()` and by async defaults. `dirty` flips when `value` differs from it. `undefined` for a field or row added since. |
+
+At a container, `original` is the subtree the container started as, and each row reads its own. A row keeps its identity through `remove`, `swap`, `move` and `insert`, so its `original` is still the row it was, at whatever index it sits now. Every read shares one frozen value, and writing it back with `setValue` stores a copy, so the baseline stays as it was:
+
+```ts
+const schema = z.object({
+  rows: z.array(z.object({ n: z.string() })),
+})
+
+const form = useForm({ schema, defaultValues: { rows: [{ n: 'a' }, { n: 'b' }, { n: 'c' }] } })
+
+form.remove('rows', 0)
+
+form.fields('rows').original // [{ n: 'a' }, { n: 'b' }, { n: 'c' }]
+form.fields('rows.0').original // { n: 'b' }, the row now at index 0
+form.fields('rows.0.n').original // 'b'
+
+form.append('rows', { n: 'd' })
+form.fields('rows.2').original // undefined: added since
+```
 
 ### Validation reads
 

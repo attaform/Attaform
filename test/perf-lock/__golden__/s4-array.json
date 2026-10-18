@@ -36,6 +36,10 @@
               "key": "<k0>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 0
@@ -183,6 +187,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -330,6 +338,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 2
@@ -497,6 +509,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,
@@ -562,6 +590,10 @@
               "key": "<k0>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 0
@@ -700,6 +732,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -847,6 +883,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 2
@@ -1006,6 +1046,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -1198,6 +1254,10 @@
               "key": "<k0>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -1336,6 +1396,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 2
@@ -1483,6 +1547,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 3
@@ -1642,6 +1710,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -1847,6 +1931,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -1994,6 +2082,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 2
@@ -2153,6 +2245,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -2227,6 +2335,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 0
@@ -2374,6 +2486,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -2660,6 +2776,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -2734,6 +2866,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 0
@@ -2881,6 +3017,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -3294,6 +3434,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": false,
@@ -3372,6 +3528,10 @@
               "key": "<k1>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 0
@@ -3519,6 +3679,10 @@
               "key": "<k2>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 1
@@ -3666,6 +3830,10 @@
               "key": "<k3>",
               "label": "",
               "meta": {},
+              "original": {
+                "name": "",
+                "qty": 0
+              },
               "path": [
                 "rows",
                 2
@@ -3833,6 +4001,22 @@
         "key": "",
         "label": "",
         "meta": {},
+        "original": {
+          "rows": [
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            },
+            {
+              "name": "",
+              "qty": 0
+            }
+          ]
+        },
         "path": [],
         "placeholder": null,
         "pristine": true,

@@ -2459,6 +2459,13 @@ export type PathSetValuePayload<Leaf> =
  */
 export type FieldState<Value = unknown> = {
   readonly value: Value
+  /**
+   * The value this path started as: the defaults, re-seated by `reset()` and
+   * by async defaults. At a container, the subtree it started as, each row
+   * read at its own baseline wherever the typed array ops have moved it, and
+   * frozen, since every read shares it. `undefined` for a field or row added
+   * since.
+   */
   readonly original: Value
   readonly pristine: boolean
   readonly dirty: boolean

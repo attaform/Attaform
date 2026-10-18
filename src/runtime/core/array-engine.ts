@@ -326,6 +326,12 @@ export type ArrayIdentity = {
    * first read onward.
    */
   tokenAt(arraySegs: Path, index: number): string
+  /**
+   * The slot the element at `index` of the array at `arraySegs` held in the
+   * array's baseline order, or -1 for an element added since and for an
+   * out-of-range index. Seeds the token list as `tokenAt` does.
+   */
+  baselineIndexOf(arraySegs: Path, index: number): number
   /** Replay a structural mutation's exact permutation onto the token list. */
   applyOp(arraySegs: Path, remap: IndexRemap): void
   /**
@@ -391,6 +397,10 @@ export function createArrayIdentity(
   // on reset. A live order that diverges from its baseline is a structural
   // change (reorder, insert, or removal).
   const baselines = new Map<PathKey, string[]>()
+  // Each baseline order's token-to-slot index, built on its first lookup.
+  // Keyed by the list itself, which is replaced and never edited, so an entry
+  // follows its list across a relocation and goes with it.
+  const baselineSlots = new WeakMap<readonly string[], Map<string, number>>()
   // One form-wide monotonic counter, so every token is unique across
   // every array in the form (safe as a Map key, not just a v-for key).
   let counter = 0
@@ -443,6 +453,21 @@ export function createArrayIdentity(
       if (index < 0 || index >= len) return ''
       const ids = ensure(canonicalizePath(arraySegs).key, len)
       return ids[index] ?? ''
+    },
+
+    baselineIndexOf(arraySegs, index) {
+      const len = getArrayLength(arraySegs)
+      if (index < 0 || index >= len) return -1
+      const arrayKey = canonicalizePath(arraySegs).key
+      const token = ensure(arrayKey, len)[index]
+      const baseline = baselines.get(arrayKey)
+      if (token === undefined || baseline === undefined) return -1
+      let slots = baselineSlots.get(baseline)
+      if (slots === undefined) {
+        slots = new Map(baseline.map((id, i) => [id, i]))
+        baselineSlots.set(baseline, slots)
+      }
+      return slots.get(token) ?? -1
     },
 
     applyOp(arraySegs, remap) {

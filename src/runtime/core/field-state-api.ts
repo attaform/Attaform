@@ -473,6 +473,17 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       if (updatedAt === null || ts > updatedAt) updatedAt = ts
     }
   }
+  // A container path holding a leaf value (`undefined` over an emptied array,
+  // `null`) is the leaf slot its parent's walk compares, so it is compared the
+  // same way here.
+  if (
+    !dirty &&
+    !(Array.isArray(value) || isPlainRecord(value)) &&
+    !state.isPristineAtPathByKey(key, segments)
+  ) {
+    pristine = false
+    dirty = true
+  }
   // A structural change to a descendant array, a reorder, insert or removal,
   // is dirty even when every surviving element still matches its own baseline,
   // because per-element state including that baseline travels with the element.

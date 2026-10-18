@@ -20,7 +20,7 @@ import { toRaw, type Ref } from 'vue'
 import type { ErrorCell, WriteMeta } from '../types/types-api'
 import { consumerKeys, readConsumerProp } from './consumer-code'
 import { NO_ERRORS } from './error-codes'
-import { diffAndApply } from './diff-apply'
+import { diffAndApply, isBarePatch, type Patch } from './diff-apply'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
@@ -724,6 +724,15 @@ export type ArrayBookkeepingDeps = {
    */
   readonly stampContainers: (containers: readonly Path[], now: string) => void
   /**
+   * The store's bare-container stamp: records a write at each bare container
+   * among `patches` (at `bare`) and at each ancestor no other patch reaches.
+   */
+  readonly stampBareContainers: (
+    patches: readonly Patch[],
+    bare: readonly number[],
+    now: string
+  ) => void
+  /**
    * The store's history fold: ORs the sticky interaction flags of records a
    * removal dropped into the own record of `path` and of each ancestor.
    */
@@ -800,6 +809,7 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     variantMemory,
     touchFieldRecord,
     stampContainers,
+    stampBareContainers,
     foldInteractionHistory,
     decFieldValidation,
   } = deps
@@ -871,17 +881,29 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
 
   function seedFreshElement(arrayPath: Path, freshIndex: number, now: string): void {
     const elementPath: Path = [...arrayPath, freshIndex]
-    let leaves = 0
+    const patches: Patch[] = []
     diffAndApply(undefined, getAtPath(form.value, elementPath), elementPath, (patch) => {
+      patches.push(patch)
+    })
+    // A container holding no leaf (an empty row, an empty list in one) has
+    // nothing below to carry the stamp; see `stampBareContainers`.
+    const bare: number[] = []
+    patches.forEach((patch, index) => {
       if (patch.kind !== 'added') return
+      if (isBarePatch(patch)) {
+        bare.push(index)
+        return
+      }
       const { key, segments } = canonicalizePath(patch.path)
       if (!originals.has(key)) originals.set(key, { segments: patch.path, value: undefined })
       touchFieldRecord(key, segments, { updatedAt: now })
-      leaves++
     })
-    // An element holding no leaf (an empty row) has nothing to carry its
-    // stamp, so it records the write on its own record.
-    if (leaves === 0 && hasAtPath(form.value, elementPath)) stampContainers([elementPath], now)
+    if (bare.length > 0) stampBareContainers(patches, bare, now)
+    // An element the diff reports nothing for, one holding `undefined`,
+    // records the write on its own record.
+    else if (patches.length === 0 && hasAtPath(form.value, elementPath)) {
+      stampContainers([elementPath], now)
+    }
   }
 
   function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {

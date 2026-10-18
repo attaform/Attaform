@@ -40,7 +40,14 @@ import {
 import type { FieldRecord, OriginalsRecord } from './store-records'
 import type { DeepPartial, GenericForm, WriteShape } from '../types/types-core'
 import { DEFAULT_FIELD_VALIDATION_DEBOUNCE_MS, normalizeNumericOption } from './defaults'
-import { applyChangedKeys, diffAndApply, structuralSnapshot, type Patch } from './diff-apply'
+import {
+  applyChangedKeys,
+  diffAndApply,
+  isBarePatch,
+  isDescendable,
+  structuralSnapshot,
+  type Patch,
+} from './diff-apply'
 import {
   buildErrorPathIndex,
   isSameWindow,
@@ -49,6 +56,7 @@ import {
 } from './error-path-index'
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
+  callConsumerFn,
   consumerKeys,
   consumerSymbolKeys,
   readConsumerIndex,
@@ -1210,6 +1218,8 @@ function initialFirstValidationGate<F extends GenericForm, G extends GenericForm
  * which also assigns `pathOrdinals`. This one leaves them alone: ordinals
  * never reset, so a path a later baseline introduces keeps the lazy
  * first-encounter assignment and its slot for the form's lifetime.
+ *
+ * A container holding no leaf is a baseline of its own (see `seedBaseline`).
  */
 function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -1217,12 +1227,30 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
 ): void {
   st.originals.clear()
   diffAndApply({}, baseline, [], (patch) => {
-    if (patch.kind !== 'added') return
-    st.originals.set(canonicalizePath(patch.path).key, {
-      segments: patch.path,
-      value: patch.newValue,
-    })
+    if (patch.kind === 'added') seedBaseline(st.originals, canonicalizePath(patch.path).key, patch)
   })
+}
+
+/**
+ * Record one patch of a baseline walk in `originals`. A leaf keeps its value.
+ * A container holding no leaf (see `Patch`) is a baseline of its own, so that
+ * taking it away reads as a removal. It is kept as a fresh empty one of its
+ * kind, which reads the same: the tree the baseline came from is the one the
+ * form is written from, and a typed array op edits the form's arrays in place.
+ * A map holding none records nothing, since the container walk reads a map as
+ * one leaf, by reference, and the form holds a copy of it.
+ */
+function seedBaseline(
+  originals: Map<PathKey, OriginalsRecord>,
+  key: PathKey,
+  patch: Extract<Patch, { kind: 'added' }>
+): void {
+  let value = patch.newValue
+  if (isDescendable(value)) {
+    if (value instanceof Map) return
+    value = Array.isArray(value) ? [] : {}
+  }
+  originals.set(key, { segments: patch.path, value })
 }
 
 /**
@@ -1602,6 +1630,49 @@ function stampContainers<F extends GenericForm, G extends GenericForm = F>(
   })
 }
 
+/**
+ * Record a write at each bare container among `patches` (the indices in
+ * `bare`, see `Patch`), there being no leaf below it to carry the stamp, and
+ * at each ancestor no other patch of the write reaches. An ancestor a leaf
+ * patch reaches reads the write through that leaf, and one a removal reaches
+ * is stamped with the container the removal left, so neither takes a record:
+ * an empty list in every row of an array costs one record a row, not two.
+ *
+ * The diff emits a subtree's patches in one run, so the patches under an
+ * ancestor are the bare one's neighbours.
+ */
+function stampBareContainers<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  patches: readonly Patch[],
+  bare: readonly number[],
+  now: string
+): void {
+  for (const index of bare) {
+    const path = patches[index]?.path ?? []
+    for (let depth = path.length; depth >= 0; depth--) {
+      const container = path.slice(0, depth)
+      if (depth < path.length && reachedBesides(patches, index, container)) break
+      const { key, segments } = keyForSegments(container)
+      if ((st.fields.get(key)?.updatedAt ?? '') < now) {
+        touchFieldRecord(st, key, segments, { updatedAt: now })
+      }
+    }
+  }
+}
+
+// Whether a patch other than a bare container's sits under `container`, in
+// the run of patches around `index`.
+function reachedBesides(patches: readonly Patch[], index: number, container: Path): boolean {
+  for (const step of [-1, 1]) {
+    for (let i = index + step; ; i += step) {
+      const patch = patches[i]
+      if (patch === undefined || !isPathPrefix(container, patch.path)) break
+      if (!isBarePatch(patch)) return true
+    }
+  }
+  return false
+}
+
 // Visit each of `paths` and every ancestor of each up to the root (`[]`),
 // each path once.
 function eachAncestorOnce(
@@ -1704,6 +1775,33 @@ function noteRemovedBaseline<F extends GenericForm, G extends GenericForm = F>(
 }
 
 /**
+ * Offer a patched path to the liveness sweep. Every value mutation passes
+ * through the commit tail, so it is where a runtime-added path becomes known
+ * to the store, and the only place that can make the store's own maps
+ * sweepable. The sweep ignores a path the schema shape bounds, and its pass
+ * runs in the listener flush, after the patch loop, so a path written on this
+ * very write is live when it is checked.
+ *
+ * The containers on the way to it are offered too. A container path
+ * (`rows.0`) is rarely a patch of its own and would be tracked by nothing,
+ * which is what leaves `authoredPaths` holding an entry per row after the rows
+ * are gone. `track` rejects ancestors a fixed object shape bounds, so only the
+ * genuinely unbounded ones, through an array index or a record key, cost
+ * anything, and re-offering a tracked path is a Set lookup.
+ */
+function trackForSweep<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  key: PathKey
+): void {
+  st.pathSweep.track(path, key)
+  for (let i = 1; i < path.length; i++) {
+    const ancestor = path.slice(0, i)
+    st.pathSweep.track(ancestor, canonicalizePath(ancestor).key)
+  }
+}
+
+/**
  * A typed array helper's write: the mutated array's canonical path and the
  * index permutation its op decoded to.
  */
@@ -1721,11 +1819,15 @@ type StructuralOp = { readonly path: Path; readonly remap: IndexRemap }
 // so one bad subscriber cannot block the rest, and `meta` carries the call
 // site's intent.
 //
-// Every patched path is stamped with `now`. Two kinds of patch take a
+// Every patched path is stamped with `now`. Three kinds of patch take a
 // different road. One whose path the write took away has nothing left to
 // stamp: its record is released, the container it left is stamped with its
 // ancestors (see `stampContainers`), and a real baseline value there is noted
-// as removed, for `dirty` (see `removedPaths`). And under a typed array op
+// as removed, for `dirty` (see `removedPaths`). A bare container, one the
+// diff reports arriving or leaving with no leaf in it, is stamped with each
+// ancestor nothing else reaches (see `stampBareContainers`); an object over
+// `null`, whose leaves no patch of their own reports, gives each of them an
+// absence baseline and the stamp. And under a typed array op
 // the diff is positional, a removal at index 0 reading as a change at every
 // later index, so its patches say nothing about which elements were written.
 // The array is stamped with its ancestors, and the structural-op bookkeeping
@@ -1747,9 +1849,15 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
   const resizing: Path[] = []
   // Read raw, so a write made from inside an effect subscribes it to nothing.
   const raw = toRaw(st.form.value)
-  for (const patch of patches) {
+  // The bare containers the write leaves present, by patch index.
+  const bareAt: number[] = []
+  for (const [index, patch] of patches.entries()) {
     const { key, segments } = canonicalizePath(patch.path)
-    if (!st.originals.has(key)) {
+    // A container arriving or leaving with no leaf in it (see `Patch`). It is
+    // no field, so it seeds no absence baseline, and nothing below it carries
+    // the write's stamp.
+    const bare = isBarePatch(patch)
+    if (!bare && !st.originals.has(key)) {
       // No baseline at a path a write just touched means the path was absent
       // at construction, whatever KIND the diff called the patch, so absence
       // is its baseline and its first appearance is a change.
@@ -1780,6 +1888,7 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
         noteRemovedBaseline(st, key, segments, removed)
       } else {
         touchFieldRecord(st, key, segments, { updatedAt: now })
+        if (bare) bareAt.push(index)
         // A container replaced by a value of another shape (`null` over an
         // object, an array over a record) is one patch at the container, and
         // the leaves it held go with it. Release them as removals of their
@@ -1797,29 +1906,31 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
             }
           })
         }
+        // The other way round, an object over `null`, brings leaves no patch
+        // of their own reports. Each takes an absence baseline and the stamp,
+        // as a leaf patch does, and a bare container among them is stamped
+        // with its ancestors.
+        if (patch.kind === 'changed' && isDescendable(patch.newValue)) {
+          diffAndApply(undefined, patch.newValue, segments, (fresh) => {
+            const at = canonicalizePath(fresh.path)
+            trackForSweep(st, fresh.path, at.key)
+            if (fresh.kind === 'added' && isDescendable(fresh.newValue)) {
+              reshaped.push(at.segments)
+              return
+            }
+            if (!st.originals.has(at.key)) {
+              st.originals.set(at.key, { segments: fresh.path, value: undefined })
+            }
+            touchFieldRecord(st, at.key, at.segments, { updatedAt: now })
+          })
+        }
       }
     }
-    // Offer the path to the liveness sweep. Every value mutation passes
-    // through this tail, so it is where a runtime-added path becomes known to
-    // the store, and the only place that can make the store's own maps
-    // sweepable. The sweep ignores a path the schema shape bounds, and its
-    // pass runs in the listener flush below, after this loop, so a path
-    // written on this very write is live when it is checked.
-    st.pathSweep.track(patch.path, key)
-    // And the containers on the way to it. A diff yields LEAF patches, so a
-    // container path (`rows.0`) is never a patch of its own and would be
-    // tracked by nothing, which is what leaves `authoredPaths` holding an
-    // entry per row after the rows are gone. `track` rejects ancestors a fixed
-    // object shape bounds, so only the genuinely unbounded ones, through an
-    // array index or a record key, cost anything, and re-offering a tracked
-    // path is a Set lookup.
-    for (let i = 1; i < patch.path.length; i++) {
-      const ancestor = patch.path.slice(0, i)
-      st.pathSweep.track(ancestor, canonicalizePath(ancestor).key)
-    }
+    trackForSweep(st, patch.path, key)
   }
   if (arrayOpPath !== undefined && patches.length > 0) reshaped.push(arrayOpPath)
   if (reshaped.length > 0) stampContainers(st, reshaped, now)
+  if (bareAt.length > 0) stampBareContainers(st, patches, bareAt, now)
   if (removed.length > 0) pulseStructure(st.structureSignal, removed)
   // A write with no op to follow resizes arrays by position, at any depth
   // under what it wrote: a whole-array `setValue`, a parent object, a
@@ -1872,7 +1983,18 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
   // other replacement (null `structuralOp`: explicit setValue, reset,
   // undo / redo, hydration, DU reshape) reassigns changed keys wholesale, so a
   // container target gets a fresh reference.
-  if (!applyChangedKeys(prev, next, structuralOp?.path ?? null, [], patches)) {
+  //
+  // A value Vue cannot store throws from its reactive `set`, which reads its
+  // flags off the value: a Proxy whose `get` trap throws. The throw comes
+  // before the slot changes, so the write is skipped whole and records
+  // nothing, rather than escaping into the host app (#608).
+  const reconciled = callConsumerFn<boolean | null>(
+    () => applyChangedKeys(prev, next, structuralOp?.path ?? null, [], patches),
+    null,
+    'stored-value'
+  )
+  if (reconciled === null) return
+  if (!reconciled) {
     st.form.value = next
   } else if (
     patches.some(
@@ -3220,9 +3342,9 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
   let touchedAny = false
   // `originals` is keyed by the canonical key of each entry's own segments, so
   // the iteration already yields what a `canonicalizePath` here would
-  // recompute once per leaf.
+  // recompute once per leaf. A container's baseline is no field.
   for (const [leafKey, entry] of st.originals) {
-    if (!isPathPrefix(segments, entry.segments)) continue
+    if (!isPathPrefix(segments, entry.segments) || isDescendable(entry.value)) continue
     if (!hasAtPath(formValue, entry.segments)) continue
     touchedAny = true
     const current = st.fields.get(leafKey)
@@ -3277,9 +3399,10 @@ function interactAtPath<F extends GenericForm, G extends GenericForm = F>(
   if (st.effectiveDisabled.value) return false
   const formValue = st.form.value
   let interactedAny = false
-  // As in `touchAtPath`, the map key is already this leaf's canonical key.
+  // As in `touchAtPath`, the map key is already this leaf's canonical key, and
+  // a container's baseline is skipped.
   for (const [leafKey, entry] of st.originals) {
-    if (!isPathPrefix(segments, entry.segments)) continue
+    if (!isPathPrefix(segments, entry.segments) || isDescendable(entry.value)) continue
     if (!hasAtPath(formValue, entry.segments)) continue
     interactedAny = true
     const current = st.fields.get(leafKey)
@@ -3661,9 +3784,18 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   // the prefix. When neither matches, as with `resetField('')` (the form-level
   // error path, never a storage slot) or an unknown path, storage is untouched
   // and only the cleanup below runs.
+  // An entry at a container's own path is its whole baseline: a container
+  // that held no leaf, or absence. Every baseline is written as a copy, so the
+  // form never holds one by reference.
   const leafEntry = st.originals.get(targetKey)
   if (leafEntry !== undefined) {
-    const wrote = setValueAtPath(st, targetSegments, leafEntry.value, undefined, now)
+    const wrote = setValueAtPath(
+      st,
+      targetSegments,
+      structuralSnapshot(leafEntry.value),
+      undefined,
+      now
+    )
     if (!wrote) {
       // Originals come from the construction pipeline, which guarantees
       // primitive-correctness, so a rejected reset write means an upstream
@@ -3696,7 +3828,7 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
         // `setAtPath` holds to that choice for the rest of the walk.
         subtree = typeof relative[0] === 'number' ? [] : {}
       }
-      subtree = setAtPath(subtree, relative, entry.value)
+      subtree = setAtPath(subtree, relative, structuralSnapshot(entry.value))
     }
     if (anyMatch) {
       const wroteSubtree = setValueAtPath(st, targetSegments, subtree, undefined, now)
@@ -4284,6 +4416,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     variantMemory,
     touchFieldRecord: (pathKey, path, patch) => touchFieldRecord(st, pathKey, path, patch),
     stampContainers: (containers, now) => stampContainers(st, containers, now),
+    stampBareContainers: (patches, bare, now) => stampBareContainers(st, patches, bare, now),
     foldInteractionHistory: (path, released) => foldInteractionHistory(st, path, released),
     decFieldValidation: (key) => decFieldValidation(st, key),
   })
@@ -4450,11 +4583,16 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   // so its leaves are the baseline's leaves. A hydrating client takes its
   // field records from the payload, which preserves the server-side
   // timestamps and flags.
+  //
+  // A container holding no leaf (`tags: []`) is reported at its own path and
+  // seeds its baseline alone. It is no field: it takes no ordinal and no
+  // record, so it reads `updatedAt: null` until a write reaches it.
   const initStamp = new Date().toISOString()
   diffAndApply({}, schemaInitialData, [], (patch) => {
     if (patch.kind !== 'added') return
     const { key } = canonicalizePath(patch.path)
-    originals.set(key, { segments: patch.path, value: patch.newValue })
+    seedBaseline(originals, key, patch)
+    if (isDescendable(patch.newValue)) return
     ensurePathOrdinal(st, key)
     if (hydration === undefined) {
       fields.set(key, {

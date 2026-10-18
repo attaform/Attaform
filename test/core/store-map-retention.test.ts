@@ -96,9 +96,10 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     settle(form, 'rows', [])
 
     expect(fieldKeysUnder(store, 'rows')).toEqual([])
-    // What is left is the array's own record and the root's.
+    // What is left is the array's own record and the root's, and the array's
+    // own baseline: it held no row at construction.
     expect(store.fields.size).toBeLessThanOrEqual(2)
-    expect(store.originals.size).toBe(0)
+    expect(store.originals.size).toBe(1)
     // `rows` itself survives: a path the schema shape bounds is never a
     // sweep candidate, which is what keeps a declared-but-absent field
     // from being dropped and rebuilt on a loop.
@@ -133,7 +134,8 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     settle(form, 'rows', [{ a: 'kept' }])
 
     expect(fieldKeysUnder(store, 'rows')).toEqual(['["rows",0,"a"]'])
-    expect(store.originals.size).toBe(1)
+    // The kept row's leaf, and the array's own baseline.
+    expect(store.originals.size).toBe(2)
     app.unmount()
   })
 
@@ -153,7 +155,8 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
       Array.from({ length: 50 }, (_, i) => ({ a: `b${i}` }))
     )
     expect(fieldKeysUnder(store, 'rows').length).toBe(50)
-    expect(store.originals.size).toBe(50)
+    // A leaf per row, and the array's own baseline.
+    expect(store.originals.size).toBe(51)
     app.unmount()
   })
 })

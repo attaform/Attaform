@@ -17,7 +17,7 @@ import type {
 import type { AcceptableDefaults, FlatPath, GenericForm, NestedType } from '../../types/types-core'
 import { zodV4Adapter } from './adapter'
 import type { StorageShape } from './types-storage-shape'
-import type { SupportedRootSchema } from './types-root'
+import type { SupportedRootSchema, ZodV4Schema } from './types-root'
 
 export { zodV4Adapter as zodAdapter } from './adapter'
 export { assertZodVersion, kindOf } from './introspect'
@@ -37,7 +37,7 @@ export type { StorageLeaf, StorageShape } from './types-storage-shape'
  * type FlagWriteIn = PathInput<typeof schema, 'flag'> // string
  * ```
  */
-export type PathInput<Schema extends z.ZodType, Path extends string> =
+export type PathInput<Schema extends ZodV4Schema, Path extends string> =
   z.input<Schema> extends GenericForm
     ? Path extends FlatPath<z.input<Schema>>
       ? NestedType<z.input<Schema>, Path>
@@ -56,7 +56,7 @@ export type PathInput<Schema extends z.ZodType, Path extends string> =
  * type FlagParsedOut = PathOutput<typeof schema, 'flag'> // boolean
  * ```
  */
-export type PathOutput<Schema extends z.ZodType, Path extends string> =
+export type PathOutput<Schema extends ZodV4Schema, Path extends string> =
   z.output<Schema> extends GenericForm
     ? Path extends FlatPath<z.output<Schema>>
       ? NestedType<z.output<Schema>, Path>

@@ -31,6 +31,7 @@ import type { z } from 'zod'
 import type { FieldMetaPayload } from '../../core/field-meta'
 import { getFieldMetaForSchema } from '../../core/field-meta-store'
 import { installingFieldMetaStore } from '../../core/walk-field-meta'
+import type { ZodV4Schema } from './types-root'
 
 // `$ZodRegistry` is not surfaced under zod's classic external `z`
 // namespace, but `z.registry()` returns one, so `ReturnType<typeof
@@ -98,14 +99,17 @@ export const fieldMeta = installingFieldMetaStore as unknown as ZodFieldMetaRegi
  * several paths and each needs its own payload: the clone per call is
  * what gives each call site its own registry slot.
  */
-export function withMeta<S extends z.ZodType>(schema: S, payload: FieldMetaPayload): S {
+export function withMeta<S extends ZodV4Schema & { clone(): S }>(
+  schema: S,
+  payload: FieldMetaPayload
+): S {
   // The registry keys on schema reference, so without the clone two
   // registrations on one instance would overwrite last-write-wins and
   // every path would resolve to the most recent payload. Merging the
   // existing payload through is what makes chaining accumulate:
   // `withMeta(withMeta(s, { label }), { description })` keeps both.
-  const existing = getFieldMetaForSchema(schema as object) ?? {}
-  const cloned = schema.clone() as S
-  installingFieldMetaStore.add(cloned as object, { ...existing, ...payload })
+  const existing = getFieldMetaForSchema(schema) ?? {}
+  const cloned = schema.clone()
+  installingFieldMetaStore.add(cloned, { ...existing, ...payload })
   return cloned
 }

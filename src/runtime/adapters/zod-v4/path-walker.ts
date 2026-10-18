@@ -1,5 +1,5 @@
-import type { z } from 'zod'
 import { walkPathSegments } from '../../core/walk-path-segments'
+import type { ZodV4Node } from './introspect'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 const PATH_SEPARATOR = '.'
@@ -19,10 +19,10 @@ const PATH_SEPARATOR = '.'
  * permissive type gate.
  */
 export function getNestedZodSchemasAtPath(
-  schema: z.ZodType,
+  schema: ZodV4Node,
   path: string | readonly (string | number)[],
   maxRecursionDepth: number
-): z.ZodType[] {
+): ZodV4Node[] {
   if (Array.isArray(path)) {
     return walkPathSegments(schema, path.map(String), V4_INTROSPECTOR, maxRecursionDepth, 0)
   }

@@ -2,8 +2,8 @@
  * Bundled-types guard for a discriminated-union ROOT (variant form)
  * through the published unified `attaform/zod` artifact, with both Zod
  * majors installed (the normal consumer case). The v4 overload must
- * match a `z.discriminatedUnion` root via `SupportedRootSchema &
- * ZodV4Internals` and project the lifted read shape.
+ * match a `z.discriminatedUnion` root through the structural
+ * `SupportedRootSchema` and project the lifted read shape.
  *
  * This pins the v4 path deterministically against the bundled `.d.mts`,
  * independent of the in-repo `UseFormReturn` helper: a bound regression

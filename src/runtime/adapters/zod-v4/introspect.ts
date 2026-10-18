@@ -13,6 +13,27 @@ import { callConsumerFn } from '../../core/consumer-code'
 import { __DEV__ } from '../../core/dev'
 
 /**
+ * A Zod v4 schema node as the adapter handles it, built by `zod` or by
+ * `zod/mini`. Both builds extend Zod's core `$ZodType` and give every
+ * instance `safeParse` and `safeParseAsync`, the only methods the adapter
+ * calls on a node; every other read goes through `def` in this file. The
+ * classic-only API (`.optional()`, `.describe()` and the rest) stays out
+ * of the type, so the adapter cannot come to rely on it.
+ */
+export interface ZodV4Node extends z.core.$ZodType {
+  /** The text classic's `.describe()` set. A mini schema has none. */
+  readonly description?: unknown
+  safeParse(
+    data: unknown,
+    params?: z.core.ParseContext<z.core.$ZodIssue>
+  ): z.core.util.SafeParseResult<unknown>
+  safeParseAsync(
+    data: unknown,
+    params?: z.core.ParseContext<z.core.$ZodIssue>
+  ): Promise<z.core.util.SafeParseResult<unknown>>
+}
+
+/**
  * Stable kind discriminant for a Zod v4 schema, returned by `kindOf`.
  * Reach for it in a custom integration that branches on schema shape.
  */
@@ -175,34 +196,34 @@ export function kindOf(schema: unknown): ZodKind {
   return IDENTITY_KINDS.has(rawType) ? (rawType as ZodKind) : 'unknown'
 }
 
-/** Returns schema.shape as Record<string, ZodTypeAny>. */
-export function getObjectShape(schema: z.ZodObject): Record<string, z.ZodType> {
-  const s = schema as unknown as { shape: Record<string, z.ZodType> }
+/** The object's `shape`: each key's schema node. */
+export function getObjectShape(schema: ZodV4Node): Record<string, ZodV4Node> {
+  const s = schema as unknown as { shape: Record<string, ZodV4Node> }
   return s.shape
 }
 
-export function getArrayElement(schema: z.ZodArray): z.ZodType {
+export function getArrayElement(schema: ZodV4Node): ZodV4Node {
   const def = readDef(schema)
-  return def?.element as z.ZodType
+  return def?.element as ZodV4Node
 }
 
 /**
  * The element schema of a `z.set(...)`, on `def.valueType`. Symmetric to
  * `getArrayElement`.
  */
-export function getSetValueType(schema: z.ZodType): z.ZodType {
+export function getSetValueType(schema: ZodV4Node): ZodV4Node {
   const def = readDef(schema)
-  return def?.valueType as z.ZodType
+  return def?.valueType as ZodV4Node
 }
 
-export function getRecordKeyType(schema: z.ZodType): z.ZodType {
+export function getRecordKeyType(schema: ZodV4Node): ZodV4Node {
   const def = readDef(schema)
-  return def?.keyType as z.ZodType
+  return def?.keyType as ZodV4Node
 }
 
-export function getRecordValueType(schema: z.ZodType): z.ZodType {
+export function getRecordValueType(schema: ZodV4Node): ZodV4Node {
   const def = readDef(schema)
-  return def?.valueType as z.ZodType
+  return def?.valueType as ZodV4Node
 }
 
 /**
@@ -216,42 +237,42 @@ export function getRecordValueType(schema: z.ZodType): z.ZodType {
 export const getMapKeyType = getRecordKeyType
 export const getMapValueType = getRecordValueType
 
-export function getTupleItems(schema: z.ZodType): readonly z.ZodType[] {
+export function getTupleItems(schema: ZodV4Node): readonly ZodV4Node[] {
   const def = readDef(schema)
-  return (def?.items as readonly z.ZodType[] | undefined) ?? []
+  return (def?.items as readonly ZodV4Node[] | undefined) ?? []
 }
 
-export function getUnionOptions(schema: z.ZodType): readonly z.ZodType[] {
+export function getUnionOptions(schema: ZodV4Node): readonly ZodV4Node[] {
   const def = readDef(schema)
-  return (def?.options as readonly z.ZodType[] | undefined) ?? []
+  return (def?.options as readonly ZodV4Node[] | undefined) ?? []
 }
 
-export function getLiteralValues(schema: z.ZodType): readonly unknown[] {
+export function getLiteralValues(schema: ZodV4Node): readonly unknown[] {
   const def = readDef(schema)
   return def?.values ?? []
 }
 
-export function getEnumValues(schema: z.ZodType): readonly (string | number)[] {
+export function getEnumValues(schema: ZodV4Node): readonly (string | number)[] {
   const def = readDef(schema)
   const entries = def?.entries
   if (entries === undefined) return []
   return Object.values(entries) as (string | number)[]
 }
 
-export function unwrapInner(schema: z.ZodType): z.ZodType | undefined {
+export function unwrapInner(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
-  return def?.innerType as z.ZodType | undefined
+  return def?.innerType as ZodV4Node | undefined
 }
 
-export function unwrapPipe(schema: z.ZodType): z.ZodType | undefined {
+export function unwrapPipe(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
-  return (def?.in as z.ZodType | undefined) ?? (def?.out as z.ZodType | undefined)
+  return (def?.in as ZodV4Node | undefined) ?? (def?.out as ZodV4Node | undefined)
 }
 
 /** A pipe's input side, which for a preprocess is the transform. */
-export function unwrapPipeIn(schema: z.ZodType): z.ZodType | undefined {
+export function unwrapPipeIn(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
-  return def?.in as z.ZodType | undefined
+  return def?.in as ZodV4Node | undefined
 }
 
 /**
@@ -274,9 +295,9 @@ export function isPreprocessNode(schema: unknown): boolean {
 }
 
 /** A pipe's output side, the `inner` of `z.preprocess(fn, inner)`. */
-export function unwrapPipeOut(schema: z.ZodType): z.ZodType | undefined {
+export function unwrapPipeOut(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
-  return def?.out as z.ZodType | undefined
+  return def?.out as ZodV4Node | undefined
 }
 
 /**
@@ -285,27 +306,27 @@ export function unwrapPipeOut(schema: z.ZodType): z.ZodType | undefined {
  * every time: cycle detection has to track the GETTER's identity, never
  * the resulting schema.
  */
-export function unwrapLazy(schema: z.ZodType): z.ZodType | undefined {
+export function unwrapLazy(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
   const getter = def?.getter
   if (typeof getter !== 'function') return undefined
-  return callConsumerFn(() => getter() as z.ZodType | undefined, undefined, 'lazy-getter')
+  return callConsumerFn(() => getter() as ZodV4Node | undefined, undefined, 'lazy-getter')
 }
 
 /** The getter function on a `z.lazy()`, which is what cycle detection keys on. */
-export function getLazyGetter(schema: z.ZodType): (() => unknown) | undefined {
+export function getLazyGetter(schema: ZodV4Node): (() => unknown) | undefined {
   const def = readDef(schema)
   return typeof def?.getter === 'function' ? def.getter : undefined
 }
 
-export function getIntersectionLeft(schema: z.ZodType): z.ZodType | undefined {
+export function getIntersectionLeft(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
-  return def?.left as z.ZodType | undefined
+  return def?.left as ZodV4Node | undefined
 }
 
-export function getIntersectionRight(schema: z.ZodType): z.ZodType | undefined {
+export function getIntersectionRight(schema: ZodV4Node): ZodV4Node | undefined {
   const def = readDef(schema)
-  return def?.right as z.ZodType | undefined
+  return def?.right as ZodV4Node | undefined
 }
 
 /**
@@ -315,7 +336,7 @@ export function getIntersectionRight(schema: z.ZodType): z.ZodType | undefined {
  * or `ctx.error` during default derivation is rare; if one throws, the
  * result is `undefined`, and the derivation takes that as the slot's default.
  */
-export function getCatchDefault(schema: z.ZodType): unknown {
+export function getCatchDefault(schema: ZodV4Node): unknown {
   const def = readDef(schema)
   const cv = def?.catchValue
   if (typeof cv !== 'function') return undefined
@@ -327,12 +348,12 @@ export function getCatchDefault(schema: z.ZodType): unknown {
 }
 
 /** True iff the schema carries a callable `z.catch(...)` fallback. */
-export function hasCatchValue(schema: z.ZodType): boolean {
+export function hasCatchValue(schema: ZodV4Node): boolean {
   const def = readDef(schema)
   return typeof def?.catchValue === 'function'
 }
 
-export function getDefaultValue(schema: z.ZodType): unknown {
+export function getDefaultValue(schema: ZodV4Node): unknown {
   const def = readDef(schema)
   // v4 stores `defaultValue` as a getter returning the value directly,
   // where v3 stored a function to call. Reading the property normally
@@ -355,7 +376,7 @@ export function getDefaultValue(schema: z.ZodType): unknown {
  * collects three adjacent identical bodies, while the shared name and
  * its re-exports are new tokens.
  */
-export function getNativeEnumValues(_schema: z.ZodType): Record<string, unknown> | undefined {
+export function getNativeEnumValues(_schema: ZodV4Node): Record<string, unknown> | undefined {
   return undefined
 }
 
@@ -365,7 +386,7 @@ export function getNativeEnumValues(_schema: z.ZodType): Record<string, unknown>
  * pipe with a transform on `in`. `undefined` here tells the shared
  * walkers there is no effects source to peel.
  */
-export function unwrapEffectsSource(_schema: z.ZodType): z.ZodType | undefined {
+export function unwrapEffectsSource(_schema: ZodV4Node): ZodV4Node | undefined {
   return undefined
 }
 
@@ -374,12 +395,12 @@ export function unwrapEffectsSource(_schema: z.ZodType): z.ZodType | undefined {
  * introduces no runtime wrapper. `undefined` here tells the shared
  * walkers there is no branded inner to peel.
  */
-export function unwrapBranded(_schema: z.ZodType): z.ZodType | undefined {
+export function unwrapBranded(_schema: ZodV4Node): ZodV4Node | undefined {
   return undefined
 }
 
 /** True if the schema's `def` carries refinement checks (e.g. `.min(3)`). */
-export function hasChecks(schema: z.ZodType): boolean {
+export function hasChecks(schema: ZodV4Node): boolean {
   const def = readDef(schema)
   const checks = def?.checks
   return Array.isArray(checks) && checks.length > 0
@@ -393,25 +414,35 @@ export function getChecks(schema: unknown): readonly unknown[] {
 }
 
 /** ZodDiscriminatedUnion: the discriminator key (e.g. 'status'). */
-export function getDiscriminator(schema: z.ZodType): string | undefined {
+export function getDiscriminator(schema: ZodV4Node): string | undefined {
   const def = readDef(schema)
   return def?.discriminator
 }
 
 /** ZodDiscriminatedUnion: the option objects (typed narrowly as ZodObject). */
-export function getDiscriminatedOptions(schema: z.ZodType): readonly z.ZodObject[] {
+export function getDiscriminatedOptions(schema: ZodV4Node): readonly ZodV4Node[] {
   const def = readDef(schema)
   const options = def?.options
-  return Array.isArray(options) ? (options as readonly z.ZodObject[]) : []
+  return Array.isArray(options) ? (options as readonly ZodV4Node[]) : []
 }
 
 /**
  * Verify a schema is Zod v4, throwing a clear error for a v3 schema
- * imported through `attaform/zod` by mistake. The adapter calls it on
- * every schema; reach for it directly only in a custom adapter that
- * wants the same guard.
+ * imported through `attaform/zod` by mistake. The adapter runs the same
+ * check on every schema; reach for it directly only in a custom adapter
+ * that wants the same guard.
  */
 export function assertZodVersion(schema: unknown): void {
+  assertZodV4Node(schema)
+}
+
+/**
+ * The check behind `assertZodVersion`, typed as the assertion the adapter
+ * relies on. Every Zod v4 schema carries `def.type` and no v3 schema
+ * does, and `zod` and `zod/mini` both build every schema with the parse
+ * methods `ZodV4Node` names, so a schema that passes is a node.
+ */
+export function assertZodV4Node(schema: unknown): asserts schema is ZodV4Node {
   const def = readDef(schema)
   if (def?.type === undefined) {
     throw new Error(
@@ -470,7 +501,7 @@ const capabilityMemo = new WeakMap<object, SchemaCapabilities>()
  * descendant's walk stops where it meets a node already visited, so
  * what the walk saw below a descendant is not that descendant's answer.
  */
-export function capabilitiesOf(schema: z.ZodType): SchemaCapabilities {
+export function capabilitiesOf(schema: ZodV4Node): SchemaCapabilities {
   let capabilities = capabilityMemo.get(schema)
   if (capabilities === undefined) {
     capabilities = scanCapabilities(schema)
@@ -508,7 +539,7 @@ export function capabilitiesOf(schema: z.ZodType): SchemaCapabilities {
  *   for that node while the walk descends, so a nested container check
  *   still surfaces: a miss costs the subtree scoping, never correctness.
  */
-export function scanCapabilities(schema: z.ZodType): SchemaCapabilities {
+export function scanCapabilities(schema: ZodV4Node): SchemaCapabilities {
   const capabilities: Capabilities = {
     asyncRefine: false,
     asyncTransform: false,

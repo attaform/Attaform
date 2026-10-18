@@ -1,4 +1,3 @@
-import type { z } from 'zod'
 import {
   getDiscriminatedOptions,
   getIntersectionLeft,
@@ -6,6 +5,7 @@ import {
   kindOf,
   unwrapInner,
   unwrapPipe,
+  type ZodV4Node,
 } from './introspect'
 
 /**
@@ -27,13 +27,13 @@ import {
  * intersections of two distinct DUs are ambiguous and return
  * `undefined` so the runtime falls back to plain writes.
  */
-export function unwrapToDiscriminatedUnion(schema: z.ZodType): z.ZodType | undefined {
-  let current: z.ZodType = schema
+export function unwrapToDiscriminatedUnion(schema: ZodV4Node): ZodV4Node | undefined {
+  let current: ZodV4Node = schema
   // Bounded; a well-formed Zod schema tree terminates quickly.
   for (let i = 0; i < 64; i++) {
     const kind = kindOf(current)
     if (kind === 'discriminated-union') return current
-    let next: z.ZodType | undefined
+    let next: ZodV4Node | undefined
     if (
       kind === 'optional' ||
       kind === 'nullable' ||
@@ -67,7 +67,7 @@ export function unwrapToDiscriminatedUnion(schema: z.ZodType): z.ZodType | undef
  * A discriminated union's first option, which is the default when no
  * discriminator value is known at default-values construction time.
  */
-export function getDiscriminatedUnionFirstOption(schema: z.ZodType): z.ZodObject | undefined {
+export function getDiscriminatedUnionFirstOption(schema: ZodV4Node): ZodV4Node | undefined {
   const options = getDiscriminatedOptions(schema)
   return options[0]
 }

@@ -1,6 +1,8 @@
 /**
  * The Zod v4 adapter: `AbstractSchema` implemented against Zod v4's
- * public surface. Internal `def.*` access is quarantined to
+ * public surface, for schemas built by `zod` and by `zod/mini` alike;
+ * every node is a `ZodV4Node`, the surface the two builds share.
+ * Internal `def.*` access is quarantined to
  * `introspect.ts` and the modules beside it (default-values,
  * path-walker, discriminator, errors), leaving this file as the wiring
  * between them and the `AbstractSchema` contract.
@@ -42,7 +44,7 @@ import { zodIssuesToValidationErrors } from './errors'
 import { deriveDefault, getDefaultValuesFromZodSchema } from './default-values'
 import type { SupportedRootSchema } from './types-root'
 import {
-  assertZodVersion,
+  assertZodV4Node,
   capabilitiesOf,
   getDiscriminatedOptions,
   getIntersectionLeft,
@@ -53,6 +55,7 @@ import {
   unwrapInner,
   unwrapLazy,
   unwrapPipe,
+  type ZodV4Node,
 } from './introspect'
 import { getNestedZodSchemasAtPath } from './path-walker'
 import { slimPrimitivesOf } from './slim-primitives'
@@ -77,8 +80,8 @@ import { V4_INTROSPECTOR } from './walker-introspector'
  * the explicit value. The iteration is bounded against a pathological
  * wrapper chain.
  */
-function unwrapStructuralWrappers(schema: z.ZodType): z.ZodType {
-  let current: z.ZodType = schema
+function unwrapStructuralWrappers(schema: ZodV4Node): ZodV4Node {
+  let current: ZodV4Node = schema
   for (let i = 0; i < 64; i++) {
     const outerKind = kindOf(current)
     if (outerKind !== 'optional' && outerKind !== 'nullable') break
@@ -109,7 +112,7 @@ function unwrapStructuralWrappers(schema: z.ZodType): z.ZodType {
  * through a generic that erased the constraint. Without it, `z.string()`
  * builds a form whose entire value is `''`.
  */
-function assertKeyedRoot(rootSchema: z.ZodType): void {
+function assertKeyedRoot(rootSchema: ZodV4Node): void {
   const kind = kindOf(peelAllWrappers(rootSchema))
   if (kind === 'object' || kind === 'record' || kind === 'discriminated-union') return
   throw new AttaformError(
@@ -129,11 +132,11 @@ function assertKeyedRoot(rootSchema: z.ZodType): void {
  * fill returns the explicit value. Bounded against a pathological
  * wrapper chain.
  */
-function peelAllWrappers(schema: z.ZodType): z.ZodType {
-  let current: z.ZodType = schema
+function peelAllWrappers(schema: ZodV4Node): ZodV4Node {
+  let current: ZodV4Node = schema
   for (let i = 0; i < 64; i++) {
     const k = kindOf(current)
-    let inner: z.ZodType | undefined
+    let inner: ZodV4Node | undefined
     if (
       k === 'optional' ||
       k === 'nullable' ||
@@ -194,7 +197,7 @@ const MAX_REQUIRED_DEPTH = 64
  * semantics: a union is permissive, an intersection strict, and
  * readonly, pipe and lazy peel transparently.
  */
-function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
+function isLeafRequired(schema: ZodV4Node, depth = 0): boolean {
   if (depth > MAX_REQUIRED_DEPTH) return true
   const kind = kindOf(schema)
   // The wrappers that accept empty outright, plus the bare empty-marker
@@ -232,7 +235,7 @@ function isLeafRequired(schema: z.ZodType, depth = 0): boolean {
     const options =
       kind === 'discriminated-union' ? getDiscriminatedOptions(schema) : getUnionOptions(schema)
     if (options.length === 0) return true
-    return options.every((opt) => isLeafRequired(opt as z.ZodType, depth + 1))
+    return options.every((opt) => isLeafRequired(opt, depth + 1))
   }
   // Required if EITHER side is: a parse has to satisfy both, so the
   // strict side governs.
@@ -271,12 +274,12 @@ export function zodV4Adapter<
 >(
   rootSchema: FormSchema
 ): (formKey: FormKey, options: SchemaFactoryOptions) => AbstractSchema<Form, GetValueFormType> {
-  assertZodVersion(rootSchema)
+  assertZodV4Node(rootSchema)
   assertKeyedRoot(rootSchema)
 
   return (_formKey: FormKey, options: SchemaFactoryOptions) =>
     sharedV4Schemas(rootSchema, options.maxRecursionDepth, () =>
-      createAbstractSchema<z.ZodType, Form, GetValueFormType>(
+      createAbstractSchema<ZodV4Node, Form, GetValueFormType>(
         rootSchema,
         V4_INTROSPECTOR,
         buildV4Services<Form, GetValueFormType>(),
@@ -298,23 +301,24 @@ const sharedV4Schemas = createSharedSchemaStore()
  * and `GetValueFormType` so `runGetDefaults` and `makeSubSchema`
  * propagate the form shape.
  */
-function buildV4Services<
-  Form extends GenericForm,
-  GetValueFormType extends GenericForm,
->(): AbstractSchemaServices<z.ZodType, Form, GetValueFormType> {
+function buildV4Services<Form, GetValueFormType>(): AbstractSchemaServices<
+  ZodV4Node,
+  Form,
+  GetValueFormType
+> {
   return {
     getNestedSchemasAtPath: (schema, path, maxRecursionDepth) =>
-      getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
+      getNestedZodSchemasAtPath(schema, path, maxRecursionDepth),
     // No pre-strip for the slim-mode walk: the path walker peels every
     // transparent wrapper inline, so the slim and unstripped walks
     // coincide.
     getNestedSchemasInSlimMode: (schema, path, maxRecursionDepth) =>
-      getNestedZodSchemasAtPath(schema as z.ZodObject, path, maxRecursionDepth),
+      getNestedZodSchemasAtPath(schema, path, maxRecursionDepth),
     slimPrimitivesOf: (schema, maxRecursionDepth) => slimPrimitivesOf(schema, maxRecursionDepth),
     deriveDefault: (schema, useDefault, maxRecursionDepth) =>
       deriveDefault(schema, useDefault, maxRecursionDepth),
     runGetDefaults: (schema, config, maxRecursionDepth) =>
-      runGetDefaultsV4<Form>(schema as FormSchemaAlias<Form>, config, maxRecursionDepth),
+      runGetDefaultsV4<Form>(schema, config, maxRecursionDepth),
     validateSync: (schema, data) => validateSyncV4(schema, data),
     unwrapStructuralWrappers: (schema) => unwrapStructuralWrappers(schema),
     unwrapToDiscriminatedUnion: (schema) => unwrapToDiscriminatedUnion(schema),
@@ -324,13 +328,13 @@ function buildV4Services<
       resolveFieldMetaAtPath(schema, path, maxRecursionDepth),
     issuesToValidationErrors: (issues) => zodIssuesToValidationErrors(issues as z.core.$ZodIssue[]),
     safeParseSync: (schema, data) => {
-      const result = schema.safeParse(data) as z.ZodSafeParseResult<unknown>
+      const result = schema.safeParse(data)
       return result.success
         ? { success: true, data: result.data }
         : { success: false, issues: result.error.issues }
     },
     safeParseAsync: async (schema, data) => {
-      const result = (await schema.safeParseAsync(data)) as z.ZodSafeParseResult<unknown>
+      const result = await schema.safeParseAsync(data)
       return result.success
         ? { success: true, data: result.data }
         : { success: false, issues: result.error.issues }
@@ -340,11 +344,6 @@ function buildV4Services<
   }
 }
 
-// `runGetDefaultsV4` infers its target shape from one schema argument,
-// and this alias lets the service signature compose without repeating
-// the ZodObject constraint inline.
-type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
-
 /**
  * v4's `getDefaultValues` derivation: the slim default walk, then the
  * DU-aware structural repair walk when constraints are supplied, all in
@@ -352,7 +351,7 @@ type FormSchemaAlias<Form> = z.ZodType & { _output: Form }
  * is the verdict.
  */
 function runGetDefaultsV4<Form>(
-  rootSchema: z.ZodType & { _output: Form },
+  rootSchema: ZodV4Node,
   config: GetDefaultValuesConfig<Form>,
   maxRecursionDepth: number
 ): Form {
@@ -380,7 +379,7 @@ const verdictRan = new WeakMap<object, true>()
  * below for why the async-refine half is handled the same way as the
  * async-transform half.
  */
-function validateSyncV4(rootSchema: z.ZodType, data: unknown): ValidationError[] {
+function validateSyncV4(rootSchema: ZodV4Node, data: unknown): ValidationError[] {
   // Async work of ANY kind skips the construction parse, refine and
   // transform alike. A transform has no choice: its output shape is
   // load-bearing for the inner schema's input, so there is nothing sound
@@ -426,8 +425,8 @@ function validateSyncV4(rootSchema: z.ZodType, data: unknown): ValidationError[]
  * `needsAsyncValidation`, so the stub is observationally
  * interchangeable with the recursive shape v3 returns.
  */
-function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
-  schema: z.ZodType,
+function buildSubSchemaStubV4<GetValueFormType>(
+  schema: ZodV4Node,
   maxRecursionDepth: number
 ): AbstractSchema<unknown, GetValueFormType> {
   return {
@@ -483,7 +482,7 @@ function buildSubSchemaStubV4<GetValueFormType extends GenericForm>(
  * and the pairing holds.
  */
 function resolveFieldMetaAtPath(
-  rootSchema: z.ZodType,
+  rootSchema: ZodV4Node,
   path: Path,
   maxRecursionDepth: number
 ): ResolvedFieldMeta {
@@ -534,8 +533,8 @@ function resolveFieldMetaAtPath(
   }
 }
 
-function readDescription(schema: z.ZodType): string | undefined {
-  const candidate = (schema as z.ZodType & { description?: unknown }).description
+function readDescription(schema: ZodV4Node): string | undefined {
+  const candidate = schema.description
   return typeof candidate === 'string' ? candidate : undefined
 }
 

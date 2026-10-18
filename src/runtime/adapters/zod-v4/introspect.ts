@@ -499,13 +499,14 @@ export function capabilitiesOf(schema: z.ZodType): SchemaCapabilities {
  *   a rejection inside it goes unhandled.
  * - `discriminatedUnion`: `kindOf` reads `'discriminated-union'`.
  * - `preprocessOrCoerce`: `isCoercePrimitive` or `isPreprocessNode`.
- * - `containerOrRootRefine`: the node carries checks and holds one of
- *   `CONTAINER_SLOTS`. A `.refine` added on top of a transparent wrapper
- *   lands its check on the WRAPPER node, so the wrapper's own
- *   `def.checks` is what gets inspected and wrappers need no case of
- *   their own. An unrecognised `def` shape answers false for that node
- *   while the walk descends, so a nested container check still surfaces:
- *   a miss costs the subtree scoping, never correctness.
+ * - `containerOrRootRefine`: the node carries a check that can reach a
+ *   verdict (`isVerdictCheck`, which passes over mini's `z.describe` and
+ *   `z.meta`) and holds one of `CONTAINER_SLOTS`. A `.refine` added on
+ *   top of a transparent wrapper lands its check on the WRAPPER node, so
+ *   the wrapper's own `def.checks` is what gets inspected and wrappers
+ *   need no case of their own. An unrecognised `def` shape answers false
+ *   for that node while the walk descends, so a nested container check
+ *   still surfaces: a miss costs the subtree scoping, never correctness.
  */
 export function scanCapabilities(schema: z.ZodType): SchemaCapabilities {
   const capabilities: Capabilities = {
@@ -547,7 +548,7 @@ function walkCapabilities(
 
   const checks = getChecks(node)
   if (checks.some(isAsyncCheck)) capabilities.asyncRefine = true
-  if (checks.length > 0 && CONTAINER_SLOTS.some((key) => def[key] !== undefined)) {
+  if (checks.some(isVerdictCheck) && CONTAINER_SLOTS.some((key) => def[key] !== undefined)) {
     capabilities.containerOrRootRefine = true
   }
   if (typeof def.transform === 'function' && def.transform.constructor.name === 'AsyncFunction') {
@@ -576,7 +577,22 @@ function walkCapabilities(
 interface ZodCheckInternals {
   _def?: { fn?: unknown }
   def?: { fn?: unknown }
-  _zod?: { def?: { fn?: unknown } }
+  _zod?: { def?: { fn?: unknown; check?: unknown } }
+}
+
+/**
+ * False for a check that only attaches metadata. `zod/mini` spells
+ * `.describe()` and `.meta()` as checks, `z.describe(...)` and
+ * `z.meta(...)`: each names its kind on `_zod.def.check`, writes to
+ * Zod's global registry when attached, and never reaches a verdict.
+ * Classic's methods register on a clone and add no check, so counting
+ * these would mark a described mini container as a container refine
+ * where its classic twin is not. Any other entry counts.
+ */
+function isVerdictCheck(check: unknown): boolean {
+  if (typeof check !== 'object' || check === null) return true
+  const kind = (check as ZodCheckInternals)._zod?.def?.check
+  return kind !== 'describe' && kind !== 'meta'
 }
 
 export function isAsyncCheck(check: unknown): boolean {

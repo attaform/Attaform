@@ -111,14 +111,26 @@ updates:
     ignore:
       # Both zod specifiers in this repo are deliberate MAJOR pins, so a
       # major bump on either is never what we want. `apps/bench-arena` holds
-      # `zod: ^3.25.76` beside `zod-v4: npm:zod@^4.4.3` because the arena
-      # measures both lines, and every Zod-based row is only comparable
+      # `zod: npm:zod@^3.25.76` beside `zod-v4: npm:zod@^4.4.3` because the
+      # arena measures both lines, and every Zod-based row is only comparable
       # while they all carry the SAME Zod: results.json records
       # `validator: zod 3.25.76` on each, and #643 measured the shared floor
       # at 13.84 kB gz from it. #652 offered to move the 3.x pin to 4.6.2,
       # which would have changed every competitor's bundle number and
       # desynced the committed results from what produced them. Adopting a
       # new zod major is a deliberate project, not a dependabot PR.
+      #
+      # This rule alone did not hold the arena's pin: #678 opened three days
+      # after it landed and kept rebasing, likely because the same name sits
+      # on ^4 in the root manifest, so the update was never judged a major.
+      # What holds it is the arena's spec, `npm:zod@^3.25.76`. Dependabot's
+      # npm parser drops every `npm:` requirement before it becomes a
+      # dependency (`ignore_requirement?` in dependabot-core's
+      # npm_and_yarn/file_parser.rb), which is also why neither `zod-v3` nor
+      # `zod-v4` has ever drawn a PR. pnpm still installs it as `zod`, so the
+      # cohort's zod peers, Vite's `dedupe` and the version labels in
+      # results.json see exactly what they saw before. The rule stays to
+      # keep the root manifest's zod on the 4.x line.
       - dependency-name: 'zod'
         update-types:
           - 'version-update:semver-major'

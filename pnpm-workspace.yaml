@@ -15,9 +15,15 @@ overrides:
   # The advisory floor moved with it: GHSA-279x-mwfv-vcqv (critical,
   # unauthenticated DevTools RPC allows arbitrary command execution on the
   # developer's host) is first patched in 3.3.1, and the root spec is
-  # ^3.4.2. That floor now lives in package.json, so do not lower it
+  # ^3.4.3. That floor now lives in package.json, so do not lower it
   # there. Dependabot guards it the same way it guards every other
-  # devDependency.
+  # devDependency. 3.4.3 is also the release that drops simple-git, and
+  # with it four advisories whose patches exist only in simple-git 4:
+  # GHSA-x6jw-m9v5-85vh and @simple-git/argv-parser's GHSA-v5rq-49vh-5v5c
+  # (both critical, the unsafe-operation guard misses trailer config and
+  # the `VISUAL` editor variable), plus GHSA-858h-whjf-mvg5 and
+  # -g4wm-2vf7-vfgr (both high, command execution through abbreviated
+  # long options and Git config includes).
   #
   # This used to be a literal pin, hand-held at "the newest 3.x past the
   # .npmrc cooldown" because setting it to a same-day release made pnpm
@@ -118,12 +124,26 @@ overrides:
   #                    to the caret floor. The resolution sticks. Use that
   #                    two-step whenever `pnpm check:security-floors` reports
   #                    a violation an override should already have fixed.
-  #   brace-expansion@^2 ^2.1.2 / brace-expansion@^5 ^5.0.7
+  #   brace-expansion@^2 ^2.1.7 / brace-expansion@^5 ^5.0.12
   #                    the same exponential-time `{}` expansion DoS
   #                    (GHSA-3jxr-9vmj-r5cp, high) landed in both majors
   #                    present in the tree, patched separately, hence two
-  #                    range-scoped floors rather than one. Pulled by
-  #                    minimatch / glob across the lint + test toolchain.
+  #                    range-scoped floors rather than one. The current
+  #                    floors add GHSA-q2hr-2g5m-vwhr (quadratic-time
+  #                    `{a},b}` rewrite), again patched in each major.
+  #                    Pulled by minimatch / glob across the lint + test
+  #                    toolchain.
+  #   devalue ^5.9.3   clears GHSA-r9w8-h9r3-54w4 and -j22f-vq7h-c4qm (both
+  #                    high: custom ArrayBuffer revivers bypass typed-array
+  #                    allocation checks; `stringify` / `uneval` serialize
+  #                    shared memory), GHSA-4q55-j62x-fr9h and
+  #                    -hx4r-w6wj-j8fg (medium: null-prototype keys slip the
+  #                    `__proto__` rejection; sparse-array CPU amplification
+  #                    in `uneval`) and GHSA-wf3x-273g-mvxv (low, eager
+  #                    allocation from sparse arrays). The root
+  #                    devDependency carries ^5.9.3 as well, but raising it
+  #                    left nuxt, @nuxt/nitro-server and nuxt-og-image on
+  #                    their locked 5.9.2 until this floor moved them too.
   #   esbuild ^0.28.1  clears GHSA-g7r4-m6w7-qqqr (arbitrary file read via
   #                    the dev server on Windows, real for a Windows
   #                    maintainer, not just a theoretical). Also pins the
@@ -170,19 +190,39 @@ overrides:
   #   postcss ^8.5.23  clears GHSA-r28c-9q8g-f849 and its incomplete-fix
   #                    follow-up GHSA-fxqj-rqcc-2cmp: attacker-controlled
   #                    sourceMappingURL reads arbitrary .map files.
-  #   sharp ^0.35.4    clears GHSA-rgj7-g3m4-5g8c (high, the bundled libheif
-  #                    carries GHSA-g89c-p67h-r497 and -2jg2-4ch7-h545).
+  #   postcss-selector-parser ^7.1.6
+  #                    clears GHSA-rj75-hqrm-r3gf (quadratic-time parsing of
+  #                    flat selectors). The one 6.x copy came from
+  #                    @tailwindcss/typography, which pins exactly 6.0.10,
+  #                    and the patch landed only in 7.x, so this floor moves
+  #                    typography across a major. 7.0.0's one breaking
+  #                    change makes insertions during iteration safe, and
+  #                    the docs site's generated stylesheet is byte-for-byte
+  #                    the same on 6.0.10 and 7.1.6. Unscoped, so every copy
+  #                    in the tree meets the same floor.
+  #   sharp ^0.35.5    clears GHSA-wq5f-xc86-pv6w (high, the bundled librsvg
+  #                    carries CVE-2026-96889) on top of GHSA-rgj7-g3m4-5g8c
+  #                    (high, the bundled libheif carries GHSA-g89c-p67h-r497
+  #                    and -2jg2-4ch7-h545) that the ^0.35.4 floor answered.
   #                    Pulled by nuxt-seo-utils > @nuxtjs/seo to resize OG
   #                    images at prerender time; same SSG reasoning as
   #                    image-size below, floored anyway because a patch
   #                    exists.
-  #   shell-quote ^1.9.0
-  #                    clears GHSA-395f-4hp3-45gv (high,
-  #                    quadratic-complexity DoS in `parse()`).
+  #   shell-quote ^1.11.0
+  #                    clears GHSA-pqg4-j6r4-53mv (critical, `quote()` lets a
+  #                    line terminator after a `{ comment }` token inject a
+  #                    command) on top of GHSA-395f-4hp3-45gv (high,
+  #                    quadratic-complexity DoS in `parse()`) that the ^1.9.0
+  #                    floor answered. Pulled by launch-editor >
+  #                    @nuxt/devtools.
   #   socket.io-parser ^4.2.7
   #                    clears GHSA-2m8v-j782-fhvr (high, zero-attachment
   #                    memory exhaustion). Pulled by socket.io-client >
   #                    @nuxt/content (docs site).
+  #   source-map-js ^1.2.2
+  #                    clears GHSA-68fv-2mgg-jv7q (high, event-loop DoS
+  #                    through indexed source-map section offsets). Pulled
+  #                    by postcss, the Vue compilers and the Tailwind build.
   #   svgo ^4.1.0      clears GHSA-w27v-7q3p-w38r (high, removeScripts lets
   #                    executable links through via namespace and
   #                    control-character bypasses) and GHSA-4vpr-x523-8j87
@@ -192,14 +232,19 @@ overrides:
   #                    unbuild and the Nuxt vite builder.
   #   tar ^7.5.18      clears GHSA-w8wr-v893-vjvp (process crash via PAX
   #                    numeric path type confusion).
-  #   undici ^7.29.0   clears GHSA-4cwx-7wf7-3272 (high, cross-user
-  #                    disclosure + parse-time crash via degenerate private
-  #                    cache directives) plus four mediums (CRLF injection,
-  #                    cookie attribute injection, Cache-Control whitespace
-  #                    disclosure, and retry-interceptor response
-  #                    desynchronization) on top of the SOCKS5 ProxyAgent
-  #                    and WebSocket-DoS highs the original ^7.28.0 floor
-  #                    answered. Pulled by jsdom / cheerio (test harness).
+  #   undici ^7.29.1   clears GHSA-w293-vg96-wgc3 (high, BalancedPool drops
+  #                    the connect options and with them TLS certificate
+  #                    validation), two mediums (GHSA-2jfj-6hjv-fm6j,
+  #                    cross-user Set-Cookie disclosure from shared caches;
+  #                    GHSA-pmjh-fq2x-6v4x, DoS via an orphaned RetryHandler
+  #                    body) and three lows (GHSA-8436-99hf-9mmv,
+  #                    GHSA-r53p-7pc4-xj5r and GHSA-2gqq-gqf2-x968: cached
+  #                    unsafe-method replays, retry-interceptor response
+  #                    splitting, dump-interceptor truncation). The ^7.29.0
+  #                    floor before it answered GHSA-4cwx-7wf7-3272 and four
+  #                    mediums, and ^7.28.0 the SOCKS5 ProxyAgent and
+  #                    WebSocket-DoS highs. Pulled by jsdom / cheerio (test
+  #                    harness) and nuxt.
   #   ws ^8.21.0       clears GHSA-96hv-2xvq-fx4p (high, memory-exhaustion
   #                    DoS from tiny fragments), auto-dismissed. Pulled by
   #                    socket.io-client > @nuxt/content (docs site).
@@ -212,9 +257,20 @@ overrides:
   # site is pure SSG (`nitro.preset: 'static'`), so no runtime path feeds it
   # bytes at all. Both alerts are dismissed as tolerable risk on GitHub;
   # add a floor here the moment image-size ships one.
+  #
+  # Also not floored: node-forge (GHSA-86w9-cpqp-85rv, high, RSA PKCS#1
+  # v1.5 signature verification accepts extra nested DigestAlgorithm
+  # elements) has no published patch. 1.4.0 is the newest release. It
+  # enters the tree only through listhen, the dev-server listener under
+  # nitropack and @nuxt/cli, which calls node-forge to generate a key pair
+  # and self-sign a certificate for `nuxi dev --https`. It never verifies
+  # a signature, which is the only path the advisory affects. Dismissed as
+  # tolerable risk on GitHub; add a floor here the moment node-forge ships
+  # one.
   '@tiptap/core': ^3.30.4
-  'brace-expansion@^2': ^2.1.2
-  'brace-expansion@^5': ^5.0.7
+  'brace-expansion@^2': ^2.1.7
+  'brace-expansion@^5': ^5.0.12
+  devalue: ^5.9.3
   esbuild: ^0.28.1
   fast-uri: ^3.1.6
   fflate: ^0.7.5
@@ -222,12 +278,14 @@ overrides:
   js-yaml: ^4.3.2
   'nanoid@^5': ^5.1.16
   postcss: ^8.5.23
-  sharp: ^0.35.4
-  shell-quote: ^1.9.0
+  postcss-selector-parser: ^7.1.6
+  sharp: ^0.35.5
+  shell-quote: ^1.11.0
   socket.io-parser: ^4.2.7
+  source-map-js: ^1.2.2
   svgo: ^4.1.0
   tar: ^7.5.18
-  undici: ^7.29.0
+  undici: ^7.29.1
   ws: ^8.21.0
 
 # Install-script allowlist. Any package NOT set to `true` here has its

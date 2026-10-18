@@ -5,8 +5,9 @@
  *
  * Mini builds the same Zod 4 core schemas as classic `zod`, with
  * functions where classic has methods: `zm.optional(zm.string())` for
- * `z.string().optional()`. Attaform reads the core's `def` and never a
- * classic method, so a form should not be able to tell the two apart.
+ * `z.string().optional()`. Attaform reads the core's `def` and calls no
+ * classic-only method, so a form should not be able to tell the two
+ * apart.
  * One scenario, written once per flavor, reads every surface a form
  * takes from its schema: derived defaults, parse errors, the
  * `handleSubmit` payload, a discriminated-union switch, `dirty`, labels

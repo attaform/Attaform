@@ -147,7 +147,7 @@ import { useForm } from 'attaform'
 
 ### Zod Mini
 
-`zod/mini` works on every v4 entry: `attaform`, `attaform/zod` and `attaform/zod-v4`. Mini builds the same Zod 4 schemas as classic `zod`, written as functions where classic chains methods, and Attaform reads the schema itself rather than any method on it. A mini schema gets the same reactive form as its classic twin: the same API, the same inferred types, and the same defaults, errors and metadata.
+`zod/mini` works on every v4 entry: `attaform`, `attaform/zod` and `attaform/zod-v4`. Mini builds the same Zod 4 schemas as classic `zod`, written as functions where classic chains methods, and Attaform relies only on what the two share. A mini schema gets the same reactive form as its classic twin: the same API, the same inferred types, and the same defaults, errors and metadata.
 
 ```ts
 import { useForm, withMeta } from 'attaform'

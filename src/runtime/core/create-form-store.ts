@@ -1689,11 +1689,19 @@ function stampContainers<F extends GenericForm, G extends GenericForm = F>(
   containers: readonly Path[],
   now: string
 ): void {
-  eachAncestorOnce(containers, (key, segments) => {
-    if ((st.fields.get(key)?.updatedAt ?? '') < now) {
-      touchFieldRecord(st, key, segments, { updatedAt: now })
-    }
-  })
+  eachAncestorOnce(containers, (key, segments) => raiseStamp(st, key, segments, now))
+}
+
+// Raise a record's stamp to `stamp`, leaving one already at it or later.
+function raiseStamp<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey,
+  segments: Path,
+  stamp: string
+): void {
+  if ((st.fields.get(key)?.updatedAt ?? '') < stamp) {
+    touchFieldRecord(st, key, segments, { updatedAt: stamp })
+  }
 }
 
 /**
@@ -1781,11 +1789,7 @@ function applyHolds<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   held: Holds
 ): void {
-  for (const [key, { segments, stamp }] of held) {
-    if ((toRaw(st.fields).get(key)?.updatedAt ?? '') < stamp) {
-      touchFieldRecord(st, key, segments, { updatedAt: stamp })
-    }
-  }
+  for (const [key, { segments, stamp }] of held) raiseStamp(st, key, segments, stamp)
 }
 
 /**
@@ -1811,9 +1815,7 @@ function stampBareContainers<F extends GenericForm, G extends GenericForm = F>(
       const container = path.slice(0, depth)
       if (depth < path.length && reachedBesides(patches, index, container)) break
       const { key, segments } = keyForSegments(container)
-      if ((st.fields.get(key)?.updatedAt ?? '') < now) {
-        touchFieldRecord(st, key, segments, { updatedAt: now })
-      }
+      raiseStamp(st, key, segments, now)
     }
   }
 }
@@ -4094,9 +4096,7 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   for (const fieldKey of cleared) {
     const record = st.fields.get(fieldKey)
     if (record === undefined || !hasAtPath(raw, record.path)) continue
-    if ((record.updatedAt ?? '') < now) {
-      touchFieldRecord(st, fieldKey, record.path, { updatedAt: now })
-    }
+    raiseStamp(st, fieldKey, record.path, now)
   }
   if (cleared.length > 0 && hasAtPath(raw, targetSegments)) {
     stampContainers(st, [targetSegments], now)

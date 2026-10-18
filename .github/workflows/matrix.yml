@@ -168,9 +168,8 @@ jobs:
   # each security floor, and each unifying override's single copy. A
   # Dependabot group PR regenerates the lockfile against the base it was
   # opened on, and that can split a unified package without anything else
-  # going red. #688 carried two vites, two @nuxt/kits, two @types/nodes
-  # and two Vue compilers through a fully green run before this job
-  # existed.
+  # going red. #688 carried two vites, two @nuxt/kits and two
+  # @types/nodes through a fully green run before this job existed.
   security-floors:
     name: Security floors
     runs-on: ubuntu-latest

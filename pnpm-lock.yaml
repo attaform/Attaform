@@ -252,7 +252,7 @@ importers:
         specifier: ^3.2.7
         version: 3.3.11(typescript@6.0.3)
       zod:
-        specifier: ^3.25.76
+        specifier: npm:zod@^3.25.76
         version: 3.25.76
       zod-v4:
         specifier: npm:zod@^4.4.3

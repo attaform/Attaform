@@ -16,11 +16,14 @@ import { describe, expect, it } from 'vitest'
  * deliberate exception, feeding the Attaform (Zod 4) row.
  *
  * Dependabot cannot see any of that. It read `zod: ^3.25.76` as a
- * package three majors behind and opened #630 to "fix" it, which would
- * have collapsed the two Attaform rows onto one validator and quietly
+ * package a major behind and opened #630 to "fix" it, which would have
+ * collapsed the two Attaform rows onto one validator and quietly
  * unpinned the cohort. The failure that PR actually produced was a
  * TypeError in the v3 adapter, nowhere near the fairness claim it broke,
- * so the honest signal has to come from here.
+ * so the honest signal has to come from here. A semver-major `ignore`
+ * did not stop the next offers (#652, #678), so the arena now spells the
+ * pin `npm:zod@^3.25.76`: Dependabot's npm parser skips every `npm:`
+ * requirement, while pnpm still installs it as `zod` for the peers.
  *
  * If a Zod bump lands you on this test: that is the point. Moving the
  * cohort to v4 is a methodology change, and the page has to move with it.
@@ -58,6 +61,10 @@ describe('the arena pins Zod v3 across the cohort', () => {
       majorOf(deps['zod'] ?? ''),
       'apps/bench-arena `zod` is the shared cohort validator'
     ).toBe(3)
+    expect(
+      deps['zod'],
+      'an `npm:` spec keeps the pin out of Dependabot (see .github/dependabot.yml)'
+    ).toMatch(/^npm:zod@/)
     expect(deps['zod-v4'], 'the Attaform (Zod 4) row reads through an explicit alias').toMatch(
       /^npm:zod@/
     )

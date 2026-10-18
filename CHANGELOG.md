@@ -2,7 +2,44 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **A wizard on a page kept by `<KeepAlive>` leaves the address to the
+  page on screen.** The default `?step=` sync followed every Back and
+  Forward and wrote every step change for as long as the page was
+  kept, so a hidden wizard moved to another page's `?step=`, stamped
+  its own onto the page on screen, and a setup still resolving under
+  `<Suspense>` when the reader moved on stamped `?step=<first>` onto
+  the next page. The sync now pauses while the page is hidden, follows
+  a Back or Forward only onto the wizard's own path, and waits for
+  mount before its first write. When the page comes back, a Back or
+  Forward made meanwhile to another of its steps is followed, a step
+  change made while hidden is written, and a return through a link to
+  the bare page keeps the step and writes it in place. Custom `restore`
+  and `persist` callbacks run as before. (#712)
+
+- **Under vue-router, the wizard's history entries keep the router's
+  record.** The default `?step=` sync wrote each entry with an empty
+  state, and vue-router keeps its own address, position and scroll on
+  every entry, writing that address back onto the entry it leaves when
+  it next navigates. So a link away rewrote the step's entry, and Back
+  landed on another step. After a Back onto a step, the next link away
+  wrote `<origin>undefined`, which a browser refuses as cross-origin and
+  vue-router then loads as a page, taking the user off the site. With
+  vue-router installed (Nuxt included), the wizard now writes through
+  the router's own history, without a navigation: no guard or
+  middleware runs. With no router, a replace keeps the entry's state and
+  a new entry starts with none. (#712)
+
+- **A setup that resumes after its component was dropped keeps
+  nothing registered.** A `setup()` that resumed after an `await` once
+  Vue had dropped its component, such as a page replaced under
+  `<Suspense>` before it resolved, left every form and wizard it built
+  registered for the life of the app, along with the wizard's
+  `popstate` listener, and an `injectForm` or `injectWizard` there kept
+  its form or wizard alive after every mounted consumer had gone.
+  `useForm`, `useWizard`, `injectForm` and `injectWizard` called there
+  now release all of it as soon as they return. (#712)
 
 ## v0.31.2
 ### Fixed
@@ -96,43 +133,6 @@ _No unreleased changes yet._
   old value. A frozen or sealed array or plain object is now copied as
   it is written, and any other value keeps its reference, as before.
   (#709)
-
-- **A wizard on a page kept by `<KeepAlive>` leaves the address to the
-  page on screen.** The default `?step=` sync followed every Back and
-  Forward and wrote every step change for as long as the page was
-  kept, so a hidden wizard moved to another page's `?step=`, stamped
-  its own onto the page on screen, and a setup still resolving under
-  `<Suspense>` when the reader moved on stamped `?step=<first>` onto
-  the next page. The sync now pauses while the page is hidden, follows
-  a Back or Forward only onto the wizard's own path, and waits for
-  mount before its first write. When the page comes back, a Back or
-  Forward made meanwhile to another of its steps is followed, a step
-  change made while hidden is written, and a return through a link to
-  the bare page keeps the step and writes it in place. Custom `restore`
-  and `persist` callbacks run as before. (#712)
-
-- **Under vue-router, the wizard's history entries keep the router's
-  record.** The default `?step=` sync wrote each entry with an empty
-  state, and vue-router keeps its own address, position and scroll on
-  every entry, writing that address back onto the entry it leaves when
-  it next navigates. So a link away rewrote the step's entry, and Back
-  landed on another step. After a Back onto a step, the next link away
-  wrote `<origin>undefined`, which a browser refuses as cross-origin and
-  vue-router then loads as a page, taking the user off the site. With
-  vue-router installed (Nuxt included), the wizard now writes through
-  the router's own history, without a navigation: no guard or
-  middleware runs. With no router, a replace keeps the entry's state and
-  a new entry starts with none. (#712)
-
-- **A setup that resumes after its component was dropped keeps
-  nothing registered.** A `setup()` that resumed after an `await` once
-  Vue had dropped its component, such as a page replaced under
-  `<Suspense>` before it resolved, left every form and wizard it built
-  registered for the life of the app, along with the wizard's
-  `popstate` listener, and an `injectForm` or `injectWizard` there kept
-  its form or wizard alive after every mounted consumer had gone.
-  `useForm`, `useWizard`, `injectForm` and `injectWizard` called there
-  now release all of it as soon as they return. (#712)
 
 ## v0.31.1
 ### Added

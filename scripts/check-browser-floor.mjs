@@ -146,6 +146,8 @@ export const ALLOWED_GLOBALS = {
   'Object.getOwnPropertySymbols': s('38', '12', '36', '9'),
   'Object.getPrototypeOf': s('5', '12', '3.5', '5'),
   'Object.is': s('19', '12', '22', '9'),
+  'Object.isExtensible': s('6', '12', '4', '5.1'),
+  'Object.isFrozen': s('6', '12', '4', '5.1'),
   'Object.keys': s('5', '12', '4', '5'),
   'Object.prototype': ES1,
   'Object.values': s('54', '14', '47', '10.1'),

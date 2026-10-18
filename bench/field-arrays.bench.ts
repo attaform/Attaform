@@ -13,6 +13,10 @@
  * follow the `old: ... / new: ...` pairing convention, so these
  * benches are informational: a future commit can add a floor once a
  * stable baseline is recorded.
+ *
+ * The schema comes from `bench/lib/field-array-forms.ts`, which the array-op
+ * modes of `scripts/construction-ab.mjs` share; that script times the same
+ * helpers on production builds.
  */
 import { test } from 'vitest'
 import { createSSRApp, defineComponent, h } from 'vue'
@@ -20,21 +24,9 @@ import { renderToString } from '@vue/server-renderer'
 import { z } from 'zod'
 import { useForm } from '../src/runtime/adapters/zod-v4'
 import { createAttaform } from '../src/runtime/core/plugin'
+import { fieldArraySchema, newPost } from './lib/field-array-forms'
 
-type Post = { title: string; body: string; tags: string[] }
-const schema = z.object({
-  posts: z.array(
-    z.object({
-      title: z.string(),
-      body: z.string(),
-      tags: z.array(z.string()),
-    })
-  ),
-})
-
-function newPost(i: number): Post {
-  return { title: `post-${i}`, body: 'x', tags: [] }
-}
+const schema = fieldArraySchema(z)
 
 /**
  * Mount a disposable SSR app so `useForm` can run inside a `setup()`

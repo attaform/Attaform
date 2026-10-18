@@ -22,7 +22,7 @@ import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
-import { makeMounter, wait, waitUntil } from '../utils/form-harness'
+import { flushMicrotasks, makeMounter, untilSettled } from '../utils/form-harness'
 
 const ADAPTERS = [
   { name: 'zod-v4', z: zV4 as any, useForm: useFormV4 as any },
@@ -61,14 +61,8 @@ async function mount(adapter: Adapter): Promise<any> {
     defaultValues: { rows: [{ n: 'aa' }, { n: 'bb' }, { n: 'cc' }] },
   })()
   apps.push(app)
-  await settled(api)
+  await untilSettled(api)
   return api
-}
-
-/** Wait until nothing is in flight, the construction-time pass included. */
-async function settled(form: any): Promise<void> {
-  await wait(0)
-  await waitUntil(() => (form.meta.validating === true ? null : true))
 }
 
 const validating = (form: any, i: number): boolean => form.fields(['rows', i, 'n']).validating
@@ -82,7 +76,7 @@ describe.each(ADAPTERS)('$name: a validation run in flight follows its row', (ad
     expect(validating(form, 0)).toBe(false)
 
     release()
-    await settled(form)
+    await untilSettled(form)
     expect(validating(form, 2)).toBe(false)
     expect(form.fields(['rows']).validating).toBe(false)
     expect(form.meta.validating).toBe(false)
@@ -98,7 +92,7 @@ describe.each(ADAPTERS)('$name: a validation run in flight follows its row', (ad
     expect(form.meta.validating).toBe(true)
 
     release()
-    await settled(form)
+    await untilSettled(form)
     expect(validating(form, 0)).toBe(false)
     expect(form.meta.validating).toBe(false)
   })
@@ -108,7 +102,8 @@ describe.each(ADAPTERS)('$name: a validation run in flight follows its row', (ad
     form.setValue('rows.2.n', 'slow')
     expect(form.meta.validating).toBe(true)
     form.setValue('rows', [{ n: 'aa' }, { n: 'bb' }])
-    await wait(0)
+    // Past the flush the write's own run has committed, and the held one is still held.
+    await flushMicrotasks()
     expect(form.meta.validating).toBe(false)
     expect(form.fields(['rows']).validating).toBe(false)
   })

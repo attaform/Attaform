@@ -30,7 +30,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { vRegister } from '../../src/runtime/core/directive'
 import { createAttaform } from '../../src/runtime/core/plugin'
-import { waitUntil } from '../utils/form-harness'
+import { untilNotPending, waitUntil } from '../utils/form-harness'
 
 const ADAPTERS = [
   { name: 'zod-v4', z: zV4 as any, useForm: useFormV4 as any },
@@ -105,6 +105,8 @@ describe.each(ADAPTERS)('interaction history survives removal ($name)', (adapter
       await form.interact('rows.1')
       op(form)
       await waitUntil(() => (ownErrorCodes(form.fields(['rows'])).length > 0 ? true : null))
+      await untilNotPending(() => form.fields(['rows']))
+      await untilNotPending(() => form.meta)
 
       expect(history(form.fields(['rows']))).toEqual(ALL)
       expect(history(form.meta)).toEqual(ALL)

@@ -45,6 +45,7 @@
  *    until the consumer writes one.
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
+import { structuralSnapshot } from './diff-apply'
 import { mergeDeep } from './merge-deep'
 import { safeAssign } from './safe-assign'
 
@@ -80,9 +81,11 @@ export function peelEmbeddedDefault<Schema>(
   for (let i = 0; i < 32; i++) {
     if (current === undefined) return NO_EMBEDDED_DEFAULT
     const k = intro.kindOf(current)
-    if (k === 'default') return intro.getDefaultValue(current)
+    // Copied: the schema hands back the value it holds, which zod v3 returns
+    // from every parse, and the form edits what it stores in place.
+    if (k === 'default') return structuralSnapshot(intro.getDefaultValue(current))
     if (k === 'catch') {
-      if (intro.hasCatchValue(current)) return intro.getCatchDefault(current)
+      if (intro.hasCatchValue(current)) return structuralSnapshot(intro.getCatchDefault(current))
       current = intro.unwrapInner(current)
       continue
     }
@@ -208,7 +211,7 @@ export function deriveDefaultWalk<Schema>(
       // ZodDefault lands here. Recurse the inner for the leaf's bare empty
       // value: an explicit default states the consumer's starting state,
       // not the leaf's type-honest blank.
-      if (useDefault) return intro.getDefaultValue(schema)
+      if (useDefault) return structuralSnapshot(intro.getDefaultValue(schema))
       const inner = intro.unwrapInner(schema)
       return inner === undefined
         ? undefined
@@ -366,7 +369,7 @@ export function deriveDefaultWalk<Schema>(
       // `useDefault=true`. Under `useDefault=false` the catch is a
       // default-like wrapper and is skipped, so the inner leaf's bare
       // empty value wins on both majors (aligned in size-teardown P7).
-      if (useDefault) return intro.getCatchDefault(schema)
+      if (useDefault) return structuralSnapshot(intro.getCatchDefault(schema))
       const inner = intro.unwrapInner(schema)
       return inner === undefined
         ? undefined

@@ -66,6 +66,10 @@
                 "key": "<k0>",
                 "label": "",
                 "meta": {},
+                "original": {
+                  "name": "",
+                  "qty": 1
+                },
                 "path": [
                   "rows",
                   0
@@ -213,6 +217,10 @@
                 "key": "<k1>",
                 "label": "",
                 "meta": {},
+                "original": {
+                  "name": "ok",
+                  "qty": 0
+                },
                 "path": [
                   "rows",
                   1
@@ -499,6 +507,22 @@
           "key": "",
           "label": "",
           "meta": {},
+          "original": {
+            "rows": [
+              {
+                "name": "",
+                "qty": 1
+              },
+              {
+                "name": "ok",
+                "qty": 0
+              },
+              {
+                "name": "x",
+                "qty": 5
+              }
+            ]
+          },
           "path": [],
           "placeholder": null,
           "pristine": false,
@@ -628,6 +652,10 @@
                 "key": "<k0>",
                 "label": "",
                 "meta": {},
+                "original": {
+                  "name": "",
+                  "qty": 1
+                },
                 "path": [
                   "rows",
                   0
@@ -775,6 +803,10 @@
                 "key": "<k1>",
                 "label": "",
                 "meta": {},
+                "original": {
+                  "name": "ok",
+                  "qty": 0
+                },
                 "path": [
                   "rows",
                   1
@@ -1112,6 +1144,22 @@
           "key": "",
           "label": "",
           "meta": {},
+          "original": {
+            "rows": [
+              {
+                "name": "",
+                "qty": 1
+              },
+              {
+                "name": "ok",
+                "qty": 0
+              },
+              {
+                "name": "x",
+                "qty": 5
+              }
+            ]
+          },
           "path": [],
           "placeholder": null,
           "pristine": false,

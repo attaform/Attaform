@@ -82,11 +82,11 @@ Every form value mutation: `setValue`, `register`-backed input edits, any array 
 - The form value.
 - The error map at the time of the captured position.
 - The `blankPaths` set (so cleared-but-defaulted numeric fields keep showing as empty after an undo, instead of resurrecting their slim default).
-- Which row is which. The array helpers move each row's baseline with the row, and a position puts that arrangement back with the value, so undoing a `remove`, `swap` or `move` reads `dirty: false` the moment the rows are back where they started.
+- Which row is which. The array helpers move each row's baseline with the row, and a position puts that arrangement back with the value, so undoing a `remove`, `swap` or `move` reads `dirty: false` the moment the rows are back where they started. Every row keeps its `form.list` key across an undo or redo, so a keyed `v-for` keeps each row mounted.
 
-What's NOT captured:
+What's NOT rewound:
 
-- **Field interaction state**: `touched` / `focused` / `blurred` / `connected`. UI interaction history; it shouldn't rewind. A field that was touched stays touched.
+- **Field interaction state**: `touched`, `interacted` and `blurredAfterInteraction` are the user's interaction history, so undo never clears them: a field that was touched stays touched. They follow their rows instead, the way the array helpers move them. Undo a `swap` and each row's flags are back on that row; undo a `remove` and the row returns with the flags it had; undo an `append` and the new row's flags go to the array, as a `remove` hands them over. `focused`, `blurred` and `connected` describe the element on the page, and move with its row.
 - **Submission lifecycle**: `meta.submissionAttempts`, `meta.submitError`.
 - **Validation in-flight state**.
 

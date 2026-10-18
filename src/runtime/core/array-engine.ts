@@ -158,10 +158,13 @@ function permuteList<T>(list: ReadonlyArray<T>, remap: IndexRemap, fill: () => T
 // --- The shared key walk ---
 //
 // Every path-keyed store (field records, errors, blank sets, identity tokens,
-// variant memory) is interrogated the same way on a structural mutation: decode
+// variant memory) is interrogated the same way on a structural mutation: read
 // each key, keep the ones under the mutated array carrying a numeric element
 // segment at the array's depth, and act on the element index found there. One
-// walk serves them all.
+// walk serves them all. It reads each store raw, so a write made from inside an
+// effect subscribes it to nothing, and a reactive store's keys cost no more to
+// walk than a plain one's; the moves themselves go through the store, so its
+// readers hear them.
 
 type KeyAtIndex = {
   readonly key: PathKey
@@ -169,16 +172,20 @@ type KeyAtIndex = {
   readonly index: number
 }
 
-// Decode `key` and, if it sits under `arrayPath` with a numeric element
-// segment at the array's depth, return that index. Non-matching keys (a
-// different subtree, a non-element segment) return null.
-function elementIndexUnder(arrayPath: Path, key: PathKey, idxPos: number): number | null {
-  const segments = segmentsForPathKey(key)
-  if (segments === null) return null
-  if (!isPathPrefix(arrayPath, segments)) return null
-  if (segments.length <= idxPos) return null
-  const index = segments[idxPos]
-  return typeof index === 'number' ? index : null
+// The element index `key` holds right after an array's own segments. `head` is
+// the text every key under the array starts with: the array's key with its
+// closing bracket turned into the comma that follows it there. A PathKey is the
+// JSON of canonical segments, an index a run of digits, so the index reads off
+// the key's text without decoding it. A key elsewhere, or with a non-element
+// segment there, returns null.
+function elementIndexAfter(key: PathKey, head: string): number | null {
+  if (!key.startsWith(head)) return null
+  let index = 0
+  let at = head.length
+  for (let code = key.charCodeAt(at); code >= 48 && code <= 57; code = key.charCodeAt(++at)) {
+    index = index * 10 + code - 48
+  }
+  return at > head.length ? index : null
 }
 
 /**
@@ -192,10 +199,11 @@ function collectKeysAtIndices(
   arrayPath: Path,
   member: (index: number) => boolean
 ): KeyAtIndex[] {
-  const idxPos = arrayPath.length
+  const { key: arrayKey } = keyForSegments(arrayPath)
+  const head = arrayPath.length === 0 ? '[' : `${arrayKey.slice(0, -1)},`
   const hits: KeyAtIndex[] = []
   for (const key of keys) {
-    const index = elementIndexUnder(arrayPath, key, idxPos)
+    const index = elementIndexAfter(key, head)
     if (index === null || !member(index)) continue
     const segments = segmentsForPathKey(key)
     if (segments === null) continue
@@ -226,12 +234,29 @@ export function migrateMapSubtree<V>(
   remap: IndexRemap,
   rewriteValue: (value: V, relocatedSegments: Path) => V
 ): void {
-  const hits = collectKeysAtIndices(map.keys(), arrayPath, remapAffects(remap))
+  relocateHits(
+    map,
+    collectKeysAtIndices(toRaw(map).keys(), arrayPath, remapAffects(remap)),
+    arrayPath,
+    remap,
+    rewriteValue
+  )
+}
+
+// The relocation of `migrateMapSubtree`, over the entries `hits` collected.
+function relocateHits<V>(
+  map: Map<PathKey, V>,
+  hits: readonly KeyAtIndex[],
+  arrayPath: Path,
+  remap: IndexRemap,
+  rewriteValue: (value: V, relocatedSegments: Path) => V
+): void {
   if (hits.length === 0) return
   const idxPos = arrayPath.length
   const snapshots: Array<KeyAtIndex & { value: V }> = []
+  const raw = toRaw(map)
   for (const hit of hits) {
-    const value = map.get(hit.key)
+    const value = raw.get(hit.key)
     if (value !== undefined) snapshots.push({ ...hit, value })
   }
   for (const snap of snapshots) map.delete(snap.key)
@@ -250,7 +275,7 @@ export function migrateMapSubtree<V>(
  * sources. No value to rewrite, so only the keys move.
  */
 export function migrateSetSubtree(set: Set<PathKey>, arrayPath: Path, remap: IndexRemap): void {
-  const hits = collectKeysAtIndices(set, arrayPath, remapAffects(remap))
+  const hits = collectKeysAtIndices(toRaw(set), arrayPath, remapAffects(remap))
   if (hits.length === 0) return
   const idxPos = arrayPath.length
   for (const hit of hits) set.delete(hit.key)
@@ -275,10 +300,9 @@ function evictSchemaVerdictsAtIndices(
   arrayPath: Path,
   indices: ReadonlySet<number>
 ): void {
-  for (const hit of collectKeysAtIndices([...errorCells.keys()], arrayPath, (index) =>
-    indices.has(index)
-  )) {
-    const cell = errorCells.get(hit.key)
+  const raw = toRaw(errorCells)
+  for (const hit of collectKeysAtIndices(raw.keys(), arrayPath, (index) => indices.has(index))) {
+    const cell = raw.get(hit.key)
     if (cell === undefined) continue
     if (cell.user.length === 0) errorCells.delete(hit.key)
     else if (cell.schema.length > 0) errorCells.set(hit.key, { schema: NO_ERRORS, user: cell.user })
@@ -326,6 +350,12 @@ export type ArrayIdentity = {
    * first read onward.
    */
   tokenAt(arraySegs: Path, index: number): string
+  /**
+   * The slot the element at `index` of the array at `arraySegs` held in the
+   * array's baseline order, or -1 for an element added since and for an
+   * out-of-range index. Seeds the token list as `tokenAt` does.
+   */
+  baselineIndexOf(arraySegs: Path, index: number): number
   /** Replay a structural mutation's exact permutation onto the token list. */
   applyOp(arraySegs: Path, remap: IndexRemap): void
   /**
@@ -357,10 +387,11 @@ export type ArrayIdentity = {
    */
   hasStructuralChangeUnder(prefix: Path): boolean
   /**
-   * Re-anchor every tracked array's baseline order to its current order.
-   * Called on `reset()` so a form reads structurally pristine afterward.
+   * Re-anchor the baseline order of each tracked array `covers` accepts to its
+   * current order. `reset()` takes them all and resolved async defaults the
+   * arrays they replaced, so the form reads structurally pristine there.
    */
-  rebaselineAll(): void
+  rebaseline(covers: (arraySegs: Path) => boolean): void
   /** A copy of every tracked array's tokens and baseline, for history. */
   snapshot(): IdentityOrders
   /**
@@ -390,6 +421,10 @@ export function createArrayIdentity(
   // on reset. A live order that diverges from its baseline is a structural
   // change (reorder, insert, or removal).
   const baselines = new Map<PathKey, string[]>()
+  // Each baseline order's token-to-slot index, built on its first lookup.
+  // Keyed by the list itself, which is replaced and never edited, so an entry
+  // follows its list across a relocation and goes with it.
+  const baselineSlots = new WeakMap<readonly string[], Map<string, number>>()
   // One form-wide monotonic counter, so every token is unique across
   // every array in the form (safe as a Map key, not just a v-for key).
   let counter = 0
@@ -442,6 +477,21 @@ export function createArrayIdentity(
       if (index < 0 || index >= len) return ''
       const ids = ensure(canonicalizePath(arraySegs).key, len)
       return ids[index] ?? ''
+    },
+
+    baselineIndexOf(arraySegs, index) {
+      const len = getArrayLength(arraySegs)
+      if (index < 0 || index >= len) return -1
+      const arrayKey = canonicalizePath(arraySegs).key
+      const token = ensure(arrayKey, len)[index]
+      const baseline = baselines.get(arrayKey)
+      if (token === undefined || baseline === undefined) return -1
+      let slots = baselineSlots.get(baseline)
+      if (slots === undefined) {
+        slots = new Map(baseline.map((id, i) => [id, i]))
+        baselineSlots.set(baseline, slots)
+      }
+      return slots.get(token) ?? -1
     },
 
     applyOp(arraySegs, remap) {
@@ -507,15 +557,15 @@ export function createArrayIdentity(
       return false
     },
 
-    rebaselineAll() {
-      // Reset replaces the form wholesale with no `arrayOp`, so realign each
-      // tracked array to its post-reset length by position first and anchor
-      // that order as the new baseline. Otherwise a reset that changes a length
-      // reads structurally dirty on the next access.
+    rebaseline(covers) {
+      // The new baseline lands with no `arrayOp`, so realign each array to its
+      // new length by position first and anchor that order. Otherwise a
+      // baseline that changes a length reads structurally dirty on the next
+      // access.
       const rebased: Path[] = []
       for (const arrayKey of [...tokens.keys()]) {
         const segs = segmentsForPathKey(arrayKey)
-        if (segs === null) continue
+        if (segs === null || !covers(segs)) continue
         const ids = ensure(arrayKey, getArrayLength(segs))
         baselines.set(arrayKey, [...ids])
         rebased.push(segs)
@@ -542,6 +592,34 @@ export function createArrayIdentity(
       if (restored.length > 0) onChange(restored)
     },
   }
+}
+
+/**
+ * Relocate the field records under `arrayPath`'s elements along `remap`,
+ * handing the records of each removed element to `release` first, before the
+ * relocation drops them. One walk of the records finds both: `release` writes
+ * only at the array and above, outside every element.
+ */
+export function migrateFieldRecords(
+  fields: Map<PathKey, FieldRecord>,
+  arrayPath: Path,
+  remap: IndexRemap,
+  release: (arrayPath: Path, released: readonly FieldRecord[]) => void
+): void {
+  const raw = toRaw(fields)
+  const hits = collectKeysAtIndices(raw.keys(), arrayPath, remapAffects(remap))
+  if (remap.vacated.size > 0) {
+    const released: FieldRecord[] = []
+    for (const { key, index } of hits) {
+      const record = remap.vacated.has(index) ? raw.get(key) : undefined
+      if (record !== undefined) released.push(record)
+    }
+    release(arrayPath, released)
+  }
+  relocateHits(fields, hits, arrayPath, remap, (record, segments) => ({
+    ...record,
+    path: segments,
+  }))
 }
 
 function copyLists(lists: ReadonlyMap<PathKey, readonly string[]>): Map<PathKey, string[]> {
@@ -872,22 +950,8 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       return segments
     })
     // The removed elements' records are about to drop, so their interaction
-    // history moves to the array and its ancestors first, before the
-    // relocation below deletes them.
-    if (remap.vacated.size > 0) {
-      const released: FieldRecord[] = []
-      for (const { key } of collectKeysAtIndices(fields.keys(), arrayPath, (index) =>
-        remap.vacated.has(index)
-      )) {
-        const record = fields.get(key)
-        if (record !== undefined) released.push(record)
-      }
-      foldInteractionHistory(arrayPath, released)
-    }
-    migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
-      ...record,
-      path: segments,
-    }))
+    // history moves to the array and its ancestors first.
+    migrateFieldRecords(fields, arrayPath, remap, foldInteractionHistory)
     // A cell's USER side follows its element (paths re-stamped); the
     // SCHEMA side is derived state describing the prior occupant, so a
     // relocated cell lands schema-empty and the eviction pass below

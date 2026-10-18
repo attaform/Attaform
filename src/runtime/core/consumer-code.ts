@@ -246,3 +246,17 @@ export function consumerHas(obj: object, key: string | number): boolean {
     return false
   }
 }
+
+/**
+ * Whether a consumer-supplied object takes new properties, returning `true`
+ * if the check throws. `Object.isExtensible` invokes a Proxy's
+ * `isExtensible` trap. `true` keeps the value as it was, the answer for every
+ * ordinary object.
+ */
+export function consumerExtensible(obj: object): boolean {
+  try {
+    return Object.isExtensible(obj)
+  } catch {
+    return true
+  }
+}

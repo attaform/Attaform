@@ -181,7 +181,7 @@ describe('createArrayIdentity', () => {
     expect(reported).toEqual(['items'])
     id.applyOp(ITEMS, remapForOp({ kind: 'swap', a: 0, b: 1 }, 2))
     expect(reported).toEqual(['items', 'items'])
-    id.rebaselineAll()
+    id.rebaseline(() => true)
     expect(reported).toEqual(['items', 'items', 'items'])
   })
 

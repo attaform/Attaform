@@ -124,7 +124,7 @@ await form.interact(['members', 2])
 ::docs-demo{slug="interact" label="Reveal one subtree's errors"}
 ::
 
-It flips the same `blurredAfterInteraction` bit a real blurred edit sets and runs the subtree's validation, so the gate opens through its front door and the errors are in the store ready to surface. Scope is the win: a submit is form-wide and lights up every field on the page, while `form.interact(path)` reveals exactly the subtree you name. Call it with no argument to arm the whole form.
+It flips the same `blurredAfterInteraction` bit a real blurred edit sets and runs the subtree's validation, so the gate opens through its front door and the errors are in the store ready to surface. Scope is the win: a submit is form-wide and lights up every field on the page, while `form.interact(path)` reveals exactly the subtree you name. Call it with no argument to arm the whole form. An empty list counts as well: `form.interact('members')` with no rows yet reveals the list's own error, such as a `.min(1)`.
 
 The returned promise resolves once that subtree's validation has committed, so awaiting it means the verdicts are ready to read:
 

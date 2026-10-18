@@ -360,7 +360,9 @@ export function visitActiveLeafPaths(
  *     that takes leaves away (a removal, a typed array op) stamps the own
  *     record, so the reading is the last write at or under the path and
  *     never moves backwards
- *   - value, original: the live subtree at the path
+ *   - value: the live subtree at the path
+ *   - original: the value the path started as, a row read at its own
+ *     baseline slot, in O(depth); see `getOriginalAtPath`
  *   - element, elements: nothing binds at a container, so null and empty
  *   - label, description, placeholder, meta: from `getFieldMetaAtPath`
  *
@@ -385,9 +387,6 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // root, so one read anchors the dep and feeds the descendant walk below.
   const formValue = state.form.value
   const value = getAtPath(formValue, segments)
-  // `key` is already the canonical key of `segments`, every caller having
-  // derived it, so use it rather than re-canonicalizing per read.
-  const original = state.originals.get(key)?.value
   // Roll up the active descendant leaves. The walk descends `value`, the live
   // subtree read above, in O(subtree), emitting one path per present leaf and
   // re-gating each on `originals.has`. Walking the live value already filters
@@ -597,7 +596,7 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   return {
     base: {
       value,
-      original,
+      original: state.getOriginalAtPath(segments),
       pristine,
       dirty,
       focused,

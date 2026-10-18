@@ -27,6 +27,7 @@ import { useForm as useFormV4 } from '../../src/zod-v4'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
+import { untilNotPending } from '../utils/form-harness'
 
 const drainMicrotasks = async (rounds = 8): Promise<void> => {
   for (let i = 0; i < rounds; i++) {
@@ -130,6 +131,7 @@ describe.each(adapters)('aborted-blur snapshot: $name', ({ useForm, buildSchema 
     await drainMicrotasks()
 
     expect(api.errors.a.length).toBeGreaterThan(0)
+    await untilNotPending(() => api.fields('a'))
     expect(api.fields('a').displayState).toBe('error')
   })
 })

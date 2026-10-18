@@ -1,6 +1,7 @@
 import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
+import type { IndexRemap } from '../core/array-engine'
 import type { ElementRecord, FieldRecord, StructureSnapshot } from '../core/store-records'
 
 export type { FieldMetaPayload, ResolvedFieldMeta }
@@ -945,13 +946,20 @@ export type WriteMeta = {
 export type HistoryKernel = {
   readonly form: Ref<unknown>
   readonly blankPaths: Set<PathKey>
+  readonly fields: ReadonlyMap<PathKey, FieldRecord>
   readonly errorCells: () => Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
   onReset(listener: () => void): () => void
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
   captureStructure(): StructureSnapshot
-  restoreStructure(snapshot: StructureSnapshot): void
+  restoreStructure(
+    snapshot: StructureSnapshot,
+    remaps: ReadonlyArray<readonly [Path, IndexRemap]>,
+    returning: readonly FieldRecord[]
+  ): void
+  /** Set while attached: hears the records each removal releases. */
+  noteReleased?: ((records: readonly FieldRecord[]) => void) | undefined
 }
 
 /**
@@ -2459,6 +2467,13 @@ export type PathSetValuePayload<Leaf> =
  */
 export type FieldState<Value = unknown> = {
   readonly value: Value
+  /**
+   * The value this path started as: the defaults, re-seated by `reset()` and
+   * by async defaults. At a container, the subtree it started as, each row
+   * read at its own baseline wherever the typed array ops have moved it, and
+   * frozen, since every read shares it. `undefined` for a field or row added
+   * since.
+   */
   readonly original: Value
   readonly pristine: boolean
   readonly dirty: boolean
@@ -4181,6 +4196,8 @@ export type UseFormReturnType<
    * form.touch()                        // every leaf in the form
    * ```
    *
+   * An empty list under `path` is marked too, though it holds no leaf.
+   *
    * **This does not reveal errors under the default display
    * heuristic.** `touched` also flips on a bare focus and blur with no
    * edit, so the library-default gate ignores it and reads
@@ -4219,7 +4236,9 @@ export type UseFormReturnType<
    *
    * Walks schema leaves, so it reaches fields that are currently
    * `v-if`'d away or were never mounted; the flags are sticky, so
-   * such a subtree stays revealed when it remounts.
+   * such a subtree stays revealed when it remounts. An empty list
+   * under `path` is marked too, so its own error (a `.min(1)`)
+   * reveals.
    *
    * Flags land synchronously, and the returned promise resolves once
    * the subtree's validation has committed, so an awaiting caller reads

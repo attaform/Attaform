@@ -100,6 +100,12 @@
           "key": "",
           "label": "",
           "meta": {},
+          "original": {
+            "payment": {
+              "cardNumber": "",
+              "kind": "crypto"
+            }
+          },
           "path": [],
           "placeholder": null,
           "pristine": true,
@@ -226,6 +232,12 @@
           "key": "",
           "label": "",
           "meta": {},
+          "original": {
+            "payment": {
+              "cardNumber": "",
+              "kind": "crypto"
+            }
+          },
           "path": [],
           "placeholder": null,
           "pristine": true,

@@ -26,14 +26,18 @@
  * the pre-reset state stays one undo away. Persistence hydration
  * (`meta.hydration === true`) is the floor: the buffer wipes and reseeds
  * from the post-hydration snapshot, so `undo()` can't reach back into a
- * pre-hydration default the consumer never saw.
+ * pre-hydration default the consumer never saw. The reseed runs once the
+ * hydration step has adopted its value as the baseline.
  *
- * Field record state (touched / focused / blurred / connected) is
- * deliberately NOT snapshotted. Those flags represent UI interaction
- * history and must not rewind when the user hits undo. A field that
- * was touched stays touched.
+ * Interaction state does not rewind: a field that was touched stays
+ * touched. Its records follow their rows instead, the way the typed array
+ * ops move them. A restore moves each row present on both sides with its own
+ * records, hands the history of a row it takes away to the array, and gives
+ * a row it brings back the records it had. So each position keeps the
+ * flagged records under its rows: taken with it, joined by those the next
+ * write releases, and taken again whenever an undo or redo leaves it.
  */
-import { computed, shallowRef } from 'vue'
+import { computed, shallowRef, toRaw } from 'vue'
 import type {
   HistoryKernel,
   HistoryModule,
@@ -41,10 +45,12 @@ import type {
   ErrorCell,
   WriteMeta,
 } from '../types/types-api'
+import { migrateMapSubtree, type IndexRemap } from './array-engine'
 import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
 import { structuralSnapshot } from './diff-apply'
-import type { PathKey } from './paths'
-import type { StructureSnapshot } from './store-records'
+import { getAtPath } from './path-walker'
+import { canonicalizePath, segmentsForPathKey, type Path, type PathKey } from './paths'
+import type { FieldRecord, IdentityOrders, StructureSnapshot } from './store-records'
 
 /** Options for `historyPlugin()`, passed as `useForm({ history })`. */
 export type HistoryPluginOptions = {
@@ -65,8 +71,111 @@ type HistorySnapshot = {
   readonly blankPaths: ReadonlyArray<PathKey>
   readonly errorCells: ErrorCellEntries
   readonly structure: StructureSnapshot
-  /** The baseline generation `structure` was taken under. */
+  /**
+   * Every record under an array element with an interaction flag set, at its
+   * path in this position, for a row a restore brings back.
+   */
+  readonly records: ReadonlyArray<FieldRecord>
+  /** The baseline generation `structure` and `records` were taken under. */
   readonly generation: number
+}
+
+const flagged = (record: FieldRecord): boolean =>
+  record.touched || record.interacted || record.blurredAfterInteraction
+
+// Read raw, so a write made from inside an effect subscribes it to nothing.
+function captureRecords(fields: ReadonlyMap<PathKey, FieldRecord>): FieldRecord[] {
+  const out: FieldRecord[] = []
+  for (const record of toRaw(fields).values()) {
+    if (flagged(record) && record.path.some((segment) => typeof segment === 'number')) {
+      out.push(record)
+    }
+  }
+  return out
+}
+
+// Whether `path` sits under an element of an array `indices` names, at one of
+// the indices it holds for that array.
+function underIndexIn(path: Path, indices: ReadonlyMap<PathKey, ReadonlySet<number>>): boolean {
+  for (let i = 0; i < path.length; i++) {
+    const segment = path[i]
+    if (
+      typeof segment === 'number' &&
+      indices.get(canonicalizePath(path.slice(0, i)).key)?.has(segment) === true
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * The row order a restore puts back, planned from the live `current` orders
+ * and the `target` orders a position holds, with how each tracked array's
+ * elements move from their live slots to the target's, by token, outermost
+ * array first. A nested array is looked up at the slot its row lands at,
+ * which is where its remap's path points.
+ *
+ * An array the target does not track was not tracked yet when the position
+ * was taken. A typed op tracks an array before it moves anything, and a
+ * write with no op keeps its tokens by position, so the position held the
+ * elements in their baseline order: the array keeps its baseline and takes
+ * that order, with its own tokens, while `holdsList` says the restored value
+ * holds it there. Otherwise it goes untracked.
+ */
+function planOrders(
+  current: IdentityOrders,
+  target: IdentityOrders,
+  holdsList: (arraySegs: Path) => boolean
+): { readonly orders: IdentityOrders; readonly remaps: Array<readonly [Path, IndexRemap]> } {
+  // The live lists, relocated as each outer array's remap is replayed.
+  const live = new Map(current.tokens)
+  const liveBaselines = new Map(current.baselines)
+  const tokens = new Map(target.tokens)
+  const baselines = new Map(target.baselines)
+  const remaps: Array<readonly [Path, IndexRemap]> = []
+  const depths = new Set<number>()
+  for (const key of live.keys()) depths.add(segmentsForPathKey(key)?.length ?? 0)
+  for (const depth of [...depths].sort((a, b) => a - b)) {
+    for (const [key, ids] of [...live]) {
+      const segs = segmentsForPathKey(key)
+      if (segs?.length !== depth) continue
+      let order = tokens.get(key)
+      const baseline = liveBaselines.get(key)
+      if (order === undefined) {
+        if (baseline === undefined || !holdsList(segs)) continue
+        order = baseline
+        tokens.set(key, order)
+        baselines.set(key, baseline)
+      }
+      const remap = remapBetween(ids, order)
+      if (remap === null) continue
+      remaps.push([segs, remap])
+      migrateMapSubtree(live, segs, remap, (value) => value)
+      migrateMapSubtree(liveBaselines, segs, remap, (value) => value)
+    }
+  }
+  return { orders: { tokens, baselines }, remaps }
+}
+
+// The remap taking each element of `from` to the slot its token holds in
+// `to`, or null when every element keeps its slot.
+function remapBetween(from: readonly string[], to: readonly string[]): IndexRemap | null {
+  const slots = new Map(to.map((id, i) => [id, i]))
+  const kept = new Set(from)
+  const moved = new Map<number, number>()
+  const vacated = new Set<number>()
+  const fresh = new Set<number>()
+  from.forEach((id, i) => {
+    const at = slots.get(id)
+    if (at === undefined) vacated.add(i)
+    else if (at !== i) moved.set(i, at)
+  })
+  to.forEach((id, i) => {
+    if (!kept.has(id)) fresh.add(i)
+  })
+  if (moved.size === 0 && vacated.size === 0 && fresh.size === 0) return null
+  return { moved, vacated, fresh, oldLen: from.length, newLen: to.length }
 }
 
 function captureErrorCells(map: Map<PathKey, ErrorCell>): ErrorCellEntries {
@@ -92,6 +201,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
       blankPaths: [...kernel.blankPaths],
       errorCells: captureErrorCells(kernel.errorCells()),
       structure: kernel.captureStructure(),
+      records: captureRecords(kernel.fields),
       generation,
     }
   }
@@ -107,8 +217,18 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   // duplicate the restored state and truncate the redo branch). This
   // flag suppresses the next change event.
   let suppressNext = false
+  let disposed = false
+
+  // The flagged records the write in progress released. The position before
+  // the write keeps them, so an undo to it brings their rows back with them.
+  let released: FieldRecord[] = []
+  kernel.noteReleased = (records) => {
+    for (const record of records) if (flagged(record)) released.push(record)
+  }
 
   const unsubscribeChange = kernel.onFormChange((_next, meta?: WriteMeta) => {
+    const left = released
+    released = []
     if (suppressNext) {
       suppressNext = false
       return
@@ -120,19 +240,46 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     // the consumer never produced. Any in-flight mutations that landed
     // in the race window between mount and hydration are also dropped:
     // pre-hydration writes were operating against stale defaults anyway.
+    // The reseed waits for the hydration step to finish, which adopts the
+    // resolved value as the baseline right after this write, so the floor
+    // holds that baseline.
     if (meta?.hydration === true) {
-      clear()
+      queueMicrotask(() => {
+        if (!disposed) clear()
+      })
       return
     }
     // Drop the redo branch past the cursor, append the new position,
     // evict from the front once over capacity (FIFO: the oldest
     // reachable state falls off).
     const next = positions.value.slice(0, cursor.value + 1)
+    const before = next[next.length - 1]
+    if (left.length > 0 && before !== undefined) {
+      next[next.length - 1] = { ...before, records: [...before.records, ...left] }
+    }
     next.push(captureSnapshot())
     while (next.length > capacity) next.shift()
     positions.value = next
     cursor.value = next.length - 1
   })
+
+  // The current position takes the bookkeeping and the records as they stand
+  // now, under the current generation. Returns the bookkeeping.
+  function retake(): StructureSnapshot {
+    const structure = kernel.captureStructure()
+    const current = positions.value[cursor.value]
+    if (current !== undefined) {
+      const next = [...positions.value]
+      next[cursor.value] = {
+        ...current,
+        structure,
+        records: captureRecords(kernel.fields),
+        generation,
+      }
+      positions.value = next
+    }
+    return structure
+  }
 
   // A reset lands as an ordinary position, captured mid-reset, before the
   // baselines re-anchor. Once they have, the current position takes the
@@ -140,17 +287,26 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   // before it keep theirs, which no longer applies.
   const unsubscribeReset = kernel.onReset(() => {
     generation += 1
-    const current = positions.value[cursor.value]
-    if (current === undefined) return
-    const next = [...positions.value]
-    next[cursor.value] = { ...current, structure: kernel.captureStructure(), generation }
-    positions.value = next
+    retake()
   })
 
-  function restorePosition(snap: HistorySnapshot): void {
+  // `live` is the bookkeeping as it stands before the restore.
+  function restorePosition(snap: HistorySnapshot, live: StructureSnapshot): void {
     // The per-element bookkeeping goes back first, so the value write below
-    // compares each restored row against its own baseline.
-    if (snap.generation === generation) kernel.restoreStructure(snap.structure)
+    // compares each restored row against its own baseline, and the records
+    // move with it.
+    if (snap.generation === generation) {
+      const { orders, remaps } = planOrders(live.identity, snap.structure.identity, (segments) =>
+        Array.isArray(getAtPath(snap.form, segments))
+      )
+      const fresh = new Map<PathKey, ReadonlySet<number>>()
+      for (const [segments, remap] of remaps) {
+        if (remap.fresh.size > 0) fresh.set(canonicalizePath(segments).key, remap.fresh)
+      }
+      const returning =
+        fresh.size === 0 ? [] : snap.records.filter((record) => underIndexIn(record.path, fresh))
+      kernel.restoreStructure({ ...snap.structure, identity: orders }, remaps, returning)
+    }
     suppressNext = true
     // Re-seed `blankPaths` BEFORE the form replacement fires. Listeners
     // on `onFormChange` (devtools, the user's own subscriptions) read
@@ -173,8 +329,12 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   function stepTo(nextCursor: number): boolean {
     const snap = positions.value[nextCursor]
     if (snap === undefined) return false
+    // The position being left takes the history its rows gathered while it
+    // was current, so a step back to it brings a row back with all of it.
+    const live = retake()
     cursor.value = nextCursor
-    restorePosition(snap)
+    restorePosition(snap, live)
+    released = []
     return true
   }
 
@@ -199,6 +359,8 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     canRedo: computed(() => cursor.value < positions.value.length - 1),
     historySize: computed(() => positions.value.length),
     dispose() {
+      disposed = true
+      kernel.noteReleased = undefined
       unsubscribeChange()
       unsubscribeReset()
       // Keep only the current position: post-dispose reads stay

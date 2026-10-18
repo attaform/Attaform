@@ -5,6 +5,7 @@ import { z as zV4 } from 'zod'
 import { useForm as useFormV4 } from '../../src/zod-v4'
 import { createAttaform } from '../../src/runtime/core/plugin'
 import { vRegister } from '../../src/runtime/core/directive'
+import { untilNotPending } from '../utils/form-harness'
 
 /**
  * `validateOn: 'blur'` revalidation dedup.
@@ -87,6 +88,9 @@ function typeInto(input: HTMLInputElement, value: string): void {
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
+// A pin that follows a run waits out the spinner hold first. A pin after a
+// skipped run reads at once: a spinner there is the flicker under test.
+
 describe('validateOn: blur: skip revalidation when nothing changed', () => {
   it('a focus/blur cycle with no edit does not re-run the validation pipeline', async () => {
     const { api, input, runs } = mountCounted()
@@ -97,6 +101,7 @@ describe('validateOn: blur: skip revalidation when nothing changed', () => {
     await nextTick()
     input.dispatchEvent(new FocusEvent('blur'))
     await settle()
+    await untilNotPending(() => api.fields('email'))
     expect(api.fields('email').displayState).toBe('error')
     const runsAfterEdit = runs()
 
@@ -128,6 +133,7 @@ describe('validateOn: blur: skip revalidation when nothing changed', () => {
     input.dispatchEvent(new FocusEvent('blur'))
     await settle()
     expect(runs()).toBeGreaterThan(runsAfterFirstEdit)
+    await untilNotPending(() => api.fields('email'))
     expect(api.fields('email').displayState).toBe('error')
   })
 
@@ -146,6 +152,7 @@ describe('validateOn: blur: skip revalidation when nothing changed', () => {
     await nextTick()
     input.dispatchEvent(new FocusEvent('blur'))
     await settle()
+    await untilNotPending(() => api.fields('email'))
     expect(api.fields('email').displayState).toBe('error')
     const runsAtBaseline = runs()
 
@@ -195,6 +202,7 @@ describe('validateOn: blur: skip revalidation when nothing changed', () => {
     input.dispatchEvent(new FocusEvent('blur'))
     await settle()
     expect(runs()).toBeGreaterThan(runsAfterSeed)
+    await untilNotPending(() => api.fields('email'))
     expect(api.fields('email').displayState).toBe('error')
   })
 
@@ -225,6 +233,7 @@ describe('validateOn: blur: skip revalidation when nothing changed', () => {
     await settle()
     // The just-committed value was validated on this blur, not skipped.
     expect(runs()).toBeGreaterThan(runsAfterTabThrough)
+    await untilNotPending(() => api.fields('email'))
     expect(api.fields('email').displayState).toBe('error')
     const runsAfterCommit = runs()
 

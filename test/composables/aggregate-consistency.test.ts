@@ -57,7 +57,13 @@ import { historyPlugin } from '../../src/history'
 import { vRegister } from '../../src/runtime/core/directive'
 import { useForm as useFormV3 } from '../../src/zod-v3'
 import { unset, useForm as useFormV4 } from '../../src/zod-v4'
-import { makeMounter, wait, waitUntil } from '../utils/form-harness'
+import {
+  flushMicrotasks,
+  makeMounter,
+  SETTLE_TIMEOUT_MS,
+  untilSettled,
+  wait,
+} from '../utils/form-harness'
 
 // The v3 and v4 `useForm` overload sets do not unify into one callable
 // signature, so an adapter-agnostic caller types the function the way
@@ -79,6 +85,7 @@ type StateProbe = {
   readonly blurredAfterInteraction: boolean
   readonly blank: boolean
   readonly validating: boolean
+  readonly busy: boolean
   readonly errors: readonly ErrorProbe[]
   readonly displayState: string
 }
@@ -581,30 +588,15 @@ function observe(ctx: Ctx): void {
 }
 
 /**
- * Wait until no validation is in flight. A macrotask first, so a pass queued
- * as a microtask (the construction-time async pass, a write's own run) has
- * started before `validating` is polled.
+ * Wait until `holds()`, after the write under test. Expiry is a soft failure
+ * naming `condition`, so a state the write never reaches reads as that state,
+ * and the assertions after it still report each aggregate it held up.
  */
-async function settled(form: Probe): Promise<void> {
-  await wait(0)
-  await waitUntil(() => (form.meta.validating ? null : true))
-}
-
-/**
- * Like `settled`, but gives up quietly after `ms`, so a `validating` that
- * never clears fails the soft assertion that follows rather than the wait.
- */
-async function settledWithin(form: Probe, ms: number): Promise<void> {
-  await wait(0)
-  const deadline = Date.now() + ms
-  while (form.meta.validating && Date.now() < deadline) await wait(5)
-}
-
-/** Let the write's own validation, which nothing holds, commit. */
-async function letUnheldWorkSettle(): Promise<void> {
-  await nextTick()
-  await wait(5)
-  await nextTick()
+async function reached(condition: string, holds: () => boolean): Promise<void> {
+  await flushMicrotasks()
+  const deadline = Date.now() + SETTLE_TIMEOUT_MS
+  while (!holds() && Date.now() < deadline) await wait(5)
+  expect.soft(holds(), `wait: ${condition} (${SETTLE_TIMEOUT_MS}ms)`).toBe(true)
 }
 
 function mountFor(adapter: Adapter, op: Op, scope: Path): Ctx {
@@ -632,10 +624,10 @@ describe.each(adapters)('$name: container aggregates after a write', (adapter) =
         it(`${op.target}: ${op.name} (${observation})`, async () => {
           const ctx = mountFor(adapter, op, scope)
           const { form, target } = ctx
-          await settled(form)
+          await untilSettled(form)
           await form.interact([...scope, ...op.victim])
           op.prep?.(ctx)
-          await settled(form)
+          await untilSettled(form)
           readAggregates(ctx)
           if (observation === 'sync-observed') observe(ctx)
 
@@ -713,8 +705,7 @@ describe.each(adapters)('$name: container aggregates after a write', (adapter) =
 
           // errors, once the write's own validation commits.
           if (op.history === true) return
-          await settled(form)
-          await nextTick()
+          await reached('nothing in flight', () => !form.meta.busy)
           const settledValue = plain(form.fields([])?.value)
           const verdict = await adapter.verdict(settledValue)
           expect.soft(errorKeys(form.meta.errors), 'errors: meta').toStrictEqual(verdict)
@@ -734,9 +725,15 @@ describe.each(adapters)('$name: container aggregates after a write', (adapter) =
               .toStrictEqual(expected)
           }
           // An error the write itself caused at the container reveals, since
-          // the container's history says it was edited and left.
+          // the container's history says it was edited and left. A run that
+          // outlived the show-delay put the spinner up, and the spinner stays
+          // for its minimum-visible window after the run settles.
           const ownError = verdict.some((key) => key.startsWith(`${dotted(target)}:zod:`))
           if (ownError && op.clearsFlags !== true) {
+            await reached(
+              `displayState ${dotted(target)} past pending`,
+              () => form.fields(target)?.displayState !== 'pending'
+            )
             expect
               .soft(form.fields(target)?.displayState, `displayState ${dotted(target)}`)
               .toBe('error')
@@ -748,23 +745,26 @@ describe.each(adapters)('$name: container aggregates after a write', (adapter) =
         it(`${op.target}: ${op.name}, a row's check in flight (${observation})`, async () => {
           const ctx = mountFor(adapter, op, scope)
           const { form, target } = ctx
-          await settled(form)
+          await untilSettled(form)
           const victimIndex = op.victim[1]
           if (typeof victimIndex !== 'number') throw new Error('in-flight row needs a row victim')
+          const origins = op.origins
+          if (origins === undefined) throw new Error('in-flight row needs row origins')
+          const at = origins.indexOf(victimIndex)
           form.setValue([...ctx.row(victimIndex), 'amount'], SLOW)
-          await letUnheldWorkSettle()
+          await flushMicrotasks()
           expect(form.fields([...ctx.row(victimIndex), 'amount'])?.validating).toBe(true)
           op.prep?.(ctx)
-          await letUnheldWorkSettle()
+          await flushMicrotasks()
           readAggregates(ctx)
           if (observation === 'sync-observed') observe(ctx)
 
           op.run(ctx)
-          await letUnheldWorkSettle()
+          // Every run nothing holds has committed past the flush. With the held
+          // row gone, nothing is left in flight at all.
+          if (at >= 0) await flushMicrotasks()
+          else await reached('nothing in flight', () => !form.meta.busy)
 
-          const origins = op.origins
-          if (origins === undefined) throw new Error('in-flight row needs row origins')
-          const at = origins.indexOf(victimIndex)
           const chain = chainTo(target)
           if (at >= 0) {
             // The held row survives, so its run still counts, at its new
@@ -798,7 +798,7 @@ describe.each(adapters)('$name: container aggregates after a write', (adapter) =
           // Once the held run settles, nothing reads in flight, wherever the
           // row moved to.
           release()
-          await settledWithin(form, 300)
+          await reached('nothing in flight once released', () => !form.meta.busy)
           expect.soft(form.meta.validating, 'released meta').toBe(false)
           for (const path of chain) {
             expect

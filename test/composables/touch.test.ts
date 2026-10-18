@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { z as zV4 } from 'zod'
 import { z as zV3 } from 'zod-v3'
@@ -223,5 +223,111 @@ describe('form.touch: zod-v4 adapter', () => {
     form.touch()
     await flushValidations(form)
     expect(form.meta.validating).toBe(false)
+  })
+})
+
+// A container holding no field: an empty list
+
+describe('form.touch: an empty list, zod-V3 adapter', () => {
+  const schema = zV3.object({
+    team: zV3.object({
+      name: zV3.string(),
+      rows: zV3.array(zV3.object({ n: zV3.string() })).min(1),
+    }),
+    tags: zV3.array(zV3.string()),
+  })
+
+  function makeForm() {
+    return mountWithApp(() =>
+      useFormV3({
+        schema,
+        key: `touch-list-v3-${Math.random()}`,
+        defaultValues: { team: { name: '', rows: [] }, tags: [] },
+      })
+    )
+  }
+
+  it('marks the list touched, and its parent reads it', async () => {
+    const form = makeForm()
+    form.touch('team.rows')
+    await nextTick()
+    expect(form.fields('team.rows').touched).toBe(true)
+    expect(form.fields('team').touched).toBe(true)
+    // `touch` writes `touched` alone, so the list's error stays shut.
+    expect(form.fields('team.rows').interacted).toBe(false)
+    expect(form.fields('team.rows').showErrors).toBe(false)
+    expect(form.fields.team.name.touched).toBe(false)
+    expect(form.fields('tags').touched).toBe(false)
+  })
+
+  it('a container path reaches the empty list under it', async () => {
+    const form = makeForm()
+    form.touch('team')
+    await nextTick()
+    expect(form.fields.team.name.touched).toBe(true)
+    expect(form.fields('team.rows').touched).toBe(true)
+    expect(form.fields('tags').touched).toBe(false)
+  })
+
+  it('does not dev-warn for an empty list, and still warns for a typo', () => {
+    const form = makeForm()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    form.touch('tags')
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('form.touch()'))
+    form.touch(['team', 'nope'])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('form.touch()'))
+    warn.mockRestore()
+  })
+})
+
+describe('form.touch: an empty list, zod-V4 adapter', () => {
+  const schema = zV4.object({
+    team: zV4.object({
+      name: zV4.string(),
+      rows: zV4.array(zV4.object({ n: zV4.string() })).min(1),
+    }),
+    tags: zV4.array(zV4.string()),
+  })
+
+  function makeForm() {
+    return mountWithApp(() =>
+      useFormV4({
+        schema,
+        key: `touch-list-v4-${Math.random()}`,
+        defaultValues: { team: { name: '', rows: [] }, tags: [] },
+      })
+    )
+  }
+
+  it('marks the list touched, and its parent reads it', async () => {
+    const form = makeForm()
+    form.touch('team.rows')
+    await nextTick()
+    expect(form.fields('team.rows').touched).toBe(true)
+    expect(form.fields('team').touched).toBe(true)
+    // `touch` writes `touched` alone, so the list's error stays shut.
+    expect(form.fields('team.rows').interacted).toBe(false)
+    expect(form.fields('team.rows').showErrors).toBe(false)
+    expect(form.fields.team.name.touched).toBe(false)
+    expect(form.fields('tags').touched).toBe(false)
+  })
+
+  it('a container path reaches the empty list under it', async () => {
+    const form = makeForm()
+    form.touch('team')
+    await nextTick()
+    expect(form.fields.team.name.touched).toBe(true)
+    expect(form.fields('team.rows').touched).toBe(true)
+    expect(form.fields('tags').touched).toBe(false)
+  })
+
+  it('does not dev-warn for an empty list, and still warns for a typo', () => {
+    const form = makeForm()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    form.touch('tags')
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('form.touch()'))
+    form.touch(['team', 'nope'])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('form.touch()'))
+    warn.mockRestore()
   })
 })

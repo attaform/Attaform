@@ -109,6 +109,10 @@
           "key": "",
           "label": "",
           "meta": {},
+          "original": {
+            "email": "",
+            "name": ""
+          },
           "path": [],
           "placeholder": null,
           "pristine": true,
@@ -293,6 +297,10 @@
           "key": "",
           "label": "",
           "meta": {},
+          "original": {
+            "email": "",
+            "name": ""
+          },
           "path": [],
           "placeholder": null,
           "pristine": true,

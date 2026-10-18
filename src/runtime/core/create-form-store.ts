@@ -31,6 +31,7 @@ import {
   createArrayBookkeeping,
   createArrayIdentity,
   createVariantMemory,
+  migrateFieldRecords,
   remapForOp,
   type ArrayBookkeeping,
   type ArrayIdentity,
@@ -58,6 +59,7 @@ import {
 import { makeBlankRequiredError, NO_ERRORS } from './error-codes'
 import {
   callConsumerFn,
+  consumerExtensible,
   consumerKeys,
   consumerSymbolKeys,
   readConsumerIndex,
@@ -85,7 +87,7 @@ import {
   setAtPathWithSchemaFill,
   tryInPlaceLeafWrite,
 } from './path-walker'
-import { isShadowedKey, safeAssign } from './safe-assign'
+import { isShadowedKey, safeAssign, safeOwnHas, safeOwnRead } from './safe-assign'
 import { __DEV__ } from './dev'
 import { resolveCoerceEnabled } from './schema-coerce'
 import { isSlimPrimitiveValid } from './slim-primitive-gate'
@@ -532,6 +534,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   setValueAtPath(path: Path, value: unknown, meta?: WriteMeta): boolean
   getValueAtPath(path: Path): unknown
   /**
+   * The value `path` started as, for a container's `original`: the baseline
+   * at `path`, each array index followed to the slot its element held there.
+   * `undefined` for an element added since and for a path the baseline lacks.
+   * Frozen, since every read shares it.
+   */
+  getOriginalAtPath(path: Path): unknown
+  /**
    * Stable identity for the array element at `path`, the token the array
    * engine maintains across structural mutations. Empty for anything that is
    * not an array element (a record entry, a fixed-object field, a container,
@@ -582,8 +591,24 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * Put a `captureStructure()` back, before the value it was taken with is
    * restored, so the write that restores it compares each row against its
    * own baseline. Every reading it can change is woken.
+   *
+   * The field records follow their rows: each of `remaps` moves the records
+   * under its array's elements, in order, handing a removed element's
+   * history to the array and its ancestors, and each of `returning`, a
+   * record of a row the restore brings back, takes its place at its path,
+   * its element not yet on the page.
    */
-  restoreStructure(snapshot: StructureSnapshot): void
+  restoreStructure(
+    snapshot: StructureSnapshot,
+    remaps: ReadonlyArray<readonly [Path, IndexRemap]>,
+    returning: readonly FieldRecord[]
+  ): void
+  /**
+   * Hears the records a removal releases while a history module is attached,
+   * so an undo can bring a row back with its interaction history. Set by the
+   * module, so a form without one never carries it.
+   */
+  noteReleased?: ((records: readonly FieldRecord[]) => void) | undefined
 
   /**
    * Merged read of the cell at `path`, in schema -> blank -> user order:
@@ -644,18 +669,19 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   markInteracted(path: Path): void
   /**
-   * Walk every active-variant leaf under `segments` and flip `touched: true`.
-   * Powers `form.touch(path?)`. Idempotent, and touches neither value nor
-   * `focused` / `blurred`, nor does it trigger validation.
+   * Walk every active-variant leaf under `segments`, and every container there
+   * holding no leaf, and flip `touched: true`. Powers `form.touch(path?)`.
+   * Idempotent, and touches neither value nor `focused` / `blurred`, nor does
+   * it trigger validation.
    */
   touchAtPath(segments: Path): void
   /**
-   * Walk every active-variant leaf under `segments` and flip the whole
-   * interaction ladder (`touched` / `interacted` / `blurredAfterInteraction`),
-   * as though the user had focused, edited and left each one. Powers
-   * `form.interact(path?)`. Idempotent, and leaves value / `focused` /
-   * `blurred` alone. Returns whether any leaf resolved, so the caller can skip
-   * validation and dev-warn on an empty path.
+   * Walk every active-variant leaf under `segments`, and every container there
+   * holding no leaf, and flip the whole interaction ladder (`touched` /
+   * `interacted` / `blurredAfterInteraction`), as though the user had focused,
+   * edited and left each one. Powers `form.interact(path?)`. Idempotent, and
+   * leaves value / `focused` / `blurred` alone. Returns whether anything
+   * resolved, so the caller can skip validation on an unresolved path.
    */
   interactAtPath(segments: Path): boolean
   /**
@@ -1018,13 +1044,17 @@ function walkDuStubs(
  * would break the variant-memory snapshot and JSON serialization, and surface
  * through `Object.getOwnPropertySymbols(values.x)`.
  *
- * Returns the input unchanged when the tree holds no symbols, allocating only
- * along a spine that contains a stripped node, so the common case is free.
+ * A frozen or sealed array or plain object is copied too: the form edits what
+ * it stores in place, and an edit to one fails, so every later write under it
+ * would be lost.
+ *
+ * Returns the input unchanged when the tree holds neither, allocating only
+ * along a spine that contains a copied node, so the common case is free.
  */
 function stripSymbolsDeep(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) {
-    let mutated = false
+    let mutated = !consumerExtensible(value)
     const out: unknown[] = new Array(value.length)
     for (let i = 0; i < value.length; i++) {
       // Read once: an array index can be an accessor too, and a second read
@@ -1045,7 +1075,7 @@ function stripSymbolsDeep(value: unknown): unknown {
   // throw before any property is touched, which per-key guarding cannot catch.
   const symKeys = consumerSymbolKeys(value)
   const stringKeys = consumerKeys(value)
-  let mutated = symKeys.length > 0
+  let mutated = symKeys.length > 0 || !consumerExtensible(value)
   const out: Record<string, unknown> = {}
   const src = value as Record<string, unknown>
   for (const k of stringKeys) {
@@ -1124,6 +1154,14 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
    * save while reporting `dirty: false` over the stale values (#576).
    */
   defaultValues: DeepPartial<WriteShape<F>> | undefined
+  /**
+   * The value the form started as, the tree `originals` is seeded from. Set
+   * at construction, by `reset()` and when async defaults resolve, and read
+   * only through `getOriginalAtPath`, which freezes what it hands out. It may
+   * share structure with `defaultValues`, which is only ever read, and never
+   * with the form, so no write reaches it.
+   */
+  baselineValue: unknown
   readonly ssrPrefetch: CreateFormStoreOptions<F, G>['ssrPrefetch']
   readonly rememberVariants: boolean
   readonly fieldValidationMode: ValidateOn
@@ -1864,7 +1902,7 @@ function eachAncestorOnce(
  * record. A container reads its own record alongside its present leaves, so
  * it keeps reporting that the rows it lost were touched or edited. Live state
  * (`focused`, `connected` and the rest) does not travel; it stays with what
- * is present.
+ * is present. An attached history module hears the records too.
  */
 function foldInteractionHistory<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -1880,6 +1918,7 @@ function foldInteractionHistory<F extends GenericForm, G extends GenericForm = F
     blurredAfterInteraction ||= record.blurredAfterInteraction
   }
   if (!touched && !interacted && !blurredAfterInteraction) return
+  st.noteReleased?.(released)
   for (let depth = path.length; depth >= 0; depth--) {
     const { key, segments } = keyForSegments(path.slice(0, depth))
     const current = st.fields.get(key)
@@ -3150,6 +3189,47 @@ function getValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   return getAtPath(st.form.value, path)
 }
 
+// Freeze a baseline subtree on its way to a reader, so nothing a consumer
+// does with it reaches the baseline. Only this freezes a node, once its
+// subtree is frozen, so a frozen node ends the walk. A write copies a frozen
+// value it is handed (see `stripSymbolsDeep`), so one written back lands as a
+// copy.
+function freezeBaseline(value: unknown): unknown {
+  if (Object.isFrozen(value)) return value
+  if (Array.isArray(value)) {
+    for (const item of value) freezeBaseline(item)
+    return Object.freeze(value)
+  }
+  if (isPlainRecord(value)) {
+    for (const k of Object.keys(value)) freezeBaseline(safeOwnRead(value, k))
+    return Object.freeze(value)
+  }
+  return value
+}
+
+function getOriginalAtPath<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path
+): unknown {
+  let node = st.baselineValue
+  for (let i = 0; i < path.length; i++) {
+    const segment = path[i]
+    if (Array.isArray(node)) {
+      const at =
+        typeof segment === 'number'
+          ? st.arrayIdentity.baselineIndexOf(path.slice(0, i), segment)
+          : -1
+      if (at < 0) return undefined
+      node = node[at]
+    } else if (isPlainRecord(node) && typeof segment === 'string') {
+      node = safeOwnRead(node, segment)
+    } else {
+      return undefined
+    }
+  }
+  return freezeBaseline(node)
+}
+
 // --- Errors ---
 // One tagged store, each path's cell segregating the two sources that can put
 // an error there: `schema` is the validation pipeline, `user` is `setErrors`.
@@ -3354,7 +3434,9 @@ function captureStructure<F extends GenericForm, G extends GenericForm = F>(
 
 function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  snapshot: StructureSnapshot
+  snapshot: StructureSnapshot,
+  remaps: ReadonlyArray<readonly [Path, IndexRemap]>,
+  returning: readonly FieldRecord[]
 ): void {
   const originals = new Map(snapshot.originals)
   // A present leaf the snapshot holds no baseline for leaves with the value
@@ -3380,6 +3462,29 @@ function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
   for (const [key, segments] of snapshot.removed) {
     st.removedPaths.set(key, segments)
     pulsed.push(segments)
+  }
+  for (const [segments, remap] of remaps) {
+    migrateFieldRecords(st.fields, segments, remap, (path, released) => {
+      // The leaves of a row taken away are still on the form, so its newest
+      // stamp is held on the containers above it before its records go, as
+      // `holdRemovedStamps` holds a write's.
+      let stamp = ''
+      for (const { updatedAt } of released) {
+        if (updatedAt !== null && updatedAt > stamp) stamp = updatedAt
+      }
+      if (stamp !== '') eachAncestorOnce([path], (key, at) => raiseStamp(st, key, at, stamp))
+      foldInteractionHistory(st, path, released)
+    })
+  }
+  // The remaps cleared every slot a returning row lands at. Its element is
+  // not on the page yet.
+  for (const record of returning) {
+    st.fields.set(canonicalizePath(record.path).key, {
+      ...record,
+      connected: false,
+      focused: null,
+      blurred: null,
+    })
   }
   if (pulsed.length > 0) pulseStructure(st.structureSignal, pulsed)
 }
@@ -3559,9 +3664,55 @@ function markInteracted<F extends GenericForm, G extends GenericForm = F>(
 }
 
 /**
+ * Mark each present container at or under `segments` that holds no leaf (see
+ * `Patch`), which the leaf walk over `originals` cannot reach: `touched`, and
+ * with `ladder` also `interacted` and `blurredAfterInteraction`. One walk of
+ * the live subtree, the diff's own walk against nothing, finds them.
+ *
+ * A container reads its own record alongside its present leaves, not the
+ * records of the containers under it, so every ancestor takes the flags too,
+ * as `foldInteractionHistory` does for a removal. A record already holding
+ * them is left as it is and notifies nothing.
+ *
+ * Returns whether any such container was found.
+ */
+function markBareContainers<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  segments: Path,
+  ladder: boolean
+): boolean {
+  const value = getAtPath(toRaw(st.form.value), segments)
+  if (!isDescendable(value)) return false
+  const bare: Path[] = []
+  diffAndApply(undefined, value, segments, (patch) => {
+    if (isBarePatch(patch)) bare.push(patch.path)
+  })
+  eachAncestorOnce(bare, (key, path) => {
+    const current = st.fields.get(key)
+    if (
+      current?.touched === true &&
+      (!ladder || (current.interacted && current.blurredAfterInteraction))
+    ) {
+      return
+    }
+    touchFieldRecord(
+      st,
+      key,
+      path,
+      ladder
+        ? { touched: true, interacted: true, blurredAfterInteraction: true }
+        : { touched: true }
+    )
+  })
+  return bare.length > 0
+}
+
+/**
  * Walk every active-variant leaf under `segments` and flip `touched` to
  * `true`. Powers `form.touch(path?)`: a leaf path reaches that leaf, a
- * container path every descendant leaf, and `[]` every leaf in the form.
+ * container path every descendant leaf, and `[]` every leaf in the form. A
+ * container holding no leaf, an empty list, is marked on its own record (see
+ * `markBareContainers`).
  *
  * Idempotent, so an already-touched leaf is skipped and notifies nothing.
  * Enumerates `originals`, the schema's leaf set, rather than `fields`, so it
@@ -3570,9 +3721,8 @@ function markInteracted<F extends GenericForm, G extends GenericForm = F>(
  * field-state aggregation walk uses. Touch never marks a leaf the consumer
  * cannot see.
  *
- * Dev-warns when nothing resolves under the path: a typo, an empty container,
- * a dead variant. Writes no value, no `focused` / `blurred`, and triggers no
- * validation.
+ * Dev-warns when nothing resolves under the path: a typo, a dead variant.
+ * Writes no value, no `focused` / `blurred`, and triggers no validation.
  */
 function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -3591,6 +3741,7 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
     if (current?.touched === true) continue
     touchFieldRecord(st, leafKey, entry.segments, { touched: true })
   }
+  if (markBareContainers(st, segments, false)) touchedAny = true
   if (!touchedAny && __DEV__) {
     console.warn(
       `[attaform] form.touch(): no fields resolved at path ${JSON.stringify(segments)}. ` +
@@ -3622,9 +3773,11 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
  * Walks `originals` rather than `fields`, so it reaches schema leaves that
  * were never mounted or are `v-if`'d away; the flags are sticky, so such a
  * subtree stays revealed when it remounts. Inactive DU-variant leaves are
- * filtered through `hasAtPath`, matching `touchAtPath`.
+ * filtered through `hasAtPath`, matching `touchAtPath`. A container holding
+ * no leaf is marked on its own record, so an empty list's own error (a `min`)
+ * reveals too.
  *
- * Returns whether any leaf resolved. Validation is the caller's job, since the
+ * Returns whether anything resolved. Validation is the caller's job, since the
  * store has no awaitable validation handle and `form.interact()` resolves only
  * once the subtree's errors are committed.
  */
@@ -3662,6 +3815,7 @@ function interactAtPath<F extends GenericForm, G extends GenericForm = F>(
       blurredAfterInteraction: true,
     })
   }
+  if (markBareContainers(st, segments, true)) interactedAny = true
   if (!interactedAny && __DEV__) {
     console.warn(
       `[attaform] form.interact(): no fields resolved at path ${JSON.stringify(segments)}. ` +
@@ -3780,15 +3934,41 @@ function adoptResolvedDefaults<F extends GenericForm, G extends GenericForm = F>
     )
   ) as DeepPartial<WriteShape<F>>
   // Derivation only. The verdict belongs to the live form, and this value
-  // seeds nothing but the dirty baseline.
-  seedOriginalsFromBaseline(
-    st,
-    computeBaseline(
-      st.schema,
-      st.defaultValues,
-      st.schema.getDefaultValues({ useDefaultSchemaValues: true })
-    )
+  // seeds nothing but the dirty baseline. It shares structure only with the
+  // fresh `st.defaultValues` above, which the form never holds.
+  st.baselineValue = computeBaseline(
+    st.schema,
+    st.defaultValues,
+    st.schema.getDefaultValues({ useDefaultSchemaValues: true })
   )
+  seedOriginalsFromBaseline(st, st.baselineValue)
+  // A list `value` names replaced the live one wholesale, so its rows are the
+  // new baseline's rows by position, and its order re-anchors. A list it
+  // leaves out keeps its rows and how the consumer arranged them.
+  st.arrayIdentity.rebaseline((segments) => holdsListAt(value, segments))
+  // A removal counts against a baseline value. One the new baseline lacks
+  // took nothing away.
+  const dropped: Path[] = []
+  for (const [key, segments] of st.removedPaths) {
+    if (st.originals.get(key)?.value !== undefined) continue
+    st.removedPaths.delete(key)
+    dropped.push(segments)
+  }
+  if (dropped.length > 0) pulseStructure(st.structureSignal, dropped)
+}
+
+// Whether `value` holds a list at `segments` or above it: one a sparse merge
+// takes wholesale, with everything under it.
+function holdsListAt(value: unknown, segments: Path): boolean {
+  let node = value
+  for (const segment of segments) {
+    if (Array.isArray(node)) return true
+    if (!isPlainRecord(node) || typeof segment !== 'string' || !safeOwnHas(node, segment)) {
+      return false
+    }
+    node = safeOwnRead(node, segment)
+  }
+  return Array.isArray(node)
 }
 
 // --- Reset ---
@@ -3824,16 +4004,15 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // the same instant, and a Discard button rolls the form back across a save it
   // had already made (#576).
   //
-  // Snapshotted, so the stored defaults share no structure with what lands in
-  // form storage below: `computeBaseline` hands back the source by
-  // reference when it is already structurally complete, and `setValue` writes
-  // leaves IN PLACE. Without the copy, the first edit to an array or nested
-  // object after a reset would mutate the very baseline the next `reset()`
-  // restores from.
+  // Snapshotted, so the stored defaults, and the baseline `next` derives from
+  // them, share no structure with the consumer's argument. `computeBaseline`
+  // hands back its source by reference when it is already structurally
+  // complete, so `next` shares structure with the stored defaults, and the
+  // form takes a copy of it below.
   st.defaultValues = structuralSnapshot(resetSource)
   const next = computeBaseline(
     st.schema,
-    resetSource,
+    st.defaultValues,
     st.schema.getDefaultValues({ useDefaultSchemaValues: true })
   )
   // Rebuild `authoredPaths` against the post-reset baseline. Reset is a fresh
@@ -3862,11 +4041,12 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // moves once.
   const now = writeInstant(st)
   // Replace the form in one shot; history still sees it through
-  // `formChangeListeners`.
-  applyFormReplacementWithPath(st, next, undefined, null, now)
+  // `formChangeListeners`. A copy: `setValue` writes leaves in place, and
+  // `next` stays the baseline the next `reset()` and `original` read.
+  applyFormReplacementWithPath(st, structuralSnapshot(next), undefined, null, now)
   // Re-anchor array identity baselines to the post-reset shape, so a reorder
   // or removal made before the reset stops reading as a structural change.
-  st.arrayIdentity.rebaselineAll()
+  st.arrayIdentity.rebaseline(() => true)
   // The post-reset value is the new baseline, so any path dropped before this
   // reset is no longer a removal to flag.
   if (st.removedPaths.size > 0) {
@@ -3877,6 +4057,7 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // Rebuild originals from the new baseline: it becomes the post-reset
   // pristine reference, so dirty reads false until the consumer mutates again.
   // Ordinals never reset.
+  st.baselineValue = next
   seedOriginalsFromBaseline(st, next)
   // The live blank set re-mirrors the durable one settled above.
   st.blankPaths.clear()
@@ -4741,6 +4922,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     // the literal they passed from mutating the form's defaults from outside.
     // `reset()` snapshots for a harder reason, where an alias IS reachable.
     defaultValues: ownDefaultValues,
+    // The form holds a copy of it, or the hydration payload.
+    baselineValue: schemaInitialData,
     ssrPrefetch,
     rememberVariants,
     fieldValidationMode,
@@ -4779,6 +4962,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     applyFormReplacement: bind(applyFormReplacement),
     setValueAtPath: bind(setValueAtPath),
     getValueAtPath: bind(getValueAtPath),
+    getOriginalAtPath: bind(getOriginalAtPath),
     arrayElementKey: bind(arrayElementKey),
     reset: bind(reset),
     resetField: bind(resetField),

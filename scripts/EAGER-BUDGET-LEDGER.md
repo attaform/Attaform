@@ -998,3 +998,54 @@ records the fixes keep: per-container stamps and interaction history,
 the removed-path map and its reactive signal, the held stamps, the
 bare-container patch and its baseline, and the bookkeeping each history
 position captures.
+
+## #709 Spends Bytes: the #705 follow-ups, 2026-10-18
+
+#709 SPENDS BYTES: 36,108 -> 36,812 measured (+704) against `main`
+(`fd29b868`, #705 merged), and the budget moves 36_118 -> 36_822 (0.01
+kB headroom).
+
+What it buys. `interact()` and `touch()` reach an empty list, so its own
+error (a `.min(1)`) reveals. A container's `original` reads the value it
+started as, and each row reads its own wherever the array helpers move
+it; on `main` every container that held a field read `undefined`. Undo
+and redo keep each row's interaction flags on that row and keep its
+`form.list` key. `rehydrate()`, schema defaults and frozen payloads stop
+sharing values with the form. And the typed array helpers walk their
+stores without the proxies, which makes `swap` and `replace` 36% and 47%
+faster than `main` on a 500-row list.
+
+Where the bytes went, measured after each commit in order:
+
+| commit                                                        | eager  |
+| ------------------------------------------------------------- | ------ |
+| `interact()` and `touch()` reach a container with no field    | +112 B |
+| copy what a defaults factory resolves (lazy path)             | +0 B   |
+| `rehydrate()` re-anchors the lists it replaces                | +87 B  |
+| copy a schema's default and catch values                      | +3 B   |
+| copy a frozen or sealed value on write                        | +10 B  |
+| a container's `original` is the value it started as           | +280 B |
+| the hydration floor holds the adopted baseline (history only) | +0 B   |
+| an undo keeps the row keys of a list the position predates    | +303 B |
+| that row-order planning moved into the history entry          | -303 B |
+| interaction records follow their rows through undo and redo   | +99 B  |
+| array ops walk their stores raw, reading indices off the keys | +113 B |
+
+The last row splits into the raw reads (+43 B), the index read off the
+key text (+44 B) and one walk of the field records (+26 B). Measured
+part by part, each one speeds up the ops it touches, so each earns its
+bytes.
+
+Alongside it, `attaform/history` grows: on top of `useForm` it adds
+1,245 B against 556 B on `main`, since the row-order planning and the
+interaction-record capture live there rather than on the eager path. The
+size-limit caps move by the 5% rule: `dist/index.mjs` and
+`dist/zod.mjs` 54.25 -> 57.75 KB, the two `{ useForm }` only entries
+39.75 -> 42.5 KB, and `dist/history.mjs` 1.25 -> 3.25 KB, which counts
+the core helpers it shares with `useForm` when measured alone.
+
+Trimming: the row-order planning above (-303 B). A container's
+`original` is handed out as one frozen node rather than through a
+copying getter, which measured slower to read and larger. Still on the
+eager path: #705's structure capture and restore for history, which
+could move into the history entry the same way.

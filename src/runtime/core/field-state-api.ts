@@ -19,7 +19,14 @@ import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
-import { canonicalizePath, isPathPrefix, keyForSegments, type Path, type PathKey } from './paths'
+import {
+  canonicalizePath,
+  isPathPrefix,
+  keyForSegments,
+  pathsEqual,
+  type Path,
+  type PathKey,
+} from './paths'
 
 function isUnderStubAncestor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -520,38 +527,16 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // than the leaf walk, so a cross-field error pinned at an intermediate object
   // counts. The container's OWN-path error is the reducer's own-path rule; this
   // adds only the descendant dimension the aggregate base hides.
-  let leafKeys: Set<PathKey> | undefined
   const revealedDescendantError =
     errors.length > 0 &&
-    errorBuckets.some((bucket) => {
-      // Read at most once per path, and only when a leaf prefix does not
-      // already open the gate: see below.
-      let ownHistory: boolean | undefined
-      return bucket.errors.some((e) => {
-        const ePath = e.path
-        if (ePath.length === segments.length && ePath.every((s, i) => s === segments[i]))
-          return false
-        if (submissionAttempts > 0) return true
-        // The form-errors bucket (path `['']`) belongs to the root container;
-        // gate it by the root's own aggregate blur rather than a leaf prefix.
-        if (ePath.length === 1 && ePath[0] === '') return blurredAfterInteraction
-        // A leaf error gates on that leaf's blur; an intermediate-container
-        // error gates on any blurred leaf beneath it.
-        if (blurredLeafSegments.some((s) => isPathPrefix(ePath, s))) return true
-        // Or on the record at the error's own path, which holds the blur
-        // history of descendants a removal took away and of a directive bound
-        // to a container. A leaf the walk above visited already counted its
-        // record, so only a path it did not visit is read: in the common case,
-        // every error sits on a present leaf and this costs no reactive read.
-        if (ownHistory === undefined) {
-          leafKeys ??= new Set(descendantLeaves.map((leaf) => leaf.key))
-          ownHistory =
-            !leafKeys.has(bucket.key) &&
-            state.fields.get(bucket.key)?.blurredAfterInteraction === true
-        }
-        return ownHistory
-      })
-    })
+    descendantErrorRevealed(
+      state,
+      segments,
+      errorBuckets,
+      submissionAttempts,
+      blurredAfterInteraction,
+      blurredLeafSegments
+    )
   // A container's own sub-schema can declare async work too, a top-level
   // `.refine(async ...)` on the root or a cross-field refine on a sub-object,
   // and neither shows up in a per-leaf reading. Check the container's OWN path,
@@ -751,6 +736,53 @@ function decorateWithDerivedProps<F extends GenericForm>(
     firstError,
     firstOwnError,
   }
+}
+
+/**
+ * Whether any error under the container at `segments` has its owning field's
+ * reveal gate open, for the descendant display rollup. It iterates the
+ * aggregated errors rather than the leaf walk, so a cross-field error pinned
+ * at an intermediate object counts. The container's own-path error is the
+ * reducer's own-path rule, so it is skipped here.
+ *
+ * Plain loops, no callbacks: a container rollup runs this on every read of a
+ * form's validity, a step rail reading each step's on mount.
+ */
+function descendantErrorRevealed<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: Path,
+  buckets: readonly ErrorBucket[],
+  submissionAttempts: number,
+  blurredAfterInteraction: boolean,
+  blurredLeafSegments: readonly Path[]
+): boolean {
+  for (const bucket of buckets) {
+    // The record at this path, read once and only when no blurred leaf
+    // opens the gate.
+    let ownHistory: boolean | undefined
+    for (const e of bucket.errors) {
+      const ePath = e.path
+      if (pathsEqual(ePath, segments)) continue
+      if (submissionAttempts > 0) return true
+      // The form-errors bucket (path `['']`) belongs to the root container;
+      // gate it by the root's own aggregate blur rather than a leaf prefix.
+      if (ePath.length === 1 && ePath[0] === '') {
+        if (blurredAfterInteraction) return true
+        continue
+      }
+      // A leaf error gates on that leaf's blur; an intermediate-container
+      // error gates on any blurred leaf beneath it.
+      for (const leaf of blurredLeafSegments) if (isPathPrefix(ePath, leaf)) return true
+      // Or on the record at the error's own path, which holds the blur
+      // history of descendants a removal took away and of a directive bound
+      // to a container. For a present leaf the walk read that record already,
+      // so this adds no dependency there, and its flag is false, or the leaf
+      // prefix above would have opened the gate.
+      ownHistory ??= state.fields.get(bucket.key)?.blurredAfterInteraction === true
+      if (ownHistory) return true
+    }
+  }
+  return false
 }
 
 /**

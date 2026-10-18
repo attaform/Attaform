@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createWizardHistory } from '../../src/runtime/core/wizard-history'
+import {
+  createWizardHistory,
+  findRouterHistory,
+  type RouterHistoryLike,
+} from '../../src/runtime/core/wizard-history'
 
 /**
- * `createWizardHistory(param)` encapsulates `window.history` for the
+ * `createWizardHistory(param, router)` encapsulates `window.history` for the
  * wizard. The primitive is the only DOM-touching module in the wizard
  * surface: it abstracts pushState / popstate behind a small handle,
  * lets the wizard composable stay focused on navigation semantics, and
@@ -31,7 +35,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('push(key) calls pushState (not replaceState) and writes `?step=<key>`', () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     handle.push('review')
@@ -45,7 +49,7 @@ describe('createWizardHistory: primitive', () => {
 
   it('push(key) is a no-op when the URL is already on `<key>` (no duplicate entry)', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?step=review`)
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const pushSpy = vi.spyOn(window.history, 'pushState')
     handle.push('review') // already on `review`, dedup must skip the push
     expect(pushSpy).not.toHaveBeenCalled()
@@ -59,7 +63,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('replace(key) calls replaceState (not pushState): canonicalize in place', () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const pushSpy = vi.spyOn(window.history, 'pushState')
     const replaceSpy = vi.spyOn(window.history, 'replaceState')
     handle.replace('review')
@@ -72,7 +76,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('read() returns the current step param value (or undefined)', () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     expect(handle.read()).toBeUndefined()
     handle.push('reference')
     expect(handle.read()).toBe('reference')
@@ -80,7 +84,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('subscribe(cb) fires the callback on popstate with the new key', async () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const seen: Array<string | undefined> = []
     handle.subscribe((key) => seen.push(key))
     // Two real pushState writes so `history.back()` has somewhere to go,
@@ -97,7 +101,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('dispose() removes the popstate listener (idempotent)', async () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const cb = vi.fn()
     handle.subscribe(cb)
     handle.push('a')
@@ -110,7 +114,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('does not deliver a popstate that lands on another path (#712)', () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const seen: Array<string | undefined> = []
     handle.subscribe((key) => seen.push(key))
     window.history.replaceState(null, '', 'http://localhost:3000/other?step=b')
@@ -123,7 +127,7 @@ describe('createWizardHistory: primitive', () => {
   })
 
   it('claim() and a write each take the path on screen as its own (#712)', () => {
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     const seen: Array<string | undefined> = []
     handle.subscribe((key) => seen.push(key))
     window.history.replaceState(null, '', 'http://localhost:3000/elsewhere')
@@ -140,12 +144,100 @@ describe('createWizardHistory: primitive', () => {
 
   it('preserves existing search params when writing the step param', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?ref=email&utm=launch`)
-    const handle = createWizardHistory('step')
+    const handle = createWizardHistory('step', undefined)
     handle.push('cargo')
     const url = new URL(window.location.href)
     expect(url.searchParams.get('step')).toBe('cargo')
     expect(url.searchParams.get('ref')).toBe('email')
     expect(url.searchParams.get('utm')).toBe('launch')
     handle.dispose()
+  })
+})
+
+/** A stand-in for vue-router's `RouterHistory`: its location moves with each write. */
+function fakeRouterHistory(start: string): {
+  history: RouterHistoryLike
+  writes: Array<[string, string]>
+} {
+  const writes: Array<[string, string]> = []
+  let location = start
+  const history: RouterHistoryLike = {
+    get location() {
+      return location
+    },
+    push(to) {
+      writes.push(['push', to])
+      location = to
+    },
+    replace(to) {
+      writes.push(['replace', to])
+      location = to
+    },
+  }
+  return { history, writes }
+}
+
+describe('createWizardHistory: the entry state a router keeps (#712)', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', ORIGINAL_URL)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    window.history.replaceState(null, '', ORIGINAL_URL)
+  })
+
+  it('with no router, a replace keeps the entry state and a push starts with none', () => {
+    window.history.replaceState({ position: 4, kept: true }, '', ORIGINAL_URL)
+    const handle = createWizardHistory('step', undefined)
+    handle.replace('a')
+    expect(window.history.state).toEqual({ position: 4, kept: true })
+    handle.push('b')
+    expect(window.history.state).toBeNull()
+    expect(new URL(window.location.href).searchParams.get('step')).toBe('b')
+    handle.dispose()
+  })
+
+  it('with a router, writes go through its history, relative to its base', () => {
+    const { history, writes } = fakeRouterHistory('/wizard?ref=email#top')
+    const push = vi.spyOn(window.history, 'pushState')
+    const replace = vi.spyOn(window.history, 'replaceState')
+    const handle = createWizardHistory('step', history)
+    expect(handle.read()).toBeUndefined()
+    handle.replace('a')
+    handle.push('b')
+    handle.push('b')
+    expect(writes).toEqual([
+      ['replace', '/wizard?ref=email&step=a#top'],
+      ['push', '/wizard?ref=email&step=b#top'],
+    ])
+    expect(handle.read()).toBe('b')
+    expect(push).not.toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
+    handle.dispose()
+  })
+
+  it("with a router, a popstate is read off the router's location and its path", () => {
+    const { history } = fakeRouterHistory('/wizard')
+    const handle = createWizardHistory('step', history)
+    const seen: Array<string | undefined> = []
+    handle.subscribe((key) => seen.push(key))
+    history.push('/other?step=b')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    history.push('/wizard?step=a')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(seen).toEqual(['a'])
+    handle.dispose()
+  })
+
+  it("findRouterHistory reads the history off the app's $router, and nothing else", () => {
+    const { history } = fakeRouterHistory('/')
+    expect(findRouterHistory({ $router: { options: { history } } })).toBe(history)
+    expect(findRouterHistory({})).toBeUndefined()
+    expect(findRouterHistory({ $router: null })).toBeUndefined()
+    expect(findRouterHistory({ $router: { options: {} } })).toBeUndefined()
+    expect(
+      findRouterHistory({ $router: { options: { history: { location: '/' } } } })
+    ).toBeUndefined()
   })
 })

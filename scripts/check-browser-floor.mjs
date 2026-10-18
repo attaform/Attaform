@@ -189,10 +189,10 @@ export const ALLOWED_GLOBALS = {
   history: ES1,
   'history.pushState': s('5', '12', '4', '5'),
   'history.replaceState': s('5', '12', '4', '5'),
+  'history.state': s('19', '12', '4', '6'),
   isNaN: ES1,
   location: ES1,
   'location.href': ES1,
-  'location.pathname': ES1,
   parseFloat: ES1,
   // On the floor exactly: it sets Chrome 71, Firefox 69 and Safari 12.1.
   queueMicrotask: s('71', '79', '69', '12.1'),

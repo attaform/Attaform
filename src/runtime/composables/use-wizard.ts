@@ -32,7 +32,7 @@ import { resolveTrichotomy } from '../core/resolve-default-values'
 import { callConsumerFn, reportConsumerThrow } from '../core/consumer-code'
 import { isLazyMarker } from '../core/wizard-lazy'
 import { isGateMarker } from '../core/wizard-gate'
-import { createWizardHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
+import { createWizardHistory, findRouterHistory, NOOP_WIZARD_HISTORY } from '../core/wizard-history'
 import { buildNoopWizardSchema } from '../core/wizard-noop-schema'
 import { buildWizardStatusesProxy } from '../core/wizard-statuses-proxy'
 import { useAbstractForm, type AmbientProvideEntry } from './use-abstract-form'
@@ -1091,13 +1091,20 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // `useRoute()` in the module's runtime plugin, then `window.location`'s
   // search param mirrored through a ref that updates on popstate.
   //
-  // The default persist writes back through `core/wizard-history.ts`. The
-  // handle is built only when the consumer has disabled neither `restore`
-  // nor `persist`, so an embed that opts out, or passes its own handlers,
+  // The default persist writes back through `core/wizard-history.ts`,
+  // through the app's vue-router history when it has one. The handle is
+  // built only when the consumer has disabled neither `restore` nor
+  // `persist`, so an embed that opts out, or passes its own handlers,
   // never touches the DOM History API.
+  const instance = getCurrentInstance()
   const wantsDefaultUrlSync = options.restore !== false || options.persist !== false
   const historyHandle = wantsDefaultUrlSync
-    ? createWizardHistory(DEFAULT_STEP_PARAM)
+    ? createWizardHistory(
+        DEFAULT_STEP_PARAM,
+        instance === null
+          ? undefined
+          : findRouterHistory(instance.appContext.config.globalProperties)
+      )
     : NOOP_WIZARD_HISTORY
   const injectedResolver = inject(kAttaformWizardActiveStepResolver, null)
 
@@ -1114,7 +1121,6 @@ export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   // except while `<KeepAlive>` has it deactivated: a kept page outlives
   // its time on screen, and meanwhile the address belongs to whichever
   // page is shown. A wizard outside any component is always on screen.
-  const instance = getCurrentInstance()
   let onScreen = instance === null || (instance.isMounted && !instance.isDeactivated)
   // The step the address named when the wizard last read or wrote it, so
   // coming back on screen can tell a Back or Forward made meanwhile from a

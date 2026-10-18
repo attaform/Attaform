@@ -33,7 +33,8 @@
  *     flipping which side loads first, and reports the median across runs
  *     of each side's figure and of the per-run change.
  *
- * Take 9 runs or more before quoting a figure, and read `buildMs` first.
+ * Take 9 runs or more before quoting a figure, and read `buildMs` (or,
+ * for the array ops, `parseMs`) first.
  *
  * What one run does. A worker process installs a jsdom window, imports
  * Vue, zod and both sides' entries, and builds the shapes from
@@ -64,6 +65,27 @@
  * #691's leaves, nothing observed; `cubic`: superRefine leaves, a rail
  * reading every step's validity), both adapters, and fresh or cached
  * schemas, on a wizard of `--steps` 30-field pages.
+ *
+ * Array-op modes. `--modes` also takes the typed array helpers, `append`,
+ * `remove`, `insert`, `swap`, `move` and `replace`, or `arrays` for all six,
+ * on the list shape of `bench/field-arrays.bench.ts`: both read the schema
+ * and the calls from `bench/lib/field-array-forms.ts`. They run one scenario
+ * per adapter, and the construction flags (`--shape`, `--schemas`,
+ * `--steps`) do not apply. Each round, per side and op, a client form is
+ * mounted and seeded with `--rows` posts by one `setValue`, which records
+ * every row as appending them one by one does, at a twentieth of the cost.
+ * Once the validation the seed scheduled has run, one batch of `--batch`
+ * calls of the op is timed:
+ *
+ *   <op>Ms          the whole batch (`swapMs` is `--batch` swaps)
+ *   parseMs         fifty zod parses of a seeded list: zod's own work, the
+ *                   free control for these rows, as `buildMs` is above
+ *
+ * The validation the batch scheduled runs before the form unmounts, outside
+ * the timing, so no batch inherits another's. A standing check of the
+ * helpers, beside the construction one:
+ *
+ *   node scripts/construction-ab.mjs <baseDist> <headDist> --modes arrays
  *
  * Building a base dist. The container has no git, so extract the revision
  * on the host into a directory inside the tree, then build it in the
@@ -103,7 +125,12 @@
  *   --shape <s>       issue | cubic | all (default all)
  *   --adapter <a>     v4 | v3 | all (default all)
  *   --schemas <m>     fresh | cached | all (default all)
- *   --modes <list>    any of client,server,hydrate (default all three)
+ *   --modes <list>    any of client,server,hydrate and of the array ops
+ *                     append,remove,insert,swap,move,replace, or arrays for
+ *                     all six (default client,server,hydrate)
+ *   --rows <n>        posts each array-op form is seeded with (default 500)
+ *   --batch <n>       calls per timed array-op batch, below --rows
+ *                     (default 20)
  *   --profile         instead of timing, run each side alone under the CPU
  *                     profiler, once per scenario, and print the inclusive
  *                     and self summary of each cpuprofile
@@ -122,11 +149,16 @@ import { parseArgs } from 'node:util'
 const ROOT = join(import.meta.dirname, '..')
 const SELF = join(import.meta.dirname, 'construction-ab.mjs')
 const LIB = join(ROOT, 'bench', 'lib', 'construction-forms.ts')
+const ARRAY_LIB = join(ROOT, 'bench', 'lib', 'field-array-forms.ts')
 const FIELDS_PER_PAGE = 30
 const WARM_ROUNDS = 3
 
 const METRICS = ['clientMs', 'clientDrainMs', 'serverMs', 'hydrateMs', 'hydrateDrainMs', 'buildMs']
 const MODES = ['client', 'server', 'hydrate']
+const { FIELD_ARRAY_OPS } = await import(pathToFileURL(ARRAY_LIB).href)
+const ARRAY_OPS = Object.keys(FIELD_ARRAY_OPS)
+// The zod parses one array-op round times beside its batches.
+const CONTROL_PARSES = 50
 const JSDOM_GLOBALS = [
   'window',
   'document',
@@ -155,6 +187,11 @@ const iqr = (values) => {
   return q(0.75) - q(0.25)
 }
 
+const now = () => performance.now()
+// `setImmediate`, not `setTimeout(0)`: Node clamps the timer to 1 ms, which
+// would bury the microtask work this is meant to time.
+const drain = () => new Promise((done) => setImmediate(done))
+
 // --- worker ------------------------------------------------------------
 
 /**
@@ -172,6 +209,10 @@ async function worker(config) {
   const vue = await import('vue')
   const { renderToString } = await import('vue/server-renderer')
   const { z } = config.adapter === 'v4' ? await import('zod') : await import('zod-v3')
+  if (config.ops !== undefined) {
+    report(await arrayOpRounds(config, vue, z, document))
+    return
+  }
   const lib = await import(pathToFileURL(LIB).href)
   const build = () => lib.buildPages(z, config.adapter, config.shape, config.steps, FIELDS_PER_PAGE)
 
@@ -195,10 +236,6 @@ async function worker(config) {
   }
 
   const modes = new Set(config.modes)
-  const now = () => performance.now()
-  // `setImmediate`, not `setTimeout(0)`: Node clamps the timer to 1 ms, which
-  // would bury the microtask work this is meant to time.
-  const drain = () => new Promise((done) => setImmediate(done))
 
   /** One round of every selected mode for one side. */
   async function round(side, timed) {
@@ -266,12 +303,76 @@ async function worker(config) {
     const order = r % 2 === 0 ? sides : [...sides].reverse()
     for (const side of order) await round(side, r >= WARM_ROUNDS)
   }
+  report(sides)
+}
 
+/**
+ * The array-op rounds of one run. Each side gets its own schema, as for
+ * construction, and every batch a freshly seeded form, so each starts from
+ * the same list.
+ */
+async function arrayOpRounds(config, vue, z, document) {
+  const lib = await import(pathToFileURL(ARRAY_LIB).href)
+  // A new list each time: the form may keep the one it is handed.
+  const posts = () => Array.from({ length: config.rows }, (_, i) => lib.newPost(i))
+  const list = { posts: posts() }
+  // Long enough for the validation a write scheduled to run: its timer, then
+  // the microtasks of the run.
+  const settle = () => new Promise((done) => setTimeout(done, 1)).then(drain)
+
+  const sides = []
+  for (const { name, dist } of config.sides) {
+    const entry = await import(pathToFileURL(join(dist, `zod-${config.adapter}.mjs`)).href)
+    const rounds = { parseMs: [] }
+    for (const op of config.ops) rounds[`${op}Ms`] = []
+    sides.push({ name, entry, schema: lib.fieldArraySchema(z), rounds })
+  }
+
+  async function seeded(side) {
+    let form
+    const Root = vue.defineComponent({
+      setup() {
+        form = side.entry.useForm({ schema: side.schema, key: 'posts' })
+        return () => vue.h('div')
+      },
+    })
+    const app = vue.createApp(Root).use(side.entry.createAttaform())
+    app.mount(document.createElement('div'))
+    form.setValue('posts', posts())
+    await settle()
+    return { app, form }
+  }
+
+  async function round(side, timed) {
+    for (const op of config.ops) {
+      const { app, form } = await seeded(side)
+      const call = lib.FIELD_ARRAY_OPS[op]
+      const t0 = now()
+      for (let i = 0; i < config.batch; i++) call(form, config.rows, i)
+      const ms = now() - t0
+      if (timed) side.rounds[`${op}Ms`].push(ms)
+      await settle()
+      app.unmount()
+    }
+    const t0 = now()
+    for (let i = 0; i < CONTROL_PARSES; i++) side.schema.safeParse(list)
+    if (timed) side.rounds.parseMs.push(now() - t0)
+  }
+
+  for (let r = 0; r < WARM_ROUNDS + config.rounds; r++) {
+    const order = r % 2 === 0 ? sides : [...sides].reverse()
+    for (const side of order) await round(side, r >= WARM_ROUNDS)
+  }
+  return sides
+}
+
+/** Print one JSON line: per side, each metric's fastest timed round. */
+function report(sides) {
   const out = {}
   for (const side of sides) {
     out[side.name] = {}
-    for (const metric of METRICS) {
-      if (side.rounds[metric].length > 0) out[side.name][metric] = Math.min(...side.rounds[metric])
+    for (const [metric, rounds] of Object.entries(side.rounds)) {
+      if (rounds.length > 0) out[side.name][metric] = Math.min(...rounds)
     }
   }
   process.stdout.write(`${JSON.stringify(out)}\n`)
@@ -389,6 +490,8 @@ async function main() {
       adapter: { type: 'string', default: 'all' },
       schemas: { type: 'string', default: 'all' },
       modes: { type: 'string', default: MODES.join(',') },
+      rows: { type: 'string', default: '500' },
+      batch: { type: 'string', default: '20' },
       profile: { type: 'boolean', default: false },
       'profile-dir': { type: 'string' },
       focus: { type: 'string' },
@@ -416,16 +519,39 @@ async function main() {
   const runs = positiveInt(values.runs, 'runs')
   const rounds = positiveInt(values.rounds, 'rounds')
   const steps = positiveInt(values.steps, 'steps')
-  const modes = pick(values.modes, MODES, 'mode')
+  const rows = positiveInt(values.rows, 'rows')
+  const batch = positiveInt(values.batch, 'batch')
+  const chosen = pick(
+    values.modes.replace(/\barrays\b/, ARRAY_OPS.join(',')),
+    [...MODES, ...ARRAY_OPS],
+    'mode'
+  )
+  const modes = chosen.filter((mode) => MODES.includes(mode))
+  const ops = chosen.filter((mode) => ARRAY_OPS.includes(mode))
+  if (ops.length > 0 && batch >= rows) {
+    console.error(`[construction-ab] --batch (${batch}) must be below --rows (${rows})`)
+    exit(2)
+  }
+  const adapters = pick(values.adapter, ['v4', 'v3'], 'adapter')
   const configs = []
-  for (const shape of pick(values.shape, ['issue', 'cubic'], 'shape')) {
-    for (const adapter of pick(values.adapter, ['v4', 'v3'], 'adapter')) {
-      for (const schemas of pick(values.schemas, ['fresh', 'cached'], 'schemas')) {
-        configs.push({ shape, adapter, schemas, steps, rounds, modes })
+  if (modes.length > 0) {
+    for (const shape of pick(values.shape, ['issue', 'cubic'], 'shape')) {
+      for (const adapter of adapters) {
+        for (const schemas of pick(values.schemas, ['fresh', 'cached'], 'schemas')) {
+          configs.push({ shape, adapter, schemas, steps, rounds, modes })
+        }
       }
     }
   }
-  const scenario = (c) => `${c.shape} ${c.adapter} ${c.schemas.padEnd(6)} N=${c.steps}`
+  if (ops.length > 0) {
+    for (const adapter of adapters) configs.push({ adapter, rows, batch, rounds, ops })
+  }
+  const scenario = (c) =>
+    c.ops === undefined
+      ? `${c.shape} ${c.adapter} ${c.schemas.padEnd(6)} N=${c.steps}`
+      : `arrays ${c.adapter} rows=${c.rows}`
+  const metricsOf = (c) =>
+    c.ops === undefined ? METRICS : [...c.ops.map((op) => `${op}Ms`), 'parseMs']
 
   if (values.profile) {
     const dir = resolve(
@@ -434,7 +560,12 @@ async function main() {
     const top = positiveInt(values.top, 'top')
     for (const config of configs) {
       for (const side of sides) {
-        const out = join(dir, `${side.name}-${config.shape}-${config.adapter}-${config.schemas}`)
+        const out = join(
+          dir,
+          config.ops === undefined
+            ? `${side.name}-${config.shape}-${config.adapter}-${config.schemas}`
+            : `${side.name}-arrays-${config.adapter}`
+        )
         mkdirSync(out, { recursive: true })
         runWorker({ ...config, sides: [side] }, [
           '--cpu-prof',
@@ -460,7 +591,7 @@ async function main() {
       // Flip which side the worker loads and runs first on alternate runs.
       const order = run % 2 === 1 ? sides : [...sides].reverse()
       const result = runWorker({ ...config, sides: order })
-      for (const metric of METRICS) {
+      for (const metric of metricsOf(config)) {
         const b = result.base?.[metric]
         const h = result.head?.[metric]
         if (b === undefined || h === undefined || !(b > 0)) continue

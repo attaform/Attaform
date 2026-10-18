@@ -171,7 +171,7 @@ One carve-out, and it is the whole point of [`gate()`](/docs/multistep/gate): `n
 
 ## URL sync, on by default
 
-A wizard with no extra options reads its starting step from `?step=<key>` on the URL and writes the active step back as the user navigates. Reloads land on the same step, the browser back / forward buttons walk the flow, and the URL is shareable. On the server, the wizard reads the incoming request's `?step` so deep-links render the right step on the first byte.
+A wizard with no extra options reads its starting step from `?step=<key>` on the URL and writes the active step back as the user navigates. Reloads land on the same step, the browser back / forward buttons walk the flow, and the URL is shareable. On the server, the wizard reads the incoming request's `?step` so deep-links render the right step on the first byte. On a page kept by `<KeepAlive>`, the sync pauses while the page is hidden and catches up when it comes back.
 
 ```ts
 import { useForm, useWizard } from 'attaform'

@@ -24,6 +24,7 @@ import type {
   WriteMeta,
 } from '../types/types-api'
 import { createDynamicPathSweep, type DynamicPathSweep } from './dynamic-path-sweep'
+import { visitActiveLeafPaths } from './field-state-api'
 import { createDisplayEngine, type DisplayEngine } from './display-engine'
 import {
   cloneVariantSnapshot,
@@ -1225,10 +1226,19 @@ function seedOriginalsFromBaseline<F extends GenericForm, G extends GenericForm 
   st: FormState<F, G>,
   baseline: unknown
 ): void {
-  st.originals.clear()
+  const seeded = new Map<PathKey, OriginalsRecord>()
   diffAndApply({}, baseline, [], (patch) => {
-    if (patch.kind === 'added') seedBaseline(st.originals, canonicalizePath(patch.path).key, patch)
+    if (patch.kind === 'added') seedBaseline(seeded, canonicalizePath(patch.path).key, patch)
   })
+  // Replaced in place: the new entries first, then the keys the new baseline
+  // lacks go. The map ends as a clear and refill would leave it, but a
+  // container's readings gate each present leaf on its entry, so emptying it
+  // first dropped every reading at once, and a `flush: 'sync'` observer saw
+  // the whole form read unwritten and pristine before it refilled.
+  for (const [key, entry] of seeded) st.originals.set(key, entry)
+  for (const key of [...toRaw(st.originals).keys()]) {
+    if (!seeded.has(key)) st.originals.delete(key)
+  }
 }
 
 /**
@@ -1631,6 +1641,78 @@ function stampContainers<F extends GenericForm, G extends GenericForm = F>(
 }
 
 /**
+ * Hold the `updatedAt` reading of every container a write takes leaves from,
+ * before the write lands.
+ *
+ * A container reads the latest of its present leaves and its own record, and
+ * the commit records the write only once the value has changed. In between,
+ * a leaf the write took away no longer counts, so if it held the newest stamp
+ * the reading would drop, and a `flush: 'sync'` observer would see it move
+ * backwards before the commit moves it forward. Raising the own record of
+ * every container left above that leaf to its stamp first changes no
+ * reading, each of them reading the leaf already, and holds each reading
+ * where it is until the commit stamps the write. The commit then stamps the
+ * same containers, so the hold adds no record of its own.
+ *
+ * `next` is the form the write leaves, which says which containers stay.
+ * Records are read raw, so a write made from inside an effect subscribes it
+ * to nothing.
+ */
+function holdRemovedStamps<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  patches: readonly Patch[],
+  next: unknown
+): void {
+  const records = toRaw(st.fields)
+  const baselines = toRaw(st.originals)
+  const held = new Map<PathKey, { readonly segments: Path; stamp: string }>()
+  // Hold `path` cut to `depth` segments and each ancestor of it that `next`
+  // keeps, at `leaf`'s stamp. A leaf with no baseline takes no part in any
+  // reading.
+  const hold = (path: Path, depth: number, leaf: Path): void => {
+    const { key: leafKey } = keyForSegments(leaf)
+    const stamp = baselines.has(leafKey) ? records.get(leafKey)?.updatedAt : null
+    if (stamp === null || stamp === undefined) return
+    let kept = false
+    for (let at = depth; at >= 0; at--) {
+      const segments = path.slice(0, at)
+      // Once a container stays, every container above it does.
+      if (!kept && !hasAtPath(next, segments)) continue
+      kept = true
+      const { key } = keyForSegments(segments)
+      const current = held.get(key)
+      if (current === undefined) held.set(key, { segments, stamp })
+      else if (stamp > current.stamp) current.stamp = stamp
+    }
+  }
+  for (const patch of patches) {
+    if (patch.kind === 'added') continue
+    const { oldValue, path } = patch
+    if (Array.isArray(oldValue) || isPlainRecord(oldValue)) {
+      // A container replaced by a leaf (`null` over an object) takes its
+      // leaves with it and stays. One that leaves whole is reported leaf by
+      // leaf, unless it held none.
+      if (patch.kind === 'changed') {
+        visitActiveLeafPaths(oldValue, path, (leaf) => hold(path, path.length, leaf))
+      }
+    } else if (
+      patch.kind === 'removed'
+        ? !hasAtPath(next, path)
+        : Array.isArray(patch.newValue) || isPlainRecord(patch.newValue)
+    ) {
+      // A leaf taken away, or one a container replaced (an object over
+      // `null`): the reading above it no longer walks it.
+      hold(path, path.length - 1, path)
+    }
+  }
+  for (const [key, { segments, stamp }] of held) {
+    if ((records.get(key)?.updatedAt ?? '') < stamp) {
+      touchFieldRecord(st, key, segments, { updatedAt: stamp })
+    }
+  }
+}
+
+/**
  * Record a write at each bare container among `patches` (the indices in
  * `bare`, see `Patch`), there being no leaf below it to carry the stamp, and
  * at each ancestor no other patch of the write reaches. An ancestor a leaf
@@ -1988,6 +2070,7 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
   // flags off the value: a Proxy whose `get` trap throws. The throw comes
   // before the slot changes, so the write is skipped whole and records
   // nothing, rather than escaping into the host app (#608).
+  holdRemovedStamps(st, patches, next)
   const reconciled = callConsumerFn<boolean | null>(
     () => applyChangedKeys(prev, next, structuralOp?.path ?? null, [], patches),
     null,
@@ -3770,12 +3853,14 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   // removal the restore makes (a row appended since the baseline) releases
   // records with nothing left to fold, so the reset erases the subtree's
   // history rather than handing it to the ancestors above `path`, which keep
-  // their own.
-  let clearedAny = false
+  // their own. Each record keeps its stamp until the restore has landed, so
+  // a `flush: 'sync'` observer of `updatedAt` never sees the reset's stamp
+  // over the values it replaces.
+  const cleared: PathKey[] = []
   for (const [fieldKey, record] of Array.from(st.fields.entries())) {
     if (!isPathPrefix(targetSegments, record.path)) continue
-    st.fields.set(fieldKey, withClearedHistoryFlags(record, now))
-    clearedAny = true
+    st.fields.set(fieldKey, withClearedHistoryFlags(record, record.updatedAt))
+    cleared.push(fieldKey)
   }
 
   // Storage restore, in order: leaf, then container, then nothing. A direct
@@ -3851,10 +3936,19 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   // them cleared. The same holds for consumer-set errors at any path the
   // schema does not model.
   deleteErrorCellsUnderPrefix(st, targetSegments)
-  // The cleared records took the reset's stamp, so the containers above them
-  // take it too. A container between them and `path` with no record of its
-  // own reads its leaves, which hold it already.
-  if (clearedAny && hasAtPath(toRaw(st.form.value), targetSegments)) {
+  // Every record the reset cleared at a path the restore kept takes the
+  // reset's stamp, and so do the containers above them. A container between
+  // them and `path` with no record of its own reads its leaves, which hold it
+  // already.
+  const raw = toRaw(st.form.value)
+  for (const fieldKey of cleared) {
+    const record = st.fields.get(fieldKey)
+    if (record === undefined || !hasAtPath(raw, record.path)) continue
+    if ((record.updatedAt ?? '') < now) {
+      touchFieldRecord(st, fieldKey, record.path, { updatedAt: now })
+    }
+  }
+  if (cleared.length > 0 && hasAtPath(raw, targetSegments)) {
     stampContainers(st, [targetSegments], now)
   }
 }

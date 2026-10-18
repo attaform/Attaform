@@ -111,6 +111,16 @@ const REMOVALS: ReadonlyArray<readonly [string, string, (form: any) => void]> = 
   ['a rows empty', 'rows', (form) => form.setValue('rows', [])],
 ]
 
+// Each removal, with the leaf it takes away (or moves out of the way)
+// holding the form's newest stamp.
+const NEWEST_REMOVALS: ReadonlyArray<readonly [string, string, string, (form: any) => void]> = [
+  ['a shrink', 'tags.2', 'tags', (form) => form.setValue('tags', ['a'])],
+  ['an empty', 'tags.2', 'tags', (form) => form.setValue('tags', [])],
+  ['a remove', 'tags.1', 'tags', (form) => form.remove('tags', 1)],
+  ['a remove of the first row', 'rows.0.n', 'rows', (form) => form.remove('rows', 0)],
+  ['a rows empty', 'rows.0.n', 'rows', (form) => form.setValue('rows', [])],
+]
+
 describe.each(ADAPTERS)('recorded write stamps ($name)', (adapter) => {
   it.each(REMOVALS)(
     '%s stamps the container and the root forward, with one sync firing',
@@ -128,6 +138,54 @@ describe.each(ADAPTERS)('recorded write stamps ($name)', (adapter) => {
       expect(fired).toBe(1)
     }
   )
+
+  it.each(NEWEST_REMOVALS)(
+    '%s taking the newest stamp moves the container and the root forward once',
+    (_label, hot, container, op) => {
+      const { form } = mount(adapter)
+      vi.setSystemTime(T1)
+      form.setValue(hot, 'hot')
+      vi.setSystemTime(T2)
+      // Every reading a sync observer sees on the way, which must never fall
+      // back to an older stamp before the removal's lands.
+      const seen: (string | null)[] = []
+      const stops = [
+        watch(
+          () => form.meta.updatedAt,
+          (value) => seen.push(value),
+          { flush: 'sync' }
+        ),
+        watch(
+          () => form.fields([container]).updatedAt,
+          (value) => seen.push(value),
+          {
+            flush: 'sync',
+          }
+        ),
+      ]
+      op(form)
+      for (const stop of stops) stop()
+
+      expect(seen).toEqual([iso(T2), iso(T2)])
+    }
+  )
+
+  it('resetField lands its values before its stamp', () => {
+    const { form } = mount(adapter)
+    vi.setSystemTime(T1)
+    form.setValue('tags', ['z'])
+    vi.setSystemTime(T2)
+    const seen: unknown[] = []
+    const stop = watch(
+      () => form.meta.updatedAt,
+      () => seen.push([...form.values.tags]),
+      { flush: 'sync' }
+    )
+    form.resetField('tags')
+    stop()
+
+    expect(seen).toEqual([['a', 'b', 'c']])
+  })
 
   it('a write that changes nothing stamps nothing', () => {
     const { form } = mount(adapter)

@@ -299,8 +299,15 @@ function buildLeafFieldState<F extends GenericForm>(
  * write gate rejects an object or array write to a schema-leaf path, so the one
  * shape this walk and an `originals` leaf could disagree on, a leaf whose live
  * value became a container, is unreachable through the public API.
+ *
+ * Exported for the write funnel, which reads the stamps of the leaves a write
+ * is about to take away through the same walk the readings use.
  */
-function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path) => void): void {
+export function visitActiveLeafPaths(
+  value: unknown,
+  base: Path,
+  visit: (segments: Path) => void
+): void {
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       const child = readConsumerIndex(value, i)

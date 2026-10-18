@@ -164,6 +164,58 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+  # The installed tree must honour every override in pnpm-workspace.yaml:
+  # each security floor, and each unifying override's single copy. A
+  # Dependabot group PR regenerates the lockfile against the base it was
+  # opened on, and that can split a unified package without anything else
+  # going red. #688 carried two vites, two @nuxt/kits, two @types/nodes
+  # and two Vue compilers through a fully green run before this job
+  # existed.
+  security-floors:
+    name: Security floors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Drop GITHUB_TOKEN from .git/config after checkout. CI-only
+          # job; no `git push` or private-ref fetch needs the token
+          # attached to the working tree.
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 'lts/*'
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Restore pnpm store cache (read-only)
+        id: pnpm-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Save pnpm store cache (main-push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pnpm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.pnpm-restore.outputs.cache-primary-key }}
+
+      - name: Check security floors and unifying overrides
+        run: pnpm check:security-floors
+
   test:
     name: Test (Node.js ${{ matrix.node-version }})
     runs-on: ubuntu-latest

@@ -4219,7 +4219,9 @@ export type UseFormReturnType<
    *
    * Walks schema leaves, so it reaches fields that are currently
    * `v-if`'d away or were never mounted; the flags are sticky, so
-   * such a subtree stays revealed when it remounts.
+   * such a subtree stays revealed when it remounts. An empty list
+   * under `path` is marked too, so its own error (a `.min(1)`)
+   * reveals.
    *
    * Flags land synchronously, and the returned promise resolves once
    * the subtree's validation has committed, so an awaiting caller reads

@@ -644,18 +644,19 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   markInteracted(path: Path): void
   /**
-   * Walk every active-variant leaf under `segments` and flip `touched: true`.
-   * Powers `form.touch(path?)`. Idempotent, and touches neither value nor
-   * `focused` / `blurred`, nor does it trigger validation.
+   * Walk every active-variant leaf under `segments`, and every container there
+   * holding no leaf, and flip `touched: true`. Powers `form.touch(path?)`.
+   * Idempotent, and touches neither value nor `focused` / `blurred`, nor does
+   * it trigger validation.
    */
   touchAtPath(segments: Path): void
   /**
-   * Walk every active-variant leaf under `segments` and flip the whole
-   * interaction ladder (`touched` / `interacted` / `blurredAfterInteraction`),
-   * as though the user had focused, edited and left each one. Powers
-   * `form.interact(path?)`. Idempotent, and leaves value / `focused` /
-   * `blurred` alone. Returns whether any leaf resolved, so the caller can skip
-   * validation and dev-warn on an empty path.
+   * Walk every active-variant leaf under `segments`, and every container there
+   * holding no leaf, and flip the whole interaction ladder (`touched` /
+   * `interacted` / `blurredAfterInteraction`), as though the user had focused,
+   * edited and left each one. Powers `form.interact(path?)`. Idempotent, and
+   * leaves value / `focused` / `blurred` alone. Returns whether anything
+   * resolved, so the caller can skip validation on an unresolved path.
    */
   interactAtPath(segments: Path): boolean
   /**
@@ -3559,9 +3560,55 @@ function markInteracted<F extends GenericForm, G extends GenericForm = F>(
 }
 
 /**
+ * Mark each present container at or under `segments` that holds no leaf (see
+ * `Patch`), which the leaf walk over `originals` cannot reach: `touched`, and
+ * with `ladder` also `interacted` and `blurredAfterInteraction`. One walk of
+ * the live subtree, the diff's own walk against nothing, finds them.
+ *
+ * A container reads its own record alongside its present leaves, not the
+ * records of the containers under it, so every ancestor takes the flags too,
+ * as `foldInteractionHistory` does for a removal. A record already holding
+ * them is left as it is and notifies nothing.
+ *
+ * Returns whether any such container was found.
+ */
+function markBareContainers<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  segments: Path,
+  ladder: boolean
+): boolean {
+  const value = getAtPath(toRaw(st.form.value), segments)
+  if (!isDescendable(value)) return false
+  const bare: Path[] = []
+  diffAndApply(undefined, value, segments, (patch) => {
+    if (isBarePatch(patch)) bare.push(patch.path)
+  })
+  eachAncestorOnce(bare, (key, path) => {
+    const current = st.fields.get(key)
+    if (
+      current?.touched === true &&
+      (!ladder || (current.interacted && current.blurredAfterInteraction))
+    ) {
+      return
+    }
+    touchFieldRecord(
+      st,
+      key,
+      path,
+      ladder
+        ? { touched: true, interacted: true, blurredAfterInteraction: true }
+        : { touched: true }
+    )
+  })
+  return bare.length > 0
+}
+
+/**
  * Walk every active-variant leaf under `segments` and flip `touched` to
  * `true`. Powers `form.touch(path?)`: a leaf path reaches that leaf, a
- * container path every descendant leaf, and `[]` every leaf in the form.
+ * container path every descendant leaf, and `[]` every leaf in the form. A
+ * container holding no leaf, an empty list, is marked on its own record (see
+ * `markBareContainers`).
  *
  * Idempotent, so an already-touched leaf is skipped and notifies nothing.
  * Enumerates `originals`, the schema's leaf set, rather than `fields`, so it
@@ -3570,9 +3617,8 @@ function markInteracted<F extends GenericForm, G extends GenericForm = F>(
  * field-state aggregation walk uses. Touch never marks a leaf the consumer
  * cannot see.
  *
- * Dev-warns when nothing resolves under the path: a typo, an empty container,
- * a dead variant. Writes no value, no `focused` / `blurred`, and triggers no
- * validation.
+ * Dev-warns when nothing resolves under the path: a typo, a dead variant.
+ * Writes no value, no `focused` / `blurred`, and triggers no validation.
  */
 function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -3591,6 +3637,7 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
     if (current?.touched === true) continue
     touchFieldRecord(st, leafKey, entry.segments, { touched: true })
   }
+  if (markBareContainers(st, segments, false)) touchedAny = true
   if (!touchedAny && __DEV__) {
     console.warn(
       `[attaform] form.touch(): no fields resolved at path ${JSON.stringify(segments)}. ` +
@@ -3622,9 +3669,11 @@ function touchAtPath<F extends GenericForm, G extends GenericForm = F>(
  * Walks `originals` rather than `fields`, so it reaches schema leaves that
  * were never mounted or are `v-if`'d away; the flags are sticky, so such a
  * subtree stays revealed when it remounts. Inactive DU-variant leaves are
- * filtered through `hasAtPath`, matching `touchAtPath`.
+ * filtered through `hasAtPath`, matching `touchAtPath`. A container holding
+ * no leaf is marked on its own record, so an empty list's own error (a `min`)
+ * reveals too.
  *
- * Returns whether any leaf resolved. Validation is the caller's job, since the
+ * Returns whether anything resolved. Validation is the caller's job, since the
  * store has no awaitable validation handle and `form.interact()` resolves only
  * once the subtree's errors are committed.
  */
@@ -3662,6 +3711,7 @@ function interactAtPath<F extends GenericForm, G extends GenericForm = F>(
       blurredAfterInteraction: true,
     })
   }
+  if (markBareContainers(st, segments, true)) interactedAny = true
   if (!interactedAny && __DEV__) {
     console.warn(
       `[attaform] form.interact(): no fields resolved at path ${JSON.stringify(segments)}. ` +

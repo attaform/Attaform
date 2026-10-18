@@ -333,7 +333,7 @@ describe('form.interact: a valid subtree earns its success check', () => {
     await nextTick()
     // `team` is invalid AND un-interacted; the neighbouring reveal must
     // not drag it into any verdict.
-    expect(form.fields('team').displayState).toBe('idle')
+    expect(form.fields(['team']).displayState).toBe('idle')
   })
 
   it('does not green the post-submit flood of untouched valid fields', async () => {
@@ -571,5 +571,143 @@ describe('form.interact: survives unmount', () => {
     await form.interact('email')
     await nextTick()
     expect(form.fields('email').showErrors).toBe(true)
+  })
+})
+
+// A container holding no field: an empty list's own error
+
+const LIST_SEED = { team: { name: 'Ada', rows: [] }, tags: [] }
+
+describe('form.interact: an empty list, zod-V3 adapter', () => {
+  const schema = zV3.object({
+    team: zV3.object({
+      name: zV3.string().min(1),
+      rows: zV3.array(zV3.object({ n: zV3.string() })).min(1, 'Add a row'),
+    }),
+    tags: zV3.array(zV3.string()).min(1, 'Add a tag'),
+  })
+
+  function makeForm(
+    defaultValues: { team: { name: string; rows: { n: string }[] }; tags: string[] } = LIST_SEED
+  ) {
+    return mountWithApp(() =>
+      useFormV3({ schema, key: `interact-list-v3-${Math.random()}`, defaultValues })
+    )
+  }
+
+  it('reveals its own error', async () => {
+    const form = makeForm()
+    expect(form.fields('team.rows').showErrors).toBe(false)
+    await form.interact('team.rows')
+    expect(form.fields('team.rows').errors.map((e) => e.message)).toEqual(['Add a row'])
+    expect(form.fields('team.rows').showErrors).toBe(true)
+    expect(form.fields('team.rows').blurredAfterInteraction).toBe(true)
+    // The parent reads the list's flags and its revealed error.
+    expect(form.fields('team').interacted).toBe(true)
+    expect(form.fields('team').showErrors).toBe(true)
+    // A sibling list stays shut.
+    expect(form.fields('tags').showErrors).toBe(false)
+  })
+
+  it('interact() on the parent reveals it', async () => {
+    const form = makeForm()
+    await form.interact('team')
+    expect(form.fields('team.rows').showErrors).toBe(true)
+    expect(form.fields('team').showErrors).toBe(true)
+    expect(form.fields('tags').showErrors).toBe(false)
+  })
+
+  it('interact() at the root reveals every empty list', async () => {
+    const form = makeForm()
+    await form.interact()
+    expect(form.fields('team.rows').showErrors).toBe(true)
+    expect(form.fields('tags').showErrors).toBe(true)
+  })
+
+  it('reveals a list emptied after the baseline', async () => {
+    const form = makeForm({ team: { name: 'Ada', rows: [{ n: 'a' }] }, tags: ['x'] })
+    form.setValue('team.rows', [])
+    await form.parse({ commit: true })
+    expect(form.fields('team.rows').errors.map((e) => e.message)).toEqual(['Add a row'])
+    expect(form.fields('team.rows').showErrors).toBe(false)
+    await form.interact('team.rows')
+    expect(form.fields('team.rows').showErrors).toBe(true)
+  })
+
+  it('does not dev-warn for an empty list, and still warns for a typo', async () => {
+    const form = makeForm()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await form.interact('team.rows')
+    await form.interact('tags')
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('form.interact()'))
+    await form.interact(['team', 'nope'])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('form.interact()'))
+  })
+})
+
+describe('form.interact: an empty list, zod-V4 adapter', () => {
+  const schema = zV4.object({
+    team: zV4.object({
+      name: zV4.string().min(1),
+      rows: zV4.array(zV4.object({ n: zV4.string() })).min(1, 'Add a row'),
+    }),
+    tags: zV4.array(zV4.string()).min(1, 'Add a tag'),
+  })
+
+  function makeForm(
+    defaultValues: { team: { name: string; rows: { n: string }[] }; tags: string[] } = LIST_SEED
+  ) {
+    return mountWithApp(() =>
+      useFormV4({ schema, key: `interact-list-v4-${Math.random()}`, defaultValues })
+    )
+  }
+
+  it('reveals its own error', async () => {
+    const form = makeForm()
+    expect(form.fields('team.rows').showErrors).toBe(false)
+    await form.interact('team.rows')
+    expect(form.fields('team.rows').errors.map((e) => e.message)).toEqual(['Add a row'])
+    expect(form.fields('team.rows').showErrors).toBe(true)
+    expect(form.fields('team.rows').blurredAfterInteraction).toBe(true)
+    // The parent reads the list's flags and its revealed error.
+    expect(form.fields('team').interacted).toBe(true)
+    expect(form.fields('team').showErrors).toBe(true)
+    // A sibling list stays shut.
+    expect(form.fields('tags').showErrors).toBe(false)
+  })
+
+  it('interact() on the parent reveals it', async () => {
+    const form = makeForm()
+    await form.interact('team')
+    expect(form.fields('team.rows').showErrors).toBe(true)
+    expect(form.fields('team').showErrors).toBe(true)
+    expect(form.fields('tags').showErrors).toBe(false)
+  })
+
+  it('interact() at the root reveals every empty list', async () => {
+    const form = makeForm()
+    await form.interact()
+    expect(form.fields('team.rows').showErrors).toBe(true)
+    expect(form.fields('tags').showErrors).toBe(true)
+  })
+
+  it('reveals a list emptied after the baseline', async () => {
+    const form = makeForm({ team: { name: 'Ada', rows: [{ n: 'a' }] }, tags: ['x'] })
+    form.setValue('team.rows', [])
+    await form.parse({ commit: true })
+    expect(form.fields('team.rows').errors.map((e) => e.message)).toEqual(['Add a row'])
+    expect(form.fields('team.rows').showErrors).toBe(false)
+    await form.interact('team.rows')
+    expect(form.fields('team.rows').showErrors).toBe(true)
+  })
+
+  it('does not dev-warn for an empty list, and still warns for a typo', async () => {
+    const form = makeForm()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await form.interact('team.rows')
+    await form.interact('tags')
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('form.interact()'))
+    await form.interact(['team', 'nope'])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('form.interact()'))
   })
 })

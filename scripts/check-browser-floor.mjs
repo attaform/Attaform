@@ -192,6 +192,7 @@ export const ALLOWED_GLOBALS = {
   isNaN: ES1,
   location: ES1,
   'location.href': ES1,
+  'location.pathname': ES1,
   parseFloat: ES1,
   // On the floor exactly: it sets Chrome 71, Firefox 69 and Safari 12.1.
   queueMicrotask: s('71', '79', '69', '12.1'),

@@ -891,10 +891,64 @@ short-circuit in the schema-error filter, which gave the same result,
 was dropped (-8 B). Leaving writes ungated would save 7 B and let the
 set grow on schemas that never read it.
 
+## #704 Spends Bytes: the browser floor, 2026-10-18
+
+#704 SPENDS BYTES: 33,500 -> 33,521 measured (+21) against `main`
+(`90339f3d`), and the budget moves 33_510 -> 33_531 (0.01 kB headroom).
+
+What it buys. Every form loads on Safari 12.1 (iOS 12.2) and up. On
+`main` a regex lookbehind in the form-key stem, which Safari parses only
+from 16.4, failed the whole module on iOS 15, so no form on the page
+ran. The floor is a standing gate, `check:browser-floor`, which costs no
+bytes.
+
+Where the bytes went, each measured by putting that change back to
+`main`:
+
+- `typeof v === 'bigint' && !v` and a guarded `BigInt(0)` in place of
+  four `0n` literals (+35 B);
+- the trailing-hyphen trim, `/^-+|([^-])-+$/g` replaced by `'$1'` in
+  place of the lookbehind (+1 B);
+- `safeOwnHas` in place of `Object.hasOwn` at six sites (-15 B: the
+  helper was already in the bundle, and its name minifies).
+
+Trimming: one shared helper for the two guarded `BigInt(0)` sites
+measured 4 B more than the two inline copies, which gzip already folds.
+The `typeof BigInt` guard stays, since it is what lets the gate prove
+the call never runs without BigInt.
+
+## #703 Spends Bytes: zod/mini parity, 2026-10-18
+
+#703 SPENDS BYTES: 33,521 -> 33,567 measured (+46) against `main`
+(`876064af`, with #704 merged), and the budget moves 33_531 -> 33_577
+(0.01 kB headroom). Measured alone against `90339f3d` it was +51 B
+(33,500 -> 33,551).
+
+What it buys. A `zod/mini` form matches its classic twin at runtime,
+which a parity suite over both pins. The type fix that lets a mini
+schema compile at all costs no bytes.
+
+Where the bytes went, each measured against `90339f3d` by putting that
+change back:
+
+- `isVerdictCheck`, so a check that only attaches metadata (mini's
+  `z.describe` and `z.meta`) does not mark its container as a container
+  refine, which kept a described mini form parsing whole on every
+  keystroke (+32 B);
+- the description read from Zod's global registry before classic's
+  `.description` getter, so a mini description reads at all (+13 B);
+- with both put back the branch measured 33,505 B, so the retyped
+  adapter internals cost the last 5 B.
+
+Trimming: dropping `isVerdictCheck`'s object guard for optional
+chaining saved 1 B and needed a wider cast, so it stays as written.
+
 ## #705 Spends Bytes: recorded removals, 2026-10-18
 
-#705 SPENDS BYTES: 33,500 -> 35,869 measured (+2,369) against `main`
-(`90339f3d`), and the budget moves 33_510 -> 35_879 (0.01 kB headroom).
+#705 SPENDS BYTES: 33,567 -> 35,946 measured (+2,379) against `main`
+(`e05bb5d4`, with #704 and #703 merged), and the budget moves 33_577 ->
+35_956 (0.01 kB headroom). Measured alone against `90339f3d` it was
++2,369 B (33,500 -> 35,869).
 
 What it buys. A removal is a write: `meta.updatedAt` moves forward on
 every write that changes a value and never backwards, a container keeps
@@ -905,7 +959,8 @@ On `main` each of those failed silently, pinned on both adapters by the
 write-recording and aggregate-consistency matrices (788 rows) and the
 focused suites.
 
-Where the bytes went, measured after each commit of the PR in order:
+Where the bytes went, measured after each commit of the PR in order,
+against `90339f3d`:
 
 | commit                                                    | eager  |
 | --------------------------------------------------------- | ------ |

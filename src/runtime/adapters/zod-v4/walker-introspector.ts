@@ -1,5 +1,5 @@
 /**
- * Module-level `SchemaIntrospector<z.ZodType>` instance for the v4
+ * Module-level `SchemaIntrospector<ZodV4Node>` instance for the v4
  * adapter. Stateless: every method takes a schema and reads its `def.*`
  * shape through the introspect-module accessors.
  *
@@ -8,7 +8,6 @@
  * routing through `adapter.ts` (which would create an import cycle:
  * `adapter.ts → path-walker.ts → adapter.ts`).
  */
-import type { z } from 'zod'
 import type { SchemaIntrospector, SharedZodKind } from '../../core/abstract-schema-factory'
 import {
   capabilitiesOf,
@@ -39,13 +38,14 @@ import {
   unwrapLazy,
   unwrapPipeIn,
   unwrapPipeOut,
+  type ZodV4Node,
 } from './introspect'
 
-export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
+export const V4_INTROSPECTOR: SchemaIntrospector<ZodV4Node> = {
   kindOf: (schema) => kindOf(schema) as SharedZodKind | string,
-  getObjectShape: (schema) => getObjectShape(schema as z.ZodObject),
+  getObjectShape,
   getTupleItems,
-  getDiscriminatedOptions: (schema) => getDiscriminatedOptions(schema) as readonly z.ZodType[],
+  getDiscriminatedOptions,
   getDiscriminator,
   getLiteralValues,
   isPreprocessNode,
@@ -55,7 +55,7 @@ export const V4_INTROSPECTOR: SchemaIntrospector<z.ZodType> = {
   // Walker accessors (D2 / D3 / D5).
   getArrayElement: (schema) => {
     if (kindOf(schema) !== 'array') return undefined
-    return getArrayElement(schema as z.ZodArray)
+    return getArrayElement(schema)
   },
   getSetValueType: (schema) => (kindOf(schema) === 'set' ? getSetValueType(schema) : undefined),
   getRecordValueType: (schema) =>

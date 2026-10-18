@@ -2,7 +2,52 @@
 
 ## Unreleased
 
+### Added
+
+- **A declared browser floor: Safari 12.1 (iOS 12.2), Chrome 71,
+  Firefox 69, and Edge 79.** Every iPhone from the 5s on runs Attaform,
+  with no polyfills to install. A new gate, `pnpm check:browser-floor`,
+  parses every browser-reachable chunk of the build and fails on syntax
+  no transpiler can lower (a regex lookbehind, a BigInt literal,
+  top-level await), on a global or a static newer than the floor, and on
+  a newer prototype method such as `.at()` or `.findLast()`. CI runs it
+  beside `check:size`, so the floor holds from release to release. The
+  installation guide's new Browser support section shows the build
+  target that reaches it on Vite and Nuxt. (#704)
+
 ### Fixed
+
+- **Forms load on Safari before 16.4 and on iOS 15.** The form-key stem
+  that seeds generated field ids trimmed its trailing hyphens with a
+  regex lookbehind, which Safari parses only from 16.4. On an older
+  Safari the whole module failed to parse, so every form on the page
+  was dead. The trim now matches without one and gives the same ids, in
+  linear time. Six `Object.hasOwn` calls (Safari 15.4) and four BigInt
+  literals (Safari 14) give way to equivalents that load on the new
+  floor. (#704)
+
+- **`zod/mini` schemas build a typed form.** Passing a `zod/mini` schema
+  to `useForm` failed to compile with TS2589 and TS2769, since the v4
+  signatures named classic's `ZodObject`, `ZodRecord` and
+  `ZodDiscriminatedUnion`. Every public type that takes a v4 schema now
+  constrains on Zod's core internals, which classic and mini share, so a
+  mini object, record or discriminated-union root binds on `attaform`,
+  `attaform/zod` and `attaform/zod-v4`, and its `values`, `setValue` and
+  `fields` types match its classic twin's exactly. A v3 schema still
+  binds the v3 overload. (#703)
+
+- **A `zod/mini` form behaves like its classic twin.** A
+  `z.describe(...)` description read `undefined`, since Attaform read
+  classic's `.description` getter, which mini schemas lack. It now reads
+  Zod's global registry first (Zod 4.1.13 and later), where classic and
+  mini both write it. And a described or `z.meta(...)` mini container
+  counted as a container refine, so each keystroke parsed the whole form
+  where the classic twin re-validated only the edited field. Checks that
+  only attach metadata no longer count. A new parity suite runs one
+  scenario over classic and mini twins, from defaults and errors through
+  `handleSubmit`. The schema contract page documents Zod Mini, including
+  the one setup step mini leaves to you: a locale or a message per
+  check. (#703)
 
 - **`meta.updatedAt` moves forward on every write, removals included.**
   A container's `updatedAt`, and the form's, was the newest stamp among

@@ -112,8 +112,8 @@ type FormLike = {
   key: string
 }
 
-function asForm<F>(form: F): F & FormLike {
-  return form as unknown as F & FormLike
+function asForm<F>(form: F): FormLike & F {
+  return form as unknown as FormLike & F
 }
 
 // Invariant pinned at every assertion: the four `show*` booleans are

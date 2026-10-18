@@ -1,4 +1,15 @@
-import type { z } from 'zod'
+/**
+ * A Zod v4 schema whose core definition matches `Def`, named by the
+ * `_zod` internals that classic `zod` and `zod/mini` schemas both carry.
+ */
+type ZodV4SchemaOf<Def> = { _zod: { def: Def } }
+
+/**
+ * Any Zod v4 schema, from `zod` or `zod/mini`. The public signatures that
+ * take a v4 schema below the root (`PathInput`, `PathOutput`, `withMeta`)
+ * constrain on it, for the reasons `SupportedRootSchema` gives.
+ */
+export type ZodV4Schema = ZodV4SchemaOf<{ type: string }>
 
 /**
  * The Zod v4 schema roots `useForm` accepts. A fixed-shape
@@ -15,22 +26,22 @@ import type { z } from 'zod'
  * `z.map` / `z.set`) are not form roots; wrap them under a key. The
  * adapter's runtime construction rejects them with a legible error.
  *
- * `z.ZodObject` MUST keep its `z.ZodRawShape` argument, and the
- * discriminated-union arm MUST stay fully applied. The unified entry's
- * v4 overload constrains on `SupportedRootSchema & ZodV4Internals` to
- * keep v3 schemas out (see `../unified/types-zod-major.ts`). In a
- * single-major (v3-only) consumer install, the published `.d.mts`
- * resolves this `z` to v3, where a bare or under-applied Zod class is
- * missing its required arguments and degrades to an `any`-like error
- * type; `any` then absorbs the union and `any & ZodV4Internals`
- * collapses back to `any`, so the marker stops excluding v3 schemas and
- * the read slot poisons to `never`. `z.ZodRecord` carries defaults for
- * both arguments, so it stays concrete in either major.
- * `z.ZodDiscriminatedUnion` does NOT (v3 requires both arguments, and
- * its parameter order is the reverse of v4's), so the arm is written
- * fully applied; the v3-only bundled-types fixture guards it.
+ * Each arm is structural on `_zod.def.type`, Zod's core internals, so a
+ * `zod/mini` root binds exactly as its classic twin does, and the form
+ * types project through `z.input` / `z.output`, which are core's too. A
+ * plain union's `def` has no `discriminator`, which keeps it out of the
+ * third arm.
+ *
+ * The alias names nothing from `zod`, and the unified `attaform/zod`
+ * entry depends on that. Its published `.d.mts` resolves `zod` against
+ * the one major a consumer installed, and in a v3-only install a classic
+ * class reference such as `z.ZodObject` degrades to an `any`-like error
+ * type, which a v3 schema satisfies: the v4 overload would capture it and
+ * collapse its read slot to `never`. No v3 schema carries `_zod`, so this
+ * constraint sends every v3 schema to the v3 overload however `zod`
+ * resolves. The v3-only bundled-types fixture guards it.
  */
 export type SupportedRootSchema =
-  | z.ZodObject<z.ZodRawShape>
-  | z.ZodRecord
-  | z.ZodDiscriminatedUnion<readonly z.ZodObject<z.ZodRawShape>[], string>
+  | ZodV4SchemaOf<{ type: 'object' }>
+  | ZodV4SchemaOf<{ type: 'record' }>
+  | ZodV4SchemaOf<{ type: 'union'; discriminator: string }>

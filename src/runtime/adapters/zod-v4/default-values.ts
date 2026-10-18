@@ -1,10 +1,9 @@
-import type { z } from 'zod'
 import { mergeDeep } from '../../core/merge-deep'
 import { deriveDefaultWalk } from '../../core/walk-derive-default'
 import { fixStructuralDefaults } from '../../core/walk-fix-structural'
 import { unwrapToDiscriminatedUnion } from './discriminator'
 import { slimPrimitivesOf } from './slim-primitives'
-import { getDiscriminatedOptions, getUnionOptions } from './introspect'
+import { getDiscriminatedOptions, getUnionOptions, type ZodV4Node } from './introspect'
 import { V4_INTROSPECTOR } from './walker-introspector'
 
 /**
@@ -25,7 +24,7 @@ import { V4_INTROSPECTOR } from './walker-introspector'
  * bumps only when the walker crosses a lazy boundary.
  */
 export function deriveDefault(
-  schema: z.ZodType,
+  schema: ZodV4Node,
   useDefault: boolean,
   maxRecursionDepth: number
 ): unknown {
@@ -33,10 +32,10 @@ export function deriveDefault(
 }
 
 export type GetDefaultValuesOptions = {
-  // `z.ZodType`, not `z.ZodObject`: the derivation walk is generic over
+  // Any node, not only an object: the derivation walk is generic over
   // the root kind (object, record, discriminated-union), and the
   // algorithm bottoms out at `deriveDefault` which handles each.
-  schema: z.ZodType
+  schema: ZodV4Node
   useDefaultSchemaValues: boolean
   constraints: unknown
   maxRecursionDepth: number
@@ -81,7 +80,7 @@ export function getDefaultValuesFromZodSchema<Form>(
   if (constraints === undefined) return { data: initial as Form, success: true }
   const merged = mergeDeep(initial, constraints)
 
-  return fixStructuralDefaults<Form, z.ZodType>(
+  return fixStructuralDefaults<Form, ZodV4Node>(
     schema,
     merged,
     useDefaultSchemaValues,

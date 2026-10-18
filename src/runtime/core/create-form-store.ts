@@ -973,11 +973,13 @@ function walkDuStubs(
     if (discValue !== undefined && !du.isVariantSelected(discValue)) {
       // A kind-blank stub (`''` / `0` / `0n` / `false` / `null`) is
       // `expandUnsetAt`'s deliberate "no variant selected yet" signal, so it
-      // never warns. The warning is for the typo case, `kind: 'BAD'`.
+      // never warns. The warning is for the typo case, `kind: 'BAD'`. `0n`
+      // is matched as the one falsy bigint, since a BigInt literal is a
+      // parse-time SyntaxError before Safari 14.
       const isKindBlank =
         discValue === '' ||
         discValue === 0 ||
-        discValue === 0n ||
+        (typeof discValue === 'bigint' && !discValue) ||
         discValue === false ||
         discValue === null
       if (!isKindBlank && warned !== undefined && __DEV__) {

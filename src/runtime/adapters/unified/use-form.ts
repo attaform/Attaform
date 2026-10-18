@@ -28,7 +28,6 @@
  */
 import { InvalidUseFormConfigError } from '../../core/errors'
 import { isZodV4SchemaShape } from '../../core/zod-shape'
-import type { ZodV4Internals } from './types-zod-major'
 import { useForm as useFormV3 } from '../../composables/use-form'
 import { useForm as useFormV4 } from '../zod-v4'
 import type {
@@ -67,15 +66,13 @@ import type {
  * const form = useForm({ schema })
  * ```
  *
- * The constraint intersects `ZodV4Internals`, the v4-only `_zod` brand,
- * so a v3 schema cannot bind this overload even where `z` resolves to v3
- * in a single-major install; it falls through to the v3 overload below.
- * See `types-zod-major.ts`.
+ * The constraint is structural on Zod's core `_zod` internals. A
+ * `zod/mini` schema binds it as its classic twin does, and a v3 schema,
+ * which carries no `_zod`, cannot bind it even where `zod` resolves to v3
+ * in a single-major install, so it falls through to the v3 overload
+ * below. See `SupportedRootSchema` in `../zod-v4/types-root.ts`.
  */
-export function useForm<
-  Schema extends SupportedRootSchemaV4 & ZodV4Internals,
-  K extends FormKey = FormKey,
->(
+export function useForm<Schema extends SupportedRootSchemaV4, K extends FormKey = FormKey>(
   configuration: Omit<
     UseFormConfiguration<
       V4FormOf<Schema>,

@@ -16,9 +16,7 @@
  * reach for them: the overloaded `useForm` already infers fully at the
  * call site.
  */
-import type { z } from 'zod'
 import type { z as zV3 } from 'zod-v3'
-import type { ZodV4Internals } from './types-zod-major'
 import type {
   AbstractSchema,
   FormKey,
@@ -39,14 +37,17 @@ import type { V3FormOf, V3OutOf, V3ReadOf, V4FormOf, V4OutOf, V4ReadOf } from '.
  * is present.
  */
 export type UseFormReturnV4<
-  Schema extends z.ZodObject,
+  Schema extends SupportedRootSchemaV4,
   K extends FormKey = FormKey,
 > = UseFormReturnType<V4FormOf<Schema>, V4OutOf<Schema>, V4ReadOf<Schema>, K>
 
 /**
  * Direct V4 configuration projection. Mirrors `UseFormReturnV4`.
  */
-export type UseFormConfigV4<Schema extends z.ZodObject, K extends FormKey = FormKey> = Omit<
+export type UseFormConfigV4<
+  Schema extends SupportedRootSchemaV4,
+  K extends FormKey = FormKey,
+> = Omit<
   UseFormConfiguration<
     V4FormOf<Schema>,
     V4OutOf<Schema>,
@@ -100,7 +101,7 @@ export type UseFormConfigV3<
 export type UseFormReturn<
   Schema,
   K extends FormKey = FormKey,
-> = Schema extends SupportedRootSchemaV4 & ZodV4Internals
+> = Schema extends SupportedRootSchemaV4
   ? UseFormReturnType<V4FormOf<Schema>, V4OutOf<Schema>, V4ReadOf<Schema>, K>
   : Schema extends SupportedRootSchemaV3
     ? UseFormReturnType<V3FormOf<Schema>, V3OutOf<Schema>, V3ReadOf<Schema>, K>
@@ -114,7 +115,7 @@ export type UseFormReturn<
 export type UseFormConfig<
   Schema,
   K extends FormKey = FormKey,
-> = Schema extends SupportedRootSchemaV4 & ZodV4Internals
+> = Schema extends SupportedRootSchemaV4
   ? Omit<
       UseFormConfiguration<
         V4FormOf<Schema>,

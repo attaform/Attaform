@@ -55,9 +55,9 @@ form.handleSubmit((data) => {
 // Record-root form: a `z.record` schema as the root (dictionary form),
 // the new surface this guards. Same single-major hazard as the object
 // root: the v4 overload must not greedily match this v3 record, or the
-// read slot collapses to `never`. The `z.ZodRecord` arm of the v4
-// SupportedRootSchema carries argument defaults, so it stays a concrete
-// type; this pins that it keeps discriminating in a one-major install.
+// read slot collapses to `never`. The v4 SupportedRootSchema is
+// structural on `_zod`, which no v3 schema carries; this pins that it
+// keeps discriminating in a one-major install.
 const rosterSchema = z.record(z.string(), z.object({ tier: z.number() }))
 const roster = useForm({ schema: rosterSchema, key: 'roster-v3' })
 
@@ -68,8 +68,8 @@ type _RosterEntry = Expect<Equal<ReturnType<typeof roster.values>['member-1'], {
 // (variant form), the other new non-object root. Same single-major
 // hazard: the v4 overload must not greedily match this v3 DU, or the
 // read slot collapses to `never`. The v4 SupportedRootSchema's DU arm
-// is written fully applied (v3 requires both arguments, in the reverse
-// order of v4), so it stays concrete and keeps discriminating here.
+// is structural on `_zod` like the other two, so it keeps discriminating
+// here.
 const paymentSchema = z.discriminatedUnion('method', [
   z.object({ method: z.literal('card'), cardNumber: z.string() }),
   z.object({ method: z.literal('bank'), iban: z.string() }),

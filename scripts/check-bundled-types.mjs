@@ -78,7 +78,7 @@ if (failed) {
   console.error('  recent change to public types that did not propagate through unbuild to dist.')
   console.error('  v3-only consumer regression suspects: the unified entry v4 overload')
   console.error('  matching a v3 schema (read slot collapses to `never`); see')
-  console.error('  src/runtime/adapters/unified/ and the ZodV4 structural marker.')
+  console.error('  src/runtime/adapters/unified/ and the structural SupportedRootSchema.')
   process.exit(1)
 }
 

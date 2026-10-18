@@ -1,3 +1,4 @@
+import { fc } from '@fast-check/vitest'
 import { describe, expect, it } from 'vitest'
 import { ANONYMOUS_FORM_KEY_PREFIX } from '../../src/runtime/core/defaults'
 import {
@@ -13,6 +14,29 @@ const nameKey = canonicalizePath(['profile', 'name']).key
 // A key with an embedded space, built without a literal space in source.
 const SPACE = String.fromCharCode(32)
 const SPACED_KEY = `My${SPACE}Form`
+
+// Char-loop reference for the stem: each run of characters outside
+// `[A-Za-z0-9_-]` becomes one hyphen, then leading and trailing hyphens
+// drop by index. No regex does the trim, so it pins the regex form.
+function referenceStem(key: string): string {
+  let sanitized = ''
+  let inUnsafeRun = false
+  for (const ch of key) {
+    if (/[A-Za-z0-9_-]/.test(ch)) {
+      sanitized += ch
+      inUnsafeRun = false
+    } else if (!inUnsafeRun) {
+      sanitized += '-'
+      inUnsafeRun = true
+    }
+  }
+  let start = 0
+  let end = sanitized.length
+  while (start < end && sanitized[start] === '-') start++
+  while (end > start && sanitized[end - 1] === '-') end--
+  const trimmed = sanitized.slice(start, end)
+  return trimmed === '' ? 'atta' : trimmed
+}
 
 describe('fieldIdToken', () => {
   it('is deterministic for the same inputs', () => {
@@ -63,16 +87,53 @@ describe('readableFormKeyStem', () => {
     }
   })
 
-  // The trailing-trim regex used to be `-+$`, an unanchored repeat that
-  // CodeQL's `js/polynomial-redos` query flags as O(n²) worst-case.
-  // A consumer-supplied form key with a long internal hyphen run would
-  // pin the regex engine; the negative-lookbehind form linearises it.
+  it.each([
+    ['', 'atta'],
+    ['-', 'atta'],
+    ['---', 'atta'],
+    ['a--', 'a'],
+    ['-a-', 'a'],
+    ['--a--b--', 'a--b'],
+    ['x!!y??', 'x-y'],
+  ])('trims %j to %j, as the char-loop reference does', (key, expected) => {
+    expect(readableFormKeyStem(key)).toBe(expected)
+    expect(referenceStem(key)).toBe(expected)
+  })
+
+  it('agrees with the char-loop reference on 20,000 random keys', () => {
+    const arbKey = fc.string({ unit: fc.constantFrom('a', '-', '_', SPACE, '!'), maxLength: 16 })
+    fc.assert(
+      fc.property(arbKey, (key) => {
+        expect(readableFormKeyStem(key)).toBe(referenceStem(key))
+      }),
+      { seed: 704, numRuns: 20_000 }
+    )
+  })
+
+  // A trailing-trim `-+$` is an unanchored repeat that CodeQL's
+  // `js/polynomial-redos` query flags as O(n²) worst-case: a consumer
+  // form key with a long internal hyphen run would pin the regex
+  // engine. The trailing branch starts only on the character before a
+  // run, which keeps every shape below linear.
   it('linearises on a pathological internal hyphen run', () => {
     const pathological = `a${'-'.repeat(1_000_000)}b`
     const t0 = performance.now()
     const stem = readableFormKeyStem(pathological)
     const elapsed = performance.now() - t0
     expect(stem).toBe(pathological)
+    expect(elapsed).toBeLessThan(250)
+  })
+
+  it.each([
+    ['a dash run', '-'.repeat(100_000), 'atta'],
+    ['a leading dash run', `${'-'.repeat(100_000)}a`, 'a'],
+    ['a trailing dash run', `a${'-'.repeat(100_000)}`, 'a'],
+    ['an a- repetition', 'a-'.repeat(50_000), `${'a-'.repeat(49_999)}a`],
+  ])('stays linear on %s', (_shape, key, expected) => {
+    const t0 = performance.now()
+    const stem = readableFormKeyStem(key)
+    const elapsed = performance.now() - t0
+    expect(stem).toBe(expected)
     expect(elapsed).toBeLessThan(250)
   })
 })

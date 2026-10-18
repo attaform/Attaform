@@ -289,9 +289,11 @@ export function deriveDefaultWalk<Schema>(
       return 0
     case 'bigint':
       // z.bigint() strictly rejects numbers, so the default must be a
-      // bigint literal. `0` here would fail the schema's own validation
-      // during default-values derivation.
-      return 0n
+      // bigint. `0` here would fail the schema's own validation during
+      // default-values derivation. Built rather than written `0n`: a
+      // BigInt literal is a parse-time SyntaxError before Safari 14, and
+      // an engine without BigInt gets `undefined` instead of a throw.
+      return typeof BigInt === 'function' ? BigInt(0) : undefined
     case 'boolean':
       return false
     case 'date':

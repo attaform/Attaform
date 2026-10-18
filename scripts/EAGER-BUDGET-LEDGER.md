@@ -945,10 +945,11 @@ chaining saved 1 B and needed a wider cast, so it stays as written.
 
 ## #705 Spends Bytes: recorded removals, 2026-10-18
 
-#705 SPENDS BYTES: 33,567 -> 35,946 measured (+2,379) against `main`
+#705 SPENDS BYTES: 33,567 -> 36,108 measured (+2,541) against `main`
 (`e05bb5d4`, with #704 and #703 merged), and the budget moves 33_577 ->
-35_956 (0.01 kB headroom). Measured alone against `90339f3d` it was
-+2,369 B (33,500 -> 35,869).
+36_118 (0.01 kB headroom). The fixes alone measured +2,379 B there; the
+last 162 B are the construction work below, which brings building and
+hydrating a form back level with `main`.
 
 What it buys. A removal is a write: `meta.updatedAt` moves forward on
 every write that changes a value and never backwards, a container keeps
@@ -974,6 +975,23 @@ against `90339f3d`:
 | the construction stamp noted once, not per leaf           | +3 B   |
 | stamp with built-ins the browser floor allows             | -8 B   |
 | one `raiseStamp` helper for four compare-then-touch sites | -30 B  |
+
+Then, against `e05bb5d4`, the construction work. A production A/B
+(`scripts/construction-ab.mjs`) found the fixes made building and
+hydrating a form 3% to 15% slower, most of it in the container reveal
+gate, which minted a key and made a tracked read per error on every
+rollup. Each commit, in order:
+
+| commit                                                  | eager |
+| ------------------------------------------------------- | ----- |
+| the reveal gate reads by error bucket, not a minted key | +87 B |
+| the structure signal built on first read; walk cuts     | +53 B |
+| one copy per path key; a loop-only gate                 | -25 B |
+| the leaf walk marks the errors it covers                | +47 B |
+
+After it, the 21-run A/B reads every client, hydrate and drain row
+within noise of `main`, and allocation per mount is below it on every
+shape.
 
 Trimming: the `raiseStamp` helper above (-30 B). The rest is the
 records the fixes keep: per-container stamps and interaction history,

@@ -66,7 +66,7 @@ export default [
     // zod@^4, so most Vite consumers ship this entry whichever spelling
     // they wrote.
     path: 'dist/zod-v4.mjs',
-    limit: '52.75 KB',
+    limit: '53 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -76,7 +76,7 @@ export default [
     // than v4 because v3 has no static accessor for async refinements, so
     // the adapter carries its own issue-path rewrite and async-strip pass.
     path: 'dist/zod-v3.mjs',
-    limit: '54.5 KB',
+    limit: '54.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -88,7 +88,7 @@ export default [
     // dispatch, no fingerprint walker, no slim-primitive machinery), so
     // it prices the shared core on its own.
     path: 'dist/abstract.mjs',
-    limit: '45 KB',
+    limit: '45.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -218,7 +218,7 @@ export default [
     name: 'zod-v4: { useForm } only',
     path: 'dist/zod-v4.mjs',
     import: '{ useForm }',
-    limit: '37.5 KB',
+    limit: '37.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -229,7 +229,7 @@ export default [
     name: 'zod-v3: { useForm } only',
     path: 'dist/zod-v3.mjs',
     import: '{ useForm }',
-    limit: '39.25 KB',
+    limit: '39.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -292,7 +292,7 @@ export default [
     name: 'abstract: { useAbstractForm } only',
     path: 'dist/abstract.mjs',
     import: '{ useAbstractForm }',
-    limit: '30.5 KB',
+    limit: '30.75 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },

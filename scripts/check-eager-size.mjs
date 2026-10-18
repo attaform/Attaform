@@ -210,13 +210,13 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 35,946 B measured. Last moved UP, 33_577 -> 35_956, by
-// #705's recorded removals (2026-10-18): +2,379 B of eager so that every
+// Currently at 36,108 B measured. Last moved UP, 33_577 -> 36_118, by
+// #705's recorded removals (2026-10-18): +2,541 B of eager so that every
 // write, a removal included, moves `updatedAt` forward, a container keeps
 // the interaction history and `dirty` of the fields it lost, a write that
 // only moves an empty container lands, and undo restores which row is
 // which. See the ledger for the full pricing.
-const BUDGET_GZ = 35_956
+const BUDGET_GZ = 36_118
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

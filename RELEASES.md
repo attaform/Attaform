@@ -1,5 +1,17 @@
 # Releases
 
+## v0.31.1 (2026-10-18)
+
+## What's Changed
+* fix(runtime): load on iOS 15, and declare an iOS 12 browser floor (#704) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/706
+* fix(zod-v4): zod/mini schemas build a typed form that matches classic (#703) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/707
+* fix(form): a removal is a write: updatedAt, interaction history and dirty see it (#705) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/708
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.31.0...v0.31.1
+
+---
+
 ## v0.31.0 (2026-10-15)
 
 ## What's Changed

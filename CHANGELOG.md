@@ -2,7 +2,97 @@
 
 ## Unreleased
 
-_No unreleased changes yet._
+### Fixed
+
+- **`interact()` and `touch()` reach an empty list.** Both marked the
+  fields under their path, so a list holding no rows got no record. A
+  list's own error, such as a `.min(1)`, stayed hidden after
+  `interact('rows')`, and after `interact()` on any container above it,
+  and both calls dev-warned that no field resolved. An empty list under
+  the path is now marked too, along with every container above it, so
+  its error shows at once. A path that matches nothing still warns.
+  (#709)
+
+- **A container's `original` is the value it started as, and follows
+  its row.** `form.fields('rows').original`,
+  `form.fields('address').original` and `form.meta.original` read
+  `undefined` for any container that held a field at the start, though
+  the docs promise the value it started as. Each now reads that value,
+  frozen, since every read shares it. A row keeps its identity through
+  `remove`, `swap`, `move` and `insert`: after `remove('rows', 0)` the
+  row now at index 0 reads the row that started at index 1, a row added
+  since reads `undefined`, and a nested list follows its parent row.
+  `reset()` and async defaults move it to the new baseline, and writing
+  it back with `setValue` stores a copy. (#709)
+
+- **Undo and redo keep each row's interaction on that row.** `touched`,
+  `interacted` and `blurredAfterInteraction` stayed where the last array
+  op left them, so after undoing a `swap` the flags sat on the rows that
+  took the old slots, an undone `remove` brought the row back with none,
+  and undoing a `prepend` left the new row's flags on the row that slid
+  into its slot. Errors then showed on rows nobody had touched. The
+  flags now move with their rows: a row on both sides keeps its own,
+  every flag set since included; a row the undo takes away hands its
+  flags to the list and the containers above it, as `remove()` does; and
+  a row it brings back has the flags it had when it left. Undo still
+  never clears interaction. (#709)
+
+- **Undo and redo keep every row's `form.list` key.** Undoing a `swap`,
+  `move`, `remove` or `insert` back to the position history takes at
+  mount gave every row a new key, so a keyed `v-for` remounted every
+  row, focus and component state with it. Each row now keeps its key,
+  in nested lists too. (#709)
+
+- **Undo back to async defaults reads pristine.** With a `defaultValues`
+  factory, history's first position was taken before the form adopted
+  the fetched value as its baseline, so undoing a `swap`, a `remove` or
+  an edit back to it read dirty with the value at the fetched defaults,
+  on first activation and after `rehydrate()`. The position is now taken
+  once the defaults are adopted. (#709)
+
+- **Typed array ops on a long list run faster than before v0.31.1.**
+  v0.31.1 gave each empty list inside a row bookkeeping of its own, so
+  its `updatedAt` holds, and every typed op walks the form's bookkeeping
+  to find the rows it moved, so on a 500-row list `swap` ran about 20%
+  slower and `replace` about 50% slower. The walk now reads the
+  bookkeeping without Vue's reactive layer, takes each row index from
+  the path it is filed under, and makes one pass where a removal made
+  two. On a 500-row list in a production build, against v0.31.1,
+  on Zod 4 and Zod 3: `swap` runs 35-37% faster, `replace` 48-49%,
+  `remove` 17-18%, `insert` 14%, `move` 10-11%, and `append` is level.
+  Building a form costs the same. (#709)
+
+- **`rehydrate()` reads pristine over the defaults it loads.** A `swap`
+  or a `remove` made before `rehydrate()` left the form dirty over
+  values equal to the fresh defaults, since a list the factory replaced
+  kept its old row order and its removed rows. Each list the factory
+  returns now takes its new rows as its baseline. A list the factory
+  leaves out keeps its rows, order and removals, so its edits stay
+  dirty. (#709)
+
+- **A `defaultValues` factory's value stays the caller's.** The value a
+  factory returned, sync or async, was merged into the form by
+  reference, so a `swap` reordered the array the factory handed over and
+  a `setValue` rewrote its rows: a fetch cache or a store the factory
+  read from changed under it. The value is now copied, as a plain
+  `defaultValues` object is. (#709)
+
+- **Rows filled from a schema `.default(...)` or `.catch(...)` hold
+  their own copy.** The schema hands back one value on every parse, and
+  a row filled from it by `append`, `insert` or a variant switch stored
+  that value as it was. Two appended rows shared one list, so an append
+  to one row's list landed in the other, and on Zod 3 the edit reached
+  the schema itself: every later parse in the app returned the edited
+  list. Zod 4 shared nested default objects and catch values the same
+  way. Each row now holds its own copy. (#709)
+
+- **Writes land after a frozen or sealed value.** `setValue` of a
+  frozen list (a constant, a store's frozen state, an immer result)
+  followed by `append` or `swap`, or a frozen row followed by a write
+  inside it, was skipped with a console error, and the form kept its
+  old value. A frozen or sealed array or plain object is now copied as
+  it is written, and any other value keeps its reference, as before.
+  (#709)
 
 ## v0.31.1
 ### Added

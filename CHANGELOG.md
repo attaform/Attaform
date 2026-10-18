@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.31.2
 ### Fixed
 
 - **`interact()` and `touch()` reach an empty list.** Both marked the

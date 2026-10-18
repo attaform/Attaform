@@ -587,11 +587,11 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    */
   captureStructure(): StructureSnapshot
   /**
-   * Put a `captureStructure()` back, before `value`, the value it was taken
-   * with, is restored, so the write that restores it compares each row
-   * against its own baseline. Every reading it can change is woken.
+   * Put a `captureStructure()` back, before the value it was taken with is
+   * restored, so the write that restores it compares each row against its
+   * own baseline. Every reading it can change is woken.
    */
-  restoreStructure(snapshot: StructureSnapshot, value: unknown): void
+  restoreStructure(snapshot: StructureSnapshot): void
 
   /**
    * Merged read of the cell at `path`, in schema -> blank -> user order:
@@ -3416,8 +3416,7 @@ function captureStructure<F extends GenericForm, G extends GenericForm = F>(
 
 function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  snapshot: StructureSnapshot,
-  value: unknown
+  snapshot: StructureSnapshot
 ): void {
   const originals = new Map(snapshot.originals)
   // A present leaf the snapshot holds no baseline for leaves with the value
@@ -3432,9 +3431,7 @@ function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
     }
   }
   applyHolds(st, held)
-  st.arrayIdentity.restore(snapshot.identity, (segments) =>
-    Array.isArray(getAtPath(value, segments))
-  )
+  st.arrayIdentity.restore(snapshot.identity)
   replaceOriginals(st, originals)
   st.originalBlankPaths.clear()
   for (const key of snapshot.originalBlank) st.originalBlankPaths.add(key)

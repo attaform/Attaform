@@ -371,14 +371,10 @@ export type ArrayIdentity = {
   /** A copy of every tracked array's tokens and baseline, for history. */
   snapshot(): IdentityOrders
   /**
-   * Put a `snapshot()` back. An array the snapshot did not track was not
-   * tracked yet when it was taken, so it held its elements in their baseline
-   * order: it keeps its baseline and takes that order, while `holdsList` says
-   * the restored value holds it there. Otherwise it goes untracked. A nested
-   * array is looked up at the slot its row lands at, each outer array's
-   * elements moving by token. Every array either side tracked is reported.
+   * Put a `snapshot()` back whole, the arrays it did not track included,
+   * which go untracked again. Every array either side tracked is reported.
    */
-  restore(orders: IdentityOrders, holdsList: (arraySegs: Path) => boolean): void
+  restore(orders: IdentityOrders): void
 }
 
 /**
@@ -557,36 +553,13 @@ export function createArrayIdentity(
       return { tokens: copyLists(tokens), baselines: copyLists(baselines) }
     },
 
-    restore(orders, holdsList) {
+    restore(orders) {
       const keys = new Set([...tokens.keys(), ...orders.tokens.keys()])
-      // The live lists, relocated as each outer array's remap is replayed.
-      const live = copyLists(tokens)
-      const liveBaselines = copyLists(baselines)
       // Copied in, since `ensure` grows and trims a live list in place.
       tokens.clear()
       for (const [key, ids] of orders.tokens) tokens.set(key, [...ids])
       baselines.clear()
       for (const [key, ids] of orders.baselines) baselines.set(key, [...ids])
-      const depths = new Set<number>()
-      for (const key of live.keys()) depths.add(segmentsForPathKey(key)?.length ?? 0)
-      for (const depth of [...depths].sort((a, b) => a - b)) {
-        for (const [key, ids] of [...live]) {
-          const segs = segmentsForPathKey(key)
-          if (segs?.length !== depth) continue
-          let order = tokens.get(key)
-          const baseline = liveBaselines.get(key)
-          if (order === undefined) {
-            if (baseline === undefined || !holdsList(segs)) continue
-            order = [...baseline]
-            tokens.set(key, order)
-            baselines.set(key, [...baseline])
-          }
-          const remap = remapBetween(ids, order)
-          if (remap === null) continue
-          migrateMapSubtree(live, segs, remap, (value) => value)
-          migrateMapSubtree(liveBaselines, segs, remap, (value) => value)
-        }
-      }
       const restored: Path[] = []
       for (const key of keys) {
         const segs = segmentsForPathKey(key)
@@ -595,26 +568,6 @@ export function createArrayIdentity(
       if (restored.length > 0) onChange(restored)
     },
   }
-}
-
-// The remap taking each element of `from` to the slot its token holds in
-// `to`, or null when every element keeps its slot.
-function remapBetween(from: readonly string[], to: readonly string[]): IndexRemap | null {
-  const slots = new Map(to.map((id, i) => [id, i]))
-  const kept = new Set(from)
-  const moved = new Map<number, number>()
-  const vacated = new Set<number>()
-  const fresh = new Set<number>()
-  from.forEach((id, i) => {
-    const at = slots.get(id)
-    if (at === undefined) vacated.add(i)
-    else if (at !== i) moved.set(i, at)
-  })
-  to.forEach((id, i) => {
-    if (!kept.has(id)) fresh.add(i)
-  })
-  if (moved.size === 0 && vacated.size === 0 && fresh.size === 0) return null
-  return { moved, vacated, fresh, oldLen: from.length, newLen: to.length }
 }
 
 function copyLists(lists: ReadonlyMap<PathKey, readonly string[]>): Map<PathKey, string[]> {

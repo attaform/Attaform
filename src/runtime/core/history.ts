@@ -42,10 +42,12 @@ import type {
   ErrorCell,
   WriteMeta,
 } from '../types/types-api'
+import { migrateMapSubtree, type IndexRemap } from './array-engine'
 import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
 import { structuralSnapshot } from './diff-apply'
-import type { PathKey } from './paths'
-import type { StructureSnapshot } from './store-records'
+import { getAtPath } from './path-walker'
+import { segmentsForPathKey, type Path, type PathKey } from './paths'
+import type { IdentityOrders, StructureSnapshot } from './store-records'
 
 /** Options for `historyPlugin()`, passed as `useForm({ history })`. */
 export type HistoryPluginOptions = {
@@ -68,6 +70,75 @@ type HistorySnapshot = {
   readonly structure: StructureSnapshot
   /** The baseline generation `structure` was taken under. */
   readonly generation: number
+}
+
+/**
+ * The row order a restore puts back, planned from the live `current` orders
+ * and the `target` orders a position holds, with how each tracked array's
+ * elements move from their live slots to the target's, by token, outermost
+ * array first. A nested array is looked up at the slot its row lands at,
+ * which is where its remap's path points.
+ *
+ * An array the target does not track was not tracked yet when the position
+ * was taken. A typed op tracks an array before it moves anything, and a
+ * write with no op keeps its tokens by position, so the position held the
+ * elements in their baseline order: the array keeps its baseline and takes
+ * that order, with its own tokens, while `holdsList` says the restored value
+ * holds it there. Otherwise it goes untracked.
+ */
+function planOrders(
+  current: IdentityOrders,
+  target: IdentityOrders,
+  holdsList: (arraySegs: Path) => boolean
+): { readonly orders: IdentityOrders; readonly remaps: Array<readonly [Path, IndexRemap]> } {
+  // The live lists, relocated as each outer array's remap is replayed.
+  const live = new Map(current.tokens)
+  const liveBaselines = new Map(current.baselines)
+  const tokens = new Map(target.tokens)
+  const baselines = new Map(target.baselines)
+  const remaps: Array<readonly [Path, IndexRemap]> = []
+  const depths = new Set<number>()
+  for (const key of live.keys()) depths.add(segmentsForPathKey(key)?.length ?? 0)
+  for (const depth of [...depths].sort((a, b) => a - b)) {
+    for (const [key, ids] of [...live]) {
+      const segs = segmentsForPathKey(key)
+      if (segs?.length !== depth) continue
+      let order = tokens.get(key)
+      const baseline = liveBaselines.get(key)
+      if (order === undefined) {
+        if (baseline === undefined || !holdsList(segs)) continue
+        order = baseline
+        tokens.set(key, order)
+        baselines.set(key, baseline)
+      }
+      const remap = remapBetween(ids, order)
+      if (remap === null) continue
+      remaps.push([segs, remap])
+      migrateMapSubtree(live, segs, remap, (value) => value)
+      migrateMapSubtree(liveBaselines, segs, remap, (value) => value)
+    }
+  }
+  return { orders: { tokens, baselines }, remaps }
+}
+
+// The remap taking each element of `from` to the slot its token holds in
+// `to`, or null when every element keeps its slot.
+function remapBetween(from: readonly string[], to: readonly string[]): IndexRemap | null {
+  const slots = new Map(to.map((id, i) => [id, i]))
+  const kept = new Set(from)
+  const moved = new Map<number, number>()
+  const vacated = new Set<number>()
+  const fresh = new Set<number>()
+  from.forEach((id, i) => {
+    const at = slots.get(id)
+    if (at === undefined) vacated.add(i)
+    else if (at !== i) moved.set(i, at)
+  })
+  to.forEach((id, i) => {
+    if (!kept.has(id)) fresh.add(i)
+  })
+  if (moved.size === 0 && vacated.size === 0 && fresh.size === 0) return null
+  return { moved, vacated, fresh, oldLen: from.length, newLen: to.length }
 }
 
 function captureErrorCells(map: Map<PathKey, ErrorCell>): ErrorCellEntries {
@@ -157,7 +228,14 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   function restorePosition(snap: HistorySnapshot): void {
     // The per-element bookkeeping goes back first, so the value write below
     // compares each restored row against its own baseline.
-    if (snap.generation === generation) kernel.restoreStructure(snap.structure, snap.form)
+    if (snap.generation === generation) {
+      const { orders } = planOrders(
+        kernel.captureStructure().identity,
+        snap.structure.identity,
+        (segments) => Array.isArray(getAtPath(snap.form, segments))
+      )
+      kernel.restoreStructure({ ...snap.structure, identity: orders })
+    }
     suppressNext = true
     // Re-seed `blankPaths` BEFORE the form replacement fires. Listeners
     // on `onFormChange` (devtools, the user's own subscriptions) read

@@ -1,6 +1,7 @@
 import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
+import type { IndexRemap } from '../core/array-engine'
 import type { ElementRecord, FieldRecord, StructureSnapshot } from '../core/store-records'
 
 export type { FieldMetaPayload, ResolvedFieldMeta }
@@ -945,13 +946,20 @@ export type WriteMeta = {
 export type HistoryKernel = {
   readonly form: Ref<unknown>
   readonly blankPaths: Set<PathKey>
+  readonly fields: ReadonlyMap<PathKey, FieldRecord>
   readonly errorCells: () => Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
   onReset(listener: () => void): () => void
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
   captureStructure(): StructureSnapshot
-  restoreStructure(snapshot: StructureSnapshot): void
+  restoreStructure(
+    snapshot: StructureSnapshot,
+    remaps: ReadonlyArray<readonly [Path, IndexRemap]>,
+    returning: readonly FieldRecord[]
+  ): void
+  /** Set while attached: hears the records each removal releases. */
+  noteReleased?: ((records: readonly FieldRecord[]) => void) | undefined
 }
 
 /**

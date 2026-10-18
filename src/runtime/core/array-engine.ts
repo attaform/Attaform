@@ -570,6 +570,33 @@ export function createArrayIdentity(
   }
 }
 
+/**
+ * Relocate the field records under `arrayPath`'s elements along `remap`,
+ * handing the records of each removed element to `release` first, before the
+ * relocation drops them.
+ */
+export function migrateFieldRecords(
+  fields: Map<PathKey, FieldRecord>,
+  arrayPath: Path,
+  remap: IndexRemap,
+  release: (arrayPath: Path, released: readonly FieldRecord[]) => void
+): void {
+  if (remap.vacated.size > 0) {
+    const released: FieldRecord[] = []
+    for (const { key } of collectKeysAtIndices(fields.keys(), arrayPath, (index) =>
+      remap.vacated.has(index)
+    )) {
+      const record = fields.get(key)
+      if (record !== undefined) released.push(record)
+    }
+    release(arrayPath, released)
+  }
+  migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
+    ...record,
+    path: segments,
+  }))
+}
+
 function copyLists(lists: ReadonlyMap<PathKey, readonly string[]>): Map<PathKey, string[]> {
   const out = new Map<PathKey, string[]>()
   for (const [key, ids] of lists) out.set(key, [...ids])
@@ -898,22 +925,8 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       return segments
     })
     // The removed elements' records are about to drop, so their interaction
-    // history moves to the array and its ancestors first, before the
-    // relocation below deletes them.
-    if (remap.vacated.size > 0) {
-      const released: FieldRecord[] = []
-      for (const { key } of collectKeysAtIndices(fields.keys(), arrayPath, (index) =>
-        remap.vacated.has(index)
-      )) {
-        const record = fields.get(key)
-        if (record !== undefined) released.push(record)
-      }
-      foldInteractionHistory(arrayPath, released)
-    }
-    migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
-      ...record,
-      path: segments,
-    }))
+    // history moves to the array and its ancestors first.
+    migrateFieldRecords(fields, arrayPath, remap, foldInteractionHistory)
     // A cell's USER side follows its element (paths re-stamped); the
     // SCHEMA side is derived state describing the prior occupant, so a
     // relocated cell lands schema-empty and the eviction pass below

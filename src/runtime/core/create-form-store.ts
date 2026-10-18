@@ -31,6 +31,7 @@ import {
   createArrayBookkeeping,
   createArrayIdentity,
   createVariantMemory,
+  migrateFieldRecords,
   remapForOp,
   type ArrayBookkeeping,
   type ArrayIdentity,
@@ -590,8 +591,24 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
    * Put a `captureStructure()` back, before the value it was taken with is
    * restored, so the write that restores it compares each row against its
    * own baseline. Every reading it can change is woken.
+   *
+   * The field records follow their rows: each of `remaps` moves the records
+   * under its array's elements, in order, handing a removed element's
+   * history to the array and its ancestors, and each of `returning`, a
+   * record of a row the restore brings back, takes its place at its path,
+   * its element not yet on the page.
    */
-  restoreStructure(snapshot: StructureSnapshot): void
+  restoreStructure(
+    snapshot: StructureSnapshot,
+    remaps: ReadonlyArray<readonly [Path, IndexRemap]>,
+    returning: readonly FieldRecord[]
+  ): void
+  /**
+   * Hears the records a removal releases while a history module is attached,
+   * so an undo can bring a row back with its interaction history. Set by the
+   * module, so a form without one never carries it.
+   */
+  noteReleased?: ((records: readonly FieldRecord[]) => void) | undefined
 
   /**
    * Merged read of the cell at `path`, in schema -> blank -> user order:
@@ -1885,7 +1902,7 @@ function eachAncestorOnce(
  * record. A container reads its own record alongside its present leaves, so
  * it keeps reporting that the rows it lost were touched or edited. Live state
  * (`focused`, `connected` and the rest) does not travel; it stays with what
- * is present.
+ * is present. An attached history module hears the records too.
  */
 function foldInteractionHistory<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -1901,6 +1918,7 @@ function foldInteractionHistory<F extends GenericForm, G extends GenericForm = F
     blurredAfterInteraction ||= record.blurredAfterInteraction
   }
   if (!touched && !interacted && !blurredAfterInteraction) return
+  st.noteReleased?.(released)
   for (let depth = path.length; depth >= 0; depth--) {
     const { key, segments } = keyForSegments(path.slice(0, depth))
     const current = st.fields.get(key)
@@ -3416,7 +3434,9 @@ function captureStructure<F extends GenericForm, G extends GenericForm = F>(
 
 function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
-  snapshot: StructureSnapshot
+  snapshot: StructureSnapshot,
+  remaps: ReadonlyArray<readonly [Path, IndexRemap]>,
+  returning: readonly FieldRecord[]
 ): void {
   const originals = new Map(snapshot.originals)
   // A present leaf the snapshot holds no baseline for leaves with the value
@@ -3442,6 +3462,29 @@ function restoreStructure<F extends GenericForm, G extends GenericForm = F>(
   for (const [key, segments] of snapshot.removed) {
     st.removedPaths.set(key, segments)
     pulsed.push(segments)
+  }
+  for (const [segments, remap] of remaps) {
+    migrateFieldRecords(st.fields, segments, remap, (path, released) => {
+      // The leaves of a row taken away are still on the form, so its newest
+      // stamp is held on the containers above it before its records go, as
+      // `holdRemovedStamps` holds a write's.
+      let stamp = ''
+      for (const { updatedAt } of released) {
+        if (updatedAt !== null && updatedAt > stamp) stamp = updatedAt
+      }
+      if (stamp !== '') eachAncestorOnce([path], (key, at) => raiseStamp(st, key, at, stamp))
+      foldInteractionHistory(st, path, released)
+    })
+  }
+  // The remaps cleared every slot a returning row lands at. Its element is
+  // not on the page yet.
+  for (const record of returning) {
+    st.fields.set(canonicalizePath(record.path).key, {
+      ...record,
+      connected: false,
+      focused: null,
+      blurred: null,
+    })
   }
   if (pulsed.length > 0) pulseStructure(st.structureSignal, pulsed)
 }

@@ -1848,7 +1848,8 @@ function foldInteractionHistory<F extends GenericForm, G extends GenericForm = F
  * A record still bound to an element keeps its DOM truth with its history
  * cleared, since the element is there until it unmounts; any other record is
  * deleted, so a path that later reappears starts fresh, as its new array
- * identity does.
+ * identity does. A validation run still in flight there stops: nothing
+ * present waits on it, so it must not hold `validating` up.
  */
 function releaseRemovedRecords<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
@@ -1859,6 +1860,7 @@ function releaseRemovedRecords<F extends GenericForm, G extends GenericForm = F>
   let depth = segments.length
   do {
     const { key } = keyForSegments(segments.slice(0, depth))
+    abortValidationAt(st, key)
     const record = st.fields.get(key)
     if (record !== undefined) {
       released.push(record)
@@ -2815,6 +2817,8 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
     timer: null,
     settled: false,
     released: false,
+    key,
+    path,
   }
   st.fieldValidationState.set(key, fresh)
   // A fresh epoch per schedule, closed over by `run` and re-checked at the
@@ -2835,7 +2839,7 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
     try {
       st.activeValidations.value += 1
       activeIncremented = true
-      incFieldValidation(st, key)
+      incFieldValidation(st, fresh.key)
     } catch (err) {
       // `incFieldValidation` is structurally a `Map.set`, so a throw there
       // happened before the entry was written and leaves nothing to undo on
@@ -2853,14 +2857,19 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
     // conservative whole-form pass so ancestor refines (cross-field equality,
     // sum constraints) re-evaluate against the live value. An empty `path`,
     // from mount, reset or an explicit whole-form call, is whole-form too.
-    const subtreeScope = path.length > 0 && st.schema.hasContainerOrRootRefine?.() === false
-    const scopePath: Path | undefined = subtreeScope ? path : undefined
-    const dataAtScope: unknown = subtreeScope ? getAtPath(st.form.value, path) : st.form.value
-    const scopeKey: PathKey = subtreeScope ? canonicalizePath(path).key : ROOT_PATH_KEY
+    //
+    // The field is read where it sits when the run starts, and the verdict
+    // lands where it sits when the run settles: a typed array op in between
+    // moves the run with its element (see `FieldValidationEntry`).
+    const startPath = fresh.path
+    const subtreeScope = startPath.length > 0 && st.schema.hasContainerOrRootRefine?.() === false
+    const dataAtScope: unknown = subtreeScope ? getAtPath(st.form.value, startPath) : st.form.value
     void Promise.resolve()
-      .then(() => st.schema.validateAtPath(dataAtScope, scopePath))
+      .then(() => st.schema.validateAtPath(dataAtScope, subtreeScope ? startPath : undefined))
       .then((response) => {
         if (fresh.aborted) return
+        const scopePath: Path | undefined = subtreeScope ? fresh.path : undefined
+        const scopeKey: PathKey = subtreeScope ? fresh.key : ROOT_PATH_KEY
         // Form-level epoch gate. A later-scheduled run that has already
         // committed wins, so dropping this stale commit is what stops an
         // asymmetric-latency race overwriting the fresher result. `<=` is
@@ -2905,7 +2914,7 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
         const restamped: ValidationError[] = subtreeScope
           ? filtered.map((err) => ({
               ...err,
-              path: [...path, ...(err.path as Segment[])],
+              path: [...(scopePath ?? []), ...(err.path as Segment[])],
             }))
           : filtered
         applySchemaErrorsForSubtree(st, scopePath ?? [], restamped)
@@ -2923,7 +2932,7 @@ function scheduleFieldValidation<F extends GenericForm, G extends GenericForm = 
         // leaves `released` false and decrements here.
         if (!fresh.released) {
           st.activeValidations.value = Math.max(0, st.activeValidations.value - 1)
-          decFieldValidation(st, key)
+          decFieldValidation(st, fresh.key)
         }
         fresh.settled = true
       })
@@ -2989,6 +2998,26 @@ function cancelFieldValidationUnder<F extends GenericForm, G extends GenericForm
     entry.aborted = true
     st.fieldValidationState.delete(key)
   }
+}
+
+// Abort and release the validation run scheduled or in flight at `key`, the
+// per-key form of `cancelFieldValidationUnder`. A write that takes the field
+// away uses it, as a typed array op does for its vacated indices.
+function abortValidationAt<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  key: PathKey
+): void {
+  const entry = st.fieldValidationState.get(key)
+  if (entry === undefined) return
+  if (entry.timer !== null) {
+    clearTimeout(entry.timer)
+  } else if (!entry.settled && !entry.released) {
+    st.activeValidations.value = Math.max(0, st.activeValidations.value - 1)
+    decFieldValidation(st, key)
+    entry.released = true
+  }
+  entry.aborted = true
+  st.fieldValidationState.delete(key)
 }
 
 function onFormChange<F extends GenericForm, G extends GenericForm = F>(

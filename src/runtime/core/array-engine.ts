@@ -25,6 +25,7 @@ import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
   isPathPrefix,
+  keyForSegments,
   segmentsForPathKey,
   type Path,
   type PathKey,
@@ -658,7 +659,7 @@ export function cloneVariantSnapshot(value: unknown): unknown {
  * one-shot `aborted` latch, the pending debounce `timer`, a `settled` flag that
  * stops the parent counters double-decrementing once a chain's `.finally` has
  * run while its entry still sits in the state map awaiting the next schedule,
- * and a `released` flag.
+ * a `released` flag, and where the run's field sits now.
  *
  * `aborted` is a plain boolean rather than an AbortController. The validation
  * path hands no signal to a consumer and attaches no listeners, so cancellation
@@ -683,6 +684,11 @@ export type FieldValidationEntry = {
   // decrements, so it can't double-count against a run rescheduled at the same
   // key in the meantime.
   released: boolean
+  // The field the run validates, as it sits now. A typed array op relocates
+  // the entry with its element, as it does the field's validation count, so
+  // the run counts down and commits at the index the element moved to.
+  key: PathKey
+  path: Path
 }
 
 /**
@@ -871,6 +877,13 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     // validatingSince: null` (which would flash idle).
     migrateMapSubtree(fieldValidatingSince, arrayPath, remap, (since) => since)
     migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
+    // The runs those counts belong to move with them, updated in place: a run
+    // in flight holds its own entry, and reads where to count down from it.
+    migrateMapSubtree(fieldValidationState, arrayPath, remap, (entry, segments) => {
+      entry.key = keyForSegments(segments).key
+      entry.path = segments
+      return entry
+    })
     // Nested-array identity: relocate every tracked array sitting under
     // `arrayPath`'s element slots so a nested `v-for :key` stays stable
     // across an outer-array mutation (no token leak, no collision on the
@@ -906,6 +919,10 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     }
   }
 
+  // Runs on the pre-op indices, before the migration drops a vacated
+  // element's count, so each release counts down the element's own run and no
+  // other. The run is marked released, so its late `.finally` leaves the
+  // counters alone.
   function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {
     if (remap.vacated.size === 0) return
     const hits = collectKeysAtIndices([...fieldValidationState.keys()], arrayPath, (index) =>
@@ -916,9 +933,10 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       if (entry === undefined) continue
       if (entry.timer !== null) {
         clearTimeout(entry.timer)
-      } else if (!entry.settled) {
+      } else if (!entry.settled && !entry.released) {
         activeValidations.value = Math.max(0, activeValidations.value - 1)
         decFieldValidation(hit.key)
+        entry.released = true
       }
       entry.aborted = true
       fieldValidationState.delete(hit.key)
@@ -927,11 +945,11 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
 
   return {
     applyStructuralOp(arrayPath, remap, now) {
+      abortValidationAtVacatedIndices(arrayPath, remap)
       migrateElementState(arrayPath, remap)
       for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex, now)
       const changed = changedIndices(remap)
       evictSchemaVerdictsAtIndices(errorCells(), arrayPath, changed)
-      abortValidationAtVacatedIndices(arrayPath, remap)
       variantMemory.dropAtIndices(arrayPath, changed)
       arrayIdentity.applyOp(arrayPath, remap)
     },

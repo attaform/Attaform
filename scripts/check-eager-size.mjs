@@ -210,14 +210,12 @@ export async function measureEager(define = PROD_DEFINE) {
 //   - never loosen without a recorded reason, priced against what the
 //     bytes bought.
 //
-// Currently at 36,812 B measured. Last moved UP, 36_118 -> 36_822, by
-// the #705 follow-ups (#709, 2026-10-18): +704 B of eager so that
-// `interact()` and `touch()` reach an empty list, a container's
-// `original` reads the value it started as and follows its row, undo and
-// redo keep each row's interaction flags on that row, and the typed array
-// ops walk their stores without the proxies. See the ledger for the full
-// pricing.
-const BUDGET_GZ = 36_822
+// Currently at 36,869 B measured. Last moved UP, 36_822 -> 36_879, by
+// #712 (2026-10-18): +57 B of eager so that a `useForm` called in a
+// setup that resumed after Vue dropped its component releases its
+// registry entry instead of keeping it for the life of the app. See the
+// ledger for the full pricing.
+const BUDGET_GZ = 36_879
 
 const isMain = import.meta.url === pathToFileURL(realpathSync(argv[1])).href
 if (isMain) {

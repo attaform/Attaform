@@ -1049,3 +1049,24 @@ Trimming: the row-order planning above (-303 B). A container's
 copying getter, which measured slower to read and larger. Still on the
 eager path: #705's structure capture and restore for history, which
 could move into the history entry the same way.
+
+## #712 Spends Bytes: a setup resumed after its component was dropped, 2026-10-18
+
+#712 SPENDS BYTES: 36,812 -> 36,869 measured (+57) against `main`
+(`e102a745`, #709 merged), and the budget moves 36_822 -> 36_879 (0.01
+kB headroom).
+
+What it buys. A `setup()` that resumes after an `await` once Vue has
+dropped its component (a page replaced under `<Suspense>` before it
+resolved) runs in a scope that has already stopped, so every
+`onScopeDispose` it parks never runs. On `main` each `useForm` there
+stayed in the registry for the life of the app, and so did each
+`useWizard` with its `popstate` listener. `useAbstractForm` now runs
+such a call in a scope of its own and stops it once the call returns,
+and `useWizard`, `injectForm` and `injectWizard` do the same off the
+eager path.
+
+The +57 B is the helper and its one eager call site in
+`useAbstractForm`. A `try` / `finally` shape of the helper measured
++64 B, so the plain one stays. The keep-alive aware URL sync from the
+same issue lives in the wizard and adds nothing here.

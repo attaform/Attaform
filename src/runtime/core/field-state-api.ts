@@ -19,7 +19,14 @@ import { computeFieldIdentity } from './field-ids'
 import { EMPTY_RESOLVED_FIELD_META, type ResolvedFieldMeta } from './field-meta'
 import { humanize } from './humanize'
 import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
-import { canonicalizePath, isPathPrefix, keyForSegments, type Path, type PathKey } from './paths'
+import {
+  canonicalizePath,
+  isPathPrefix,
+  keyForSegments,
+  pathsEqual,
+  type Path,
+  type PathKey,
+} from './paths'
 
 function isUnderStubAncestor<F extends GenericForm>(
   state: FormStore<F, GenericForm>,
@@ -299,8 +306,15 @@ function buildLeafFieldState<F extends GenericForm>(
  * write gate rejects an object or array write to a schema-leaf path, so the one
  * shape this walk and an `originals` leaf could disagree on, a leaf whose live
  * value became a container, is unreachable through the public API.
+ *
+ * Exported for the write funnel, which reads the stamps of the leaves a write
+ * is about to take away through the same walk the readings use.
  */
-function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path) => void): void {
+export function visitActiveLeafPaths(
+  value: unknown,
+  base: Path,
+  visit: (segments: Path) => void
+): void {
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       const child = readConsumerIndex(value, i)
@@ -332,12 +346,20 @@ function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path
  * Per-container aggregation for the predicate-safe base shape, rolling up
  * descendant-leaf state. The derived display props are layered on separately.
  *
- * The rules, matching `docs/api/use-form-return.md`:
+ * The rules, matching `docs/reading-the-form/fields.md`:
  *   - pristine, valid, blank: conjunction over all descendants
  *   - dirty: the negation of pristine
- *   - focused, blurred, touched, connected, validating: disjunction
+ *   - focused, blurred, connected, validating: disjunction over the present
+ *     descendants
+ *   - touched, interacted, blurredAfterInteraction: disjunction over the
+ *     present descendants and the container's own record, which keeps the
+ *     history of descendants a removal took away
  *   - errors: concatenated and sorted by schema-declaration ordinal
- *   - updatedAt: the maximum ISO timestamp, compared lexically
+ *   - updatedAt: the latest stamp among the present leaves and the
+ *     container's own record, ISO timestamps comparing lexically. A write
+ *     that takes leaves away (a removal, a typed array op) stamps the own
+ *     record, so the reading is the last write at or under the path and
+ *     never moves backwards
  *   - value, original: the live subtree at the path
  *   - element, elements: nothing binds at a container, so null and empty
  *   - label, description, placeholder, meta: from `getFieldMetaAtPath`
@@ -398,6 +420,11 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // collection separate from the reduction below lets the rollup stay a plain
   // `for...of` whose `let` accumulators narrow normally: accumulators mutated
   // from inside the walk callback read as never-reassigned to the checker.
+  // The errors at and under this prefix, gathered before the walk so the walk
+  // can mark each one a present leaf owns; see `descendantErrorRevealed`.
+  // `form.fields(p).errors`, `form.errors(p)` and `form.meta.errors` all read
+  // through `errorBucketsAt`, so the three surfaces cannot differ.
+  const errorsByKey = errorBucketsAt(state, segments, key)
   const descendantLeaves: { key: PathKey; segments: Path }[] = []
   visitActiveLeafPaths(value, segments, (leafSegments) => {
     const { key: leafKey } = keyForSegments(leafSegments)
@@ -409,6 +436,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   })
   for (const { key: leafKey, segments: leafSeg } of descendantLeaves) {
     const leafRecord = state.fields.get(leafKey)
+    const leafErrors = errorsByKey.get(leafKey)
+    if (leafErrors !== undefined) leafErrors.walked = true
     // The by-key variants skip the canonicalize round-trip, `leafKey` being
     // the canonical key for `leafSeg`, which keeps the per-leaf walk
     // allocation-free on the meta hot path.
@@ -465,29 +494,39 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       if (updatedAt === null || ts > updatedAt) updatedAt = ts
     }
   }
+  // A container path holding a leaf value (`undefined` over an emptied array,
+  // `null`) is the leaf slot its parent's walk compares, so it is compared the
+  // same way here.
+  if (
+    !dirty &&
+    !(Array.isArray(value) || isPlainRecord(value)) &&
+    !state.isPristineAtPathByKey(key, segments)
+  ) {
+    pristine = false
+    dirty = true
+  }
   // A structural change to a descendant array, a reorder, insert or removal,
   // is dirty even when every surviving element still matches its own baseline,
   // because per-element state including that baseline travels with the element.
   // The positional leaf walk above cannot see it, so consult the identity
   // tracker's order comparison.
-  if (!dirty && state.hasStructuralChangeUnder(segments)) {
+  if (!dirty && state.hasStructuralChangeUnder(segments, key)) {
     pristine = false
     dirty = true
   }
-  // A baseline-present object or array replaced wholesale by a non-container
-  // drops every leaf under it at once, so the positional walk never visits the
-  // vanished leaves and the array tracker, which follows array-to-array only,
-  // cannot see it. Ask the store whether such a subtree is still absent.
-  if (!dirty && state.hasRemovedSubtreeUnder(segments)) {
+  // A removal takes its leaves out of the positional walk, and the array
+  // tracker follows only lengths and orders: a dropped key, an emptied or
+  // nulled container. Ask the store whether a path under this one that held a
+  // real baseline value is still absent.
+  if (!dirty && state.hasRemovedSubtreeUnder(segments, key)) {
     pristine = false
     dirty = true
   }
-  // Aggregate errors at this prefix. `form.fields(p).errors`, `form.errors(p)`
-  // and `form.meta.errors` all read through this one helper, so the three
-  // surfaces cannot differ, and the active-variant filter uses the same
-  // `hasAtPath` gate the descendant walk did. `valid` derives from the same
-  // source, so the two fields can never disagree.
-  const errors = aggregateErrorsAt(state, segments, key)
+  // The aggregated errors, in schema-declaration order. The active-variant
+  // filter uses the same `hasAtPath` gate the descendant walk did, and
+  // `valid` derives from the same source, so the two can never disagree.
+  const errorBuckets = sortErrorBuckets(errorsByKey)
+  const errors = flattenErrorBuckets(errorBuckets)
   // Descendant display rollup: does any error UNDER this container have its
   // owning field's reveal gate open? It iterates the aggregated errors rather
   // than the leaf walk, so a cross-field error pinned at an intermediate object
@@ -495,17 +534,14 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // adds only the descendant dimension the aggregate base hides.
   const revealedDescendantError =
     errors.length > 0 &&
-    errors.some((e) => {
-      const ePath = e.path
-      if (ePath.length === segments.length && ePath.every((s, i) => s === segments[i])) return false
-      if (submissionAttempts > 0) return true
-      // The form-errors bucket (path `['']`) belongs to the root container;
-      // gate it by the root's own aggregate blur rather than a leaf prefix.
-      if (ePath.length === 1 && ePath[0] === '') return blurredAfterInteraction
-      // A leaf error gates on that leaf's blur; an intermediate-container
-      // error gates on any blurred leaf beneath it.
-      return blurredLeafSegments.some((s) => isPathPrefix(ePath, s))
-    })
+    descendantErrorRevealed(
+      state,
+      segments,
+      errorBuckets,
+      submissionAttempts,
+      blurredAfterInteraction,
+      blurredLeafSegments
+    )
   // A container's own sub-schema can declare async work too, a top-level
   // `.refine(async ...)` on the root or a cross-field refine on a sub-object,
   // and neither shows up in a per-leaf reading. Check the container's OWN path,
@@ -533,13 +569,16 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (since !== undefined && (transformingSince === null || since < transformingSince))
       transformingSince = since
   }
-  // A directive registered directly on THIS container path, the file directive
-  // above or a composite third-party host bound to an array or object, records
-  // its interaction state on the container's OWN record, which the descendant
-  // walk skips by visiting strict descendants only. Fold those flags into the
-  // disjunction, so a directly-bound container surfaces its own connect, focus
-  // and touch state. A container nothing binds directly has no own record, so
-  // this is a no-op in the common case.
+  // The container's OWN record, which the descendant walk skips by visiting
+  // strict descendants only. Three things land there. A directive registered
+  // directly on this path, the file directive above or a composite third-party
+  // host bound to an array or object, records its interaction state on it. A
+  // write that takes leaves away beneath it stamps it, since no leaf left
+  // present saw that write. And the removal also folds the dropped records'
+  // touched / interacted / blurred-after-interaction history into it, so the
+  // container keeps reporting history its removed descendants made. Fold all
+  // of it into the rollup. A container nothing has bound or taken leaves from
+  // has no own record.
   const ownRecord = state.fields.get(key)
   if (ownRecord !== undefined) {
     if (ownRecord.focused === true) focused = true
@@ -548,6 +587,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (ownRecord.interacted === true) interacted = true
     if (ownRecord.blurredAfterInteraction === true) blurredAfterInteraction = true
     if (ownRecord.connected === true) connected = true
+    const ts = ownRecord.updatedAt
+    if (ts !== null && (updatedAt === null || ts > updatedAt)) updatedAt = ts
   }
   const ownTransformError = state.transformErrors.get(key) ?? null
   const gated = asyncPending && !state.firstValidationDone.value
@@ -703,6 +744,55 @@ function decorateWithDerivedProps<F extends GenericForm>(
 }
 
 /**
+ * Whether any error under the container at `segments` has its owning field's
+ * reveal gate open, for the descendant display rollup. It iterates the
+ * aggregated errors rather than the leaf walk, so a cross-field error pinned
+ * at an intermediate object counts. The container's own-path error is the
+ * reducer's own-path rule, so it is skipped here.
+ *
+ * Plain loops, no callbacks: a container rollup runs this on every read of a
+ * form's validity, a step rail reading each step's on mount.
+ */
+function descendantErrorRevealed<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  segments: Path,
+  buckets: readonly ErrorBucket[],
+  submissionAttempts: number,
+  blurredAfterInteraction: boolean,
+  blurredLeafSegments: readonly Path[]
+): boolean {
+  for (const bucket of buckets) {
+    // The record at this path, read once and only when no blurred leaf
+    // opens the gate.
+    let ownHistory: boolean | undefined
+    for (const e of bucket.errors) {
+      const ePath = e.path
+      if (pathsEqual(ePath, segments)) continue
+      if (submissionAttempts > 0) return true
+      // The form-errors bucket (path `['']`) belongs to the root container;
+      // gate it by the root's own aggregate blur rather than a leaf prefix.
+      if (ePath.length === 1 && ePath[0] === '') {
+        if (blurredAfterInteraction) return true
+        continue
+      }
+      // A leaf error gates on that leaf's blur; an intermediate-container
+      // error gates on any blurred leaf beneath it.
+      for (const leaf of blurredLeafSegments) if (isPathPrefix(ePath, leaf)) return true
+      // Or on the record at the error's own path, which holds the blur
+      // history of descendants a removal took away and of a directive bound
+      // to a container. A present leaf's record the walk counted already: had
+      // it the flag, the leaf prefix above would have opened the gate. So only
+      // a path the walk did not visit is read, and an error on a present leaf,
+      // the common case, costs no reactive read.
+      if (bucket.walked) continue
+      ownHistory ??= state.fields.get(bucket.key)?.blurredAfterInteraction === true
+      if (ownHistory) return true
+    }
+  }
+  return false
+}
+
+/**
  * Walk the merged error stores at every leaf descendant of `prefix`, filter
  * inactive variants through `hasAtPath`, and return the concatenated errors
  * sorted by schema-declaration ordinal.
@@ -716,11 +806,49 @@ export function aggregateErrorsAt<F extends GenericForm>(
   prefix: Path,
   prefixKey: PathKey
 ): ValidationError[] {
+  return flattenErrorBuckets(sortErrorBuckets(errorBucketsAt(state, prefix, prefixKey)))
+}
+
+/**
+ * One path's errors, under the key of the error cell they came from, with the
+ * path's ordinal. `walked` marks a path the container's leaf walk visited.
+ */
+type ErrorBucket = {
+  readonly key: PathKey
+  readonly ordinal: number
+  readonly errors: ValidationError[]
+  walked: boolean
+}
+
+const NO_ERROR_BUCKETS: ReadonlyMap<PathKey, ErrorBucket> = new Map()
+
+function sortErrorBuckets(buckets: ReadonlyMap<PathKey, ErrorBucket>): ErrorBucket[] {
+  if (buckets.size <= 1) return [...buckets.values()]
+  return [...buckets.values()].sort((a, b) => a.ordinal - b.ordinal)
+}
+
+function flattenErrorBuckets(buckets: readonly ErrorBucket[]): ValidationError[] {
+  if (buckets.length === 0) return []
+  if (buckets.length === 1) return buckets[0]?.errors ?? []
+  return buckets.flatMap((bucket) => bucket.errors)
+}
+
+/**
+ * The errors `aggregateErrorsAt` returns, one bucket per path, by the path's
+ * key, so a caller can find a path's errors and read its state without
+ * minting the key again. `sortErrorBuckets` puts them in schema-declaration
+ * order.
+ */
+function errorBucketsAt<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  prefix: Path,
+  prefixKey: PathKey
+): ReadonlyMap<PathKey, ErrorBucket> {
   const candidates = state.errorWindowAt(prefix, prefixKey)
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) return NO_ERROR_BUCKETS
   const formValue = state.form.value
   const cells = state.errorCells()
-  const buckets = new Map<number, ValidationError[]>()
+  const buckets = new Map<PathKey, ErrorBucket>()
   for (const { key, segments } of candidates) {
     // The index window is a superset (it is a key-range, not a prefix
     // test), so membership is still decided here.
@@ -749,19 +877,16 @@ export function aggregateErrorsAt<F extends GenericForm>(
     const userList = cell?.user
     const total = (schemaList?.length ?? 0) + (blankList?.length ?? 0) + (userList?.length ?? 0)
     if (total === 0) continue
-    const ordinal = state.ensurePathOrdinal(key)
-    let bucket = buckets.get(ordinal)
+    let bucket = buckets.get(key)
     if (bucket === undefined) {
-      bucket = []
-      buckets.set(ordinal, bucket)
+      bucket = { key, ordinal: state.ensurePathOrdinal(key), errors: [], walked: false }
+      buckets.set(key, bucket)
     }
-    if (schemaList !== undefined) bucket.push(...schemaList)
-    if (blankList !== undefined) bucket.push(...blankList)
-    if (userList !== undefined) bucket.push(...userList)
+    if (schemaList !== undefined) bucket.errors.push(...schemaList)
+    if (blankList !== undefined) bucket.errors.push(...blankList)
+    if (userList !== undefined) bucket.errors.push(...userList)
   }
-  if (buckets.size === 0) return []
-  if (buckets.size === 1) return [...buckets.values()][0] as ValidationError[]
-  return [...buckets.entries()].sort(([a], [b]) => a - b).flatMap(([, errs]) => errs)
+  return buckets
 }
 
 // One frozen empty array shared by every "no elements bound" read, so

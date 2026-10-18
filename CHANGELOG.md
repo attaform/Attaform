@@ -49,6 +49,61 @@
   the one setup step mini leaves to you: a locale or a message per
   check. (#703)
 
+- **`meta.updatedAt` moves forward on every write, removals included.**
+  A container's `updatedAt`, and the form's, was the newest stamp among
+  the fields present, so a write that only took fields away (a shorter
+  array, an emptied list, `remove()`) left `meta.updatedAt` where it was
+  and fired no watcher, and it moved backwards when the removed row held
+  the newest stamp. Every write that changes a value now records its
+  stamp at each path it changed and at every container above them, up
+  to the form. Each write reads later than the one before: two writes in
+  the same millisecond, or a write on a device whose clock runs behind
+  the server that rendered the page, take one millisecond past the
+  latest stamp the form holds. A field keeps its own stamp when a
+  removal or a reorder moves it to a new index, and a write that changes
+  nothing stamps nothing. (#705)
+
+- **A container remembers the interaction of the fields it lost.**
+  Removing a row the user had edited dropped `touched`, `interacted` and
+  `blurredAfterInteraction` at the array and the form, so an error the
+  removal caused, such as the array's own `min(2)`, stayed hidden until
+  the next blur. The three flags now stay `true` at every ancestor until
+  `reset()` clears them, or `resetField(path)` for its own subtree, and
+  that error shows at once. The field-state docs said these flags
+  survive reset cycles; `reset()` has always cleared them, and the docs
+  now say so. (#705)
+
+- **`dirty` sees every removal, under any watcher.** Dropping a key that
+  held a value at the baseline read dirty at the key but left its
+  containers and `meta.dirty` pristine. And with any `flush: 'sync'`
+  watcher on a form aggregate, `meta.dirty` stayed `false` after an
+  array shrank, since the row bookkeeping it reads was invisible to Vue.
+  Both now read dirty, and pristine again once the value is back.
+  (#705)
+
+- **A write whose only change is an empty container lands.**
+  `remove('matrix', 1)` on `[['a'], []]`, `append('matrix', [])`,
+  `append('rows', {})`, and `setValue` of an empty array or object to
+  `undefined` left `form.values` as it was, while `form.list` keys moved
+  on, so the keys and the rows disagreed. Each now lands, stamps, reads
+  dirty and undoes like any other write. Writing a Proxy whose `get`
+  trap throws over a present value no longer throws out of the write:
+  the write is skipped whole, as it is over an absent one. (#705)
+
+- **A validation in flight follows its row.** With a row's async check
+  still running, a `swap` or `move` left the row's new index reading
+  `validating` for good, and a `remove` counted down the row that slid
+  into its place while that row's own check still ran. A write that took
+  a row away left `meta.validating` stuck at `true`. A run now settles
+  at the row it belongs to, and a removed row's run stops. (#705)
+
+- **Undo and redo put back which row is which.** After undoing a
+  `remove`, `swap` or `move`, each row compared against the baseline of
+  whichever row had sat at its index, so the form read dirty with its
+  value back at its baseline, and `form.list` keys came back reordered.
+  Each history position now carries the row bookkeeping and restores it
+  with the value. (#705)
+
 ## v0.31.0
 ### Breaking
 

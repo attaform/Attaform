@@ -272,13 +272,13 @@
                   "descriptionId": "<id>-description",
                   "errorId": "<id>-error"
                 },
-                "blank": true,
+                "blank": false,
                 "blurred": false,
                 "blurredAfterInteraction": false,
                 "busy": false,
                 "connected": false,
                 "description": null,
-                "dirty": false,
+                "dirty": true,
                 "displayState": "idle",
                 "errors": [],
                 "firstError": null,
@@ -293,7 +293,7 @@
                   2
                 ],
                 "placeholder": null,
-                "pristine": true,
+                "pristine": false,
                 "showErrors": false,
                 "showIdle": true,
                 "showPending": false,
@@ -301,7 +301,7 @@
                 "touched": false,
                 "transformError": null,
                 "transforming": false,
-                "updatedAt": null,
+                "updatedAt": "<ts>",
                 "valid": true,
                 "validating": false,
                 "value": {
@@ -321,7 +321,7 @@
                   "busy": false,
                   "connected": false,
                   "description": null,
-                  "dirty": false,
+                  "dirty": true,
                   "displayState": "idle",
                   "errors": [],
                   "firstError": null,
@@ -337,7 +337,7 @@
                     "name"
                   ],
                   "placeholder": null,
-                  "pristine": true,
+                  "pristine": false,
                   "showErrors": false,
                   "showIdle": true,
                   "showPending": false,
@@ -345,7 +345,7 @@
                   "touched": false,
                   "transformError": null,
                   "transforming": false,
-                  "updatedAt": null,
+                  "updatedAt": "<ts>",
                   "valid": true,
                   "validating": false,
                   "value": ""
@@ -361,7 +361,7 @@
                   "busy": false,
                   "connected": false,
                   "description": null,
-                  "dirty": false,
+                  "dirty": true,
                   "displayState": "idle",
                   "errors": [],
                   "firstError": null,
@@ -377,7 +377,7 @@
                     "qty"
                   ],
                   "placeholder": null,
-                  "pristine": true,
+                  "pristine": false,
                   "showErrors": false,
                   "showIdle": true,
                   "showPending": false,
@@ -385,7 +385,7 @@
                   "touched": false,
                   "transformError": null,
                   "transforming": false,
-                  "updatedAt": null,
+                  "updatedAt": "<ts>",
                   "valid": true,
                   "validating": false,
                   "value": 0
@@ -817,13 +817,13 @@
                   "descriptionId": "<id>-description",
                   "errorId": "<id>-error"
                 },
-                "blank": true,
+                "blank": false,
                 "blurred": false,
                 "blurredAfterInteraction": false,
                 "busy": false,
                 "connected": false,
                 "description": null,
-                "dirty": false,
+                "dirty": true,
                 "displayState": "idle",
                 "errors": [
                   {
@@ -855,7 +855,7 @@
                   2
                 ],
                 "placeholder": null,
-                "pristine": true,
+                "pristine": false,
                 "showErrors": false,
                 "showIdle": true,
                 "showPending": false,
@@ -863,7 +863,7 @@
                 "touched": false,
                 "transformError": null,
                 "transforming": false,
-                "updatedAt": null,
+                "updatedAt": "<ts>",
                 "valid": false,
                 "validating": false,
                 "value": {
@@ -883,7 +883,7 @@
                   "busy": false,
                   "connected": false,
                   "description": null,
-                  "dirty": false,
+                  "dirty": true,
                   "displayState": "idle",
                   "errors": [
                     {
@@ -908,7 +908,7 @@
                     "name"
                   ],
                   "placeholder": null,
-                  "pristine": true,
+                  "pristine": false,
                   "showErrors": false,
                   "showIdle": true,
                   "showPending": false,
@@ -916,7 +916,7 @@
                   "touched": false,
                   "transformError": null,
                   "transforming": false,
-                  "updatedAt": null,
+                  "updatedAt": "<ts>",
                   "valid": false,
                   "validating": false,
                   "value": ""
@@ -932,7 +932,7 @@
                   "busy": false,
                   "connected": false,
                   "description": null,
-                  "dirty": false,
+                  "dirty": true,
                   "displayState": "idle",
                   "errors": [
                     {
@@ -957,7 +957,7 @@
                     "qty"
                   ],
                   "placeholder": null,
-                  "pristine": true,
+                  "pristine": false,
                   "showErrors": false,
                   "showIdle": true,
                   "showPending": false,
@@ -965,7 +965,7 @@
                   "touched": false,
                   "transformError": null,
                   "transforming": false,
-                  "updatedAt": null,
+                  "updatedAt": "<ts>",
                   "valid": false,
                   "validating": false,
                   "value": 0

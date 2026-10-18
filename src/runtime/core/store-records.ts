@@ -1,4 +1,4 @@
-import type { Path } from './paths'
+import type { Path, PathKey } from './paths'
 
 // Per-path record shapes stored in a FormStore's keyed Maps. They live
 // here, not in create-form-store, so the arrays engine can reference them
@@ -64,4 +64,25 @@ export type ElementRecord = {
 export type OriginalsRecord = {
   readonly segments: Path
   readonly value: unknown
+}
+
+/** Every tracked array's identity tokens and baseline order, by array key. */
+export type IdentityOrders = {
+  readonly tokens: ReadonlyMap<PathKey, readonly string[]>
+  readonly baselines: ReadonlyMap<PathKey, readonly string[]>
+}
+
+/**
+ * The per-element bookkeeping a history position puts back with its value.
+ * A typed array op moves each element's baseline with its identity and drops
+ * a removed element's, as it does the element's blank membership, so a value
+ * alone, restored by position, would compare each row against the baseline of
+ * whichever row sits there now. With them come the identity orders and the
+ * removed-baseline set those baselines are read against. Opaque to the history module, which keeps it and hands it back.
+ */
+export type StructureSnapshot = {
+  readonly identity: IdentityOrders
+  readonly originals: ReadonlyArray<readonly [PathKey, OriginalsRecord]>
+  readonly originalBlank: ReadonlyArray<PathKey>
+  readonly removed: ReadonlyArray<readonly [PathKey, Path]>
 }

@@ -20,18 +20,19 @@ import { toRaw, type Ref } from 'vue'
 import type { ErrorCell, WriteMeta } from '../types/types-api'
 import { consumerKeys, readConsumerProp } from './consumer-code'
 import { NO_ERRORS } from './error-codes'
-import { diffAndApply } from './diff-apply'
-import { getAtPath, isPlainRecord } from './path-walker'
+import { diffAndApply, isBarePatch, type Patch } from './diff-apply'
+import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
   isPathPrefix,
+  keyForSegments,
   segmentsForPathKey,
   type Path,
   type PathKey,
   type Segment,
 } from './paths'
 import { safeAssign } from './safe-assign'
-import type { FieldRecord, OriginalsRecord } from './store-records'
+import type { FieldRecord, IdentityOrders, OriginalsRecord } from './store-records'
 import type { GenericForm } from '../types/types-core'
 import type { FormStore } from './create-form-store'
 
@@ -341,6 +342,13 @@ export type ArrayIdentity = {
   /** Realign a tracked array's tokens to its current length by position. */
   realign(arraySegs: Path): void
   /**
+   * Realign, by position, every tracked array holding one of `paths` or
+   * under one: the arrays a write with no `arrayOp` to follow may have
+   * resized, at any depth under what it wrote (a parent object, a whole-form
+   * replacement, a history restore).
+   */
+  realignContaining(paths: readonly Path[]): void
+  /**
    * Whether any tracked array under `prefix` differs from its baseline element
    * order, by length or by a reordered identity sequence. It backs the
    * structural component of `dirty`: once per-element state follows its
@@ -353,9 +361,29 @@ export type ArrayIdentity = {
    * Called on `reset()` so a form reads structurally pristine afterward.
    */
   rebaselineAll(): void
+  /** A copy of every tracked array's tokens and baseline, for history. */
+  snapshot(): IdentityOrders
+  /**
+   * Put a `snapshot()` back whole, the arrays it did not track included,
+   * which go untracked again. Every array either side tracked is reported.
+   */
+  restore(orders: IdentityOrders): void
 }
 
-export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number): ArrayIdentity {
+/**
+ * `onChange` hears every write-path change that can turn an answer of
+ * `hasStructuralChangeUnder`, with the array paths it moved, so the store can
+ * notify the containers reading them: the token lists are plain Maps Vue
+ * cannot see. Two changes report nothing. The lazy realign behind a `tokenAt`
+ * read runs inside a reader, and its length change is a write's removed or
+ * added leaves, which the dirty walk sees on its own. `realign` anchors an
+ * array right before the write that resizes it, whose own value change wakes
+ * the readers.
+ */
+export function createArrayIdentity(
+  getArrayLength: (arraySegs: Path) => number,
+  onChange: (arrayPaths: readonly Path[]) => void
+): ArrayIdentity {
   // Token lists keyed by array PathKey, each parallel to its array.
   const tokens = new Map<PathKey, string[]>()
   // Baseline token order per array, captured on first track and re-anchored
@@ -368,8 +396,14 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
   const allocate = (): string => `k${(counter++).toString(36)}`
 
   // Bring the token list for `arrayKey` in line with `expectedLen`,
-  // by position: seed fresh when untracked, grow the tail with fresh
-  // tokens, or drop a shrunk tail. Returns the live list.
+  // by position: seed fresh when untracked, grow the tail, or drop a shrunk
+  // tail. Returns the live list.
+  //
+  // A grown slot the baseline order still holds takes the baseline's token
+  // there, unless an element followed by an op carries it now: identity by
+  // position is all a wholesale write leaves, and a write that shrinks an
+  // array and grows it back to its baseline then reads structurally pristine,
+  // the value walk judging the elements.
   function ensure(arrayKey: PathKey, expectedLen: number): string[] {
     let ids = tokens.get(arrayKey)
     const firstTrack = ids === undefined
@@ -377,7 +411,13 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
       ids = []
       tokens.set(arrayKey, ids)
     }
-    while (ids.length < expectedLen) ids.push(allocate())
+    if (ids.length < expectedLen) {
+      const baseline = baselines.get(arrayKey)
+      while (ids.length < expectedLen) {
+        const anchored = baseline?.[ids.length]
+        ids.push(anchored !== undefined && !ids.includes(anchored) ? anchored : allocate())
+      }
+    }
     if (ids.length > expectedLen) ids.length = expectedLen
     // Anchor the baseline the first time the array is seen, before any
     // operation permutes it: that snapshot is its construction-time order.
@@ -411,18 +451,50 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
       const arrayKey = canonicalizePath(arraySegs).key
       const ids = ensure(arrayKey, remap.oldLen)
       tokens.set(arrayKey, permuteList(ids, remap, allocate))
+      onChange([arraySegs])
     },
 
     applyRemap(arrayPath, remap) {
       if (remap.moved.size === 0 && remap.vacated.size === 0 && remap.fresh.size === 0) return
       // Both stores relocate the same way; the token lists themselves
-      // don't embed their path, so the value passes through unchanged.
-      migrateMapSubtree(tokens, arrayPath, remap, (value) => value)
+      // don't embed their path, so the value passes through unchanged. A
+      // nested array leaving one element slot for another changes the answer
+      // at both, so each is reported from where it was and where it lands.
+      const moved: Path[] = []
+      for (const hit of collectKeysAtIndices(tokens.keys(), arrayPath, remapAffects(remap))) {
+        moved.push(hit.segments)
+      }
+      migrateMapSubtree(tokens, arrayPath, remap, (value, segments) => {
+        moved.push(segments)
+        return value
+      })
       migrateMapSubtree(baselines, arrayPath, remap, (value) => value)
+      if (moved.length > 0) onChange(moved)
     },
 
     realign(arraySegs) {
       ensure(canonicalizePath(arraySegs).key, getArrayLength(arraySegs))
+    },
+
+    realignContaining(paths) {
+      if (tokens.size === 0 || paths.length === 0) return
+      const resized: Path[] = []
+      for (const [arrayKey, ids] of tokens) {
+        const segs = segmentsForPathKey(arrayKey)
+        // An array holding a patched path, or inside a container a patch
+        // replaced wholesale.
+        if (
+          segs === null ||
+          !paths.some((path) => isPathPrefix(segs, path) || isPathPrefix(path, segs))
+        ) {
+          continue
+        }
+        const len = getArrayLength(segs)
+        if (ids.length === len) continue
+        ensure(arrayKey, len)
+        resized.push(segs)
+      }
+      if (resized.length > 0) onChange(resized)
     },
 
     hasStructuralChangeUnder(prefix) {
@@ -440,14 +512,42 @@ export function createArrayIdentity(getArrayLength: (arraySegs: Path) => number)
       // tracked array to its post-reset length by position first and anchor
       // that order as the new baseline. Otherwise a reset that changes a length
       // reads structurally dirty on the next access.
+      const rebased: Path[] = []
       for (const arrayKey of [...tokens.keys()]) {
         const segs = segmentsForPathKey(arrayKey)
         if (segs === null) continue
         const ids = ensure(arrayKey, getArrayLength(segs))
         baselines.set(arrayKey, [...ids])
+        rebased.push(segs)
       }
+      if (rebased.length > 0) onChange(rebased)
+    },
+
+    snapshot() {
+      return { tokens: copyLists(tokens), baselines: copyLists(baselines) }
+    },
+
+    restore(orders) {
+      const keys = new Set([...tokens.keys(), ...orders.tokens.keys()])
+      // Copied in, since `ensure` grows and trims a live list in place.
+      tokens.clear()
+      for (const [key, ids] of orders.tokens) tokens.set(key, [...ids])
+      baselines.clear()
+      for (const [key, ids] of orders.baselines) baselines.set(key, [...ids])
+      const restored: Path[] = []
+      for (const key of keys) {
+        const segs = segmentsForPathKey(key)
+        if (segs !== null) restored.push(segs)
+      }
+      if (restored.length > 0) onChange(restored)
     },
   }
+}
+
+function copyLists(lists: ReadonlyMap<PathKey, readonly string[]>): Map<PathKey, string[]> {
+  const out = new Map<PathKey, string[]>()
+  for (const [key, ids] of lists) out.set(key, [...ids])
+  return out
 }
 
 // --- Variant memory ---
@@ -591,7 +691,7 @@ export function cloneVariantSnapshot(value: unknown): unknown {
  * one-shot `aborted` latch, the pending debounce `timer`, a `settled` flag that
  * stops the parent counters double-decrementing once a chain's `.finally` has
  * run while its entry still sits in the state map awaiting the next schedule,
- * and a `released` flag.
+ * a `released` flag, and where the run's field sits now.
  *
  * `aborted` is a plain boolean rather than an AbortController. The validation
  * path hands no signal to a consumer and attaches no listeners, so cancellation
@@ -616,6 +716,11 @@ export type FieldValidationEntry = {
   // decrements, so it can't double-count against a run rescheduled at the same
   // key in the meantime.
   released: boolean
+  // The field the run validates, as it sits now. A typed array op relocates
+  // the entry with its element, as it does the field's validation count, so
+  // the run counts down and commits at the index the element moved to.
+  key: PathKey
+  path: Path
 }
 
 /**
@@ -633,6 +738,13 @@ export type ArrayBookkeepingDeps = {
   readonly blankPaths: Set<PathKey>
   readonly originalBlankPaths: Set<PathKey>
   readonly authoredPaths: Set<PathKey>
+  /** The store's removed baseline paths, each held with its segments. */
+  readonly removedPaths: Map<PathKey, Path>
+  /**
+   * The store's structural signal: tells every container at or above each
+   * path that its structural dirty answer may have changed.
+   */
+  readonly notifyStructure: (paths: readonly Path[]) => void
   readonly fieldValidationCounts: Map<PathKey, number>
   readonly fieldValidatingSince: Map<PathKey, number>
   readonly fieldValidationState: Map<PathKey, FieldValidationEntry>
@@ -644,6 +756,25 @@ export type ArrayBookkeepingDeps = {
     path: Path,
     patch: Partial<Omit<FieldRecord, 'path'>>
   ) => void
+  /**
+   * The store's container stamp: records a write at each container and every
+   * ancestor up to the root under one `now`.
+   */
+  readonly stampContainers: (containers: readonly Path[], now: string) => void
+  /**
+   * The store's bare-container stamp: records a write at each bare container
+   * among `patches` (at `bare`) and at each ancestor no other patch reaches.
+   */
+  readonly stampBareContainers: (
+    patches: readonly Patch[],
+    bare: readonly number[],
+    now: string
+  ) => void
+  /**
+   * The store's history fold: ORs the sticky interaction flags of records a
+   * removal dropped into the own record of `path` and of each ancestor.
+   */
+  readonly foldInteractionHistory: (path: Path, released: readonly FieldRecord[]) => void
   readonly decFieldValidation: (key: PathKey) => void
 }
 
@@ -656,13 +787,17 @@ export type ArrayBookkeeping = {
    *  1. **Relocate** non-derived per-element state so it follows its
    *     element rather than bleeding onto the new occupant of the
    *     element's old index: `fields` (touched / focused / blurred /
-   *     connection bookkeeping, plus the record's embedded `path`),
+   *     connection bookkeeping and the `updatedAt` stamp, plus the
+   *     record's embedded `path`), after a removed element's interaction
+   *     history has folded into the array and its ancestors, which keep
+   *     reporting it,
    *     `userErrors` (consumer-set errors, plus each error's embedded
    *     `path`), `blankPaths`, the `originals` / `originalBlankPaths`
    *     dirty baseline (a moved element keeps its OWN dirty verdict; a
    *     structural change still dirties the form through the identity
-   *     tracker's order comparison), `authoredPaths` (the "consumer
-   *     wrote here" mark), and the validation streak anchors + counts
+   *     tracker's order comparison), the removed baseline paths under
+   *     each element, `authoredPaths` (the "consumer wrote here" mark),
+   *     and the validation streak anchors + counts
    *     (`fieldValidatingSince` leads `fieldValidationCounts`, keeping
    *     `validatingSince !== null` an outer bracket around `count > 0`
    *     for synchronous readers). Nested arrays' own identity tokens
@@ -670,10 +805,10 @@ export type ArrayBookkeeping = {
    *  2. **Seed** each freshly created element (an insert slot, a
    *     replace-at target) the way an appended one is registered: walk
    *     its leaves and seed an absence baseline in `originals` (so the
-   *     new element reads dirty, like an append) plus a field record.
-   *     Migration has already relocated the prior occupant's state off
-   *     this slot's keys; without this the new element would be
-   *     invisible to `touch` and read pristine.
+   *     new element reads dirty, like an append), then stamp its leaves
+   *     as written under the op's `now`. Migration has already relocated
+   *     the prior occupant's state off this slot's keys; without this the
+   *     new element would be invisible to `touch` and read pristine.
    *  3. **Evict** derived state at changed indices: schema verdicts, which
    *     revalidation recomputes and which drop synchronously so a stale one
    *     cannot show for a frame or linger under a `validateOn` that will not
@@ -685,8 +820,12 @@ export type ArrayBookkeeping = {
    *     `meta.validating` reflects the removal at once.
    *  5. **Replay** the permutation onto the mutated array's own
    *     identity tokens.
+   *
+   * `now` is the write's stamp. The write funnel has already stamped the
+   * array and its ancestors with it; the diff it ran is positional, so the
+   * per-element records are this pass's to keep truthful.
    */
-  readonly applyStructuralOp: (arrayPath: Path, remap: IndexRemap) => void
+  readonly applyStructuralOp: (arrayPath: Path, remap: IndexRemap, now: string) => void
 }
 
 export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkeeping {
@@ -698,6 +837,8 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     blankPaths,
     originalBlankPaths,
     authoredPaths,
+    removedPaths,
+    notifyStructure,
     fieldValidationCounts,
     fieldValidatingSince,
     fieldValidationState,
@@ -705,11 +846,44 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     arrayIdentity,
     variantMemory,
     touchFieldRecord,
+    stampContainers,
+    stampBareContainers,
+    foldInteractionHistory,
     decFieldValidation,
   } = deps
 
   function migrateElementState(arrayPath: Path, remap: IndexRemap): void {
     if (remap.moved.size === 0 && remap.vacated.size === 0) return
+    // The plain sets go first. Vue cannot see them, so a `flush: 'sync'`
+    // reader re-evaluating on one of the reactive moves below must find them
+    // already relocated, or it settles on the old membership and nothing
+    // wakes it again.
+    migrateSetSubtree(originalBlankPaths, arrayPath, remap)
+    migrateSetSubtree(authoredPaths, arrayPath, remap)
+    // A removed baseline path under a row is that row's own loss, so it moves
+    // with the row and leaves with a removed one. Every slot it leaves or
+    // lands at reads differently, so each is told, once the rest has moved.
+    const removedMoved: Path[] = []
+    for (const hit of collectKeysAtIndices(removedPaths.keys(), arrayPath, remapAffects(remap))) {
+      removedMoved.push(hit.segments)
+    }
+    migrateMapSubtree(removedPaths, arrayPath, remap, (_, segments) => {
+      removedMoved.push(segments)
+      return segments
+    })
+    // The removed elements' records are about to drop, so their interaction
+    // history moves to the array and its ancestors first, before the
+    // relocation below deletes them.
+    if (remap.vacated.size > 0) {
+      const released: FieldRecord[] = []
+      for (const { key } of collectKeysAtIndices(fields.keys(), arrayPath, (index) =>
+        remap.vacated.has(index)
+      )) {
+        const record = fields.get(key)
+        if (record !== undefined) released.push(record)
+      }
+      foldInteractionHistory(arrayPath, released)
+    }
     migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
       ...record,
       path: segments,
@@ -727,8 +901,6 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       value: record.value,
     }))
     migrateSetSubtree(blankPaths, arrayPath, remap)
-    migrateSetSubtree(originalBlankPaths, arrayPath, remap)
-    migrateSetSubtree(authoredPaths, arrayPath, remap)
     // The validation-streak anchor leads its count, mirroring
     // `incFieldValidation`: relocating `fieldValidatingSince` before
     // `fieldValidationCounts` keeps `validatingSince !== null` an outer bracket
@@ -737,24 +909,52 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     // validatingSince: null` (which would flash idle).
     migrateMapSubtree(fieldValidatingSince, arrayPath, remap, (since) => since)
     migrateMapSubtree(fieldValidationCounts, arrayPath, remap, (count) => count)
+    // The runs those counts belong to move with them, updated in place: a run
+    // in flight holds its own entry, and reads where to count down from it.
+    migrateMapSubtree(fieldValidationState, arrayPath, remap, (entry, segments) => {
+      entry.key = keyForSegments(segments).key
+      entry.path = segments
+      return entry
+    })
     // Nested-array identity: relocate every tracked array sitting under
     // `arrayPath`'s element slots so a nested `v-for :key` stays stable
     // across an outer-array mutation (no token leak, no collision on the
     // new occupant of a vacated slot).
     arrayIdentity.applyRemap(arrayPath, remap)
+    if (removedMoved.length > 0) notifyStructure(removedMoved)
   }
 
-  function seedFreshElement(arrayPath: Path, freshIndex: number): void {
+  function seedFreshElement(arrayPath: Path, freshIndex: number, now: string): void {
     const elementPath: Path = [...arrayPath, freshIndex]
-    const now = new Date().toISOString()
+    const patches: Patch[] = []
     diffAndApply(undefined, getAtPath(form.value, elementPath), elementPath, (patch) => {
-      if (patch.kind !== 'added') return
-      const { key } = canonicalizePath(patch.path)
-      if (!originals.has(key)) originals.set(key, { segments: patch.path, value: undefined })
-      touchFieldRecord(key, patch.path, { updatedAt: now })
+      patches.push(patch)
     })
+    // A container holding no leaf (an empty row, an empty list in one) has
+    // nothing below to carry the stamp; see `stampBareContainers`.
+    const bare: number[] = []
+    patches.forEach((patch, index) => {
+      if (patch.kind !== 'added') return
+      if (isBarePatch(patch)) {
+        bare.push(index)
+        return
+      }
+      const { key, segments } = canonicalizePath(patch.path)
+      if (!originals.has(key)) originals.set(key, { segments: patch.path, value: undefined })
+      touchFieldRecord(key, segments, { updatedAt: now })
+    })
+    if (bare.length > 0) stampBareContainers(patches, bare, now)
+    // An element the diff reports nothing for, one holding `undefined`,
+    // records the write on its own record.
+    else if (patches.length === 0 && hasAtPath(form.value, elementPath)) {
+      stampContainers([elementPath], now)
+    }
   }
 
+  // Runs on the pre-op indices, before the migration drops a vacated
+  // element's count, so each release counts down the element's own run and no
+  // other. The run is marked released, so its late `.finally` leaves the
+  // counters alone.
   function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {
     if (remap.vacated.size === 0) return
     const hits = collectKeysAtIndices([...fieldValidationState.keys()], arrayPath, (index) =>
@@ -765,9 +965,10 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
       if (entry === undefined) continue
       if (entry.timer !== null) {
         clearTimeout(entry.timer)
-      } else if (!entry.settled) {
+      } else if (!entry.settled && !entry.released) {
         activeValidations.value = Math.max(0, activeValidations.value - 1)
         decFieldValidation(hit.key)
+        entry.released = true
       }
       entry.aborted = true
       fieldValidationState.delete(hit.key)
@@ -775,12 +976,12 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
   }
 
   return {
-    applyStructuralOp(arrayPath, remap) {
+    applyStructuralOp(arrayPath, remap, now) {
+      abortValidationAtVacatedIndices(arrayPath, remap)
       migrateElementState(arrayPath, remap)
-      for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex)
+      for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex, now)
       const changed = changedIndices(remap)
       evictSchemaVerdictsAtIndices(errorCells(), arrayPath, changed)
-      abortValidationAtVacatedIndices(arrayPath, remap)
       variantMemory.dropAtIndices(arrayPath, changed)
       arrayIdentity.applyOp(arrayPath, remap)
     },
@@ -804,8 +1005,8 @@ export type FieldArrayApi = {
  * Typed array helpers on top of FormStore. Each reads the current array at the
  * path, produces a new copy so the `form` ref's reactive notification goes out,
  * and writes it back through `setValueAtPath`, where the whole downstream
- * bookkeeping comes free: diff patches, field-record `updatedAt` stamps, error
- * store preservation.
+ * bookkeeping comes free: diff patches, field-record `updatedAt` stamps at the
+ * array, its ancestors and its fresh elements, error store preservation.
  *
  * Out-of-range index semantics:
  *   - `remove`, `swap` and `replace` no-op on an invalid index and never grow

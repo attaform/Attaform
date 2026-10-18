@@ -339,6 +339,21 @@ describe.each(ADAPTERS)('consumer code cannot escape into the host app: $name', 
     })
   })
 
+  it.each([
+    ['a leaf', 1],
+    ['an object', { a: 2 }],
+  ])('a Proxy whose get trap throws survives a write over %s', async (_l, held) => {
+    // Vue's reactive `set` reads its flags off the value it stores, through
+    // the `get` trap, so the write itself is where this one throws.
+    await expectContained(async () => {
+      const { api } = makeMounter(useForm, adapter.nestedAndOpen(), {})()
+      api.setValue('open', held)
+      muted(() => api.setValue('open', new Proxy({ a: 1 }, { get: BOOM })))
+      await drain()
+      void api.meta.dirty
+    })
+  })
+
   it('a throwing getter survives an array append', async () => {
     await expectContained(async () => {
       const { api } = makeMounter(useForm, adapter.list(), { defaultValues: { xs: [] } })()

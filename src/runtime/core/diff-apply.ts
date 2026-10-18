@@ -18,7 +18,12 @@ import { isPathPrefix, mapSegmentKeys, pathsEqual } from './paths'
 import type { Path, Segment } from './paths'
 import { safeAssign, safeOwnRead } from './safe-assign'
 
-/** One leaf-level difference between the two sides of a diff. */
+/**
+ * One difference between the two sides of a diff: at a leaf, an array or map
+ * slot holding `undefined` among them, or at a container that arrives or
+ * leaves holding no leaf (`[]`, `{}`, an object whose every key holds
+ * `undefined`), whose value is then the container.
+ */
 export type Patch =
   | { readonly kind: 'added'; readonly path: Path; readonly newValue: unknown }
   | { readonly kind: 'removed'; readonly path: Path; readonly oldValue: unknown }
@@ -46,12 +51,24 @@ export type Patch =
  * A `Set` stays a leaf because its members are not paths: a member is its
  * own key, so there is nothing under it to address.
  */
-function isDescendable(value: unknown): value is Record<string, unknown> | readonly unknown[] {
+export function isDescendable(
+  value: unknown
+): value is Record<string, unknown> | readonly unknown[] {
   if (value === null || typeof value !== 'object') return false
   if (Array.isArray(value)) return true
   if (value instanceof Map) return mapSegmentKeys(value) !== null
   const proto = Object.getPrototypeOf(value) as object | null
   return proto === null || proto === Object.prototype
+}
+
+/**
+ * Whether `patch` is a bare container's: one arriving or leaving with no leaf
+ * in it, so no leaf patch below reports the change.
+ */
+export function isBarePatch(patch: Patch): boolean {
+  return patch.kind === 'added'
+    ? isDescendable(patch.newValue)
+    : patch.kind === 'removed' && isDescendable(patch.oldValue)
 }
 
 function appendSegment(prefix: Path, segment: Segment): Path {
@@ -69,6 +86,13 @@ function appendSegment(prefix: Path, segment: Segment): Path {
 /**
  * Walk `oldValue` and `newValue` in lockstep, calling `visit(patch)` for every
  * leaf that differs. Identical values (by `Object.is`) produce no patches.
+ *
+ * Every value change is reported, so a write the diff calls empty changed
+ * nothing. A container that arrives or leaves holding no leaf is one patch at
+ * its own path, and an array or map slot holding `undefined` that arrives or
+ * leaves is one at the slot: either way there is no leaf below to carry it.
+ * An object key holding `undefined` is the one exception, reading the same as
+ * an absent key (see `diffObjectsLockstep`).
  *
  * Root replacement (when `prefix` is empty and both values are descendable
  * but of different shapes, e.g. object → array) emits a single `'changed'`
@@ -92,12 +116,12 @@ export function diffAndApply(
   // field addition. Any other shape mismatch (primitive <-> object,
   // array <-> object) is an atomic replacement.
   if (oldValue === undefined && newIsDescendable) {
-    walkNewDescendable(newValue, prefix, visit)
+    walkDescendable(newValue, prefix, visit, true)
     return
   }
 
   if (oldIsDescendable && newValue === undefined) {
-    walkOldDescendable(oldValue, prefix, visit)
+    walkDescendable(oldValue, prefix, visit, false)
     return
   }
 
@@ -161,63 +185,76 @@ export function diffAndApply(
 }
 
 /**
- * Walk a descendable `newValue` whose old counterpart was `undefined`,
- * emitting an atomic `'added'` patch for every leaf through the recursive
- * `diffAndApply`. A hot-path helper, kept at module level so no closure is
- * allocated per recursion; `prefix` and `visit` thread through explicitly.
+ * Walk a descendable whose counterpart is `undefined`, emitting an atomic
+ * patch for every leaf through the recursive `diffAndApply`: `'added'` when
+ * it `arrived`, `'removed'` when it left. Each array or map slot is reported
+ * (see `diffSlot`). An object key holding `undefined` reads as an absent one,
+ * so a container with no slot and no defined key is one patch at `prefix`. A
+ * hot-path helper, kept at module level so no closure is allocated per
+ * recursion; `prefix` and `visit` thread through explicitly.
  */
-function walkNewDescendable(
-  newValue: Record<string, unknown> | readonly unknown[],
+function walkDescendable(
+  value: Record<string, unknown> | readonly unknown[],
   prefix: Path,
-  visit: (patch: Patch) => void
+  visit: (patch: Patch) => void,
+  arrived: boolean
 ): void {
-  if (Array.isArray(newValue)) {
-    for (let i = 0; i < newValue.length; i++) {
-      diffAndApply(undefined, readConsumerIndex(newValue, i), appendSegment(prefix, i), visit)
+  let reported = false
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      diffSlot(readConsumerIndex(value, i), appendSegment(prefix, i), visit, arrived)
     }
-  } else if (newValue instanceof Map) {
-    for (const [key, entry] of newValue) {
-      diffAndApply(undefined, entry, appendSegment(prefix, key as Segment), visit)
+    reported = value.length > 0
+  } else if (value instanceof Map) {
+    for (const [key, entry] of value) {
+      diffSlot(entry, appendSegment(prefix, key as Segment), visit, arrived)
     }
+    reported = value.size > 0
   } else {
-    const rec = newValue as Record<string, unknown>
+    const rec = value as Record<string, unknown>
     for (const k of consumerKeys(rec)) {
-      diffAndApply(undefined, readConsumerProp(rec, k), appendSegment(prefix, k), visit)
+      const entry = readConsumerProp(rec, k)
+      if (entry === undefined) continue
+      reported = true
+      // Defined, so straight to the recursion: `diffSlot`'s own case is the
+      // `undefined` slot, which a key skips. Construction walks every leaf of
+      // the schema's defaults through here.
+      if (arrived) diffAndApply(undefined, entry, appendSegment(prefix, k), visit)
+      else diffAndApply(entry, undefined, appendSegment(prefix, k), visit)
     }
   }
+  if (!reported) visit(presencePatch(arrived, prefix, value))
 }
 
 /**
- * Mirror of `walkNewDescendable` for the removal direction: walk a
- * descendable `oldValue` whose new counterpart is `undefined`, emitting an
- * atomic `'removed'` patch for every leaf.
+ * Diff a slot only one side has against the missing one: `entry` arriving at
+ * `path`, or leaving it. One holding `undefined` diffs as no change against
+ * the missing slot, yet its array or map grew or shrank, so it is reported at
+ * its own path.
  */
-function walkOldDescendable(
-  oldValue: Record<string, unknown> | readonly unknown[],
-  prefix: Path,
-  visit: (patch: Patch) => void
+function diffSlot(
+  entry: unknown,
+  path: Path,
+  visit: (patch: Patch) => void,
+  arrived: boolean
 ): void {
-  if (Array.isArray(oldValue)) {
-    for (let i = 0; i < oldValue.length; i++) {
-      diffAndApply(readConsumerIndex(oldValue, i), undefined, appendSegment(prefix, i), visit)
-    }
-  } else if (oldValue instanceof Map) {
-    for (const [key, entry] of oldValue) {
-      diffAndApply(entry, undefined, appendSegment(prefix, key as Segment), visit)
-    }
-  } else {
-    const rec = oldValue as Record<string, unknown>
-    for (const k of consumerKeys(rec)) {
-      diffAndApply(readConsumerProp(rec, k), undefined, appendSegment(prefix, k), visit)
-    }
-  }
+  if (entry === undefined) visit(presencePatch(arrived, path, entry))
+  else if (arrived) diffAndApply(undefined, entry, path, visit)
+  else diffAndApply(entry, undefined, path, visit)
+}
+
+/** The patch for `value` arriving at `path`, or leaving it. */
+function presencePatch(arrived: boolean, path: Path, value: unknown): Patch {
+  return arrived
+    ? { kind: 'added', path, newValue: value }
+    : { kind: 'removed', path, oldValue: value }
 }
 
 /**
  * Diff two maps in lockstep over the union of their keys, recursing per
- * entry. A key present on one side only reads as `undefined` on the
- * other, so an added or dropped entry surfaces as an `'added'` /
- * `'removed'` leaf patch, exactly as an object key does.
+ * entry. An entry present on one side only is diffed against the missing
+ * one (see `diffSlot`), so an added or dropped entry surfaces as an
+ * `'added'` / `'removed'` patch, one holding `undefined` included.
  *
  * A key spelled `'42'` on one side and `42` on the other is the same path,
  * and reconciling that here would leave the two sides disagreeing about
@@ -233,18 +270,20 @@ function diffMapsLockstep(
   visit: (patch: Patch) => void
 ): void {
   for (const [key, entry] of newMap) {
-    diffAndApply(oldMap.get(key), entry, appendSegment(prefix, key as Segment), visit)
+    const path = appendSegment(prefix, key as Segment)
+    if (oldMap.has(key)) diffAndApply(oldMap.get(key), entry, path, visit)
+    else diffSlot(entry, path, visit, true)
   }
   for (const [key, entry] of oldMap) {
-    if (newMap.has(key)) continue
-    diffAndApply(entry, undefined, appendSegment(prefix, key as Segment), visit)
+    if (!newMap.has(key)) diffSlot(entry, appendSegment(prefix, key as Segment), visit, false)
   }
 }
 
 /**
  * Diff two arrays in lockstep over the longer length, recursing per
- * index. Out-of-range slots on the shorter side read as `undefined`, so
- * length changes surface as `'added'` / `'removed'` leaf patches.
+ * index. A slot past the shorter length is diffed against the missing one
+ * (see `diffSlot`), so length changes surface as `'added'` / `'removed'`
+ * patches, a slot holding `undefined` included.
  */
 function diffArraysLockstep(
   oldArr: readonly unknown[],
@@ -252,8 +291,8 @@ function diffArraysLockstep(
   prefix: Path,
   visit: (patch: Patch) => void
 ): void {
-  const max = Math.max(oldArr.length, newArr.length)
-  for (let i = 0; i < max; i++) {
+  const min = Math.min(oldArr.length, newArr.length)
+  for (let i = 0; i < min; i++) {
     diffAndApply(
       readConsumerIndex(oldArr, i),
       readConsumerIndex(newArr, i),
@@ -261,12 +300,22 @@ function diffArraysLockstep(
       visit
     )
   }
+  for (let i = min; i < newArr.length; i++) {
+    diffSlot(readConsumerIndex(newArr, i), appendSegment(prefix, i), visit, true)
+  }
+  for (let i = min; i < oldArr.length; i++) {
+    diffSlot(readConsumerIndex(oldArr, i), appendSegment(prefix, i), visit, false)
+  }
 }
 
 /**
  * Diff two plain objects in lockstep: recurse on every key present in
  * either side (old keys first, then new-only keys) so additions and
  * removals both surface. A `seen` set dedupes the two passes.
+ *
+ * A key holding `undefined` on one side and absent on the other reports
+ * nothing: Attaform reads the two alike, an optional field written back to
+ * `undefined` being the same value as one never set.
  *
  * Reads stay plain. A prototype-shadowed key (`__proto__`, `toString`) on
  * only one side resolves the inherited member on the other, so it surfaces

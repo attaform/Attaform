@@ -1,7 +1,7 @@
 import type { ComputedRef, MaybeRefOrGetter, ObjectDirective, Ref } from 'vue'
 import type { FieldMetaPayload, ResolvedFieldMeta } from '../core/field-meta'
 import type { Path, PathKey } from '../core/paths'
-import type { ElementRecord, FieldRecord } from '../core/store-records'
+import type { ElementRecord, FieldRecord, StructureSnapshot } from '../core/store-records'
 
 export type { FieldMetaPayload, ResolvedFieldMeta }
 import type {
@@ -947,8 +947,11 @@ export type HistoryKernel = {
   readonly blankPaths: Set<PathKey>
   readonly errorCells: () => Map<PathKey, ErrorCell>
   onFormChange(listener: (next: unknown, meta?: WriteMeta) => void): () => void
+  onReset(listener: () => void): () => void
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
+  captureStructure(): StructureSnapshot
+  restoreStructure(snapshot: StructureSnapshot): void
 }
 
 /**
@@ -1430,7 +1433,13 @@ export type HandleSubmit<Form extends GenericForm> = (
  * fields appear in friendlier shape on `FieldState`.
  */
 export type MetaTrackerValue = {
-  /** ISO timestamp of the most recent write at this path. `null` if never written. */
+  /**
+   * ISO timestamp of the most recent write at this path or under it,
+   * counting the form's creation. A removal is a write too, so the stamp
+   * never moves backwards, and every write reads later than the one before
+   * it, whatever the device's clock says. `null` only for a path never
+   * written or no longer present.
+   */
   updatedAt: string | null
   /** Value as it arrived, before any transforms. Distinguishes a parse-coerced read from raw user input. */
   rawValue: unknown
@@ -2455,6 +2464,13 @@ export type FieldState<Value = unknown> = {
   readonly dirty: boolean
   readonly focused: boolean | null
   readonly blurred: boolean | null
+  /**
+   * `true` once this field has been blurred, with or without an edit.
+   * Sticky thereafter, including through a value round trip; cleared by
+   * `form.reset()` / `form.resetField(path)`. Containers roll it up as
+   * a disjunction, and keep it after the descendant that set it is
+   * removed.
+   */
   readonly touched: boolean
   /**
    * `true` once the user has issued at least one value edit on this
@@ -2466,7 +2482,8 @@ export type FieldState<Value = unknown> = {
    * flips `touched` but never `interacted`. Set only by user input,
    * never by hydration or programmatic `setValue`; cleared by
    * `form.reset()` / `form.resetField(path)`. Containers roll it up as
-   * a disjunction (any descendant interacted).
+   * a disjunction (any descendant interacted), and keep it after the
+   * descendant that set it is removed.
    */
   readonly interacted: boolean
   /**
@@ -2479,7 +2496,8 @@ export type FieldState<Value = unknown> = {
    * visible through a re-focus to be fixed live. Set only by user
    * input/blur, never by hydration or programmatic writes; cleared by
    * `form.reset()` / `form.resetField(path)`. Containers roll it up as a
-   * disjunction.
+   * disjunction, and keep it after the descendant that set it is
+   * removed.
    */
   readonly blurredAfterInteraction: boolean
   readonly connected: boolean
@@ -2515,6 +2533,18 @@ export type FieldState<Value = unknown> = {
    * `elements[0] ?? null`.
    */
   readonly elements: readonly HTMLElement[]
+  /**
+   * ISO timestamp of the most recent write at this path or anywhere
+   * under it, counting the form's creation. A removal is a write too, so
+   * a container's stamp moves forward when a row leaves and never moves
+   * backwards. A survivor keeps its own stamp when a removal or a reorder
+   * moves it to a new index, and a write that changes nothing stamps
+   * nothing. Every write that changes a value reads later than the one
+   * before it: two writes in one millisecond, or a write on a device whose
+   * clock runs behind the server that rendered the page, take one
+   * millisecond past the latest stamp the form holds. `null` only for a
+   * path never written or no longer present.
+   */
   readonly updatedAt: string | null
   /**
    * Every `ValidationError` in this path's SUBTREE: the node's own
@@ -3994,7 +4024,9 @@ export type UseFormReturnType<
    *   - the form value back to defaults;
    *   - the dirty baseline (so the next edit flips `dirty` correctly);
    *   - field errors;
-   *   - touched / focused / blurred per-field flags;
+   *   - the interaction history (`touched` / `interacted` /
+   *     `blurredAfterInteraction`) at every path, containers included;
+   *     `focused`, `blurred` and `connected` follow the DOM and stay;
    *   - submission state (`submitting` / `submissionAttempts` /
    *     `submitted` / `submitError`).
    *
@@ -4022,8 +4054,10 @@ export type UseFormReturnType<
 
   /**
    * Restore a single field (or a sub-tree like `'user'`) to its
-   * initial value. Clears errors and touched flags for the field
-   * and its descendants; leaves siblings and submission state alone.
+   * initial value. Clears errors and the interaction history
+   * (`touched` / `interacted` / `blurredAfterInteraction`) for the
+   * field and its descendants; leaves siblings, ancestors and
+   * submission state alone.
    *
    * No-op when the path doesn't exist on the form (e.g. a typo'd
    * dynamic key).

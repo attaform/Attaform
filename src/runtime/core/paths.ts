@@ -162,7 +162,10 @@ const PATHKEY_TO_SEGMENTS_MAX = 4096
 const pathKeyToSegments = new Map<PathKey, readonly Segment[]>()
 
 function rememberSegmentsForPathKey(key: PathKey, segments: readonly Segment[]): void {
-  if (!pathKeyToSegments.has(key) && pathKeyToSegments.size >= PATHKEY_TO_SEGMENTS_MAX) {
+  // A key already held keeps its entry: the segments are the same, and a
+  // repeat `set` moves nothing in the eviction order anyway.
+  if (pathKeyToSegments.has(key)) return
+  if (pathKeyToSegments.size >= PATHKEY_TO_SEGMENTS_MAX) {
     const oldest = pathKeyToSegments.keys().next().value
     if (oldest !== undefined) pathKeyToSegments.delete(oldest)
   }
@@ -252,7 +255,8 @@ export function keyForSegments(input: Path): {
   segments: readonly Segment[]
   key: PathKey
 } {
-  const segments = Array.from(input).map(normalizeSegment)
+  // `map` copies already, so the input is never aliased.
+  const segments = input.map(normalizeSegment)
   const key = JSON.stringify(segments) as PathKey
   rememberSegmentsForPathKey(key, segments)
   return { segments, key }

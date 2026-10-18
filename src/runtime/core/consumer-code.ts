@@ -63,6 +63,7 @@ export type ConsumerCallSite =
   | 'wizard-restore'
   | 'wizard-persist'
   | 'wizard-default-statuses'
+  | 'stored-value'
 
 /**
  * Report a contained throw or rejection, once per site.
@@ -105,6 +106,8 @@ export function reportConsumerThrow(
       'a `useWizard({ persist })` callback threw. Attaform navigated anyway, so the step is live but unrecorded.',
     'wizard-default-statuses':
       'a `useWizard({ defaultStatuses })` factory threw or rejected. Attaform seeded no statuses, the same as omitting the option.',
+    'stored-value':
+      'a written value threw as Vue read it to store it (a Proxy whose `get` trap throws). Attaform skipped that write, so the form keeps the value it had.',
   }
   console.error(
     `[attaform] ${advice[site]} Attaform has nowhere to surface this, so it must not ` +

@@ -13,8 +13,13 @@
  * capacity cap, the oldest position falls off the front (FIFO eviction).
  *
  * Each snapshot carries the form value (deep structural clone), the
- * `blankPaths` set, and both error stores' entries, everything `undo()`
- * needs to restore a position without consulting neighbours.
+ * `blankPaths` set, both error stores' entries, and the per-element
+ * bookkeeping a typed array op moves with its elements (identity orders,
+ * the baselines that travel with them, the removed-baseline set):
+ * everything `undo()` needs to restore a position without consulting
+ * neighbours. That bookkeeping is read against the baseline the position
+ * was taken under, so a `reset()` starts a new generation, and a position
+ * from an earlier one restores its value alone, by position.
  *
  * `reset()` is treated as an ordinary mutation: `applyFormReplacement`
  * fires `onFormChange`, the post-reset state lands as a new position, and
@@ -39,6 +44,7 @@ import type {
 import { DEFAULT_HISTORY_MAX_SNAPSHOTS, normalizeNumericOption } from './defaults'
 import { structuralSnapshot } from './diff-apply'
 import type { PathKey } from './paths'
+import type { StructureSnapshot } from './store-records'
 
 /** Options for `historyPlugin()`, passed as `useForm({ history })`. */
 export type HistoryPluginOptions = {
@@ -58,6 +64,9 @@ type HistorySnapshot = {
   readonly form: unknown
   readonly blankPaths: ReadonlyArray<PathKey>
   readonly errorCells: ErrorCellEntries
+  readonly structure: StructureSnapshot
+  /** The baseline generation `structure` was taken under. */
+  readonly generation: number
 }
 
 function captureErrorCells(map: Map<PathKey, ErrorCell>): ErrorCellEntries {
@@ -74,12 +83,16 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   // positions while `historySize` still reads 1, matching the
   // "current state is always reachable" contract.
   const capacity = Math.max(1, max)
+  // Bumped by every `reset()`, which re-anchors the baselines.
+  let generation = 0
 
   function captureSnapshot(): HistorySnapshot {
     return {
       form: structuralSnapshot(kernel.form.value),
       blankPaths: [...kernel.blankPaths],
       errorCells: captureErrorCells(kernel.errorCells()),
+      structure: kernel.captureStructure(),
+      generation,
     }
   }
 
@@ -121,7 +134,23 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     cursor.value = next.length - 1
   })
 
+  // A reset lands as an ordinary position, captured mid-reset, before the
+  // baselines re-anchor. Once they have, the current position takes the
+  // bookkeeping as it now stands, under a new generation; the positions
+  // before it keep theirs, which no longer applies.
+  const unsubscribeReset = kernel.onReset(() => {
+    generation += 1
+    const current = positions.value[cursor.value]
+    if (current === undefined) return
+    const next = [...positions.value]
+    next[cursor.value] = { ...current, structure: kernel.captureStructure(), generation }
+    positions.value = next
+  })
+
   function restorePosition(snap: HistorySnapshot): void {
+    // The per-element bookkeeping goes back first, so the value write below
+    // compares each restored row against its own baseline.
+    if (snap.generation === generation) kernel.restoreStructure(snap.structure)
     suppressNext = true
     // Re-seed `blankPaths` BEFORE the form replacement fires. Listeners
     // on `onFormChange` (devtools, the user's own subscriptions) read
@@ -171,6 +200,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     historySize: computed(() => positions.value.length),
     dispose() {
       unsubscribeChange()
+      unsubscribeReset()
       // Keep only the current position: post-dispose reads stay
       // coherent (`canUndo` / `canRedo` false, `historySize` 1) while
       // the rest of the buffer is released.

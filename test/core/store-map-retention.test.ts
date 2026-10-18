@@ -31,7 +31,7 @@ import { createAttaform } from '../../src/runtime/core/plugin'
 import { useRegistry } from '../../src/runtime/core/registry'
 
 type SizedStore = {
-  fields: { size: number }
+  fields: { size: number; keys(): Iterable<string> }
   originals: { size: number }
   authoredPaths: { size: number }
   fieldValidationState: { size: number }
@@ -54,6 +54,18 @@ function mountWithStore(schema: z.ZodObject, defaultValues: unknown) {
   app.config.warnHandler = () => {}
   app.mount(document.createElement('div'))
   return { form: api as Probe, store: store as unknown as SizedStore, app }
+}
+
+/**
+ * The `fields` keys filed beneath `container`. A container that lost leaves
+ * keeps one record of its own, as the root does: the stamp of that write and
+ * the interaction history of what it lost. Those are bounded by the schema,
+ * not by what the container has held, so the retention pins count what sits
+ * beneath it.
+ */
+function fieldKeysUnder(store: SizedStore, container: string): string[] {
+  const marker = `${JSON.stringify([container]).slice(0, -1)},`
+  return [...store.fields.keys()].filter((key) => key.startsWith(marker)).sort()
 }
 
 /**
@@ -83,8 +95,11 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     form.setValue('rows', [])
     settle(form, 'rows', [])
 
-    expect(store.fields.size).toBe(0)
-    expect(store.originals.size).toBe(0)
+    expect(fieldKeysUnder(store, 'rows')).toEqual([])
+    // What is left is the array's own record and the root's, and the array's
+    // own baseline: it held no row at construction.
+    expect(store.fields.size).toBeLessThanOrEqual(2)
+    expect(store.originals.size).toBe(1)
     // `rows` itself survives: a path the schema shape bounds is never a
     // sweep candidate, which is what keeps a declared-but-absent field
     // from being dropped and rebuilt on a loop.
@@ -102,7 +117,8 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     }
     settle(form, 'prefs', {})
     // One key's worth of bookkeeping, not two hundred.
-    expect(store.fields.size).toBeLessThanOrEqual(1)
+    expect(fieldKeysUnder(store, 'prefs').length).toBeLessThanOrEqual(1)
+    expect(store.fields.size).toBeLessThanOrEqual(3)
     expect(store.originals.size).toBeLessThanOrEqual(1)
     expect(store.authoredPaths.size).toBeLessThanOrEqual(1)
     app.unmount()
@@ -117,8 +133,9 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     form.setValue('rows', [{ a: 'kept' }])
     settle(form, 'rows', [{ a: 'kept' }])
 
-    expect(store.fields.size).toBe(1)
-    expect(store.originals.size).toBe(1)
+    expect(fieldKeysUnder(store, 'rows')).toEqual(['["rows",0,"a"]'])
+    // The kept row's leaf, and the array's own baseline.
+    expect(store.originals.size).toBe(2)
     app.unmount()
   })
 
@@ -131,14 +148,15 @@ describe('the store releases per-path bookkeeping when a container shrinks', () 
     )
     form.setValue('rows', [])
     settle(form, 'rows', [])
-    expect(store.fields.size).toBe(0)
+    expect(fieldKeysUnder(store, 'rows')).toEqual([])
 
     form.setValue(
       'rows',
       Array.from({ length: 50 }, (_, i) => ({ a: `b${i}` }))
     )
-    expect(store.fields.size).toBe(50)
-    expect(store.originals.size).toBe(50)
+    expect(fieldKeysUnder(store, 'rows').length).toBe(50)
+    // A leaf per row, and the array's own baseline.
+    expect(store.originals.size).toBe(51)
     app.unmount()
   })
 })

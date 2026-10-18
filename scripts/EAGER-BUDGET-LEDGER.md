@@ -942,3 +942,59 @@ change back:
 
 Trimming: dropping `isVerdictCheck`'s object guard for optional
 chaining saved 1 B and needed a wider cast, so it stays as written.
+
+## #705 Spends Bytes: recorded removals, 2026-10-18
+
+#705 SPENDS BYTES: 33,567 -> 36,108 measured (+2,541) against `main`
+(`e05bb5d4`, with #704 and #703 merged), and the budget moves 33_577 ->
+36_118 (0.01 kB headroom). The fixes alone measured +2,379 B there; the
+last 162 B are the construction work below, which brings building and
+hydrating a form back level with `main`.
+
+What it buys. A removal is a write: `meta.updatedAt` moves forward on
+every write that changes a value and never backwards, a container keeps
+the interaction history and the `dirty` of the fields it lost, under any
+watcher, a write whose only change is an empty container lands, a
+validation run follows its row, and undo puts back which row is which.
+On `main` each of those failed silently, pinned on both adapters by the
+write-recording and aggregate-consistency matrices (788 rows) and the
+focused suites.
+
+Where the bytes went, measured after each commit of the PR in order,
+against `90339f3d`:
+
+| commit                                                    | eager  |
+| --------------------------------------------------------- | ------ |
+| record removals in `updatedAt`, keep interaction history  | +680 B |
+| `dirty` sees every removal, live under sync watchers      | +368 B |
+| writes that only move a leafless container land           | +532 B |
+| `updatedAt` never dips mid-write under a sync observer    | +343 B |
+| every write stamps later than the one before              | +95 B  |
+| a validation run in flight follows its row                | +115 B |
+| undo puts back which row is which                         | +271 B |
+| the construction stamp noted once, not per leaf           | +3 B   |
+| stamp with built-ins the browser floor allows             | -8 B   |
+| one `raiseStamp` helper for four compare-then-touch sites | -30 B  |
+
+Then, against `e05bb5d4`, the construction work. A production A/B
+(`scripts/construction-ab.mjs`) found the fixes made building and
+hydrating a form 3% to 15% slower, most of it in the container reveal
+gate, which minted a key and made a tracked read per error on every
+rollup. Each commit, in order:
+
+| commit                                                  | eager |
+| ------------------------------------------------------- | ----- |
+| the reveal gate reads by error bucket, not a minted key | +87 B |
+| the structure signal built on first read; walk cuts     | +53 B |
+| one copy per path key; a loop-only gate                 | -25 B |
+| the leaf walk marks the errors it covers                | +47 B |
+
+After it, the 21-run A/B reads every client, hydrate and drain row
+within noise of `main`, and allocation per mount is below it on every
+shape.
+
+Trimming: the `raiseStamp` helper above (-30 B). The rest is the
+records the fixes keep: per-container stamps and interaction history,
+the removed-path map and its reactive signal, the held stamps, the
+bare-container patch and its baseline, and the bookkeeping each history
+position captures.

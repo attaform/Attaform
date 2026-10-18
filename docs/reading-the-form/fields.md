@@ -46,7 +46,7 @@ form.fields.profile.email.firstError?.message
 form.fields.age.dirty
 ```
 
-Container paths (`form.fields.profile`) keep drilling: a container is a navigation node, not a FieldState, so it carries no `dirty` or `errors` of its own on the dot surface. When you want a container's rolled-up state, call it. `form.fields('profile')` returns a FieldState whose `dirty` is `true` if any leaf under `profile` is dirty, and whose `errors` flatten every descendant error.
+Container paths (`form.fields.profile`) keep drilling: a container is a navigation node, not a FieldState, so it carries no `dirty` or `errors` of its own on the dot surface. When you want a container's rolled-up state, call it. `form.fields('profile')` returns a FieldState whose `dirty` is `true` if anything under `profile` differs from its original, a removed field included, and whose `errors` flatten every descendant error.
 
 ### Absence reads `undefined`
 
@@ -82,19 +82,38 @@ Each leaf exposes a 37-property `FieldState` object. The properties fall into fi
 
 The reactive lifecycle of a field: how it got here, what it's doing now.
 
-| Property                  | Type              | Meaning                                                                                                                                                |
-| ------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pristine`                | `boolean`         | `true` until the value diverges from the original.                                                                                                     |
-| `dirty`                   | `boolean`         | Inverse of `pristine`.                                                                                                                                 |
-| `focused`                 | `boolean \| null` | `true` while the element is focused; `null` while disconnected.                                                                                        |
-| `blurred`                 | `boolean \| null` | Inverse of `focused` when connected; `null` while disconnected.                                                                                        |
-| `touched`                 | `boolean`         | `true` after the first blur; survives reset cycles.                                                                                                    |
-| `interacted`              | `boolean`         | `true` after the user's first value edit through `v-register`; survives reset cycles.                                                                  |
-| `blurredAfterInteraction` | `boolean`         | `true` after the first blur that follows an edit (edited, then left); drives the default error-reveal gate.                                            |
-| `connected`               | `boolean`         | `true` while at least one element is bound via `v-register`.                                                                                           |
-| `blank`                   | `boolean`         | `true` while the leaf reads as empty per the [blank predicate](/docs/validation/showing-errors).                                                       |
-| `disabled`                | `boolean`         | `true` while the form is frozen by [`useForm({ disabled })`](/docs/cross-cutting-state/disabled). Form-level: every field of a disabled form reads it. |
-| `updatedAt`               | `string \| null`  | ISO timestamp of the last write; `null` until first write.                                                                                             |
+| Property                  | Type              | Meaning                                                                                                                                                                                                   |
+| ------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pristine`                | `boolean`         | `true` until the value diverges from the original.                                                                                                                                                        |
+| `dirty`                   | `boolean`         | Inverse of `pristine`.                                                                                                                                                                                    |
+| `focused`                 | `boolean \| null` | `true` while the element is focused; `null` while disconnected.                                                                                                                                           |
+| `blurred`                 | `boolean \| null` | Inverse of `focused` when connected; `null` while disconnected.                                                                                                                                           |
+| `touched`                 | `boolean`         | `true` after the first blur. Stays `true` through a value round trip; `reset()` and `resetField()` clear it.                                                                                              |
+| `interacted`              | `boolean`         | `true` after the user's first value edit through `v-register`. Stays `true` through a value round trip (typed, then deleted back); `reset()` and `resetField()` clear it.                                 |
+| `blurredAfterInteraction` | `boolean`         | `true` after the first blur that follows an edit (edited, then left); drives the default error-reveal gate. `reset()` and `resetField()` clear it.                                                        |
+| `connected`               | `boolean`         | `true` while at least one element is bound via `v-register`.                                                                                                                                              |
+| `blank`                   | `boolean`         | `true` while the leaf reads as empty per the [blank predicate](/docs/validation/showing-errors).                                                                                                          |
+| `disabled`                | `boolean`         | `true` while the form is frozen by [`useForm({ disabled })`](/docs/cross-cutting-state/disabled). Form-level: every field of a disabled form reads it.                                                    |
+| `updatedAt`               | `string \| null`  | ISO timestamp of the last write at this path or under it, counting the form's creation. A removal is a write too, so it never moves backwards. `null` only for a path never written or no longer present. |
+
+At a container, the call form rolls these bits up across the subtree. `focused`, `blurred`, `connected` and `blank` describe the fields there right now. The interaction history remembers the ones that are gone: `touched`, `interacted` and `blurredAfterInteraction` stay `true` at every ancestor after the field that set them is removed, until `reset()` clears them (or `resetField(path)`, for its own subtree). So when the user edits a row and then removes it, an error the removal causes at the array reveals at once, with no fresh blur:
+
+```ts
+const schema = z.object({
+  rows: z.array(z.object({ amount: z.number() })).min(2),
+})
+
+const form = useForm({ schema, defaultValues: { rows: [{ amount: 1 }, { amount: 2 }] } })
+
+// The user edits the second row's amount and tabs away, then removes the row:
+form.remove('rows', 1)
+
+form.fields('rows').blurredAfterInteraction // true, kept from the removed row
+form.fields('rows').showErrors // true: the removal broke min(2)
+form.meta.updatedAt // the removal's timestamp
+```
+
+A survivor keeps its own `updatedAt` when a removal or a reorder moves it to a new index, and a write that changes nothing stamps nothing. Every write that changes a value reads later than the one before it: two writes in the same millisecond, or a write on a device whose clock runs behind the server that rendered the page, take one millisecond past the latest stamp the form holds.
 
 ### Value reads
 

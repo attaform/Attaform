@@ -109,6 +109,35 @@ describe('createWizardHistory: primitive', () => {
     expect(cb).not.toHaveBeenCalled()
   })
 
+  it('does not deliver a popstate that lands on another path (#712)', () => {
+    const handle = createWizardHistory('step')
+    const seen: Array<string | undefined> = []
+    handle.subscribe((key) => seen.push(key))
+    window.history.replaceState(null, '', 'http://localhost:3000/other?step=b')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(seen).toEqual([])
+    window.history.replaceState(null, '', `${ORIGINAL_URL}?step=a`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(seen).toEqual(['a'])
+    handle.dispose()
+  })
+
+  it('claim() and a write each take the path on screen as its own (#712)', () => {
+    const handle = createWizardHistory('step')
+    const seen: Array<string | undefined> = []
+    handle.subscribe((key) => seen.push(key))
+    window.history.replaceState(null, '', 'http://localhost:3000/elsewhere')
+    handle.claim()
+    window.history.replaceState(null, '', 'http://localhost:3000/elsewhere?step=a')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    window.history.replaceState(null, '', 'http://localhost:3000/moved')
+    handle.push('b')
+    window.history.replaceState(null, '', 'http://localhost:3000/moved?step=c')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(seen).toEqual(['a', 'c'])
+    handle.dispose()
+  })
+
   it('preserves existing search params when writing the step param', () => {
     window.history.replaceState(null, '', `${ORIGINAL_URL}?ref=email&utm=launch`)
     const handle = createWizardHistory('step')

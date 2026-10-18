@@ -4,7 +4,7 @@
  * stay framework-agnostic: no `useRoute()`, no vue-router, no Nuxt
  * coupling.
  *
- * The handle exposes five operations:
+ * The handle exposes six operations:
  *   - `push(key)`: write `key` into `?<param>=<key>` via pushState so
  *     the step earns a real history entry and the browser Back /
  *     Forward buttons walk the flow. Deduped: a no-op when the URL is
@@ -19,7 +19,12 @@
  *   - `read()`: read the current step key from the URL, or
  *     `undefined` if the param is absent.
  *   - `subscribe(cb)`: register a popstate listener whose callback
- *     receives the key parsed off the new URL (or `undefined`).
+ *     receives the key parsed off the new URL (or `undefined`). A
+ *     popstate that lands on another path is not delivered: it left the
+ *     wizard's page, and the browser fires it before the router takes
+ *     that page off screen (#712).
+ *   - `claim()`: take the path on screen as the wizard's own. A write
+ *     claims the path it lands on too.
  *   - `dispose()`: tear down. Idempotent.
  *
  * SSR safety: when `typeof window === 'undefined'`, the factory
@@ -32,6 +37,7 @@ export type WizardHistoryHandle = {
   replace(key: string): void
   read(): string | undefined
   subscribe(callback: (key: string | undefined) => void): void
+  claim(): void
   dispose(): void
 }
 
@@ -47,6 +53,7 @@ export const NOOP_WIZARD_HISTORY: WizardHistoryHandle = {
     return undefined
   },
   subscribe() {},
+  claim() {},
   dispose() {},
 }
 
@@ -55,6 +62,7 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
 
   const subscribers: Array<(key: string | undefined) => void> = []
   let disposed = false
+  let ownPath = window.location.pathname
 
   function currentKey(): string | undefined {
     return new URL(window.location.href).searchParams.get(param) ?? undefined
@@ -67,7 +75,7 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
   }
 
   function handlePopstate(): void {
-    if (disposed) return
+    if (disposed || window.location.pathname !== ownPath) return
     const value = currentKey()
     for (const subscriber of subscribers) subscriber(value)
   }
@@ -88,6 +96,7 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
     try {
       if (mode === 'push') window.history.pushState({}, '', buildUrl(key))
       else window.history.replaceState({}, '', buildUrl(key))
+      ownPath = window.location.pathname
     } catch {
       // SecurityError or similar: an origin mismatch, sandboxed history,
       // or a host that's locked down the History API. No remediation
@@ -116,6 +125,9 @@ export function createWizardHistory(param: string): WizardHistoryHandle {
     subscribe(callback) {
       if (disposed) return
       subscribers.push(callback)
+    },
+    claim() {
+      ownPath = window.location.pathname
     },
     dispose() {
       if (disposed) return

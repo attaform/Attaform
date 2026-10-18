@@ -45,7 +45,7 @@ export default [
     // branches bump; the tripwires at the bottom of this file are what
     // prove a consumer importing less than all of it pays less.
     path: 'dist/index.mjs',
-    limit: '54.25 KB',
+    limit: '57.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -55,7 +55,7 @@ export default [
     // to dist/index.mjs by construction, so the two caps track together
     // and a divergence between them is itself the signal.
     path: 'dist/zod.mjs',
-    limit: '54.25 KB',
+    limit: '57.75 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -106,13 +106,17 @@ export default [
     modifyEsbuildConfig: asEsm,
   },
   {
-    // The undo/redo entry: historyPlugin, the snapshot ring buffer, and
-    // the pure core helpers it leans on (structuralSnapshot, numeric-option
-    // normalization). Only a form that opts into history pays it; the core
-    // links none of it. A jump here with no history-side feature behind it
-    // means the plugin's graph started dragging store weight along.
+    // The undo/redo entry: historyPlugin, the snapshot ring buffer, the
+    // row-order planning for a restore, and the core helpers it leans on
+    // (structuralSnapshot, numeric-option normalization, the path codec,
+    // getAtPath, and the array engine's map remap). Measured alone it
+    // counts those helpers, which a form running `useForm` already has, so
+    // on top of `useForm` the entry adds about 1.2 KB. Only a form that
+    // opts into history pays it; the core links none of it. A jump here
+    // with no history-side feature behind it means the plugin's graph
+    // started dragging store weight along.
     path: 'dist/history.mjs',
-    limit: '1.25 KB',
+    limit: '3.25 KB',
     gzip: true,
     modifyEsbuildConfig: asEsm,
   },
@@ -208,7 +212,7 @@ export default [
     name: 'zod: { useForm } only (no wizard/register/injectForm)',
     path: 'dist/zod.mjs',
     import: '{ useForm }',
-    limit: '39.75 KB',
+    limit: '42.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,
@@ -265,7 +269,7 @@ export default [
     name: 'attaform: { useForm } only (barrel == zod)',
     path: 'dist/index.mjs',
     import: '{ useForm }',
-    limit: '39.75 KB',
+    limit: '42.5 KB',
     gzip: true,
     ignore: ['zod'],
     modifyEsbuildConfig: asEsm,

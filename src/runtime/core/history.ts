@@ -26,7 +26,8 @@
  * the pre-reset state stays one undo away. Persistence hydration
  * (`meta.hydration === true`) is the floor: the buffer wipes and reseeds
  * from the post-hydration snapshot, so `undo()` can't reach back into a
- * pre-hydration default the consumer never saw.
+ * pre-hydration default the consumer never saw. The reseed runs once the
+ * hydration step has adopted its value as the baseline.
  *
  * Field record state (touched / focused / blurred / connected) is
  * deliberately NOT snapshotted. Those flags represent UI interaction
@@ -107,6 +108,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   // duplicate the restored state and truncate the redo branch). This
   // flag suppresses the next change event.
   let suppressNext = false
+  let disposed = false
 
   const unsubscribeChange = kernel.onFormChange((_next, meta?: WriteMeta) => {
     if (suppressNext) {
@@ -120,8 +122,13 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     // the consumer never produced. Any in-flight mutations that landed
     // in the race window between mount and hydration are also dropped:
     // pre-hydration writes were operating against stale defaults anyway.
+    // The reseed waits for the hydration step to finish, which adopts the
+    // resolved value as the baseline right after this write, so the floor
+    // holds that baseline.
     if (meta?.hydration === true) {
-      clear()
+      queueMicrotask(() => {
+        if (!disposed) clear()
+      })
       return
     }
     // Drop the redo branch past the cursor, append the new position,
@@ -199,6 +206,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
     canRedo: computed(() => cursor.value < positions.value.length - 1),
     historySize: computed(() => positions.value.length),
     dispose() {
+      disposed = true
       unsubscribeChange()
       unsubscribeReset()
       // Keep only the current position: post-dispose reads stay

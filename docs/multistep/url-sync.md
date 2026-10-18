@@ -41,6 +41,8 @@ const wizard = useWizard({
 
 The default write picks its history mode per navigation. A genuine step change calls `history.pushState`, so the step earns a real entry and the browser's Back and Forward buttons walk the flow one step at a time. Writing the step the URL is already effectively on calls `replaceState` instead, canonicalizing in place: a bare `/checkout` resolves to the first step, so stamping `?step=<first>` onto it at construction is bookkeeping rather than a navigation. That split is what keeps Back off a dead entry showing the step the user is already looking at, and it keeps the Forward stack alive across a Back round trip.
 
+Under vue-router (Nuxt included), the write goes through the router's own history, so each entry carries the record vue-router keeps on the entries it writes: its address, its position, the entries either side and its scroll. A link away and the browser's Back then return to the step the user left, and scroll restores as it does for any other page. The write is not a navigation: no guard or middleware runs, and `useRoute().query.step` keeps the value of the last navigation, so read the active step from `wizard.currentStep`.
+
 Every navigation records an entry, including the wizard's own `back()`. Clicking the wizard's Back button pushes the earlier step onto the stack rather than popping the later one, so a browser Back press after it returns the user to the step they just left. If that is not the shape you want, own the write with a custom `persist`, as in [Replacing instead of pushing](#replacing-instead-of-pushing) below.
 
 ## Pages kept by `<KeepAlive>`
@@ -177,6 +179,8 @@ const wizard = useWizard({
 ```
 
 The default `restore` still reads the URL at construction and still listens for `popstate`, so a reload or a shared link lands on the right step. Only the stack behavior changes: there is one entry for the whole wizard, and Back leaves the page.
+
+Under vue-router (Nuxt included), write through the router instead: `router.replace({ query: { ...router.currentRoute.value.query, step } })`, with `const router = useRouter()` taken in setup. vue-router writes its own address back onto an entry each time it leaves it, so a `replaceState` made behind its back is undone by the next link away. `router.replace` is a navigation, so route guards and middleware run on each step.
 
 ## Where to next
 

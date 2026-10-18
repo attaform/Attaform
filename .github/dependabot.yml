@@ -134,6 +134,19 @@ updates:
       - dependency-name: 'zod'
         update-types:
           - 'version-update:semver-major'
+      # satori 0.47.1 drops the footer row (`attaform.dev` and the keyword
+      # chip) from the docs site's OG card, apps/site/components/OgImage/
+      # Default.satori.vue, where 0.33.5 under the same nuxt-og-image
+      # renders it. satori shipped fourteen minors between 2026-10-02 and
+      # 2026-10-12, and a 0.x minor is breaking by semver, so the site
+      # stays on its `^0.33.4` line (0.33.x only). Patches stay open, so a
+      # security back-port still arrives. Tracked with the nuxt-og-image
+      # 6.10 breaks in #727; lift this once a newer satori renders the
+      # whole card.
+      - dependency-name: 'satori'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
       - dependency-name: 'primevue'
         update-types:
           - 'version-update:semver-major'

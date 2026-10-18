@@ -16,10 +16,10 @@
  *
  *  - Unions return multiple candidates (caller tries each).
  *  - Discriminated unions filter options to those whose shape owns the
- *    next segment (`Object.hasOwn`, NOT `in`, so `Object.prototype` keys
+ *    next segment (`safeOwnHas`, NOT `in`, so `Object.prototype` keys
  *    don't leak); fall back to every option when no shape matches
  *    (the segment is the discriminator key itself).
- *  - Object shape access uses `Object.hasOwn` for the same reason: a
+ *  - Object shape access uses `safeOwnHas` for the same reason: a
  *    bare `shape[head]` would resolve `'toString'` / `'valueOf'` etc.
  *    to the inherited Function and treat it as a schema.
  *  - Transparent wrappers (optional / nullable / default / readonly /
@@ -47,6 +47,7 @@
  */
 import type { SchemaIntrospector } from './abstract-schema-factory'
 import { SET_MEMBER_SEGMENT } from './paths'
+import { safeOwnHas } from './safe-assign'
 
 export function walkPathSegments<Schema>(
   schema: Schema,
@@ -62,7 +63,7 @@ export function walkPathSegments<Schema>(
   switch (kind) {
     case 'object': {
       const shape = intro.getObjectShape(schema)
-      if (!Object.hasOwn(shape, head)) return []
+      if (!safeOwnHas(shape, head)) return []
       const next = shape[head]
       return next === undefined ? [] : walkPathSegments(next, rest, intro, maxDepth, lazyDepth)
     }
@@ -111,7 +112,7 @@ export function walkPathSegments<Schema>(
         .flatMap((opt) => walkPathSegments(opt, segments, intro, maxDepth, lazyDepth))
     case 'discriminated-union': {
       const options = intro.getDiscriminatedOptions(schema)
-      const matching = options.filter((opt) => Object.hasOwn(intro.getObjectShape(opt), head))
+      const matching = options.filter((opt) => safeOwnHas(intro.getObjectShape(opt), head))
       const candidates = matching.length > 0 ? matching : options
       return candidates.flatMap((opt) =>
         walkPathSegments(opt, segments, intro, maxDepth, lazyDepth)

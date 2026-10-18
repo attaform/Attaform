@@ -48,7 +48,7 @@ import {
 } from './paths'
 import { buildProcessForm } from './process-form'
 import { buildRegister } from './register-api'
-import { safeAssign } from './safe-assign'
+import { safeAssign, safeOwnHas } from './safe-assign'
 import { isUnset, unset } from './unset'
 import {
   blankForKind,
@@ -773,7 +773,7 @@ export function buildFormApi<Form extends GenericForm, GetValueFormType extends 
   // the own entries are refs, and its get trap is what unwraps them.
   const metaTarget = buildMetaProxy(META_KEYS, (key) => {
     if (key === 'errorCount') return metaErrors.value.length
-    if (Object.hasOwn(metaOwn, key)) return metaOwn[key]
+    if (safeOwnHas(metaOwn, key)) return metaOwn[key]
     return (rootFieldState.value as unknown as Record<string, unknown>)[key]
   })
   const formMeta = readonly(reactive(metaTarget)) as FormMeta<Form>

@@ -513,29 +513,44 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
   // surfaces cannot differ, and the active-variant filter uses the same
   // `hasAtPath` gate the descendant walk did. `valid` derives from the same
   // source, so the two fields can never disagree.
-  const errors = aggregateErrorsAt(state, segments, key)
+  const errorBuckets = errorBucketsAt(state, segments, key)
+  const errors = flattenErrorBuckets(errorBuckets)
   // Descendant display rollup: does any error UNDER this container have its
   // owning field's reveal gate open? It iterates the aggregated errors rather
   // than the leaf walk, so a cross-field error pinned at an intermediate object
   // counts. The container's OWN-path error is the reducer's own-path rule; this
   // adds only the descendant dimension the aggregate base hides.
+  let leafKeys: Set<PathKey> | undefined
   const revealedDescendantError =
     errors.length > 0 &&
-    errors.some((e) => {
-      const ePath = e.path
-      if (ePath.length === segments.length && ePath.every((s, i) => s === segments[i])) return false
-      if (submissionAttempts > 0) return true
-      // The form-errors bucket (path `['']`) belongs to the root container;
-      // gate it by the root's own aggregate blur rather than a leaf prefix.
-      if (ePath.length === 1 && ePath[0] === '') return blurredAfterInteraction
-      // A leaf error gates on that leaf's blur; an intermediate-container
-      // error gates on any blurred leaf beneath it, or on the container's own
-      // record, which holds the blur history of descendants a removal took
-      // away and of a directive bound to the container itself.
-      return (
-        blurredLeafSegments.some((s) => isPathPrefix(ePath, s)) ||
-        state.fields.get(keyForSegments(ePath).key)?.blurredAfterInteraction === true
-      )
+    errorBuckets.some((bucket) => {
+      // Read at most once per path, and only when a leaf prefix does not
+      // already open the gate: see below.
+      let ownHistory: boolean | undefined
+      return bucket.errors.some((e) => {
+        const ePath = e.path
+        if (ePath.length === segments.length && ePath.every((s, i) => s === segments[i]))
+          return false
+        if (submissionAttempts > 0) return true
+        // The form-errors bucket (path `['']`) belongs to the root container;
+        // gate it by the root's own aggregate blur rather than a leaf prefix.
+        if (ePath.length === 1 && ePath[0] === '') return blurredAfterInteraction
+        // A leaf error gates on that leaf's blur; an intermediate-container
+        // error gates on any blurred leaf beneath it.
+        if (blurredLeafSegments.some((s) => isPathPrefix(ePath, s))) return true
+        // Or on the record at the error's own path, which holds the blur
+        // history of descendants a removal took away and of a directive bound
+        // to a container. A leaf the walk above visited already counted its
+        // record, so only a path it did not visit is read: in the common case,
+        // every error sits on a present leaf and this costs no reactive read.
+        if (ownHistory === undefined) {
+          leafKeys ??= new Set(descendantLeaves.map((leaf) => leaf.key))
+          ownHistory =
+            !leafKeys.has(bucket.key) &&
+            state.fields.get(bucket.key)?.blurredAfterInteraction === true
+        }
+        return ownHistory
+      })
     })
   // A container's own sub-schema can declare async work too, a top-level
   // `.refine(async ...)` on the root or a cross-field refine on a sub-object,
@@ -752,11 +767,33 @@ export function aggregateErrorsAt<F extends GenericForm>(
   prefix: Path,
   prefixKey: PathKey
 ): ValidationError[] {
+  return flattenErrorBuckets(errorBucketsAt(state, prefix, prefixKey))
+}
+
+/** One path's errors, under the key of the error cell they came from. */
+type ErrorBucket = { readonly key: PathKey; readonly errors: ValidationError[] }
+
+function flattenErrorBuckets(buckets: readonly ErrorBucket[]): ValidationError[] {
+  if (buckets.length === 0) return []
+  if (buckets.length === 1) return buckets[0]?.errors ?? []
+  return buckets.flatMap((bucket) => bucket.errors)
+}
+
+/**
+ * The errors `aggregateErrorsAt` returns, one bucket per path in
+ * schema-declaration order, each keyed so a caller can read that path's
+ * state without minting its key again.
+ */
+function errorBucketsAt<F extends GenericForm>(
+  state: FormStore<F, GenericForm>,
+  prefix: Path,
+  prefixKey: PathKey
+): ErrorBucket[] {
   const candidates = state.errorWindowAt(prefix, prefixKey)
   if (candidates.length === 0) return []
   const formValue = state.form.value
   const cells = state.errorCells()
-  const buckets = new Map<number, ValidationError[]>()
+  const buckets = new Map<number, ErrorBucket>()
   for (const { key, segments } of candidates) {
     // The index window is a superset (it is a key-range, not a prefix
     // test), so membership is still decided here.
@@ -788,16 +825,15 @@ export function aggregateErrorsAt<F extends GenericForm>(
     const ordinal = state.ensurePathOrdinal(key)
     let bucket = buckets.get(ordinal)
     if (bucket === undefined) {
-      bucket = []
+      bucket = { key, errors: [] }
       buckets.set(ordinal, bucket)
     }
-    if (schemaList !== undefined) bucket.push(...schemaList)
-    if (blankList !== undefined) bucket.push(...blankList)
-    if (userList !== undefined) bucket.push(...userList)
+    if (schemaList !== undefined) bucket.errors.push(...schemaList)
+    if (blankList !== undefined) bucket.errors.push(...blankList)
+    if (userList !== undefined) bucket.errors.push(...userList)
   }
-  if (buckets.size === 0) return []
-  if (buckets.size === 1) return [...buckets.values()][0] as ValidationError[]
-  return [...buckets.entries()].sort(([a], [b]) => a - b).flatMap(([, errs]) => errs)
+  if (buckets.size <= 1) return [...buckets.values()]
+  return [...buckets.entries()].sort(([a], [b]) => a - b).map(([, bucket]) => bucket)
 }
 
 // One frozen empty array shared by every "no elements bound" read, so

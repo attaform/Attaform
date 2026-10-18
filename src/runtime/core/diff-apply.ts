@@ -216,7 +216,11 @@ function walkDescendable(
       const entry = readConsumerProp(rec, k)
       if (entry === undefined) continue
       reported = true
-      diffSlot(entry, appendSegment(prefix, k), visit, arrived)
+      // Defined, so straight to the recursion: `diffSlot`'s own case is the
+      // `undefined` slot, which a key skips. Construction walks every leaf of
+      // the schema's defaults through here.
+      if (arrived) diffAndApply(undefined, entry, appendSegment(prefix, k), visit)
+      else diffAndApply(entry, undefined, appendSegment(prefix, k), visit)
     }
   }
   if (!reported) visit(presencePatch(arrived, prefix, value))

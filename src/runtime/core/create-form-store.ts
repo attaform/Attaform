@@ -1140,9 +1140,9 @@ export type FormState<F extends GenericForm, G extends GenericForm = F> = FormSt
   readonly removedPaths: Map<PathKey, Path>
   /**
    * Change signal for the store's structural bookkeeping, the array identity
-   * tracker and `removedPaths`; see `pulseStructure`. Always empty.
+   * tracker and `removedPaths`; see `pulseStructure`.
    */
-  readonly structureSignal: Set<PathKey>
+  readonly structureSignal: StructureSignal
   readonly variantMemory: VariantMemory
   readonly pathOrdinals: Map<PathKey, number>
   readonly pathSnapshots: Map<PathKey, unknown>
@@ -1280,18 +1280,23 @@ function replaceOriginals<F extends GenericForm, G extends GenericForm = F>(
  * form is written from, and a typed array op edits the form's arrays in place.
  * A map holding none records nothing, since the container walk reads a map as
  * one leaf, by reference, and the form holds a copy of it.
+ *
+ * Returns whether the patch was such a container, which takes no field
+ * record or ordinal.
  */
 function seedBaseline(
   originals: Map<PathKey, OriginalsRecord>,
   key: PathKey,
   patch: Extract<Patch, { kind: 'added' }>
-): void {
-  let value = patch.newValue
-  if (isDescendable(value)) {
-    if (value instanceof Map) return
-    value = Array.isArray(value) ? [] : {}
+): boolean {
+  const value = patch.newValue
+  if (!isDescendable(value)) {
+    originals.set(key, { segments: patch.path, value })
+    return false
   }
-  originals.set(key, { segments: patch.path, value })
+  if (!(value instanceof Map))
+    originals.set(key, { segments: patch.path, value: Array.isArray(value) ? [] : {} })
+  return true
 }
 
 /**
@@ -4145,8 +4150,7 @@ function hasStructuralChangeUnder<F extends GenericForm, G extends GenericForm =
   path: Path,
   key: PathKey
 ): boolean {
-  // Subscribe to `pulseStructure` at this path.
-  void st.structureSignal.has(key)
+  subscribeStructure(st.structureSignal, key)
   return st.arrayIdentity.hasStructuralChangeUnder(path)
 }
 
@@ -4164,12 +4168,28 @@ function hasStructuralChangeUnder<F extends GenericForm, G extends GenericForm =
  * alone. So a change wakes only the containers whose answer it can turn, and
  * a row never wakes when a sibling row's array moves. Nothing is stored, so
  * nothing outlives a path.
+ *
+ * The Set is built by the first reader. Until a container reads the
+ * bookkeeping there is no one to wake, so a pulse before then does nothing,
+ * and a form whose containers are never read builds no Set at all.
  */
-function pulseStructure(signal: Set<PathKey>, paths: readonly Path[]): void {
+function pulseStructure(signal: StructureSignal, paths: readonly Path[]): void {
+  const keys = signal.keys
+  if (keys === null) return
   eachAncestorOnce(paths, (key) => {
-    signal.add(key)
-    signal.delete(key)
+    keys.add(key)
+    keys.delete(key)
   })
+}
+
+/** The holder `pulseStructure` pulses, its Set built on first read. */
+type StructureSignal = { keys: Set<PathKey> | null }
+
+// Track `key` on the structure signal, so a pulse at or under it wakes the
+// reading in progress.
+function subscribeStructure(signal: StructureSignal, key: PathKey): void {
+  signal.keys ??= shallowReactive(new Set<PathKey>())
+  void signal.keys.has(key)
 }
 
 function hasRemovedSubtreeUnder<F extends GenericForm, G extends GenericForm = F>(
@@ -4177,8 +4197,7 @@ function hasRemovedSubtreeUnder<F extends GenericForm, G extends GenericForm = F
   prefix: Path,
   key: PathKey
 ): boolean {
-  // Subscribe to `pulseStructure` at this path.
-  void st.structureSignal.has(key)
+  subscribeStructure(st.structureSignal, key)
   if (st.removedPaths.size === 0) return false
   const raw = toRaw(st.form.value)
   for (const segments of st.removedPaths.values()) {
@@ -4293,7 +4312,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
 
   // Wakes the containers reading the identity tracker and `removedPaths`
   // below when either changes; see `pulseStructure`.
-  const structureSignal = shallowReactive(new Set<PathKey>())
+  const structureSignal: StructureSignal = { keys: null }
 
   // Operation-maintained per-element identity. It reads the live array length
   // to seed and realign token lists by position for writes it cannot follow,
@@ -4840,8 +4859,7 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
   diffAndApply({}, schemaInitialData, [], (patch) => {
     if (patch.kind !== 'added') return
     const { key } = canonicalizePath(patch.path)
-    seedBaseline(originals, key, patch)
-    if (isDescendable(patch.newValue)) return
+    if (seedBaseline(originals, key, patch)) return
     ensurePathOrdinal(st, key)
     if (hydration === undefined) {
       fields.set(key, {

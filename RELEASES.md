@@ -1,5 +1,19 @@
 # Releases
 
+## v0.31.3 (2026-10-18)
+
+## What's Changed
+* fix(wizard): the default ?step= sync leaves the address to the page on screen and keeps vue-router's record (#712) by @ozzyfromspace in https://github.com/attaform/Attaform/pull/718
+* chore(deps): clear 21 Dependabot alerts, alias the arena's zod pin by @ozzyfromspace in https://github.com/attaform/Attaform/pull/719
+* chore(ci): bump the codeql-action group across 1 directory with 3 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/679
+* ci: run the security-floor gate on every PR by @ozzyfromspace in https://github.com/attaform/Attaform/pull/724
+* chore(deps-dev): bump the dev-dependencies group across 1 directory with 33 updates by @dependabot[bot] in https://github.com/attaform/Attaform/pull/702
+
+
+**Full Changelog**: https://github.com/attaform/Attaform/compare/v0.31.2...v0.31.3
+
+---
+
 ## v0.31.2 (2026-10-18)
 
 ## What's Changed

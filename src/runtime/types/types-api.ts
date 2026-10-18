@@ -4196,6 +4196,8 @@ export type UseFormReturnType<
    * form.touch()                        // every leaf in the form
    * ```
    *
+   * An empty list under `path` is marked too, though it holds no leaf.
+   *
    * **This does not reveal errors under the default display
    * heuristic.** `touched` also flips on a bare focus and blur with no
    * edit, so the library-default gate ignores it and reads

@@ -267,6 +267,15 @@ overrides:
   # a signature, which is the only path the advisory affects. Dismissed as
   # tolerable risk on GitHub; add a floor here the moment node-forge ships
   # one.
+  #
+  # Nor braces (GHSA-vfj7-8cjw-p6xm, high, stack exhaustion on deeply
+  # nested `{}` patterns): every release through 3.0.3, the newest, is
+  # affected. It enters through micromatch (fast-glob, globby,
+  # @nuxt/content) and chokidar 3 (chokidar-cli, `pnpm prepack:watch`),
+  # which expand glob patterns written in this repo's own configs and
+  # scripts. No outside input becomes a pattern. GitHub auto-dismissed
+  # the alert with no reason; it is now dismissed as tolerable risk with
+  # this one. Add a floor here the moment braces ships a patch.
   '@tiptap/core': ^3.30.4
   'brace-expansion@^2': ^2.1.7
   'brace-expansion@^5': ^5.0.12

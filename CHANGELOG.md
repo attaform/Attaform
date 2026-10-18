@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+_No unreleased changes yet._
+
+## v0.31.3
 ### Fixed
 
 - **A wizard on a page kept by `<KeepAlive>` leaves the address to the

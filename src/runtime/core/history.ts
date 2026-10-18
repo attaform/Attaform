@@ -157,7 +157,7 @@ function createHistoryRuntime(kernel: HistoryKernel, max: number): HistoryModule
   function restorePosition(snap: HistorySnapshot): void {
     // The per-element bookkeeping goes back first, so the value write below
     // compares each restored row against its own baseline.
-    if (snap.generation === generation) kernel.restoreStructure(snap.structure)
+    if (snap.generation === generation) kernel.restoreStructure(snap.structure, snap.form)
     suppressNext = true
     // Re-seed `blankPaths` BEFORE the form replacement fires. Listeners
     // on `onFormChange` (devtools, the user's own subscriptions) read

@@ -951,7 +951,7 @@ export type HistoryKernel = {
   applyFormReplacement(next: unknown): void
   restoreErrorCells(entries: ReadonlyArray<readonly [PathKey, ErrorCell]>): void
   captureStructure(): StructureSnapshot
-  restoreStructure(snapshot: StructureSnapshot): void
+  restoreStructure(snapshot: StructureSnapshot, value: unknown): void
 }
 
 /**

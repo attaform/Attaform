@@ -82,7 +82,7 @@ Every form value mutation: `setValue`, `register`-backed input edits, any array 
 - The form value.
 - The error map at the time of the captured position.
 - The `blankPaths` set (so cleared-but-defaulted numeric fields keep showing as empty after an undo, instead of resurrecting their slim default).
-- Which row is which. The array helpers move each row's baseline with the row, and a position puts that arrangement back with the value, so undoing a `remove`, `swap` or `move` reads `dirty: false` the moment the rows are back where they started.
+- Which row is which. The array helpers move each row's baseline with the row, and a position puts that arrangement back with the value, so undoing a `remove`, `swap` or `move` reads `dirty: false` the moment the rows are back where they started. Every row keeps its `form.list` key across an undo or redo, so a keyed `v-for` keeps each row mounted.
 
 What's NOT captured:
 

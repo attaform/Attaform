@@ -517,11 +517,9 @@ function resolveFieldMetaAtPath(
     pathMap?.get(pathKey) ??
     getFieldMetaForSchema(target) ??
     (peeled !== target ? getFieldMetaForSchema(peeled) : undefined)
-  // `description` is exposed as a public property on Zod 4 schemas;
-  // when set via `.describe('...')` or `.meta({ description })`, it
-  // reads back as a string. Read from the target first; fall back to
-  // the peeled inner so a `.describe()` on `z.string()` is still
-  // visible when wrapped in `.optional()`.
+  // Read the target's description first, then the peeled inner's, so a
+  // `.describe()` on `z.string()` stays visible once wrapped in
+  // `.optional()`.
   const targetDescription = readDescription(target)
   const peeledDescription = peeled !== target ? readDescription(peeled) : undefined
   const schemaDescription = targetDescription ?? peeledDescription
@@ -533,8 +531,23 @@ function resolveFieldMetaAtPath(
   }
 }
 
+/**
+ * The description a schema carries, or `undefined`. Classic
+ * `.describe()` and `.meta({ description })`, mini's `zm.describe()` and
+ * `zm.meta()`, and `.register(z.globalRegistry, ...)` all write it to
+ * Zod's global registry, so that registry is read first: a mini schema
+ * has no `.description` getter.
+ *
+ * Zod keeps the registry on `globalThis.__zod_globalRegistry` from
+ * 4.1.13. An older 4.x keeps it private to the module, and the
+ * `.description` fallback, classic's getter over that same store, then
+ * covers classic schemas alone.
+ */
 function readDescription(schema: ZodV4Node): string | undefined {
-  const candidate = schema.description
+  const scope: typeof globalThis & {
+    readonly __zod_globalRegistry?: z.core.$ZodRegistry<z.core.GlobalMeta>
+  } = globalThis
+  const candidate = scope.__zod_globalRegistry?.get(schema)?.description ?? schema.description
   return typeof candidate === 'string' ? candidate : undefined
 }
 

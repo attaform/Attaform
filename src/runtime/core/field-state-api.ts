@@ -332,12 +332,20 @@ function visitActiveLeafPaths(value: unknown, base: Path, visit: (segments: Path
  * Per-container aggregation for the predicate-safe base shape, rolling up
  * descendant-leaf state. The derived display props are layered on separately.
  *
- * The rules, matching `docs/api/use-form-return.md`:
+ * The rules, matching `docs/reading-the-form/fields.md`:
  *   - pristine, valid, blank: conjunction over all descendants
  *   - dirty: the negation of pristine
- *   - focused, blurred, touched, connected, validating: disjunction
+ *   - focused, blurred, connected, validating: disjunction over the present
+ *     descendants
+ *   - touched, interacted, blurredAfterInteraction: disjunction over the
+ *     present descendants and the container's own record, which keeps the
+ *     history of descendants a removal took away
  *   - errors: concatenated and sorted by schema-declaration ordinal
- *   - updatedAt: the maximum ISO timestamp, compared lexically
+ *   - updatedAt: the latest stamp among the present leaves and the
+ *     container's own record, ISO timestamps comparing lexically. A write
+ *     that takes leaves away (a removal, a typed array op) stamps the own
+ *     record, so the reading is the last write at or under the path and
+ *     never moves backwards
  *   - value, original: the live subtree at the path
  *   - element, elements: nothing binds at a container, so null and empty
  *   - label, description, placeholder, meta: from `getFieldMetaAtPath`
@@ -503,8 +511,13 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
       // gate it by the root's own aggregate blur rather than a leaf prefix.
       if (ePath.length === 1 && ePath[0] === '') return blurredAfterInteraction
       // A leaf error gates on that leaf's blur; an intermediate-container
-      // error gates on any blurred leaf beneath it.
-      return blurredLeafSegments.some((s) => isPathPrefix(ePath, s))
+      // error gates on any blurred leaf beneath it, or on the container's own
+      // record, which holds the blur history of descendants a removal took
+      // away and of a directive bound to the container itself.
+      return (
+        blurredLeafSegments.some((s) => isPathPrefix(ePath, s)) ||
+        state.fields.get(keyForSegments(ePath).key)?.blurredAfterInteraction === true
+      )
     })
   // A container's own sub-schema can declare async work too, a top-level
   // `.refine(async ...)` on the root or a cross-field refine on a sub-object,
@@ -533,13 +546,16 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (since !== undefined && (transformingSince === null || since < transformingSince))
       transformingSince = since
   }
-  // A directive registered directly on THIS container path, the file directive
-  // above or a composite third-party host bound to an array or object, records
-  // its interaction state on the container's OWN record, which the descendant
-  // walk skips by visiting strict descendants only. Fold those flags into the
-  // disjunction, so a directly-bound container surfaces its own connect, focus
-  // and touch state. A container nothing binds directly has no own record, so
-  // this is a no-op in the common case.
+  // The container's OWN record, which the descendant walk skips by visiting
+  // strict descendants only. Three things land there. A directive registered
+  // directly on this path, the file directive above or a composite third-party
+  // host bound to an array or object, records its interaction state on it. A
+  // write that takes leaves away beneath it stamps it, since no leaf left
+  // present saw that write. And the removal also folds the dropped records'
+  // touched / interacted / blurred-after-interaction history into it, so the
+  // container keeps reporting history its removed descendants made. Fold all
+  // of it into the rollup. A container nothing has bound or taken leaves from
+  // has no own record.
   const ownRecord = state.fields.get(key)
   if (ownRecord !== undefined) {
     if (ownRecord.focused === true) focused = true
@@ -548,6 +564,8 @@ export function buildContainerFieldStateBase<F extends GenericForm>(
     if (ownRecord.interacted === true) interacted = true
     if (ownRecord.blurredAfterInteraction === true) blurredAfterInteraction = true
     if (ownRecord.connected === true) connected = true
+    const ts = ownRecord.updatedAt
+    if (ts !== null && (updatedAt === null || ts > updatedAt)) updatedAt = ts
   }
   const ownTransformError = state.transformErrors.get(key) ?? null
   const gated = asyncPending && !state.firstValidationDone.value

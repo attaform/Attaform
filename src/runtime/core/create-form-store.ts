@@ -60,6 +60,7 @@ import { mergeSparseHydration } from './merge-hydration'
 import {
   canonicalizePath,
   isPathPrefix,
+  keyForSegments,
   ROOT_PATH_KEY,
   segmentsForPathKey,
   type Path,
@@ -110,16 +111,17 @@ function isHydratedFieldRecord(value: unknown): value is FieldRecord {
 
 /**
  * Copy `record` with its interaction history cleared (`touched` /
- * `interacted` / `blurredAfterInteraction` to false) and `updatedAt` stamped
- * to `now`. DOM truth (`focused` / `blurred`) and `connected` survive: a reset
- * does not blur the focused input or disconnect the field, so Attaform must
- * not claim it did. The caller supplies `now` because `reset()` wants one
- * stamp across the whole form and `resetField()` wants a fresh one per call.
+ * `interacted` / `blurredAfterInteraction` to false) and `updatedAt` set to
+ * `updatedAt`. DOM truth (`focused` / `blurred`) and `connected` survive: a
+ * reset does not blur the focused input or disconnect the field, so Attaform
+ * must not claim it did. `reset()` and `resetField()` pass the stamp of the
+ * write they make; a removal releasing a still-bound record passes `null`,
+ * its path no longer holding a value.
  */
-function withClearedHistoryFlags(record: FieldRecord, now: string): FieldRecord {
+function withClearedHistoryFlags(record: FieldRecord, updatedAt: string | null): FieldRecord {
   return {
     path: record.path,
-    updatedAt: now,
+    updatedAt,
     connected: record.connected,
     focused: record.focused,
     blurred: record.blurred,
@@ -172,6 +174,13 @@ export type FormStore<F extends GenericForm, G extends GenericForm = F> = {
   readonly pathSweep: DynamicPathSweep
   readonly formKey: FormKey
   readonly form: Ref<F>
+  /**
+   * Per-path field records: one per leaf from construction, and one per
+   * container, the root (`[]`) included, once a directive binds to it or a
+   * write takes leaves away beneath it. A container's own record holds the
+   * stamp of that write and the interaction history of the descendants it
+   * took; see `stampContainers` and `foldInteractionHistory`.
+   */
   readonly fields: Map<PathKey, FieldRecord>
   /**
    * The tagged error store: one cell per error-bearing path, each segregating
@@ -1567,21 +1576,146 @@ function touchFieldRecord<F extends GenericForm, G extends GenericForm = F>(
   })
 }
 
-// Shared commit tail for every value mutation: stamp per-leaf field metadata
-// from the captured patches, then notify change listeners. A runtime-added
-// path (`append('posts', {...})` introducing an array index) takes `undefined`
-// as its baseline, because appearing IS a mutation and only `reset()`
-// rebaselines the originals map. Listeners fire after the bookkeeping so they
-// see a fully updated form, their throws are isolated so one bad subscriber
-// cannot block the rest, and `meta` carries the call site's intent.
+/**
+ * Record a write that changed what `containers` hold, at each of them and at
+ * every ancestor up to the root (`[]`), all under one `now`.
+ *
+ * `updatedAt` at a container reads the latest stamp among its present leaves
+ * and its own record. A write that only changes values stamps the leaves it
+ * changed, and those carry the reading. A write that takes leaves away (a
+ * removal, a typed array op, a reset of the subtree) leaves behind nothing
+ * present that saw it, so the containers it changed record it on their own
+ * records instead, and `updatedAt` never moves backwards.
+ *
+ * Ancestors the containers share are stamped once. A record already at `now`
+ * or later is left as it is: no stamp moves backwards, and a second pass in
+ * the same write notifies nothing.
+ */
+function stampContainers<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  containers: readonly Path[],
+  now: string
+): void {
+  const seen = new Set<PathKey>()
+  for (const path of containers) {
+    for (let depth = path.length; depth >= 0; depth--) {
+      const { key, segments } = keyForSegments(path.slice(0, depth))
+      // An ancestor already visited had its own ancestors visited with it.
+      if (seen.has(key)) break
+      seen.add(key)
+      if ((st.fields.get(key)?.updatedAt ?? '') < now) {
+        touchFieldRecord(st, key, segments, { updatedAt: now })
+      }
+    }
+  }
+}
+
+/**
+ * Hand the interaction history of records a removal dropped to `path` and to
+ * every ancestor of it, by OR-ing the three sticky flags into each one's own
+ * record. A container reads its own record alongside its present leaves, so
+ * it keeps reporting that the rows it lost were touched or edited. Live state
+ * (`focused`, `connected` and the rest) does not travel; it stays with what
+ * is present.
+ */
+function foldInteractionHistory<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  path: Path,
+  released: readonly FieldRecord[]
+): void {
+  let touched = false
+  let interacted = false
+  let blurredAfterInteraction = false
+  for (const record of released) {
+    touched ||= record.touched
+    interacted ||= record.interacted
+    blurredAfterInteraction ||= record.blurredAfterInteraction
+  }
+  if (!touched && !interacted && !blurredAfterInteraction) return
+  for (let depth = path.length; depth >= 0; depth--) {
+    const { key, segments } = keyForSegments(path.slice(0, depth))
+    const current = st.fields.get(key)
+    touchFieldRecord(st, key, segments, {
+      touched: touched || current?.touched === true,
+      interacted: interacted || current?.interacted === true,
+      blurredAfterInteraction: blurredAfterInteraction || current?.blurredAfterInteraction === true,
+    })
+  }
+}
+
+/**
+ * Release the records a removal leaves behind: at `segments`, a patched path
+ * the write took away, and at each ancestor it took away with it. Their
+ * history folds into the ancestors still present, and the nearest of those,
+ * the container the removal changed, is returned for the write's stamp.
+ *
+ * A record still bound to an element keeps its DOM truth with its history
+ * cleared, since the element is there until it unmounts; any other record is
+ * deleted, so a path that later reappears starts fresh, as its new array
+ * identity does.
+ */
+function releaseRemovedRecords<F extends GenericForm, G extends GenericForm = F>(
+  st: FormState<F, G>,
+  segments: Path,
+  raw: unknown
+): Path {
+  const released: FieldRecord[] = []
+  let depth = segments.length
+  do {
+    const { key } = keyForSegments(segments.slice(0, depth))
+    const record = st.fields.get(key)
+    if (record !== undefined) {
+      released.push(record)
+      if (record.connected) st.fields.set(key, withClearedHistoryFlags(record, null))
+      else st.fields.delete(key)
+    }
+    depth--
+  } while (depth > 0 && !hasAtPath(raw, segments.slice(0, depth)))
+  const present = segments.slice(0, depth)
+  foldInteractionHistory(st, present, released)
+  return present
+}
+
+/**
+ * A typed array helper's write: the mutated array's canonical path and the
+ * index permutation its op decoded to.
+ */
+type StructuralOp = { readonly path: Path; readonly remap: IndexRemap }
+
+// Shared commit tail for every value mutation: record the write in the field
+// records from the captured patches, run a typed array op's structural
+// bookkeeping, then notify change listeners. A runtime-added path
+// (`append('posts', {...})` introducing an array index) takes `undefined` as
+// its baseline, because appearing IS a mutation and only `reset()`
+// rebaselines the originals map. Listeners fire after all of it so they see a
+// fully updated form: the liveness sweep among them, which would otherwise
+// evict a moved element's records from the index it is leaving before the
+// relocation carried them to the one it lands at. Their throws are isolated
+// so one bad subscriber cannot block the rest, and `meta` carries the call
+// site's intent.
+//
+// Every patched path is stamped with `now`. Two kinds of patch take a
+// different road. One whose path the write took away has nothing left to
+// stamp: its record is released, and the container it left is stamped with
+// its ancestors (see `stampContainers`). And under a typed array op the diff
+// is positional, a removal at index 0 reading as a change at every later
+// index, so its patches say nothing about which elements were written. The
+// array is stamped with its ancestors, and the structural-op bookkeeping
+// stamps the fresh elements and carries every survivor's own records to its
+// new index. A write with no patches changed no value and stamps nothing.
 function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   patches: readonly Patch[],
-  meta?: WriteMeta
+  meta: WriteMeta | undefined,
+  structuralOp: StructuralOp | null,
+  now: string
 ): void {
-  const now = new Date().toISOString()
+  const arrayOpPath = structuralOp?.path
+  const reshaped: Path[] = []
+  // Read raw, so a write made from inside an effect subscribes it to nothing.
+  const raw = toRaw(st.form.value)
   for (const patch of patches) {
-    const { key } = canonicalizePath(patch.path)
+    const { key, segments } = canonicalizePath(patch.path)
     if (!st.originals.has(key)) {
       // No baseline at a path a write just touched means the path was absent
       // at construction, whatever KIND the diff called the patch, so absence
@@ -1595,7 +1729,32 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
       // field reads `dirty: false` the instant it is written.
       st.originals.set(key, { segments: patch.path, value: undefined })
     }
-    touchFieldRecord(st, key, patch.path, { updatedAt: now })
+    const positional =
+      arrayOpPath !== undefined &&
+      segments.length > arrayOpPath.length &&
+      isPathPrefix(arrayOpPath, segments)
+    if (!positional) {
+      if (patch.kind === 'removed' && !hasAtPath(raw, segments)) {
+        reshaped.push(releaseRemovedRecords(st, segments, raw))
+      } else {
+        touchFieldRecord(st, key, segments, { updatedAt: now })
+        // A container replaced by a value of another shape (`null` over an
+        // object, an array over a record) is one patch at the container, and
+        // the leaves it held go with it. Release them as removals of their
+        // own.
+        if (
+          patch.kind === 'changed' &&
+          typeof patch.oldValue === 'object' &&
+          patch.oldValue !== null
+        ) {
+          diffAndApply(patch.oldValue, undefined, segments, (gone) => {
+            if (!hasAtPath(raw, gone.path)) {
+              reshaped.push(releaseRemovedRecords(st, gone.path, raw))
+            }
+          })
+        }
+      }
+    }
     // Offer the path to the liveness sweep. Every value mutation passes
     // through this tail, so it is where a runtime-added path becomes known to
     // the store, and the only place that can make the store's own maps
@@ -1615,6 +1774,11 @@ function commitWritePatches<F extends GenericForm, G extends GenericForm = F>(
       st.pathSweep.track(ancestor, canonicalizePath(ancestor).key)
     }
   }
+  if (arrayOpPath !== undefined && patches.length > 0) reshaped.push(arrayOpPath)
+  if (reshaped.length > 0) stampContainers(st, reshaped, now)
+  if (structuralOp !== null) {
+    st.arrayBookkeeping.applyStructuralOp(structuralOp.path, structuralOp.remap, now)
+  }
   for (const listener of st.formChangeListeners) {
     try {
       listener(st.form.value, meta)
@@ -1628,7 +1792,8 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
   st: FormState<F, G>,
   next: F,
   meta: WriteMeta | undefined,
-  arrayOpPath: Path | null
+  structuralOp: StructuralOp | null,
+  now: string
 ): void {
   const prev = st.form.value
   if (Object.is(prev, next)) return
@@ -1650,15 +1815,15 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
   // replacement, the one case where in-place merging cannot preserve the
   // existing reactive proxies anyway.
   //
-  // The typed array helpers thread the mutated array's path as `arrayOpPath`,
-  // and on those writes a changed container-valued key reconciles in place,
+  // The typed array helpers thread their `structuralOp`, the mutated array's
+  // path and remap, and on those writes a changed container-valued key reconciles in place,
   // holding references stable for the mutated array and for every ancestor
   // container on the way to it, at any depth. So a reorder fires only the
   // moved indices and a nested-array append re-renders only that list. Any
-  // other replacement (null `arrayOpPath`: explicit setValue, reset,
+  // other replacement (null `structuralOp`: explicit setValue, reset,
   // undo / redo, hydration, DU reshape) reassigns changed keys wholesale, so a
   // container target gets a fresh reference.
-  if (!applyChangedKeys(prev, next, arrayOpPath, [], patches)) {
+  if (!applyChangedKeys(prev, next, structuralOp?.path ?? null, [], patches)) {
     st.form.value = next
   } else if (
     patches.some(
@@ -1677,20 +1842,22 @@ function applyFormReplacementWithPath<F extends GenericForm, G extends GenericFo
     // its fine-grained per-key dep.
     triggerRef(st.form)
   }
-  commitWritePatches(st, patches, meta)
+  commitWritePatches(st, patches, meta, structuralOp, now)
 }
 
-// Public whole-value replacement (history restore, reset, hydration, DU
-// reshape, devtools, tests). Threads a null array path, so the reconcile
-// reassigns changed keys wholesale and a container target gets a fresh
-// reference. Only the targeted array-helper write opts into the
-// stable-reference container reconcile, through `applyFormReplacementWithPath`.
+// Public whole-value replacement (history restore, hydration, devtools,
+// tests). Threads a null array path, so the reconcile reassigns changed keys
+// wholesale and a container target gets a fresh reference. Only the targeted
+// array-helper write opts into the stable-reference container reconcile,
+// through `applyFormReplacementWithPath`. The write is stamped at the moment
+// it lands; `reset()` and the DU reshape call the inner function with the
+// stamp of the operation they belong to.
 function applyFormReplacement<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   next: F,
   meta?: WriteMeta
 ): void {
-  applyFormReplacementWithPath(st, next, meta, null)
+  applyFormReplacementWithPath(st, next, meta, null, new Date().toISOString())
 }
 
 // Fast path for a single `setValue` whose target leaf already exists: mutate
@@ -1708,20 +1875,24 @@ function applyTargetedWrite<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   path: Path,
   completedValue: unknown,
-  meta?: WriteMeta
+  meta: WriteMeta | undefined,
+  structuralOp: StructuralOp | null,
+  now: string
 ): void {
   const result = tryInPlaceLeafWrite(st.form.value, path, completedValue)
   if (!result.applied) {
     // A structural write: array growth or reorder, a new key, a container
-    // target. For a typed array-helper op (`meta.arrayOp` set), `path` IS the
-    // mutated array's canonical path, so thread it and the reconcile keeps
-    // every ancestor container on the way to it stable. Any other structural
-    // write passes null and reassigns changed keys wholesale.
+    // target. A typed array-helper op threads its `structuralOp`, whose path
+    // IS `path`, so the reconcile keeps every ancestor container on the way to
+    // it stable. Any other structural write passes null and reassigns changed
+    // keys wholesale. An array target never writes in place, so a typed op
+    // always takes this road.
     applyFormReplacementWithPath(
       st,
       setAtPathWithSchemaFill(st.form.value, st.schema, path, completedValue) as F,
       meta,
-      meta?.arrayOp !== undefined ? path : null
+      structuralOp,
+      now
     )
     return
   }
@@ -1729,7 +1900,7 @@ function applyTargetedWrite<F extends GenericForm, G extends GenericForm = F>(
   diffAndApply(result.old, completedValue, path, (patch) => {
     patches.push(patch)
   })
-  commitWritePatches(st, patches, meta)
+  commitWritePatches(st, patches, meta, null, now)
 }
 
 /**
@@ -1748,12 +1919,17 @@ function applyTargetedWrite<F extends GenericForm, G extends GenericForm = F>(
  * (`discriminated-union-variant-switch`, `du-variant-persistence`), blank-path
  * insertion-order stability (`blank-paths-order-stability`), and the same-tick
  * value plus schemaErrors commit (`du-variant-error-flicker`).
+ *
+ * `writeStamp` is the instant the write is recorded at. A write on its own
+ * takes the clock as it lands; `resetField` passes the stamp it records the
+ * rest of its work under, so one operation reads as one instant.
  */
 function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   st: FormState<F, G>,
   path: Path,
   value: unknown,
-  meta?: WriteMeta
+  meta?: WriteMeta,
+  writeStamp?: string
 ): boolean {
   // Data-freeze gate. While the form is disabled, by its own config or by a
   // wizard lock, every value write no-ops here, the one chokepoint all three
@@ -1898,7 +2074,8 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
                 value,
                 variantDefault,
                 undefined,
-                meta
+                meta,
+                writeStamp
               )
             }
             // The disc value names no variant, so storage at the union path
@@ -1912,7 +2089,8 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
               value,
               { [last]: value },
               undefined,
-              meta
+              meta,
+              writeStamp
             )
           }
         }
@@ -1939,7 +2117,8 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
               discValue,
               variantDefault,
               valueRecord,
-              meta
+              meta,
+              writeStamp
             )
           }
           // The consumer's disc value names no variant. The stub holds only
@@ -1952,13 +2131,23 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
             discValue,
             { [discKey]: discValue },
             undefined,
-            meta
+            meta,
+            writeStamp
           )
         }
         // A whole-union write with NO discriminator: the form is between
         // selections, so it takes an empty stub and every consumer key is
         // dropped, with no auto-merge into the first variant's default.
-        return reshapeUnionVariant(st, path, oldDiscValue, undefined, {}, undefined, meta)
+        return reshapeUnionVariant(
+          st,
+          path,
+          oldDiscValue,
+          undefined,
+          {},
+          undefined,
+          meta,
+          writeStamp
+        )
       }
     }
   }
@@ -2090,22 +2279,32 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
   if (arrayOpRemap === null && Array.isArray(value) && Array.isArray(currentValue)) {
     st.arrayIdentity.realign(path)
   }
-  applyTargetedWrite(st, path, completedValue, meta)
+  // The instant this write is recorded at, taken once the write is known to
+  // change the value.
+  const now = writeStamp ?? new Date().toISOString()
+  applyTargetedWrite(
+    st,
+    path,
+    completedValue,
+    meta,
+    arrayOpRemap !== null ? { path, remap: arrayOpRemap } : null,
+    now
+  )
   // Structural-mutation bookkeeping. The field-array helpers tag each op with
   // an `arrayOp`, and the remap decoded at funnel entry drives one engine
-  // pass: per-element state relocation, fresh-element seeding, derived-state
-  // eviction (schema verdicts and variant memory), in-flight validation aborts
-  // at vacated indices, and the identity replay. It runs after the replacement
-  // so it can overwrite the placeholder originals that replacement seeds at
-  // shifted destinations with each moved element's true baseline.
+  // pass inside the commit tail above: per-element state relocation,
+  // fresh-element seeding and stamping, derived-state eviction (schema
+  // verdicts and variant memory), in-flight validation aborts at vacated
+  // indices, and the identity replay. It runs after the commit's own
+  // bookkeeping so it can overwrite the placeholder originals the replacement
+  // seeds at shifted destinations with each moved element's true baseline,
+  // and before the change listeners, so they see the relocated state.
   //
   // A raw whole-array setValue clears all memory under the array path instead,
   // because its identity bookkeeping was lost wholesale and memory keyed by
   // absolute index would bleed onto the new occupants of those indices at a
   // future variant switch.
-  if (arrayOpRemap !== null) {
-    st.arrayBookkeeping.applyStructuralOp(path, arrayOpRemap)
-  } else if (Array.isArray(value) && Array.isArray(currentValue)) {
+  if (arrayOpRemap === null && Array.isArray(value) && Array.isArray(currentValue)) {
     st.variantMemory.clearUnderPath(path)
     st.arrayIdentity.realign(path)
   } else if (isContainer(currentValue) && !isContainer(value)) {
@@ -2151,6 +2350,9 @@ function setValueAtPath<F extends GenericForm, G extends GenericForm = F>(
  * FIRST variant, since the union's `getDefaultAtPath` falls back to the first
  * option, which is exactly what the reshape exists to clear.
  *
+ * `writeStamp` is the write's pinned instant, as `setValueAtPath` received
+ * it; without one the reshape is recorded at the moment it lands.
+ *
  * Kept whole for the same reason as `setValueAtPath`: committing storage and
  * schema errors in the same tick is the no-flicker mitigation, and no unit
  * test can verify it in isolation. Characterization suites pin it:
@@ -2164,7 +2366,8 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
   newDiscValue: unknown,
   variantDefault: unknown,
   consumerOverrides: Record<string, unknown> | undefined,
-  meta?: WriteMeta
+  meta: WriteMeta | undefined,
+  writeStamp: string | undefined
 ): boolean {
   const sameDisc = Object.is(oldDiscValue, newDiscValue)
   const parentKey = canonicalizePath(parentPath).key
@@ -2295,7 +2498,7 @@ function reshapeUnionVariant<F extends GenericForm, G extends GenericForm = F>(
       appliedSync = true
     }
   }
-  applyFormReplacement(st, nextForm, meta)
+  applyFormReplacementWithPath(st, nextForm, meta, null, writeStamp ?? new Date().toISOString())
   for (const k of newBlankPaths) st.blankPaths.add(k)
   if (reshapeMode === 'change' && !appliedSync) {
     scheduleFieldValidation(st, parentPath, false /* debounced */, meta?.instance)
@@ -2824,8 +3027,11 @@ function noteDomDisconnected<F extends GenericForm, G extends GenericForm = F>(
 ): void {
   // `focused` / `blurred` describe an element, so with none attached they go
   // back to `null`. `touched` is interaction history and survives: a
-  // `v-if`'d-away field that was blurred stays touched.
+  // `v-if`'d-away field that was blurred stays touched. A path with no record
+  // already reads disconnected, and writing one would bring back a record a
+  // removal released, at a path the form no longer has.
   const { key } = canonicalizePath(path)
+  if (!st.fields.has(key)) return
   touchFieldRecord(st, key, path, { connected: false, focused: null, blurred: null })
 }
 
@@ -3233,9 +3439,13 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // start, so the prior set is wiped and re-derived from the reset's
   // constraints argument and from the schema-default diff.
   rebuildAuthoredPaths(st, resetSource, next)
+  // One instant for the whole reset: the replacement below and the history
+  // clear further down record under the same stamp, so `meta.updatedAt`
+  // moves once.
+  const now = new Date().toISOString()
   // Replace the form in one shot; history still sees it through
   // `formChangeListeners`.
-  applyFormReplacement(st, next)
+  applyFormReplacementWithPath(st, next, undefined, null, now)
   // Re-anchor array identity baselines to the post-reset shape, so a reorder
   // or removal made before the reset stops reading as a structural change.
   st.arrayIdentity.rebaselineAll()
@@ -3291,9 +3501,12 @@ function reset<F extends GenericForm, G extends GenericForm = F>(
   // Re-queue the async pass through the primitive construction uses, picking
   // up the async-only verdicts the sync pass above cannot reach.
   queueInitialAsyncValidation(st)
-  // Clear every field's interaction history under one `now`; see
-  // `withClearedHistoryFlags` for which flags clear and which survive.
-  const now = new Date().toISOString()
+  // Clear every record's interaction history under the reset's stamp, the
+  // history a container holds for its removed descendants included; see
+  // `withClearedHistoryFlags` for which flags clear and which survive. Every
+  // record takes the stamp, and a container with no record of its own reads
+  // its leaves, which all hold it, so the whole form reads the reset as its
+  // latest write.
   for (const [pathKey, record] of st.fields) {
     st.fields.set(pathKey, withClearedHistoryFlags(record, now))
   }
@@ -3350,6 +3563,9 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   path: Path
 ): void {
   const { key: targetKey, segments: targetSegments } = canonicalizePath(path)
+  // One instant for the whole reset, so the restore write and the history
+  // clear below record together and `meta.updatedAt` moves once.
+  const now = new Date().toISOString()
 
   // Drop union memory at or under `targetSegments`: it is the user's prior
   // typed state at a discriminator that no longer corresponds to anything
@@ -3377,6 +3593,22 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
     if (isPathPrefix(targetSegments, segs)) st.pathSnapshots.delete(snapKey)
   }
 
+  // Clear the interaction history of every record at the target path AND
+  // every descendant, the history a container keeps for its removed
+  // descendants included. The prefix covers the exact path too, an array
+  // being a prefix of itself, so a leaf reset clears its single entry and a
+  // container reset sweeps the subtree. Clearing ahead of the restore means a
+  // removal the restore makes (a row appended since the baseline) releases
+  // records with nothing left to fold, so the reset erases the subtree's
+  // history rather than handing it to the ancestors above `path`, which keep
+  // their own.
+  let clearedAny = false
+  for (const [fieldKey, record] of Array.from(st.fields.entries())) {
+    if (!isPathPrefix(targetSegments, record.path)) continue
+    st.fields.set(fieldKey, withClearedHistoryFlags(record, now))
+    clearedAny = true
+  }
+
   // Storage restore, in order: leaf, then container, then nothing. A direct
   // originals hit means one `setValueAtPath` does it; a miss falls through to
   // the container case, which assembles a subtree from every original under
@@ -3385,7 +3617,7 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
   // and only the cleanup below runs.
   const leafEntry = st.originals.get(targetKey)
   if (leafEntry !== undefined) {
-    const wrote = setValueAtPath(st, targetSegments, leafEntry.value)
+    const wrote = setValueAtPath(st, targetSegments, leafEntry.value, undefined, now)
     if (!wrote) {
       // Originals come from the construction pipeline, which guarantees
       // primitive-correctness, so a rejected reset write means an upstream
@@ -3421,7 +3653,7 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
       subtree = setAtPath(subtree, relative, entry.value)
     }
     if (anyMatch) {
-      const wroteSubtree = setValueAtPath(st, targetSegments, subtree)
+      const wroteSubtree = setValueAtPath(st, targetSegments, subtree, undefined, now)
       if (!wroteSubtree) {
         console.error(
           __DEV__
@@ -3434,17 +3666,18 @@ function resetField<F extends GenericForm, G extends GenericForm = F>(
     }
   }
 
-  // Cleanup runs whether or not storage was restored, clearing errors and
-  // field-record flags at the target path AND every descendant. The prefix
-  // covers the exact path too, an array being a prefix of itself, so a leaf
-  // reset clears its single entry and a container reset sweeps the subtree.
-  // That is also what makes `resetField('')` a usable form-level-error wipe:
-  // there is no storage at the root error path, but errors live there and a
-  // consumer calling `resetField` on it expects them cleared. The same holds
-  // for consumer-set errors at any path the schema does not model.
+  // Error cleanup runs whether or not storage was restored, at the target
+  // path and every descendant. That is also what makes `resetField('')` a
+  // usable form-level-error wipe: there is no storage at the root error path,
+  // but errors live there and a consumer calling `resetField` on it expects
+  // them cleared. The same holds for consumer-set errors at any path the
+  // schema does not model.
   deleteErrorCellsUnderPrefix(st, targetSegments)
-  for (const [fieldKey, record] of Array.from(st.fields.entries())) {
-    if (isPathPrefix(targetSegments, record.path)) clearFieldRecordFlags(st, fieldKey)
+  // The cleared records took the reset's stamp, so the containers above them
+  // take it too. A container between them and `path` with no record of its
+  // own reads its leaves, which hold it already.
+  if (clearedAny && hasAtPath(toRaw(st.form.value), targetSegments)) {
+    stampContainers(st, [targetSegments], now)
   }
 }
 
@@ -3463,17 +3696,6 @@ function deleteErrorCellsUnderPrefix<F extends GenericForm, G extends GenericFor
       }
     }
   }
-}
-
-function clearFieldRecordFlags<F extends GenericForm, G extends GenericForm = F>(
-  st: FormState<F, G>,
-  pathKey: PathKey
-): void {
-  const record = st.fields.get(pathKey)
-  if (record === undefined) return
-  // Only the interaction-history flags clear, as in `reset()`'s field loop,
-  // but with a fresh `now` per path rather than one stamp across the form.
-  st.fields.set(pathKey, withClearedHistoryFlags(record, new Date().toISOString()))
 }
 
 // --- Derived ---
@@ -3997,6 +4219,8 @@ export function createFormStore<F extends GenericForm, G extends GenericForm = F
     arrayIdentity,
     variantMemory,
     touchFieldRecord: (pathKey, path, patch) => touchFieldRecord(st, pathKey, path, patch),
+    stampContainers: (containers, now) => stampContainers(st, containers, now),
+    foldInteractionHistory: (path, released) => foldInteractionHistory(st, path, released),
     decFieldValidation: (key) => decFieldValidation(st, key),
   })
 

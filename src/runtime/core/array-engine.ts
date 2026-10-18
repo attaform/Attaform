@@ -21,7 +21,7 @@ import type { ErrorCell, WriteMeta } from '../types/types-api'
 import { consumerKeys, readConsumerProp } from './consumer-code'
 import { NO_ERRORS } from './error-codes'
 import { diffAndApply } from './diff-apply'
-import { getAtPath, isPlainRecord } from './path-walker'
+import { getAtPath, hasAtPath, isPlainRecord } from './path-walker'
 import {
   canonicalizePath,
   isPathPrefix,
@@ -644,6 +644,16 @@ export type ArrayBookkeepingDeps = {
     path: Path,
     patch: Partial<Omit<FieldRecord, 'path'>>
   ) => void
+  /**
+   * The store's container stamp: records a write at each container and every
+   * ancestor up to the root under one `now`.
+   */
+  readonly stampContainers: (containers: readonly Path[], now: string) => void
+  /**
+   * The store's history fold: ORs the sticky interaction flags of records a
+   * removal dropped into the own record of `path` and of each ancestor.
+   */
+  readonly foldInteractionHistory: (path: Path, released: readonly FieldRecord[]) => void
   readonly decFieldValidation: (key: PathKey) => void
 }
 
@@ -656,7 +666,10 @@ export type ArrayBookkeeping = {
    *  1. **Relocate** non-derived per-element state so it follows its
    *     element rather than bleeding onto the new occupant of the
    *     element's old index: `fields` (touched / focused / blurred /
-   *     connection bookkeeping, plus the record's embedded `path`),
+   *     connection bookkeeping and the `updatedAt` stamp, plus the
+   *     record's embedded `path`), after a removed element's interaction
+   *     history has folded into the array and its ancestors, which keep
+   *     reporting it,
    *     `userErrors` (consumer-set errors, plus each error's embedded
    *     `path`), `blankPaths`, the `originals` / `originalBlankPaths`
    *     dirty baseline (a moved element keeps its OWN dirty verdict; a
@@ -670,10 +683,10 @@ export type ArrayBookkeeping = {
    *  2. **Seed** each freshly created element (an insert slot, a
    *     replace-at target) the way an appended one is registered: walk
    *     its leaves and seed an absence baseline in `originals` (so the
-   *     new element reads dirty, like an append) plus a field record.
-   *     Migration has already relocated the prior occupant's state off
-   *     this slot's keys; without this the new element would be
-   *     invisible to `touch` and read pristine.
+   *     new element reads dirty, like an append), then stamp its leaves
+   *     as written under the op's `now`. Migration has already relocated
+   *     the prior occupant's state off this slot's keys; without this the
+   *     new element would be invisible to `touch` and read pristine.
    *  3. **Evict** derived state at changed indices: schema verdicts, which
    *     revalidation recomputes and which drop synchronously so a stale one
    *     cannot show for a frame or linger under a `validateOn` that will not
@@ -685,8 +698,12 @@ export type ArrayBookkeeping = {
    *     `meta.validating` reflects the removal at once.
    *  5. **Replay** the permutation onto the mutated array's own
    *     identity tokens.
+   *
+   * `now` is the write's stamp. The write funnel has already stamped the
+   * array and its ancestors with it; the diff it ran is positional, so the
+   * per-element records are this pass's to keep truthful.
    */
-  readonly applyStructuralOp: (arrayPath: Path, remap: IndexRemap) => void
+  readonly applyStructuralOp: (arrayPath: Path, remap: IndexRemap, now: string) => void
 }
 
 export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkeeping {
@@ -705,11 +722,26 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     arrayIdentity,
     variantMemory,
     touchFieldRecord,
+    stampContainers,
+    foldInteractionHistory,
     decFieldValidation,
   } = deps
 
   function migrateElementState(arrayPath: Path, remap: IndexRemap): void {
     if (remap.moved.size === 0 && remap.vacated.size === 0) return
+    // The removed elements' records are about to drop, so their interaction
+    // history moves to the array and its ancestors first, before the
+    // relocation below deletes them.
+    if (remap.vacated.size > 0) {
+      const released: FieldRecord[] = []
+      for (const { key } of collectKeysAtIndices(fields.keys(), arrayPath, (index) =>
+        remap.vacated.has(index)
+      )) {
+        const record = fields.get(key)
+        if (record !== undefined) released.push(record)
+      }
+      foldInteractionHistory(arrayPath, released)
+    }
     migrateMapSubtree(fields, arrayPath, remap, (record, segments) => ({
       ...record,
       path: segments,
@@ -744,15 +776,19 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
     arrayIdentity.applyRemap(arrayPath, remap)
   }
 
-  function seedFreshElement(arrayPath: Path, freshIndex: number): void {
+  function seedFreshElement(arrayPath: Path, freshIndex: number, now: string): void {
     const elementPath: Path = [...arrayPath, freshIndex]
-    const now = new Date().toISOString()
+    let leaves = 0
     diffAndApply(undefined, getAtPath(form.value, elementPath), elementPath, (patch) => {
       if (patch.kind !== 'added') return
-      const { key } = canonicalizePath(patch.path)
+      const { key, segments } = canonicalizePath(patch.path)
       if (!originals.has(key)) originals.set(key, { segments: patch.path, value: undefined })
-      touchFieldRecord(key, patch.path, { updatedAt: now })
+      touchFieldRecord(key, segments, { updatedAt: now })
+      leaves++
     })
+    // An element holding no leaf (an empty row) has nothing to carry its
+    // stamp, so it records the write on its own record.
+    if (leaves === 0 && hasAtPath(form.value, elementPath)) stampContainers([elementPath], now)
   }
 
   function abortValidationAtVacatedIndices(arrayPath: Path, remap: IndexRemap): void {
@@ -775,9 +811,9 @@ export function createArrayBookkeeping(deps: ArrayBookkeepingDeps): ArrayBookkee
   }
 
   return {
-    applyStructuralOp(arrayPath, remap) {
+    applyStructuralOp(arrayPath, remap, now) {
       migrateElementState(arrayPath, remap)
-      for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex)
+      for (const freshIndex of remap.fresh) seedFreshElement(arrayPath, freshIndex, now)
       const changed = changedIndices(remap)
       evictSchemaVerdictsAtIndices(errorCells(), arrayPath, changed)
       abortValidationAtVacatedIndices(arrayPath, remap)
@@ -804,8 +840,8 @@ export type FieldArrayApi = {
  * Typed array helpers on top of FormStore. Each reads the current array at the
  * path, produces a new copy so the `form` ref's reactive notification goes out,
  * and writes it back through `setValueAtPath`, where the whole downstream
- * bookkeeping comes free: diff patches, field-record `updatedAt` stamps, error
- * store preservation.
+ * bookkeeping comes free: diff patches, field-record `updatedAt` stamps at the
+ * array, its ancestors and its fresh elements, error store preservation.
  *
  * Out-of-range index semantics:
  *   - `remove`, `swap` and `replace` no-op on an invalid index and never grow

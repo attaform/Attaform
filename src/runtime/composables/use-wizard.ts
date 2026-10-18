@@ -17,6 +17,7 @@ import {
 import { __DEV__ } from '../core/dev'
 import { ANONYMOUS_WIZARD_KEY_PREFIX } from '../core/defaults'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { buildOutsideEndedScope } from '../core/ended-scope'
 import { AttaformErrorCode } from '../core/error-codes'
 import { SubmitErrorHandlerError, toError } from '../core/errors'
 import {
@@ -154,6 +155,9 @@ function asHandleSubmitSource(form: AnyForm): Pick<UseFormReturnType<GenericForm
 export function useWizard<const S extends ReadonlyArray<StepSlot>>(
   options: WizardOptions & { readonly steps: S }
 ): UseWizardReturnType<S> {
+  const rebuilt = buildOutsideEndedScope(() => useWizard<S>(options))
+  if (rebuilt !== undefined) return rebuilt
+
   // A misshapen `steps` must never crash the surrounding app. The dev
   // error surfaces the misconfiguration and the runtime continues
   // degenerate: `currentStep` undefined, navigation refuses,

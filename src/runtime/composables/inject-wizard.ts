@@ -1,6 +1,7 @@
 import { getCurrentInstance, getCurrentScope, inject, onScopeDispose } from 'vue'
 import { __DEV__ } from '../core/dev'
 import { captureUserCallSite } from '../core/dev-stack-trace'
+import { buildOutsideEndedScope } from '../core/ended-scope'
 import { ensureAttaformInstalled } from '../core/plugin'
 import { kAttaformAncestorWizard, useRegistry } from '../core/registry'
 import type { UseWizardReturnType } from '../types/types-wizard'
@@ -45,6 +46,9 @@ export type InjectWizardInput = {
  * ambient lookup does not pin: the parent's scope owns that lifetime.
  */
 export function injectWizard(input?: string | InjectWizardInput): UseWizardReturnType | null {
+  const rebuilt = buildOutsideEndedScope(() => injectWizard(input))
+  if (rebuilt !== undefined) return rebuilt
+
   const key: string | undefined = typeof input === 'string' ? input : input?.key
 
   // As in `injectForm`: without this, no installed plugin surfaces as a

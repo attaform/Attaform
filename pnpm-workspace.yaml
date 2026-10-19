@@ -90,6 +90,15 @@ overrides:
   # /sitemap.xml 500. Scoped to devframe so @nuxt/test-utils keeps its own
   # h3 v2 (the h3-next alias) for the e2e suite.
   'devframe>h3': 1.15.11
+  # Hold nuxt-og-image on the release that renders the docs site's social
+  # cards correctly. 6.10 stops passing the page description to the card
+  # template and keys every route to one card file, so once cards differ
+  # per page, each page can show another page's card (#727). Every
+  # @nuxtjs/seo 5.3.x declares `^6.7.8`, so the newer copy arrives on any
+  # lockfile re-resolution, and ignoring @nuxtjs/seo releases would not
+  # stop it. A literal version, so `pnpm check:security-floors` also
+  # asserts it stays the single copy. Lift it as part of #727.
+  nuxt-og-image: 6.7.8
   # Security floors for dev-only transitive dependencies. Attaform ships
   # zero runtime dependencies (package.json `dependencies` is empty), so
   # none of these reach a consumer install; they harden the build / test /
@@ -133,17 +142,19 @@ overrides:
   #                    `{a},b}` rewrite), again patched in each major.
   #                    Pulled by minimatch / glob across the lint + test
   #                    toolchain.
-  #   devalue ^5.9.3   clears GHSA-r9w8-h9r3-54w4 and -j22f-vq7h-c4qm (both
+  #   devalue@^5 ^5.9.3
+  #                    clears GHSA-r9w8-h9r3-54w4 and -j22f-vq7h-c4qm (both
   #                    high: custom ArrayBuffer revivers bypass typed-array
   #                    allocation checks; `stringify` / `uneval` serialize
   #                    shared memory), GHSA-4q55-j62x-fr9h and
   #                    -hx4r-w6wj-j8fg (medium: null-prototype keys slip the
   #                    `__proto__` rejection; sparse-array CPU amplification
   #                    in `uneval`) and GHSA-wf3x-273g-mvxv (low, eager
-  #                    allocation from sparse arrays). The root
-  #                    devDependency carries ^5.9.3 as well, but raising it
-  #                    left nuxt, @nuxt/nitro-server and nuxt-og-image on
-  #                    their locked 5.9.2 until this floor moved them too.
+  #                    allocation from sparse arrays). All five stop at
+  #                    5.9.2, so the floor is scoped to the 5.x line. An
+  #                    unscoped `devalue: ^5.9.3` replaced every range in the
+  #                    tree, and held nuxt 4.6.1 and @nuxt/nitro-server on
+  #                    devalue 5 against their own `^6.0.2`.
   #   esbuild ^0.28.1  clears GHSA-g7r4-m6w7-qqqr (arbitrary file read via
   #                    the dev server on Windows, real for a Windows
   #                    maintainer, not just a theoretical). Also pins the
@@ -232,7 +243,8 @@ overrides:
   #                    unbuild and the Nuxt vite builder.
   #   tar ^7.5.18      clears GHSA-w8wr-v893-vjvp (process crash via PAX
   #                    numeric path type confusion).
-  #   undici ^7.29.1   clears GHSA-w293-vg96-wgc3 (high, BalancedPool drops
+  #   undici@^7 ^7.29.1 / undici@^8 ^8.10.2
+  #                    clears GHSA-w293-vg96-wgc3 (high, BalancedPool drops
   #                    the connect options and with them TLS certificate
   #                    validation), two mediums (GHSA-2jfj-6hjv-fm6j,
   #                    cross-user Set-Cookie disclosure from shared caches;
@@ -243,8 +255,12 @@ overrides:
   #                    splitting, dump-interceptor truncation). The ^7.29.0
   #                    floor before it answered GHSA-4cwx-7wf7-3272 and four
   #                    mediums, and ^7.28.0 the SOCKS5 ProxyAgent and
-  #                    WebSocket-DoS highs. Pulled by jsdom / cheerio (test
-  #                    harness) and nuxt.
+  #                    WebSocket-DoS highs. Each advisory was patched in both
+  #                    majors (8.x at 8.10.2), hence two range-scoped floors.
+  #                    A single unscoped `undici: ^7.x` replaced every range
+  #                    and held jsdom 30, nuxt 4.6.1 and unifont on undici 7
+  #                    against their own `^8`. Pulled by jsdom (test harness),
+  #                    cheerio, nuxt and unifont.
   #   ws ^8.21.0       clears GHSA-96hv-2xvq-fx4p (high, memory-exhaustion
   #                    DoS from tiny fragments), auto-dismissed. Pulled by
   #                    socket.io-client > @nuxt/content (docs site).
@@ -279,7 +295,7 @@ overrides:
   '@tiptap/core': ^3.30.4
   'brace-expansion@^2': ^2.1.7
   'brace-expansion@^5': ^5.0.12
-  devalue: ^5.9.3
+  'devalue@^5': ^5.9.3
   esbuild: ^0.28.1
   fast-uri: ^3.1.6
   fflate: ^0.7.5
@@ -294,7 +310,8 @@ overrides:
   source-map-js: ^1.2.2
   svgo: ^4.1.0
   tar: ^7.5.18
-  undici: ^7.29.1
+  'undici@^7': ^7.29.1
+  'undici@^8': ^8.10.2
   ws: ^8.21.0
 
 # Install-script allowlist. Any package NOT set to `true` here has its

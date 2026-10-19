@@ -243,7 +243,8 @@ overrides:
   #                    unbuild and the Nuxt vite builder.
   #   tar ^7.5.18      clears GHSA-w8wr-v893-vjvp (process crash via PAX
   #                    numeric path type confusion).
-  #   undici ^7.29.1   clears GHSA-w293-vg96-wgc3 (high, BalancedPool drops
+  #   undici@^7 ^7.29.1 / undici@^8 ^8.10.2
+  #                    clears GHSA-w293-vg96-wgc3 (high, BalancedPool drops
   #                    the connect options and with them TLS certificate
   #                    validation), two mediums (GHSA-2jfj-6hjv-fm6j,
   #                    cross-user Set-Cookie disclosure from shared caches;
@@ -254,8 +255,12 @@ overrides:
   #                    splitting, dump-interceptor truncation). The ^7.29.0
   #                    floor before it answered GHSA-4cwx-7wf7-3272 and four
   #                    mediums, and ^7.28.0 the SOCKS5 ProxyAgent and
-  #                    WebSocket-DoS highs. Pulled by jsdom / cheerio (test
-  #                    harness) and nuxt.
+  #                    WebSocket-DoS highs. Each advisory was patched in both
+  #                    majors (8.x at 8.10.2), hence two range-scoped floors.
+  #                    A single unscoped `undici: ^7.x` replaced every range
+  #                    and held jsdom 30, nuxt 4.6.1 and unifont on undici 7
+  #                    against their own `^8`. Pulled by jsdom (test harness),
+  #                    cheerio, nuxt and unifont.
   #   ws ^8.21.0       clears GHSA-96hv-2xvq-fx4p (high, memory-exhaustion
   #                    DoS from tiny fragments), auto-dismissed. Pulled by
   #                    socket.io-client > @nuxt/content (docs site).
@@ -305,7 +310,8 @@ overrides:
   source-map-js: ^1.2.2
   svgo: ^4.1.0
   tar: ^7.5.18
-  undici: ^7.29.1
+  'undici@^7': ^7.29.1
+  'undici@^8': ^8.10.2
   ws: ^8.21.0
 
 # Install-script allowlist. Any package NOT set to `true` here has its
